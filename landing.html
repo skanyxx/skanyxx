@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Skanyxx - Professional SRE IDE</title>
+    <meta name="description" content="Skanyxx is a cutting-edge Site Reliability Engineering IDE that revolutionizes how SRE teams investigate, analyze, and resolve complex distributed system issues.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            /* Modern gradient colors */
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-secondary: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            --gradient-success: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --gradient-dark: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            --gradient-accent: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+
+            /* Base colors */
+            --color-bg-primary: #0a0e27;
+            --color-bg-secondary: #151a35;
+            --color-bg-tertiary: #1e2442;
+            --color-bg-card: rgba(30, 36, 66, 0.6);
+
+            /* Text colors */
+            --color-text-primary: #ffffff;
+            --color-text-secondary: #b8c1ec;
+            --color-text-muted: #6b7aa1;
+
+            /* Accent colors */
+            --color-primary: #667eea;
+            --color-secondary: #764ba2;
+            --color-accent: #f5576c;
+            --color-success: #00f2fe;
+            --color-warning: #fee140;
+
+            /* Font */
+            --font-primary: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+            /* Spacing */
+            --spacing-xs: 0.5rem;
+            --spacing-sm: 1rem;
+            --spacing-md: 1.5rem;
+            --spacing-lg: 2rem;
+            --spacing-xl: 3rem;
+            --spacing-2xl: 4rem;
+            --spacing-3xl: 6rem;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: var(--font-primary);
+            line-height: 1.6;
+            color: var(--color-text-primary);
+            background: var(--color-bg-primary);
+            overflow-x: hidden;
+        }
+
+        /* Animated background */
+        .animated-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            background: var(--gradient-dark);
+        }
+
+        .animated-bg::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(102, 126, 234, 0.1) 0%, transparent 50%);
+            animation: rotate 20s linear infinite;
+        }
+
+        @keyframes rotate {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-md);
+            width: 100%;
+        }
+
+        /* Header */
+        .header {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 1000;
+            background: rgba(10, 14, 39, 0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .header.scrolled {
+            background: rgba(10, 14, 39, 0.95);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.25rem 0;
+        }
+
+        .logo {
+            font-size: 1.75rem;
+            font-weight: 800;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo i {
+            font-size: 2rem;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .nav-links {
+            display: flex;
+            list-style: none;
+            gap: var(--spacing-lg);
+            align-items: center;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--color-text-secondary);
+            font-weight: 500;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-links a::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--gradient-primary);
+            transition: width 0.3s ease;
+        }
+
+        .nav-links a:hover {
+            color: var(--color-text-primary);
+        }
+
+        .nav-links a:hover::after {
+            width: 100%;
+        }
+
+        /* Hero Section */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: var(--spacing-3xl) var(--spacing-md);
+            position: relative;
+        }
+
+        .hero-content {
+            max-width: 900px;
+            animation: fadeInUp 1s ease-out;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .hero h1 {
+            font-size: clamp(2.5rem, 7vw, 5rem);
+            font-weight: 900;
+            margin-bottom: var(--spacing-md);
+            background: linear-gradient(135deg, #ffffff 0%, #667eea 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            line-height: 1.2;
+        }
+
+        .hero .subtitle {
+            font-size: clamp(1.2rem, 3vw, 1.8rem);
+            color: var(--color-text-secondary);
+            margin-bottom: var(--spacing-lg);
+            font-weight: 300;
+        }
+
+        .hero .description {
+            font-size: 1.1rem;
+            color: var(--color-text-muted);
+            margin-bottom: var(--spacing-xl);
+            line-height: 1.8;
+        }
+
+        .version-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(102, 126, 234, 0.2);
+            border: 1px solid rgba(102, 126, 234, 0.3);
+            padding: 0.5rem 1rem;
+            border-radius: 50px;
+            font-size: 0.9rem;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .version-badge i {
+            color: var(--color-success);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 1rem 2rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.1);
+            transition: left 0.3s ease;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: white;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            backdrop-filter: blur(10px);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .cta-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: var(--spacing-xl);
+        }
+
+        /* Download Section */
+        .download-section {
+            padding: var(--spacing-3xl) 0;
+            text-align: center;
+        }
+
+        .download-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: var(--spacing-lg);
+            margin-top: var(--spacing-xl);
+        }
+
+        .download-card {
+            background: var(--color-bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: var(--spacing-xl);
+            transition: all 0.3s ease;
+        }
+
+        .download-card:hover {
+            transform: translateY(-10px);
+            border-color: rgba(102, 126, 234, 0.5);
+            box-shadow: 0 20px 40px rgba(102, 126, 234, 0.2);
+        }
+
+        .download-card i {
+            font-size: 3.5rem;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .download-card h3 {
+            font-size: 1.5rem;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .download-card .platform-info {
+            color: var(--color-text-muted);
+            font-size: 0.9rem;
+            margin-bottom: var(--spacing-md);
+        }
+
+        /* Features Section */
+        .features-section {
+            padding: var(--spacing-3xl) 0;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 800;
+            margin-bottom: var(--spacing-md);
+            background: linear-gradient(135deg, #ffffff 0%, #667eea 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .section-subtitle {
+            text-align: center;
+            color: var(--color-text-muted);
+            font-size: 1.2rem;
+            margin-bottom: var(--spacing-xl);
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-lg);
+            margin-top: var(--spacing-xl);
+        }
+
+        .feature-card {
+            background: var(--color-bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: var(--spacing-xl);
+            transition: all 0.3s ease;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(102, 126, 234, 0.5);
+        }
+
+        .feature-card i {
+            font-size: 2.5rem;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .feature-card h3 {
+            font-size: 1.4rem;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .feature-card p {
+            color: var(--color-text-secondary);
+            line-height: 1.8;
+        }
+
+        /* Support Section */
+        .support-section {
+            padding: var(--spacing-3xl) 0;
+            text-align: center;
+        }
+
+        .support-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: var(--spacing-xl);
+            margin-top: var(--spacing-xl);
+        }
+
+        .support-card {
+            background: var(--color-bg-card);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: var(--spacing-2xl);
+            transition: all 0.3s ease;
+        }
+
+        .support-card:hover {
+            transform: translateY(-10px);
+            border-color: rgba(102, 126, 234, 0.5);
+            box-shadow: 0 20px 60px rgba(102, 126, 234, 0.3);
+        }
+
+        .support-card i {
+            font-size: 4rem;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .support-card.github i {
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .support-card.crypto i {
+            color: #f7931a;
+        }
+
+        .support-card h3 {
+            font-size: 2rem;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .support-card p {
+            color: var(--color-text-secondary);
+            margin-bottom: var(--spacing-lg);
+            font-size: 1.05rem;
+        }
+
+        .crypto-address {
+            background: rgba(10, 14, 39, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: var(--spacing-md);
+            margin-bottom: var(--spacing-md);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            word-break: break-all;
+        }
+
+        .crypto-address:hover {
+            border-color: var(--color-primary);
+            background: rgba(102, 126, 234, 0.1);
+        }
+
+        .crypto-address small {
+            display: block;
+            color: var(--color-text-muted);
+            font-size: 0.75rem;
+            margin-bottom: 0.5rem;
+            font-family: var(--font-primary);
+        }
+
+        /* Footer */
+        .footer {
+            background: rgba(10, 14, 39, 0.8);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            padding: var(--spacing-xl) 0;
+            text-align: center;
+        }
+
+        .footer p {
+            color: var(--color-text-muted);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: var(--spacing-lg);
+            margin: var(--spacing-lg) 0;
+            flex-wrap: wrap;
+        }
+
+        .footer-links a {
+            color: var(--color-text-secondary);
+            text-decoration: none;
+            transition: color 0.3s ease;
+        }
+
+        .footer-links a:hover {
+            color: var(--color-primary);
+        }
+
+        /* Scroll animations */
+        .scroll-reveal {
+            opacity: 0;
+            transform: translateY(30px);
+            transition: all 0.8s ease;
+        }
+
+        .scroll-reveal.active {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .hero {
+                padding: var(--spacing-2xl) var(--spacing-md);
+                min-height: 90vh;
+            }
+
+            .download-grid,
+            .features-grid,
+            .support-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="animated-bg"></div>
+
+    <!-- Header -->
+    <header class="header">
+        <nav class="nav container">
+            <a href="#" class="logo">
+                <i class="fas fa-bolt"></i>
+                SKANYX
+            </a>
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#download">Download</a></li>
+                <li><a href="#support">Support</a></li>
+                <li><a href="https://github.com/pukacho/Skanyxx" target="_blank">GitHub</a></li>
+            </ul>
+        </nav>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="hero-content">
+            <div class="version-badge">
+                <i class="fas fa-check-circle"></i>
+                Version 0.1.0 - Beta
+            </div>
+            <h1>SKANYX</h1>
+            <p class="subtitle">Professional Site Reliability Engineering IDE</p>
+            <p class="description">
+                A cutting-edge Site Reliability Engineering IDE that revolutionizes how SRE teams investigate,
+                analyze, and resolve complex distributed system issues. Built with AI-powered investigation tools
+                and multi-connector support.
+            </p>
+            <div class="cta-buttons">
+                <a href="#download" class="btn btn-primary">
+                    <i class="fas fa-download"></i>
+                    Download Now
+                </a>
+                <a href="https://github.com/pukacho/Skanyxx" target="_blank" class="btn btn-secondary">
+                    <i class="fab fa-github"></i>
+                    View on GitHub
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section id="download" class="download-section container scroll-reveal">
+        <h2 class="section-title">Download Skanyxx</h2>
+        <p class="section-subtitle">Choose your platform and start revolutionizing your SRE workflows</p>
+
+        <div class="download-grid">
+            <div class="download-card">
+                <i class="fab fa-apple"></i>
+                <h3>macOS</h3>
+                <p class="platform-info">Apple Silicon (M1/M2/M3)</p>
+                <p class="platform-info">Version 0.1.0 - 5.0MB</p>
+                <a href="https://github.com/pukacho/Skanyxx/releases/download/v0.1.0/Skanyxx-v0.1.0-macOS-aarch64.zip" class="btn btn-primary">
+                    <i class="fas fa-download"></i>
+                    Download for macOS
+                </a>
+                <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--color-text-muted);">
+                    Also available: <a href="https://github.com/pukacho/Skanyxx/releases/download/v0.1.0/Skanyxx-v0.1.0-macOS-aarch64.tar.gz" style="color: var(--color-primary);">tar.gz</a>
+                </p>
+            </div>
+
+            <div class="download-card">
+                <i class="fab fa-windows"></i>
+                <h3>Windows</h3>
+                <p class="platform-info">Windows 10/11 x64</p>
+                <p class="platform-info">Version 0.1.0 - 7.7MB</p>
+                <a href="https://github.com/pukacho/Skanyxx/releases/download/v0.1.0/Skanyxx-v0.1.0-Windows-x64.zip" class="btn btn-primary">
+                    <i class="fas fa-download"></i>
+                    Download for Windows
+                </a>
+                <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--color-text-muted);">
+                    Extract and run skanyxx.exe
+                </p>
+            </div>
+
+            <div class="download-card">
+                <i class="fab fa-linux"></i>
+                <h3>Linux</h3>
+                <p class="platform-info">x64 (AppImage/deb)</p>
+                <p class="platform-info">Version 0.1.0</p>
+                <a href="https://github.com/pukacho/Skanyxx/releases/download/v0.1.0/Skanyxx-v0.1.0-Linux-x64.AppImage" class="btn btn-primary">
+                    <i class="fas fa-download"></i>
+                    Download for Linux
+                </a>
+                <p style="margin-top: 1rem; font-size: 0.85rem; color: var(--color-text-muted);">
+                    Also available: <a href="https://github.com/pukacho/Skanyxx/releases/download/v0.1.0/Skanyxx-v0.1.0-Linux-x64.deb" style="color: var(--color-primary);">deb</a>
+                </p>
+            </div>
+        </div>
+
+        <div style="margin-top: 3rem;">
+            <a href="https://github.com/pukacho/Skanyxx/releases" target="_blank" class="btn btn-secondary">
+                <i class="fas fa-history"></i>
+                View All Releases
+            </a>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features-section container scroll-reveal">
+        <h2 class="section-title">Powerful Features</h2>
+        <p class="section-subtitle">Everything you need for modern Site Reliability Engineering</p>
+
+        <div class="features-grid">
+            <div class="feature-card">
+                <i class="fas fa-brain"></i>
+                <h3>AI-Powered Investigation</h3>
+                <p>Pre-built templates for P0-P3 incidents, intelligent agent workflows, and automated root cause analysis to resolve issues faster.</p>
+            </div>
+
+            <div class="feature-card">
+                <i class="fas fa-network-wired"></i>
+                <h3>Multi-Platform Management</h3>
+                <p>Connect to multiple KAgent instances from one interface. Unified view across local, staging, and production environments.</p>
+            </div>
+
+            <div class="feature-card">
+                <i class="fas fa-bolt"></i>
+                <h3>Real-Time Operations</h3>
+                <p>Live status updates, system metrics monitoring, and interactive chat with specialized SRE agents for instant insights.</p>
+            </div>
+
+            <div class="feature-card">
+                <i class="fas fa-cloud"></i>
+                <h3>Cloud Tools Integration</h3>
+                <p>Built-in Azure Resource Finder, Ruchy REPL for data analysis, and seamless integration with your cloud infrastructure.</p>
+            </div>
+
+            <div class="feature-card">
+                <i class="fas fa-shield-alt"></i>
+                <h3>Enterprise Ready</h3>
+                <p>Security scanning, token optimization, comprehensive logging, and professional PDF report generation.</p>
+            </div>
+
+            <div class="feature-card">
+                <i class="fas fa-rocket"></i>
+                <h3>Native Performance</h3>
+                <p>Built with Rust and Tauri for blazing-fast performance. Cross-platform support for macOS, Windows, and Linux.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Support Section -->
+    <section id="support" class="support-section container scroll-reveal">
+        <h2 class="section-title">Support the Project</h2>
+        <p class="section-subtitle">Help us continue developing Skanyxx and building the future of SRE tooling</p>
+
+        <div class="support-grid">
+            <div class="support-card github">
+                <i class="fab fa-github"></i>
+                <h3>GitHub Sponsors</h3>
+                <p>Support ongoing development through GitHub Sponsors and get exclusive benefits</p>
+                <a href="https://github.com/sponsors/pukacho" target="_blank" class="btn btn-primary">
+                    <i class="fas fa-heart"></i>
+                    Sponsor on GitHub
+                </a>
+            </div>
+
+            <div class="support-card crypto">
+                <i class="fab fa-bitcoin"></i>
+                <h3>Crypto Donation</h3>
+                <p>Prefer cryptocurrency? Send your donation to our wallet addresses</p>
+                <div class="crypto-address" onclick="copyToClipboard(this, 'eth')" title="Click to copy">
+                    <small>Ethereum (ETH/USDT):</small>
+                    <span class="crypto-addr">0x03a75e24394859F5AdBF89E678A5aa98c4666268</span>
+                </div>
+                <div class="crypto-address" onclick="copyToClipboard(this, 'btc')" title="Click to copy">
+                    <small>Bitcoin (BTC):</small>
+                    <span class="crypto-addr">bc1pmy7cyw0qk0n8fp4awakwpq8wcedehm7q9rmszw2vkf3p6clwk68qqaprfm</span>
+                </div>
+                <small style="color: var(--color-text-muted); display: block;">Click addresses to copy</small>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <p style="font-size: 1.2rem; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 1rem;">
+                <strong>SKANYX</strong> - Built by SREs, for SREs
+            </p>
+            <div class="footer-links">
+                <a href="https://github.com/pukacho/Skanyxx" target="_blank">
+                    <i class="fab fa-github"></i> GitHub
+                </a>
+                <a href="https://github.com/pukacho/Skanyxx/issues" target="_blank">
+                    <i class="fas fa-bug"></i> Issues
+                </a>
+                <a href="https://github.com/pukacho/Skanyxx/discussions" target="_blank">
+                    <i class="fas fa-comments"></i> Discussions
+                </a>
+                <a href="https://github.com/pukacho/Skanyxx/wiki" target="_blank">
+                    <i class="fas fa-book"></i> Documentation
+                </a>
+            </div>
+            <p style="font-size: 0.9rem;">
+                Licensed under MIT License
+            </p>
+            <p style="font-size: 0.85rem; color: var(--color-text-muted);">
+                © 2025 Skanyxx. All rights reserved.
+            </p>
+        </div>
+    </footer>
+
+    <script>
+        // Header scroll effect
+        const header = document.querySelector('.header');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 50) {
+                header.classList.add('scrolled');
+            } else {
+                header.classList.remove('scrolled');
+            }
+        });
+
+        // Scroll reveal animations
+        const scrollReveal = () => {
+            const reveals = document.querySelectorAll('.scroll-reveal');
+            reveals.forEach(element => {
+                const elementTop = element.getBoundingClientRect().top;
+                const elementVisible = 150;
+                if (elementTop < window.innerHeight - elementVisible) {
+                    element.classList.add('active');
+                }
+            });
+        };
+
+        window.addEventListener('scroll', scrollReveal);
+        scrollReveal(); // Initial check
+
+        // Smooth scrolling
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+            });
+        });
+
+        // Copy to clipboard
+        function copyToClipboard(element, type) {
+            const address = element.querySelector('.crypto-addr').textContent;
+            navigator.clipboard.writeText(address).then(() => {
+                const originalBorder = element.style.borderColor;
+                const originalBg = element.style.background;
+
+                element.style.borderColor = 'var(--color-success)';
+                element.style.background = 'rgba(0, 242, 254, 0.2)';
+
+                const smallElement = element.querySelector('small');
+                const originalText = smallElement.textContent;
+                smallElement.textContent = '✓ Copied to clipboard!';
+                smallElement.style.color = 'var(--color-success)';
+
+                setTimeout(() => {
+                    element.style.borderColor = originalBorder;
+                    element.style.background = originalBg;
+                    smallElement.textContent = originalText;
+                    smallElement.style.color = 'var(--color-text-muted)';
+                }, 2000);
+            }).catch(err => {
+                console.error('Failed to copy: ', err);
+            });
+        }
+    </script>
+</body>
+</html>
