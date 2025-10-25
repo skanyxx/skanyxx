@@ -5,6 +5,7 @@ yarn-debug.log*
 yarn-error.log*
 kagent
 khook
+.history/**
 
 # Build outputs
 dist/
