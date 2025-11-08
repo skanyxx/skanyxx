@@ -61,6 +61,7 @@ jobs:
 
       - name: Build frontend bundle
         run: npm run build
+        working-directory: src
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
