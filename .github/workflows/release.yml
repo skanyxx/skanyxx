@@ -85,17 +85,22 @@ jobs:
             ## Installation
 
             ### 🍎 macOS (Apple Silicon)
-            **⚠️ Important:** This app is not code-signed. After downloading:
-            1. Open the DMG and drag to Applications
-            2. **Right-click** the app and select **"Open"** (don't double-click)
-            3. Click **"Open"** in the security dialog
+            **⚠️ IMPORTANT - "Damaged" Error Fix:**
 
-            Or remove quarantine in Terminal:
+            If you see **"skanyxx is damaged and can't be opened"**, this is NOT actual damage - it's a macOS Gatekeeper security feature.
+
+            **Quick Fix - Run this command in Terminal after installing:**
             ```bash
             xattr -cr /Applications/skanyxx.app
             ```
 
-            📖 See [INSTALL_MAC.md](https://github.com/skanyxx/skanyxx/blob/main/INSTALL_MAC.md) for detailed instructions.
+            **Installation Steps:**
+            1. Download and open the DMG file
+            2. Drag skanyxx.app to Applications folder
+            3. **Run the fix command above in Terminal**
+            4. Launch the app normally
+
+            📖 See [INSTALL_MAC.md](https://github.com/skanyxx/skanyxx/blob/main/INSTALL_MAC.md) for detailed instructions and alternative methods.
 
             ### 🪟 Windows
             Double-click the `.msi` or `.exe` installer and follow the prompts.

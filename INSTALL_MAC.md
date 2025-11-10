@@ -1,14 +1,36 @@
 # Installing Skanyxx on macOS
 
+## ⚠️ Important: "Damaged" Error Fix
+
+If you see **"skanyxx is damaged and can't be opened"**, this is a macOS Gatekeeper issue, not actual damage. Follow the fix below.
+
+## Quick Fix (Recommended)
+
+### Option 1: One-Command Fix
+After installing, open Terminal and run:
+```bash
+xattr -cr /Applications/skanyxx.app
+```
+
+### Option 2: Use the Fix Script
+1. Download `fix-mac-install.sh` from the repository
+2. Open Terminal in the Downloads folder
+3. Run:
+```bash
+chmod +x fix-mac-install.sh
+./fix-mac-install.sh
+```
+
 ## Installation Steps
 
 1. **Download** the DMG file from [Releases](https://github.com/skanyxx/skanyxx/releases)
 2. **Open** the DMG file
 3. **Drag** Skanyxx.app to Applications folder
+4. **Run the fix** (see Quick Fix above)
 
-## Security Notice
+## Why This Happens
 
-Since this app is not code-signed with an Apple Developer Certificate, macOS will prevent it from opening by default.
+Since this app is not code-signed with an Apple Developer Certificate, macOS adds a "quarantine" attribute that prevents it from opening.
 
 ### Method 1: First-time Open (Recommended)
 1. After copying to Applications, **don't double-click** the app

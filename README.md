@@ -28,10 +28,27 @@ A professional site reliability engineering platform with AI-powered investigati
 
 ## 📦 Installation
 
-### Quick Start
+### For Users (Recommended)
+
+**Download the latest release:**
+👉 [Download from Releases](https://github.com/skanyxx/skanyxx/releases)
+
+**macOS Users - Important:**
+After installing, you may see **"skanyxx is damaged"** error. This is NOT actual damage - it's a macOS security feature.
+
+**Fix it by running this command in Terminal:**
+```bash
+xattr -cr /Applications/skanyxx.app
+```
+
+See [INSTALL_MAC.md](INSTALL_MAC.md) for detailed macOS installation instructions.
+
+### For Developers
+
+#### Quick Start
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/skanyxx.git
+git clone https://github.com/skanyxx/skanyxx.git
 cd skanyxx
 
 # Install dependencies
@@ -42,7 +59,7 @@ npm run build:mac
 npm run install:mac
 ```
 
-### Alternative: DMG Installer
+#### Alternative: DMG Installer
 ```bash
 # Build the application
 npm run build:mac
