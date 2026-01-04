@@ -1,0 +1,11 @@
+<Project>
+  <PropertyGroup>
+    <!-- Force Xcode path for MAUI builds -->
+    <_DeveloperPath>/Applications/Xcode.app/Contents/Developer</_DeveloperPath>
+    <_AppleSdkRoot>/Applications/Xcode.app/Contents/Developer</_AppleSdkRoot>
+  </PropertyGroup>
+
+  <Target Name="SetXcodePath" BeforeTargets="Build">
+    <Exec Command="export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer" IgnoreExitCode="true" />
+  </Target>
+</Project>

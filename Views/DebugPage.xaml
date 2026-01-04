@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SkanyxxMaui.Views.DebugPage"
+             Title="Debug"
+             BackgroundColor="#0a0a0a">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="28" Spacing="24">
+
+            <!-- Header -->
+            <Label Text="Debug" FontSize="28" FontAttributes="Bold" TextColor="#ffffff"/>
+
+            <!-- Debug Information Card -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="24" CornerRadius="12">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="16">
+                    <Frame Grid.Column="0" BackgroundColor="#8b5cf6" WidthRequest="44" HeightRequest="44"
+                           CornerRadius="10" Padding="0" BorderColor="Transparent">
+                        <Label Text="⟩" FontSize="20" TextColor="White"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Frame>
+                    <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+                        <Label Text="Debug Information" FontSize="20" FontAttributes="Bold" TextColor="#ffffff"/>
+                        <Label Text="System logs and diagnostic information" FontSize="15" TextColor="#808080"/>
+                    </VerticalStackLayout>
+                    <Button Grid.Column="2" Text="Clear Logs" BackgroundColor="#2a2a2a" TextColor="#ffffff"
+                            FontSize="14" BorderColor="#404040" BorderWidth="1" CornerRadius="8"
+                            HeightRequest="40" VerticalOptions="Center"/>
+                    <Button Grid.Column="3" Text="Export" BackgroundColor="#2a2a2a" TextColor="#ffffff"
+                            FontSize="14" BorderColor="#404040" BorderWidth="1" CornerRadius="8"
+                            HeightRequest="40" VerticalOptions="Center"/>
+                </Grid>
+            </Frame>
+
+            <!-- Log Level Filters -->
+            <HorizontalStackLayout Spacing="12">
+                <Button Text="All" BackgroundColor="#6366f1" TextColor="White"
+                        FontSize="14" CornerRadius="8" HeightRequest="36"/>
+                <Button Text="Info" BackgroundColor="#2a2a2a" TextColor="#3b82f6"
+                        FontSize="14" BorderColor="#3b82f6" BorderWidth="1" CornerRadius="8" HeightRequest="36"/>
+                <Button Text="Warning" BackgroundColor="#2a2a2a" TextColor="#ffb020"
+                        FontSize="14" BorderColor="#ffb020" BorderWidth="1" CornerRadius="8" HeightRequest="36"/>
+                <Button Text="Error" BackgroundColor="#2a2a2a" TextColor="#ff4444"
+                        FontSize="14" BorderColor="#ff4444" BorderWidth="1" CornerRadius="8" HeightRequest="36"/>
+                <Button Text="Debug" BackgroundColor="#2a2a2a" TextColor="#808080"
+                        FontSize="14" BorderColor="#404040" BorderWidth="1" CornerRadius="8" HeightRequest="36"/>
+            </HorizontalStackLayout>
+
+            <!-- System Info -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="16">
+                <!-- System Status -->
+                <Frame Grid.Column="0" BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="16">
+                        <Label Text="System Status" FontSize="18" FontAttributes="Bold" TextColor="#ffffff"/>
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="12">
+                            <Label Grid.Row="0" Grid.Column="0" Text="App Version" FontSize="14" TextColor="#808080"/>
+                            <Label Grid.Row="0" Grid.Column="1" Text="1.0.0" FontSize="14" TextColor="#ffffff"/>
+                            <Label Grid.Row="1" Grid.Column="0" Text="Platform" FontSize="14" TextColor="#808080"/>
+                            <Label Grid.Row="1" Grid.Column="1" Text="macOS" FontSize="14" TextColor="#ffffff"/>
+                            <Label Grid.Row="2" Grid.Column="0" Text="Runtime" FontSize="14" TextColor="#808080"/>
+                            <Label Grid.Row="2" Grid.Column="1" Text=".NET 8" FontSize="14" TextColor="#ffffff"/>
+                            <Label Grid.Row="3" Grid.Column="0" Text="Status" FontSize="14" TextColor="#808080"/>
+                            <HorizontalStackLayout Grid.Row="3" Grid.Column="1" Spacing="6">
+                                <BoxView Color="#00d4aa" WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center"/>
+                                <Label Text="Running" FontSize="14" TextColor="#00d4aa"/>
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Connection Status -->
+                <Frame Grid.Column="1" BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="16">
+                        <Label Text="Connection Status" FontSize="18" FontAttributes="Bold" TextColor="#ffffff"/>
+                        <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*,Auto" RowSpacing="12">
+                            <Label Grid.Row="0" Grid.Column="0" Text="API Server" FontSize="14" TextColor="#808080"/>
+                            <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="6">
+                                <BoxView Color="#00d4aa" WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center"/>
+                                <Label Text="Connected" FontSize="14" TextColor="#00d4aa"/>
+                            </HorizontalStackLayout>
+                            <Label Grid.Row="1" Grid.Column="0" Text="WebSocket" FontSize="14" TextColor="#808080"/>
+                            <HorizontalStackLayout Grid.Row="1" Grid.Column="1" Spacing="6">
+                                <BoxView Color="#00d4aa" WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center"/>
+                                <Label Text="Connected" FontSize="14" TextColor="#00d4aa"/>
+                            </HorizontalStackLayout>
+                            <Label Grid.Row="2" Grid.Column="0" Text="Database" FontSize="14" TextColor="#808080"/>
+                            <HorizontalStackLayout Grid.Row="2" Grid.Column="1" Spacing="6">
+                                <BoxView Color="#00d4aa" WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center"/>
+                                <Label Text="Connected" FontSize="14" TextColor="#00d4aa"/>
+                            </HorizontalStackLayout>
+                            <Label Grid.Row="3" Grid.Column="0" Text="Cache" FontSize="14" TextColor="#808080"/>
+                            <HorizontalStackLayout Grid.Row="3" Grid.Column="1" Spacing="6">
+                                <BoxView Color="#00d4aa" WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center"/>
+                                <Label Text="Connected" FontSize="14" TextColor="#00d4aa"/>
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Frame>
+            </Grid>
+
+            <!-- Log Console -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="24" CornerRadius="12">
+                <VerticalStackLayout Spacing="16">
+                    <HorizontalStackLayout Spacing="8">
+                        <Label Text="Console Output" FontSize="18" FontAttributes="Bold" TextColor="#ffffff"/>
+                        <Label Text="▤" FontSize="16" TextColor="#808080"/>
+                    </HorizontalStackLayout>
+
+                    <!-- Log Entries -->
+                    <Frame BackgroundColor="#0a0a0a" BorderColor="#333333" Padding="16" CornerRadius="8">
+                        <VerticalStackLayout Spacing="8">
+                            <!-- Log Entry 1 -->
+                            <HorizontalStackLayout Spacing="12">
+                                <Label Text="[INFO]" FontSize="13" TextColor="#3b82f6" WidthRequest="60"/>
+                                <Label Text="12:00:01" FontSize="13" TextColor="#808080" WidthRequest="70"/>
+                                <Label Text="Application started successfully" FontSize="13" TextColor="#b3b3b3"/>
+                            </HorizontalStackLayout>
+                            <!-- Log Entry 2 -->
+                            <HorizontalStackLayout Spacing="12">
+                                <Label Text="[INFO]" FontSize="13" TextColor="#3b82f6" WidthRequest="60"/>
+                                <Label Text="12:00:02" FontSize="13" TextColor="#808080" WidthRequest="70"/>
+                                <Label Text="Connecting to API server..." FontSize="13" TextColor="#b3b3b3"/>
+                            </HorizontalStackLayout>
+                            <!-- Log Entry 3 -->
+                            <HorizontalStackLayout Spacing="12">
+                                <Label Text="[INFO]" FontSize="13" TextColor="#3b82f6" WidthRequest="60"/>
+                                <Label Text="12:00:03" FontSize="13" TextColor="#808080" WidthRequest="70"/>
+                                <Label Text="API connection established" FontSize="13" TextColor="#b3b3b3"/>
+                            </HorizontalStackLayout>
+                            <!-- Log Entry 4 -->
+                            <HorizontalStackLayout Spacing="12">
+                                <Label Text="[DEBUG]" FontSize="13" TextColor="#808080" WidthRequest="60"/>
+                                <Label Text="12:00:04" FontSize="13" TextColor="#808080" WidthRequest="70"/>
+                                <Label Text="Loading user preferences..." FontSize="13" TextColor="#b3b3b3"/>
+                            </HorizontalStackLayout>
+                            <!-- Log Entry 5 -->
+                            <HorizontalStackLayout Spacing="12">
+                                <Label Text="[INFO]" FontSize="13" TextColor="#3b82f6" WidthRequest="60"/>
+                                <Label Text="12:00:05" FontSize="13" TextColor="#808080" WidthRequest="70"/>
+                                <Label Text="Dashboard initialized" FontSize="13" TextColor="#b3b3b3"/>
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+                    </Frame>
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

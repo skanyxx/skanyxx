@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SkanyxxMaui.Views.AlertsPage"
+             Title="Alerts"
+             BackgroundColor="#0a0a0a">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="28" Spacing="24">
+
+            <!-- Header -->
+            <Label Text="Alerts" FontSize="28" FontAttributes="Bold" TextColor="#ffffff"/>
+
+            <!-- Alert Dashboard Card -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="24" CornerRadius="12">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="16">
+                    <Frame Grid.Column="0" BackgroundColor="#ff4444" WidthRequest="44" HeightRequest="44"
+                           CornerRadius="10" Padding="0" BorderColor="Transparent">
+                        <Label Text="△" FontSize="20" TextColor="White"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Frame>
+                    <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+                        <Label Text="Alert Dashboard" FontSize="20" FontAttributes="Bold" TextColor="#ffffff"/>
+                        <Label Text="Monitor and manage system alerts" FontSize="15" TextColor="#808080"/>
+                    </VerticalStackLayout>
+                    <Button Grid.Column="2" Text="↻ Refresh" BackgroundColor="#2a2a2a" TextColor="#ffffff"
+                            FontSize="14" BorderColor="#404040" BorderWidth="1" CornerRadius="8"
+                            HeightRequest="40" VerticalOptions="Center"/>
+                    <Button Grid.Column="3" Text="+ Create Alert" BackgroundColor="#6366f1" TextColor="White"
+                            FontSize="14" CornerRadius="8" HeightRequest="40" VerticalOptions="Center"/>
+                </Grid>
+            </Frame>
+
+            <!-- Filters Row -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <!-- Search -->
+                <Frame Grid.Column="0" BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="12,8" CornerRadius="8">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Label Grid.Column="0" Text="○" FontSize="16" TextColor="#808080" VerticalOptions="Center" Margin="0,0,10,0"/>
+                        <Entry Grid.Column="1" Placeholder="Search alerts..." PlaceholderColor="#808080"
+                               TextColor="#ffffff" FontSize="15" BackgroundColor="Transparent"/>
+                    </Grid>
+                </Frame>
+                <!-- Filter Buttons -->
+                <HorizontalStackLayout Grid.Column="1" Spacing="8">
+                    <Frame BackgroundColor="#2a2a2a" BorderColor="#404040" Padding="12,8" CornerRadius="8">
+                        <Label Text="All Status ▼" FontSize="14" TextColor="#ffffff"/>
+                    </Frame>
+                    <Frame BackgroundColor="#2a2a2a" BorderColor="#404040" Padding="12,8" CornerRadius="8">
+                        <Label Text="All Severity ▼" FontSize="14" TextColor="#ffffff"/>
+                    </Frame>
+                </HorizontalStackLayout>
+            </Grid>
+
+            <!-- Alert Stats Row -->
+            <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="16">
+                <!-- Critical -->
+                <Frame Grid.Column="0" BackgroundColor="#1a1a1a" BorderColor="#ff4444" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                        <Label Text="0" FontSize="32" FontAttributes="Bold" TextColor="#ff4444" HorizontalOptions="Center"/>
+                        <Label Text="Critical" FontSize="14" TextColor="#808080" HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+                </Frame>
+                <!-- Warning -->
+                <Frame Grid.Column="1" BackgroundColor="#1a1a1a" BorderColor="#ffb020" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                        <Label Text="0" FontSize="32" FontAttributes="Bold" TextColor="#ffb020" HorizontalOptions="Center"/>
+                        <Label Text="Warning" FontSize="14" TextColor="#808080" HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+                </Frame>
+                <!-- Info -->
+                <Frame Grid.Column="2" BackgroundColor="#1a1a1a" BorderColor="#3b82f6" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                        <Label Text="0" FontSize="32" FontAttributes="Bold" TextColor="#3b82f6" HorizontalOptions="Center"/>
+                        <Label Text="Info" FontSize="14" TextColor="#808080" HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+                </Frame>
+                <!-- Resolved -->
+                <Frame Grid.Column="3" BackgroundColor="#1a1a1a" BorderColor="#00d4aa" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                        <Label Text="0" FontSize="32" FontAttributes="Bold" TextColor="#00d4aa" HorizontalOptions="Center"/>
+                        <Label Text="Resolved" FontSize="14" TextColor="#808080" HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+                </Frame>
+            </Grid>
+
+            <!-- Alerts List -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="24" CornerRadius="12">
+                <VerticalStackLayout Spacing="20">
+                    <HorizontalStackLayout Spacing="8">
+                        <Label Text="Active Alerts" FontSize="18" FontAttributes="Bold" TextColor="#ffffff"/>
+                        <Label Text="▤" FontSize="16" TextColor="#808080"/>
+                    </HorizontalStackLayout>
+
+                    <!-- Empty State -->
+                    <VerticalStackLayout Spacing="16" HorizontalOptions="Center" VerticalOptions="Center" Padding="0,40">
+                        <Frame BackgroundColor="#2a2a2a" WidthRequest="80" HeightRequest="80"
+                               CornerRadius="40" Padding="0" BorderColor="Transparent" HorizontalOptions="Center">
+                            <Label Text="✓" FontSize="36" TextColor="#00d4aa"
+                                   HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Frame>
+                        <Label Text="No Active Alerts" FontSize="20" FontAttributes="Bold" TextColor="#ffffff" HorizontalOptions="Center"/>
+                        <Label Text="All systems operating normally" FontSize="15" TextColor="#808080" HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

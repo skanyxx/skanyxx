@@ -1,0 +1,40 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "/Users/anatolipakastrofski/.dotnet/dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/SkanyxxMaui.csproj",
+                "/property:GenerateFullPaths=true",
+                "/consoleloggerparameters:NoSummary;ForceNoAlign"
+            ],
+            "problemMatcher": "$msCompile",
+            "options": {
+                "env": {
+                    "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"
+                }
+            }
+        },
+        {
+            "label": "run",
+            "command": "/Users/anatolipakastrofski/.dotnet/dotnet",
+            "type": "process",
+            "args": [
+                "run",
+                "--project",
+                "${workspaceFolder}/SkanyxxMaui.csproj",
+                "-f",
+                "net8.0-maccatalyst"
+            ],
+            "options": {
+                "env": {
+                    "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"
+                }
+            },
+            "problemMatcher": []
+        }
+    ]
+}

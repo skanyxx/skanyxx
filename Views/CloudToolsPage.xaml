@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SkanyxxMaui.Views.CloudToolsPage"
+             Title="Cloud Tools"
+             BackgroundColor="#0a0a0a">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="28" Spacing="24">
+
+            <!-- Header -->
+            <Label Text="Cloud Tools" FontSize="28" FontAttributes="Bold" TextColor="#ffffff"/>
+
+            <!-- Cloud Tools & REPL Card -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="24" CornerRadius="12">
+                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="16">
+                    <Frame Grid.Column="0" BackgroundColor="#6366f1" WidthRequest="44" HeightRequest="44"
+                           CornerRadius="10" Padding="0" BorderColor="Transparent">
+                        <Label Text="◌" FontSize="20" TextColor="White"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Frame>
+                    <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+                        <Label Text="Cloud Tools &amp; REPL" FontSize="20" FontAttributes="Bold" TextColor="#ffffff"/>
+                        <Label Text="Infrastructure management and scripting" FontSize="15" TextColor="#808080"/>
+                    </VerticalStackLayout>
+                    <Button Grid.Column="2" Text="Configure Tools" BackgroundColor="#2a2a2a" TextColor="#ffffff"
+                            FontSize="14" BorderColor="#404040" BorderWidth="1" CornerRadius="8"
+                            HeightRequest="40" VerticalOptions="Center"/>
+                </Grid>
+            </Frame>
+
+            <!-- Azure Resource Finder -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="24" CornerRadius="12">
+                <HorizontalStackLayout Spacing="16">
+                    <Frame BackgroundColor="#ff4444" WidthRequest="44" HeightRequest="44"
+                           CornerRadius="22" Padding="0" BorderColor="Transparent">
+                        <Label Text="✕" FontSize="18" TextColor="White"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Frame>
+                    <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                        <Label Text="Azure Resource Finder" FontSize="16" TextColor="#808080"/>
+                        <Label Text="Not Found" FontSize="20" FontAttributes="Bold" TextColor="#ffffff"/>
+                    </VerticalStackLayout>
+                </HorizontalStackLayout>
+            </Frame>
+
+            <!-- Ruchy REPL -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="24" CornerRadius="12">
+                <HorizontalStackLayout Spacing="16">
+                    <Frame BackgroundColor="#ff4444" WidthRequest="44" HeightRequest="44"
+                           CornerRadius="22" Padding="0" BorderColor="Transparent">
+                        <Label Text="✕" FontSize="18" TextColor="White"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Frame>
+                    <VerticalStackLayout Spacing="4" VerticalOptions="Center">
+                        <Label Text="Ruchy REPL" FontSize="16" TextColor="#808080"/>
+                        <Label Text="Not Found" FontSize="20" FontAttributes="Bold" TextColor="#ffffff"/>
+                    </VerticalStackLayout>
+                </HorizontalStackLayout>
+            </Frame>
+
+            <!-- Tabs -->
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="12">
+                <Button Grid.Column="0" Text="○ Cloud Search" BackgroundColor="#2a2a2a" TextColor="#ffffff"
+                        FontSize="15" BorderColor="#404040" BorderWidth="1" CornerRadius="8" HeightRequest="48"/>
+                <Button Grid.Column="1" Text="&lt;/&gt; Ruchy REPL" BackgroundColor="#1a1a1a" TextColor="#808080"
+                        FontSize="15" BorderColor="#404040" BorderWidth="1" CornerRadius="8" HeightRequest="48"/>
+            </Grid>
+
+            <!-- Cloud Provider Tabs -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="20" CornerRadius="12">
+                <VerticalStackLayout Spacing="20">
+                    <Grid ColumnDefinitions="*,*,*" ColumnSpacing="12">
+                        <Button Grid.Column="0" Text="AZURE" BackgroundColor="#6366f1" TextColor="White"
+                                FontSize="14" CornerRadius="8" HeightRequest="44"/>
+                        <Button Grid.Column="1" Text="AWS (COMING SOON)" BackgroundColor="#2a2a2a" TextColor="#808080"
+                                FontSize="12" CornerRadius="8" HeightRequest="44"/>
+                        <Button Grid.Column="2" Text="GCP (COMING SOON)" BackgroundColor="#2a2a2a" TextColor="#808080"
+                                FontSize="12" CornerRadius="8" HeightRequest="44"/>
+                    </Grid>
+
+                    <!-- Search Input -->
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+                        <Frame Grid.Column="0" BackgroundColor="#2a2a2a" BorderColor="#404040" Padding="14,10" CornerRadius="8">
+                            <Entry Placeholder="Search Azure resources (e.g., 'vm list', 'storage account show')"
+                                   PlaceholderColor="#808080" TextColor="#ffffff" FontSize="15"
+                                   BackgroundColor="Transparent"/>
+                        </Frame>
+                        <Button Grid.Column="1" Text="○ Search" BackgroundColor="#6366f1" TextColor="White"
+                                FontSize="15" CornerRadius="8" HeightRequest="48" WidthRequest="120"/>
+                    </Grid>
+
+                    <!-- Azure Authentication Required -->
+                    <Frame BackgroundColor="#2a2a2a" BorderColor="#ffb020" Padding="16" CornerRadius="8">
+                        <VerticalStackLayout Spacing="10">
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="⚠" FontSize="16" TextColor="#ffb020"/>
+                                <Label Text="Azure Authentication Required" FontSize="16" FontAttributes="Bold" TextColor="#ffb020"/>
+                            </HorizontalStackLayout>
+                            <Label Text="Azure CLI not found" FontSize="14" TextColor="#808080"/>
+                            <Label Text="Run az login in your terminal." FontSize="14" TextColor="#b3b3b3"/>
+                            <HorizontalStackLayout Spacing="16" Margin="0,8,0,0">
+                                <Button Text="Test Azure CLI" BackgroundColor="#2a2a2a" TextColor="#ffffff"
+                                        FontSize="14" BorderColor="#404040" BorderWidth="1" CornerRadius="6" HeightRequest="36"/>
+                                <Button Text="Refresh" BackgroundColor="#2a2a2a" TextColor="#ffffff"
+                                        FontSize="14" BorderColor="#404040" BorderWidth="1" CornerRadius="6" HeightRequest="36"/>
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+                    </Frame>
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

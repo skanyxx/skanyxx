@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Shell
+    x:Class="SkanyxxMaui.AppShell"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    xmlns:views="clr-namespace:SkanyxxMaui.Views"
+    Title="Skanyxx"
+    Shell.FlyoutBehavior="Locked"
+    Shell.FlyoutWidth="280"
+    Shell.NavBarIsVisible="False"
+    FlyoutBackgroundColor="#1a1a1a"
+    BackgroundColor="#0a0a0a">
+
+    <Shell.FlyoutContent>
+        <ScrollView BackgroundColor="#1a1a1a">
+            <VerticalStackLayout Spacing="0">
+                <!-- Header -->
+                <Grid BackgroundColor="#1a1a1a" Padding="20" HeightRequest="80">
+                    <VerticalStackLayout VerticalOptions="Center" Spacing="6">
+                        <HorizontalStackLayout Spacing="12">
+                            <Frame BackgroundColor="#6366f1"
+                                   WidthRequest="36" HeightRequest="36"
+                                   CornerRadius="8" Padding="0"
+                                   BorderColor="Transparent">
+                                <Label Text="⚡" FontSize="16"
+                                       TextColor="White"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Frame>
+                            <Label Text="Skanyxx" FontSize="18" FontAttributes="Bold"
+                                   TextColor="#ffffff"
+                                   VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                        <HorizontalStackLayout Spacing="6">
+                            <BoxView Color="#00d4aa"
+                                     WidthRequest="6" HeightRequest="6"
+                                     CornerRadius="3"/>
+                            <Label Text="Connected" FontSize="12"
+                                   TextColor="#808080"/>
+                        </HorizontalStackLayout>
+                    </VerticalStackLayout>
+                </Grid>
+
+                <!-- Menu Items -->
+                <VerticalStackLayout Spacing="6" Padding="16,0">
+                    <!-- Dashboard -->
+                    <Frame x:Name="MenuDashboard" BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnDashboardTapped"/>
+                        </Frame.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="16">
+                            <Label Text="⊟" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                            <Label Text="Dashboard" FontSize="18" TextColor="#ffffff"/>
+                        </HorizontalStackLayout>
+                    </Frame>
+
+                    <!-- Investigate -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnInvestigateTapped"/>
+                        </Frame.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="16">
+                            <Label Text="◎" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                            <Label Text="Investigate" FontSize="18" TextColor="#ffffff"/>
+                        </HorizontalStackLayout>
+                    </Frame>
+
+                    <!-- Agents -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnAgentsTapped"/>
+                        </Frame.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="16">
+                            <Label Text="⬡" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                            <Label Text="Agents" FontSize="18" TextColor="#ffffff"/>
+                        </HorizontalStackLayout>
+                    </Frame>
+
+                    <!-- Chat -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnChatTapped"/>
+                        </Frame.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="16">
+                            <Label Text="◱" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                            <Label Text="Chat" FontSize="18" TextColor="#ffffff"/>
+                        </HorizontalStackLayout>
+                    </Frame>
+
+                    <!-- Cloud Tools - NEW -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnCloudToolsTapped"/>
+                        </Frame.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <HorizontalStackLayout Grid.Column="0" Spacing="16">
+                                <Label Text="◌" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                                <Label Text="Cloud Tools" FontSize="18" TextColor="#ffffff"/>
+                            </HorizontalStackLayout>
+                            <Frame Grid.Column="2" BackgroundColor="#22c55e" Padding="10,4" CornerRadius="6" BorderColor="Transparent">
+                                <Label Text="NEW" FontSize="12" FontAttributes="Bold" TextColor="White"/>
+                            </Frame>
+                        </Grid>
+                    </Frame>
+
+                    <!-- Tool Servers - NEW -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnToolServersTapped"/>
+                        </Frame.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <HorizontalStackLayout Grid.Column="0" Spacing="16">
+                                <Label Text="▦" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                                <Label Text="Tool Servers" FontSize="18" TextColor="#ffffff"/>
+                            </HorizontalStackLayout>
+                            <Frame Grid.Column="2" BackgroundColor="#22c55e" Padding="10,4" CornerRadius="6" BorderColor="Transparent">
+                                <Label Text="NEW" FontSize="12" FontAttributes="Bold" TextColor="White"/>
+                            </Frame>
+                        </Grid>
+                    </Frame>
+
+                    <!-- Analytics - NEW -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnAnalyticsTapped"/>
+                        </Frame.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <HorizontalStackLayout Grid.Column="0" Spacing="16">
+                                <Label Text="◧" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                                <Label Text="Analytics" FontSize="18" TextColor="#ffffff"/>
+                            </HorizontalStackLayout>
+                            <Frame Grid.Column="2" BackgroundColor="#22c55e" Padding="10,4" CornerRadius="6" BorderColor="Transparent">
+                                <Label Text="NEW" FontSize="12" FontAttributes="Bold" TextColor="White"/>
+                            </Frame>
+                        </Grid>
+                    </Frame>
+
+                    <!-- Memory - NEW -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnMemoryTapped"/>
+                        </Frame.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <HorizontalStackLayout Grid.Column="0" Spacing="16">
+                                <Label Text="◉" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                                <Label Text="Memory" FontSize="18" TextColor="#ffffff"/>
+                            </HorizontalStackLayout>
+                            <Frame Grid.Column="2" BackgroundColor="#22c55e" Padding="10,4" CornerRadius="6" BorderColor="Transparent">
+                                <Label Text="NEW" FontSize="12" FontAttributes="Bold" TextColor="White"/>
+                            </Frame>
+                        </Grid>
+                    </Frame>
+
+                    <!-- Alerts -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnAlertsTapped"/>
+                        </Frame.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="16">
+                            <Label Text="△" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                            <Label Text="Alerts" FontSize="18" TextColor="#ffffff"/>
+                        </HorizontalStackLayout>
+                    </Frame>
+
+                    <!-- Hooks - NEW -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnHooksTapped"/>
+                        </Frame.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <HorizontalStackLayout Grid.Column="0" Spacing="16">
+                                <Label Text="⤢" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                                <Label Text="Hooks" FontSize="18" TextColor="#ffffff"/>
+                            </HorizontalStackLayout>
+                            <Frame Grid.Column="2" BackgroundColor="#22c55e" Padding="10,4" CornerRadius="6" BorderColor="Transparent">
+                                <Label Text="NEW" FontSize="12" FontAttributes="Bold" TextColor="White"/>
+                            </Frame>
+                        </Grid>
+                    </Frame>
+
+                    <!-- Debug -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnDebugTapped"/>
+                        </Frame.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="16">
+                            <Label Text="⟩" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                            <Label Text="Debug" FontSize="18" TextColor="#ffffff"/>
+                        </HorizontalStackLayout>
+                    </Frame>
+
+                    <!-- Settings -->
+                    <Frame BackgroundColor="Transparent" BorderColor="Transparent" Padding="16,14" CornerRadius="8">
+                        <Frame.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSettingsTapped"/>
+                        </Frame.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="16">
+                            <Label Text="⚙" FontSize="20" TextColor="#808080" WidthRequest="28"/>
+                            <Label Text="Settings" FontSize="18" TextColor="#ffffff"/>
+                        </HorizontalStackLayout>
+                    </Frame>
+                </VerticalStackLayout>
+
+                <!-- Footer -->
+                <Grid BackgroundColor="#1a1a1a" Padding="20,20" Margin="0,20,0,0">
+                    <HorizontalStackLayout Spacing="8">
+                        <Label Text="Last checked:" FontSize="14" TextColor="#808080"/>
+                        <Label x:Name="LastCheckedLabel" Text="00:00:00" FontSize="14" TextColor="#ffffff"/>
+                    </HorizontalStackLayout>
+                </Grid>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Shell.FlyoutContent>
+
+    <!-- Hidden Shell Items for navigation -->
+    <ShellContent Route="dashboard" ContentTemplate="{DataTemplate views:DashboardPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="investigate" ContentTemplate="{DataTemplate views:InvestigatePage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="agents" ContentTemplate="{DataTemplate views:AgentsPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="chat" ContentTemplate="{DataTemplate views:ChatPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="cloudtools" ContentTemplate="{DataTemplate views:CloudToolsPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="toolservers" ContentTemplate="{DataTemplate views:ToolServersPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="analytics" ContentTemplate="{DataTemplate views:AnalyticsPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="memory" ContentTemplate="{DataTemplate views:MemoryPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="alerts" ContentTemplate="{DataTemplate views:AlertsPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="hooks" ContentTemplate="{DataTemplate views:HooksPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="debug" ContentTemplate="{DataTemplate views:DebugPage}" FlyoutItemIsVisible="False"/>
+    <ShellContent Route="settings" ContentTemplate="{DataTemplate views:SettingsPage}" FlyoutItemIsVisible="False"/>
+
+</Shell>

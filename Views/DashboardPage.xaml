@@ -1,0 +1,337 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SkanyxxMaui.Views.DashboardPage"
+             Title="Dashboard"
+             BackgroundColor="#0a0a0a">
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- Top Header Bar -->
+        <Frame Grid.Row="0" BackgroundColor="#1a1a1a" BorderColor="Transparent" Padding="20,14" CornerRadius="0">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" ColumnSpacing="16">
+                <!-- Dashboard Title -->
+                <Label Grid.Column="0" Text="Dashboard"
+                       FontSize="24"
+                       FontAttributes="Bold"
+                       TextColor="#ffffff"
+                       VerticalOptions="Center"/>
+
+                <!-- Time Display -->
+                <Frame Grid.Column="1" BackgroundColor="#2a2a2a" BorderColor="#404040"
+                       Padding="12,8" CornerRadius="8">
+                    <HorizontalStackLayout Spacing="8">
+                        <Label Text="◷" FontSize="16" TextColor="#808080" VerticalOptions="Center"/>
+                        <Label x:Name="TimeLabel" Text="00:00:00" FontSize="15" TextColor="#e0e0e0" VerticalOptions="Center"/>
+                    </HorizontalStackLayout>
+                </Frame>
+
+                <!-- Search Bar - Full Width -->
+                <Frame Grid.Column="2" BackgroundColor="#2a2a2a" BorderColor="#404040"
+                       Padding="14,10" CornerRadius="8" HorizontalOptions="Fill">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Label Grid.Column="0" Text="○" FontSize="16" TextColor="#808080" VerticalOptions="Center" Margin="0,0,10,0"/>
+                        <Entry Grid.Column="1" Placeholder="Search..." PlaceholderColor="#808080" TextColor="#ffffff"
+                               BackgroundColor="Transparent" FontSize="15"
+                               HorizontalOptions="Fill" VerticalOptions="Center"/>
+                    </Grid>
+                </Frame>
+
+                <!-- Notification Bell -->
+                <Frame Grid.Column="3" BackgroundColor="Transparent" BorderColor="Transparent"
+                       Padding="10" WidthRequest="44" HeightRequest="44">
+                    <Label Text="△" FontSize="20" TextColor="#808080"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Frame>
+
+                <!-- Help Icon -->
+                <Frame Grid.Column="4" BackgroundColor="Transparent" BorderColor="Transparent"
+                       Padding="10" WidthRequest="44" HeightRequest="44">
+                    <Label Text="?" FontSize="20" TextColor="#808080"
+                           HorizontalOptions="Center" VerticalOptions="Center"/>
+                </Frame>
+
+                <!-- User Profile -->
+                <Frame Grid.Column="5" BackgroundColor="#6366f1" BorderColor="Transparent"
+                       Padding="14,10" CornerRadius="8">
+                    <HorizontalStackLayout Spacing="12">
+                        <Frame BackgroundColor="#4f46e5" BorderColor="Transparent"
+                               WidthRequest="36" HeightRequest="36" CornerRadius="18" Padding="0">
+                            <Label Text="A" FontSize="16" FontAttributes="Bold" TextColor="White"
+                                   HorizontalOptions="Center" VerticalOptions="Center"/>
+                        </Frame>
+                        <VerticalStackLayout Spacing="2" VerticalOptions="Center">
+                            <Label Text="Admin User" FontSize="14" FontAttributes="Bold" TextColor="White"/>
+                            <Label Text="admin@skanyxx.dev" FontSize="12" TextColor="#c7c7ff"/>
+                        </VerticalStackLayout>
+                        <Label Text="↓" FontSize="18" TextColor="White" VerticalOptions="Center" Margin="8,0,0,0"/>
+                    </HorizontalStackLayout>
+                </Frame>
+            </Grid>
+        </Frame>
+
+        <!-- Main Content -->
+        <ScrollView Grid.Row="1">
+        <VerticalStackLayout Padding="24" Spacing="20">
+
+            <!-- System Overview Card -->
+            <Frame BackgroundColor="#1a1a1a"
+                   BorderColor="#404040"
+                   Padding="24"
+                   CornerRadius="12">
+                <VerticalStackLayout Spacing="16">
+                    <Label Text="System Overview"
+                           FontSize="22"
+                           FontAttributes="Bold"
+                           TextColor="#ffffff"/>
+                    <Label Text="Welcome to Skanyxx - SRE Platform"
+                           FontSize="16"
+                           TextColor="#b3b3b3"/>
+
+                    <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto" ColumnSpacing="16" Margin="0,12,0,0">
+                        <Frame Grid.Column="0" BackgroundColor="#2a2a2a"
+                               BorderColor="#404040"
+                               Padding="16" CornerRadius="10">
+                            <VerticalStackLayout HorizontalOptions="Center" Spacing="6">
+                                <Label Text="10" FontSize="32" FontAttributes="Bold"
+                                       TextColor="#00d4aa"
+                                       HorizontalOptions="Center"/>
+                                <Label Text="Agents" FontSize="15"
+                                       TextColor="#808080"
+                                       HorizontalOptions="Center"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                        <Frame Grid.Column="1" BackgroundColor="#2a2a2a"
+                               BorderColor="#404040"
+                               Padding="16" CornerRadius="10">
+                            <VerticalStackLayout HorizontalOptions="Center" Spacing="6">
+                                <Label Text="0" FontSize="32" FontAttributes="Bold"
+                                       TextColor="#3b82f6"
+                                       HorizontalOptions="Center"/>
+                                <Label Text="Sessions" FontSize="15"
+                                       TextColor="#808080"
+                                       HorizontalOptions="Center"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                        <Frame Grid.Column="2" BackgroundColor="#2a2a2a"
+                               BorderColor="#404040"
+                               Padding="16" CornerRadius="10">
+                            <VerticalStackLayout HorizontalOptions="Center" Spacing="6">
+                                <Label Text="3" FontSize="32" FontAttributes="Bold"
+                                       TextColor="#ffb020"
+                                       HorizontalOptions="Center"/>
+                                <Label Text="Alerts" FontSize="15"
+                                       TextColor="#808080"
+                                       HorizontalOptions="Center"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                        <Frame Grid.Column="3" BackgroundColor="#2a2a2a"
+                               BorderColor="#404040"
+                               Padding="16" CornerRadius="10">
+                            <VerticalStackLayout HorizontalOptions="Center" Spacing="6">
+                                <Label Text="98%" FontSize="32" FontAttributes="Bold"
+                                       TextColor="#00d4aa"
+                                       HorizontalOptions="Center"/>
+                                <Label Text="Uptime" FontSize="15"
+                                       TextColor="#808080"
+                                       HorizontalOptions="Center"/>
+                            </VerticalStackLayout>
+                        </Frame>
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- KAgent Connectors Card -->
+            <Frame BackgroundColor="#1a1a1a"
+                   BorderColor="#404040"
+                   Padding="24"
+                   CornerRadius="12">
+                <VerticalStackLayout Spacing="18">
+                    <!-- Header with Add Button -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="KAgent Connectors"
+                               FontSize="22"
+                               FontAttributes="Bold"
+                               TextColor="#ffffff"
+                               VerticalOptions="Center"/>
+                        <Button Grid.Column="1"
+                                Text="Add Connector"
+                                BackgroundColor="#6366f1"
+                                TextColor="White"
+                                FontSize="15"
+                                CornerRadius="8"
+                                Padding="16,10"
+                                HeightRequest="44"/>
+                    </Grid>
+
+                    <!-- Separator -->
+                    <BoxView Color="#333333" HeightRequest="1" />
+
+                    <!-- Connector Item -->
+                    <Frame BackgroundColor="#0a0a0a"
+                           BorderColor="#6366f1"
+                           Padding="20"
+                           CornerRadius="10">
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                            <!-- Title Row -->
+                            <HorizontalStackLayout Grid.Row="0" Grid.Column="0" Spacing="10">
+                                <Label Text="Default KAgent"
+                                       FontSize="18"
+                                       FontAttributes="Bold"
+                                       TextColor="#ffffff"/>
+                                <BoxView Color="#00d4aa"
+                                         WidthRequest="10" HeightRequest="10"
+                                         CornerRadius="5"
+                                         VerticalOptions="Center"/>
+                                <Label Text="Active"
+                                       FontSize="16"
+                                       TextColor="#00d4aa"
+                                       VerticalOptions="Center"/>
+                            </HorizontalStackLayout>
+
+                            <!-- URL -->
+                            <Label Grid.Row="1" Grid.Column="0"
+                                   Text="http://localhost:8083"
+                                   FontSize="15"
+                                   TextColor="#808080"/>
+
+                            <!-- Agents count -->
+                            <HorizontalStackLayout Grid.Row="2" Grid.Column="0" Spacing="8">
+                                <Label Text="10 agents"
+                                       FontSize="15"
+                                       TextColor="#808080"/>
+                                <Label Text="•"
+                                       FontSize="15"
+                                       TextColor="#808080"/>
+                                <Label Text="Connected"
+                                       FontSize="15"
+                                       TextColor="#808080"/>
+                            </HorizontalStackLayout>
+
+                            <!-- Reconnect Button -->
+                            <Button Grid.Row="0" Grid.RowSpan="3" Grid.Column="1"
+                                    Text="Reconnect"
+                                    BackgroundColor="Transparent"
+                                    TextColor="#b3b3b3"
+                                    FontSize="15"
+                                    VerticalOptions="Center"/>
+                        </Grid>
+                    </Frame>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Quick Actions Card -->
+            <Frame BackgroundColor="#1a1a1a"
+                   BorderColor="#404040"
+                   Padding="24"
+                   CornerRadius="12">
+                <VerticalStackLayout Spacing="16">
+                    <Label Text="Quick Actions"
+                           FontSize="22"
+                           FontAttributes="Bold"
+                           TextColor="#ffffff"/>
+
+                    <Button Text="Start Investigation"
+                            BackgroundColor="#6366f1"
+                            TextColor="White"
+                            FontSize="16"
+                            FontAttributes="Bold"
+                            CornerRadius="10"
+                            HeightRequest="54"
+                            Clicked="OnStartInvestigationClicked"/>
+
+                    <Button Text="View Agents"
+                            BackgroundColor="#2a2a2a"
+                            TextColor="#ffffff"
+                            FontSize="16"
+                            BorderColor="#404040"
+                            BorderWidth="1"
+                            CornerRadius="10"
+                            HeightRequest="54"
+                            Clicked="OnViewAgentsClicked"/>
+
+                    <Button Text="Check Alerts"
+                            BackgroundColor="#2a2a2a"
+                            TextColor="#ffffff"
+                            FontSize="16"
+                            BorderColor="#404040"
+                            BorderWidth="1"
+                            CornerRadius="10"
+                            HeightRequest="54"
+                            Clicked="OnCheckAlertsClicked"/>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Recent Activity Card -->
+            <Frame BackgroundColor="#1a1a1a"
+                   BorderColor="#404040"
+                   Padding="24"
+                   CornerRadius="12">
+                <VerticalStackLayout Spacing="16">
+                    <Label Text="Recent Activity"
+                           FontSize="22"
+                           FontAttributes="Bold"
+                           TextColor="#ffffff"/>
+
+                    <Frame BackgroundColor="#2a2a2a"
+                           BorderColor="#333333"
+                           Padding="16" CornerRadius="10">
+                        <HorizontalStackLayout Spacing="16">
+                            <BoxView Color="#00d4aa"
+                                     WidthRequest="12" HeightRequest="12"
+                                     CornerRadius="6"
+                                     VerticalOptions="Center"/>
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="Investigation completed"
+                                       FontSize="17"
+                                       TextColor="#ffffff"/>
+                                <Label Text="2 minutes ago"
+                                       FontSize="14"
+                                       TextColor="#808080"/>
+                            </VerticalStackLayout>
+                        </HorizontalStackLayout>
+                    </Frame>
+
+                    <Frame BackgroundColor="#2a2a2a"
+                           BorderColor="#333333"
+                           Padding="16" CornerRadius="10">
+                        <HorizontalStackLayout Spacing="16">
+                            <BoxView Color="#3b82f6"
+                                     WidthRequest="12" HeightRequest="12"
+                                     CornerRadius="6"
+                                     VerticalOptions="Center"/>
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="New agent connected: k8s-agent"
+                                       FontSize="17"
+                                       TextColor="#ffffff"/>
+                                <Label Text="15 minutes ago"
+                                       FontSize="14"
+                                       TextColor="#808080"/>
+                            </VerticalStackLayout>
+                        </HorizontalStackLayout>
+                    </Frame>
+
+                    <Frame BackgroundColor="#2a2a2a"
+                           BorderColor="#333333"
+                           Padding="16" CornerRadius="10">
+                        <HorizontalStackLayout Spacing="16">
+                            <BoxView Color="#ffb020"
+                                     WidthRequest="12" HeightRequest="12"
+                                     CornerRadius="6"
+                                     VerticalOptions="Center"/>
+                            <VerticalStackLayout Spacing="4">
+                                <Label Text="Alert triggered: High CPU usage"
+                                       FontSize="17"
+                                       TextColor="#ffffff"/>
+                                <Label Text="1 hour ago"
+                                       FontSize="14"
+                                       TextColor="#808080"/>
+                            </VerticalStackLayout>
+                        </HorizontalStackLayout>
+                    </Frame>
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="SkanyxxMaui.Views.ToolServersPage"
+             Title="Tool Servers"
+             BackgroundColor="#0a0a0a">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="28" Spacing="24">
+
+            <!-- Header -->
+            <Label Text="Tools" FontSize="28" FontAttributes="Bold" TextColor="#ffffff"/>
+
+            <!-- Tool Servers Card -->
+            <Frame BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="24" CornerRadius="12">
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="16">
+                    <Frame Grid.Column="0" BackgroundColor="#6366f1" WidthRequest="44" HeightRequest="44"
+                           CornerRadius="10" Padding="0" BorderColor="Transparent">
+                        <Label Text="▤" FontSize="20" TextColor="White"
+                               HorizontalOptions="Center" VerticalOptions="Center"/>
+                    </Frame>
+                    <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+                        <Label Text="Tool Servers" FontSize="20" FontAttributes="Bold" TextColor="#ffffff"/>
+                        <Label Text="Manage MCP tool servers and their capabilities" FontSize="15" TextColor="#808080"/>
+                    </VerticalStackLayout>
+                    <Button Grid.Column="2" Text="↻ Refresh" BackgroundColor="#2a2a2a" TextColor="#ffffff"
+                            FontSize="14" BorderColor="#404040" BorderWidth="1" CornerRadius="8"
+                            HeightRequest="40" VerticalOptions="Center"/>
+                    <Button Grid.Column="3" Text="+ Add Server" BackgroundColor="#6366f1" TextColor="White"
+                            FontSize="14" CornerRadius="8" HeightRequest="40" VerticalOptions="Center"/>
+                </Grid>
+            </Frame>
+
+            <!-- Server Cards -->
+            <Grid ColumnDefinitions="*,*,*" ColumnSpacing="16">
+                <!-- Server 1 -->
+                <Frame Grid.Column="0" BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="12">
+                        <HorizontalStackLayout Spacing="8">
+                            <Frame BackgroundColor="#6366f1" WidthRequest="24" HeightRequest="24"
+                                   CornerRadius="6" Padding="0" BorderColor="Transparent">
+                                <Label Text="▤" FontSize="12" TextColor="White"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Frame>
+                            <Label Text="kagent/kagent-querydoc" FontSize="14" FontAttributes="Bold" TextColor="#ffffff" VerticalOptions="Center"/>
+                            <BoxView Color="#00d4aa" WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                        <Label Text="Service" FontSize="12" TextColor="#808080"/>
+                        <HorizontalStackLayout Spacing="6">
+                            <Label Text="◇" FontSize="12" TextColor="#808080"/>
+                            <Label Text="1 tools available" FontSize="13" TextColor="#808080"/>
+                        </HorizontalStackLayout>
+                        <BoxView Color="#333333" HeightRequest="1"/>
+                        <Label Text="Available Tools:" FontSize="13" TextColor="#808080"/>
+                        <Frame BackgroundColor="#2a2a2a" BorderColor="#333333" Padding="10,8" CornerRadius="6">
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="query_documentation" FontSize="13" TextColor="#b3b3b3"/>
+                                <Label Text="↗" FontSize="12" TextColor="#808080"/>
+                            </HorizontalStackLayout>
+                        </Frame>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Server 2 -->
+                <Frame Grid.Column="1" BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="12">
+                        <HorizontalStackLayout Spacing="8">
+                            <Frame BackgroundColor="#22c55e" WidthRequest="24" HeightRequest="24"
+                                   CornerRadius="6" Padding="0" BorderColor="Transparent">
+                                <Label Text="▤" FontSize="12" TextColor="White"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Frame>
+                            <Label Text="kagent/kagent-grafana-mcp" FontSize="14" FontAttributes="Bold" TextColor="#ffffff" VerticalOptions="Center"/>
+                            <BoxView Color="#00d4aa" WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                        <Label Text="RemoteMCPServer:kagent.dev" FontSize="12" TextColor="#808080"/>
+                        <HorizontalStackLayout Spacing="6">
+                            <Label Text="◇" FontSize="12" TextColor="#808080"/>
+                            <Label Text="56 tools available" FontSize="13" TextColor="#808080"/>
+                        </HorizontalStackLayout>
+                        <BoxView Color="#333333" HeightRequest="1"/>
+                        <Label Text="Available Tools:" FontSize="13" TextColor="#808080"/>
+                        <Frame BackgroundColor="#2a2a2a" BorderColor="#333333" Padding="10,8" CornerRadius="6">
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="add_activity_to_incident" FontSize="13" TextColor="#b3b3b3"/>
+                                <Label Text="↗" FontSize="12" TextColor="#808080"/>
+                            </HorizontalStackLayout>
+                        </Frame>
+                        <Frame BackgroundColor="#2a2a2a" BorderColor="#333333" Padding="10,8" CornerRadius="6">
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="create_alert_rule" FontSize="13" TextColor="#b3b3b3"/>
+                                <Label Text="↗" FontSize="12" TextColor="#808080"/>
+                            </HorizontalStackLayout>
+                        </Frame>
+                        <Label Text="+53 more tools" FontSize="12" TextColor="#6366f1" HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+                </Frame>
+
+                <!-- Server 3 -->
+                <Frame Grid.Column="2" BackgroundColor="#1a1a1a" BorderColor="#404040" Padding="20" CornerRadius="12">
+                    <VerticalStackLayout Spacing="12">
+                        <HorizontalStackLayout Spacing="8">
+                            <Frame BackgroundColor="#3b82f6" WidthRequest="24" HeightRequest="24"
+                                   CornerRadius="6" Padding="0" BorderColor="Transparent">
+                                <Label Text="▤" FontSize="12" TextColor="White"
+                                       HorizontalOptions="Center" VerticalOptions="Center"/>
+                            </Frame>
+                            <Label Text="kagent/kagent-tool-server" FontSize="14" FontAttributes="Bold" TextColor="#ffffff" VerticalOptions="Center"/>
+                            <BoxView Color="#00d4aa" WidthRequest="8" HeightRequest="8" CornerRadius="4" VerticalOptions="Center"/>
+                        </HorizontalStackLayout>
+                        <Label Text="RemoteMCPServer:kagent.dev" FontSize="12" TextColor="#808080"/>
+                        <HorizontalStackLayout Spacing="6">
+                            <Label Text="◇" FontSize="12" TextColor="#808080"/>
+                            <Label Text="113 tools available" FontSize="13" TextColor="#808080"/>
+                        </HorizontalStackLayout>
+                        <BoxView Color="#333333" HeightRequest="1"/>
+                        <Label Text="Available Tools:" FontSize="13" TextColor="#808080"/>
+                        <Frame BackgroundColor="#2a2a2a" BorderColor="#333333" Padding="10,8" CornerRadius="6">
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="argo_check_plugin_logs" FontSize="13" TextColor="#b3b3b3"/>
+                                <Label Text="↗" FontSize="12" TextColor="#808080"/>
+                            </HorizontalStackLayout>
+                        </Frame>
+                        <Frame BackgroundColor="#2a2a2a" BorderColor="#333333" Padding="10,8" CornerRadius="6">
+                            <HorizontalStackLayout Spacing="8">
+                                <Label Text="argo_pause_rollout" FontSize="13" TextColor="#b3b3b3"/>
+                                <Label Text="↗" FontSize="12" TextColor="#808080"/>
+                            </HorizontalStackLayout>
+                        </Frame>
+                        <Label Text="+110 more tools" FontSize="12" TextColor="#6366f1" HorizontalOptions="Center"/>
+                    </VerticalStackLayout>
+                </Frame>
+            </Grid>
+
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
