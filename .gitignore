@@ -1,0 +1,50 @@
+# Build results
+bin/
+obj/
+
+# IDE
+.idea/
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Rider
+*.sln.iml
+
+# VS Code
+.vscode/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# Build logs
+*.log
+msbuild*.log
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Secrets
+*.env
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
