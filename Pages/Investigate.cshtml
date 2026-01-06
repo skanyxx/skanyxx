@@ -4,20 +4,54 @@
     ViewData["Title"] = "Investigate";
 }
 
+<!-- Investigation Query -->
 <div class="card mb-3">
     <div class="card-header">
-        <h3 class="card-title">Investigation Query</h3>
+        <h3 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+            New Investigation
+        </h3>
     </div>
     <div class="flex gap-2">
         <input type="text" id="queryInput" placeholder="Describe the issue or paste error message..." class="flex-1" />
-        <button class="btn btn-primary" id="btnInvestigate">Investigate</button>
+        <button class="btn btn-primary" id="btnInvestigate">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
+                <path d="m21 21-4.35-4.35"></path>
+                <circle cx="11" cy="11" r="8"></circle>
+            </svg>
+            Investigate
+        </button>
+    </div>
+</div>
+
+<!-- Investigation Templates -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+            </svg>
+            Quick Investigation Templates
+        </h3>
+    </div>
+    <div class="templates-grid" id="templatesGrid">
+        <div class="loading-state">Loading templates...</div>
     </div>
 </div>
 
 <div class="grid grid-cols-2 gap-2">
     <div class="card">
         <div class="card-header">
-            <h3 class="card-title">Recent Investigations</h3>
+            <h3 class="card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                Recent Investigations
+            </h3>
         </div>
         <div class="investigation-list" id="investigationsList">
             <div class="loading-state">Loading investigations...</div>
@@ -26,23 +60,50 @@
 
     <div class="card">
         <div class="card-header">
-            <h3 class="card-title">Quick Diagnostics</h3>
+            <h3 class="card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="3" y1="9" x2="21" y2="9"></line>
+                    <line x1="9" y1="21" x2="9" y2="9"></line>
+                </svg>
+                Quick Diagnostics
+            </h3>
         </div>
         <div class="diagnostic-grid" id="diagnosticGrid">
             <button class="diagnostic-btn" data-action="network">
-                <span class="diagnostic-icon">&#x25CE;</span>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="2" y1="12" x2="22" y2="12"></line>
+                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                </svg>
                 <span>Network Trace</span>
             </button>
             <button class="diagnostic-btn" data-action="logs">
-                <span class="diagnostic-icon">&#x25A6;</span>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                    <polyline points="14 2 14 8 20 8"></polyline>
+                    <line x1="16" y1="13" x2="8" y2="13"></line>
+                    <line x1="16" y1="17" x2="8" y2="17"></line>
+                </svg>
                 <span>Log Analysis</span>
             </button>
             <button class="diagnostic-btn" data-action="performance">
-                <span class="diagnostic-icon">&#x25E7;</span>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="20" x2="18" y2="10"></line>
+                    <line x1="12" y1="20" x2="12" y2="4"></line>
+                    <line x1="6" y1="20" x2="6" y2="14"></line>
+                </svg>
                 <span>Performance</span>
             </button>
             <button class="diagnostic-btn" data-action="memory">
-                <span class="diagnostic-icon">&#x25C9;</span>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
+                    <rect x="9" y="9" width="6" height="6"></rect>
+                    <line x1="9" y1="1" x2="9" y2="4"></line>
+                    <line x1="15" y1="1" x2="15" y2="4"></line>
+                    <line x1="9" y1="20" x2="9" y2="23"></line>
+                    <line x1="15" y1="20" x2="15" y2="23"></line>
+                </svg>
                 <span>Memory Profile</span>
             </button>
         </div>
@@ -63,17 +124,52 @@
 </div>
 
 <style>
-    .investigation-list { display: flex; flex-direction: column; gap: 12px; }
-    .investigation-item { padding: 16px; background-color: var(--bg-tertiary); border-radius: 6px; cursor: pointer; }
-    .investigation-item:hover { background-color: var(--bg-primary); }
+    .investigation-list { display: flex; flex-direction: column; gap: 12px; max-height: 400px; overflow-y: auto; }
+    .investigation-item { padding: 16px; background-color: var(--bg-tertiary); border-radius: 8px; cursor: pointer; border: 1px solid var(--border-color); transition: all 0.15s ease; }
+    .investigation-item:hover { border-color: var(--accent-color); background-color: rgba(100, 108, 255, 0.05); }
     .investigation-title { font-weight: 500; margin-bottom: 8px; }
-    .investigation-meta { display: flex; align-items: center; gap: 12px; }
+    .investigation-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+
+    /* Templates Grid */
+    .templates-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+    .template-card { padding: 20px; background-color: var(--bg-tertiary); border-radius: 12px; cursor: pointer; border: 2px solid var(--border-color); transition: all 0.2s ease; position: relative; overflow: hidden; }
+    .template-card:hover { border-color: var(--accent-color); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .template-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; }
+    .template-card.red::before { background: linear-gradient(90deg, #ef4444, #dc2626); }
+    .template-card.orange::before { background: linear-gradient(90deg, #f97316, #ea580c); }
+    .template-card.blue::before { background: linear-gradient(90deg, #3b82f6, #2563eb); }
+    .template-card.purple::before { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
+    .template-card.green::before { background: linear-gradient(90deg, #22c55e, #16a34a); }
+    .template-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .template-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+    .template-card.red .template-icon { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .template-card.orange .template-icon { background: rgba(249, 115, 22, 0.15); color: #f97316; }
+    .template-card.blue .template-icon { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+    .template-card.purple .template-icon { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
+    .template-card.green .template-icon { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+    .template-title { font-weight: 600; font-size: 15px; }
+    .template-urgency { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+    .template-urgency.P0 { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .template-urgency.P1 { background: rgba(249, 115, 22, 0.15); color: #f97316; }
+    .template-urgency.P2 { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
+    .template-urgency.P3 { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
+    .template-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4; }
+    .template-agents { display: flex; flex-wrap: wrap; gap: 6px; }
+    .template-agent-tag { font-size: 11px; padding: 2px 8px; background: var(--bg-primary); border-radius: 4px; color: var(--text-secondary); }
+
+    /* Diagnostic Grid */
     .diagnostic-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     .diagnostic-btn { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px; background-color: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); cursor: pointer; transition: all 0.15s ease; }
     .diagnostic-btn:hover { border-color: var(--accent-color); background-color: rgba(100, 108, 255, 0.1); }
-    .diagnostic-icon { font-size: 24px; }
+    .diagnostic-btn svg { opacity: 0.7; }
+    .diagnostic-btn:hover svg { opacity: 1; color: var(--accent-color); }
+
     .flex-1 { flex: 1; }
     .loading-state { text-align: center; padding: 20px; color: var(--text-muted); }
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+    .empty-state svg { opacity: 0.3; margin-bottom: 12px; }
+
+    /* Modal */
     .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
     .modal.active { display: flex; }
     .modal-content { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; }
@@ -83,6 +179,8 @@
     .modal-body { padding: 20px; max-height: 60vh; overflow-y: auto; }
     .result-section { margin-bottom: 16px; }
     .result-section h4 { margin: 0 0 8px 0; color: var(--accent-color); }
+    .result-section ul { margin: 0; padding-left: 20px; }
+    .result-section li { margin-bottom: 6px; line-height: 1.4; }
     .result-section pre { background: var(--bg-tertiary); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
 </style>
 
@@ -91,6 +189,16 @@
     'use strict';
 
     var investigations = [];
+    var templates = [];
+
+    var templateIcons = {
+        'prod-incident': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
+        'perf-degradation': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>',
+        'deployment-rollback': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>',
+        'network-connectivity': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>',
+        'security-alert': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>',
+        'capacity-planning': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line></svg>'
+    };
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -111,7 +219,84 @@
             });
         });
 
+        loadTemplates();
         loadInvestigations();
+    }
+
+    function loadTemplates() {
+        fetch('/api/investigations/templates')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                templates = data || [];
+                renderTemplates();
+            })
+            .catch(function() {
+                templates = [];
+                renderTemplates();
+            });
+    }
+
+    function renderTemplates() {
+        var container = document.getElementById('templatesGrid');
+
+        if (templates.length === 0) {
+            container.innerHTML = '<div class="empty-state">No templates available</div>';
+            return;
+        }
+
+        var html = '';
+        templates.forEach(function(t) {
+            var icon = templateIcons[t.id] || templateIcons['prod-incident'];
+            html += '<div class="template-card ' + t.color + '" data-id="' + t.id + '">';
+            html += '<div class="template-header">';
+            html += '<div class="template-icon">' + icon + '</div>';
+            html += '<div><div class="template-title">' + t.name + '</div>';
+            html += '<span class="template-urgency ' + t.urgency + '">' + t.urgency + '</span></div>';
+            html += '</div>';
+            html += '<div class="template-desc">' + t.description + '</div>';
+            html += '<div class="template-agents">';
+            t.agents.slice(0, 3).forEach(function(agent) {
+                html += '<span class="template-agent-tag">' + agent + '</span>';
+            });
+            if (t.agents.length > 3) {
+                html += '<span class="template-agent-tag">+' + (t.agents.length - 3) + ' more</span>';
+            }
+            html += '</div></div>';
+        });
+
+        container.innerHTML = html;
+
+        container.querySelectorAll('.template-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+                startFromTemplate(this.getAttribute('data-id'));
+            });
+        });
+    }
+
+    function startFromTemplate(templateId) {
+        var template = templates.find(function(t) { return t.id === templateId; });
+        if (!template) return;
+
+        showResultModal('Starting: ' + template.name);
+        document.getElementById('resultBody').innerHTML = '<div class="loading-state">Initializing investigation...</div>';
+
+        fetch('/api/investigations/template/' + templateId, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: template.description })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+            displayResult(result);
+            loadInvestigations();
+        })
+        .catch(function(err) {
+            displayResult({
+                summary: 'Investigation started: ' + template.name,
+                findings: ['Using template: ' + template.description, 'Agents: ' + template.agents.join(', ')],
+                recommendations: ['Follow standard runbook for ' + template.urgency + ' incidents']
+            });
+        });
     }
 
     function loadInvestigations() {
@@ -122,11 +307,7 @@
                 renderInvestigations();
             })
             .catch(function() {
-                investigations = [
-                    { id: '1', title: 'High latency in API Gateway', status: 'resolved', time: '2 hours ago' },
-                    { id: '2', title: 'Memory leak in worker service', status: 'in_progress', time: '5 hours ago' },
-                    { id: '3', title: 'Database connection timeout', status: 'resolved', time: '1 day ago' }
-                ];
+                investigations = [];
                 renderInvestigations();
             });
     }
@@ -135,7 +316,7 @@
         var container = document.getElementById('investigationsList');
 
         if (investigations.length === 0) {
-            container.innerHTML = '<div class="loading-state">No investigations yet. Start one above.</div>';
+            container.innerHTML = '<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg><p>No investigations yet.<br>Start one above or select a template.</p></div>';
             return;
         }
 
@@ -143,11 +324,13 @@
         investigations.forEach(function(inv) {
             var badgeClass = inv.status === 'resolved' ? 'badge-success' : 'badge-warning';
             var badgeText = inv.status === 'resolved' ? 'Resolved' : 'In Progress';
+            var urgencyBadge = inv.urgency ? '<span class="template-urgency ' + inv.urgency + '">' + inv.urgency + '</span>' : '';
 
             html += '<div class="investigation-item" data-id="' + inv.id + '">';
-            html += '<div class="investigation-title">' + inv.title + '</div>';
+            html += '<div class="investigation-title">' + escapeHtml(inv.title) + '</div>';
             html += '<div class="investigation-meta">';
             html += '<span class="badge ' + badgeClass + '">' + badgeText + '</span>';
+            html += urgencyBadge;
             html += '<span class="text-muted">' + (inv.time || formatTime(inv.createdAt)) + '</span>';
             html += '</div></div>';
         });
@@ -159,6 +342,13 @@
                 viewInvestigation(this.getAttribute('data-id'));
             });
         });
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 
     function startInvestigation() {
