@@ -1,0 +1,242 @@
+@page
+@model SkanyxxWeb.Pages.CloudToolsModel
+@{
+    ViewData["Title"] = "Cloud Tools";
+}
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">Cloud Tools</h3>
+        <div class="header-actions">
+            <button class="btn btn-secondary" id="btnRefresh">Refresh</button>
+            <button class="btn btn-primary" id="btnConnectProvider">+ Connect Provider</button>
+        </div>
+    </div>
+    <p class="text-muted">Manage your cloud infrastructure and resources.</p>
+</div>
+
+<div class="provider-grid" id="providerGrid">
+    <div class="loading-state">Loading providers...</div>
+</div>
+
+<div class="card mt-3">
+    <div class="card-header">
+        <h3 class="card-title">Quick Actions</h3>
+    </div>
+    <div class="quick-actions-grid">
+        <button class="quick-action-btn" id="btnScaleUp">
+            <span class="quick-action-icon">&#x25B3;</span>
+            <span>Scale Up</span>
+        </button>
+        <button class="quick-action-btn" id="btnScaleDown">
+            <span class="quick-action-icon">&#x25BD;</span>
+            <span>Scale Down</span>
+        </button>
+        <button class="quick-action-btn" id="btnRestart">
+            <span class="quick-action-icon">&#x21BB;</span>
+            <span>Restart Services</span>
+        </button>
+        <button class="quick-action-btn" id="btnConfigure">
+            <span class="quick-action-icon">&#x2699;</span>
+            <span>Configure</span>
+        </button>
+    </div>
+</div>
+
+<!-- Connect Provider Modal -->
+<div class="modal" id="providerModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Connect Cloud Provider</h3>
+            <button class="btn btn-ghost" id="btnCloseModal">&times;</button>
+        </div>
+        <form id="providerForm">
+            <div class="form-group">
+                <label>Provider</label>
+                <select id="providerType">
+                    <option value="aws">Amazon Web Services (AWS)</option>
+                    <option value="gcp">Google Cloud Platform (GCP)</option>
+                    <option value="azure">Microsoft Azure</option>
+                    <option value="digitalocean">DigitalOcean</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Name</label>
+                <input type="text" id="providerName" required placeholder="My AWS Account" />
+            </div>
+            <div class="form-group">
+                <label>Access Key / Credentials</label>
+                <input type="password" id="providerKey" placeholder="Access key or credentials" />
+            </div>
+            <div class="form-group">
+                <label>Region</label>
+                <input type="text" id="providerRegion" placeholder="us-east-1" />
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelModal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Connect</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .provider-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
+    .provider-card { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; }
+    .provider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .provider-logo { font-size: 24px; font-weight: 700; }
+    .provider-logo.aws { color: #ff9900; }
+    .provider-logo.gcp { color: #4285f4; }
+    .provider-logo.azure { color: #0089d6; }
+    .provider-logo.digitalocean { color: #0080ff; }
+    .provider-stats { display: flex; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); margin-bottom: 16px; }
+    .provider-stat { display: flex; flex-direction: column; flex: 1; }
+    .provider-stat .stat-value { font-size: 20px; font-weight: 700; color: var(--accent-color); }
+    .provider-stat .stat-label { font-size: 11px; color: var(--text-muted); }
+    .provider-actions { display: flex; gap: 8px; }
+    .quick-actions-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .quick-action-btn { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px; background-color: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); cursor: pointer; transition: all 0.15s ease; }
+    .quick-action-btn:hover { border-color: var(--accent-color); background-color: var(--bg-secondary); }
+    .quick-action-icon { font-size: 24px; }
+    .loading-state { text-align: center; padding: 40px; color: var(--text-muted); grid-column: 1 / -1; }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); }
+    .modal-header h3 { margin: 0; }
+    #providerForm { padding: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; }
+    .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+</style>
+
+<script>
+(function() {
+    var providers = [];
+    var providerNames = { aws: 'AWS', gcp: 'GCP', azure: 'Azure', digitalocean: 'DO' };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    function init() {
+        document.getElementById('btnConnectProvider').addEventListener('click', function() { showModal(); });
+        document.getElementById('btnCloseModal').addEventListener('click', hideModal);
+        document.getElementById('btnCancelModal').addEventListener('click', hideModal);
+        document.getElementById('btnRefresh').addEventListener('click', loadProviders);
+        document.getElementById('providerForm').addEventListener('submit', connectProvider);
+
+        // Quick actions
+        document.getElementById('btnScaleUp').addEventListener('click', function() { executeAction('scale-up'); });
+        document.getElementById('btnScaleDown').addEventListener('click', function() { executeAction('scale-down'); });
+        document.getElementById('btnRestart').addEventListener('click', function() { executeAction('restart'); });
+        document.getElementById('btnConfigure').addEventListener('click', function() { alert('Opening configuration...'); });
+
+        loadProviders();
+    }
+
+    function showModal() {
+        document.getElementById('providerForm').reset();
+        document.getElementById('providerModal').classList.add('active');
+    }
+
+    function hideModal() {
+        document.getElementById('providerModal').classList.remove('active');
+    }
+
+    function loadProviders() {
+        fetch('/api/cloud-providers')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                providers = data || [];
+                renderProviders();
+            })
+            .catch(function() {
+                providers = [];
+                renderProviders();
+            });
+    }
+
+    function renderProviders() {
+        var container = document.getElementById('providerGrid');
+
+        if (providers.length === 0) {
+            container.innerHTML = '<div class="loading-state">No cloud providers connected. Click "+ Connect Provider" to add one.</div>';
+            return;
+        }
+
+        var html = '';
+        providers.forEach(function(p) {
+            var logo = providerNames[p.type] || p.type.toUpperCase();
+            var statusBadge = p.status === 'connected' ? '<span class="badge badge-success">Connected</span>' : '<span class="badge badge-warning">Pending</span>';
+
+            html += '<div class="provider-card" data-id="' + p.id + '">';
+            html += '<div class="provider-header">';
+            html += '<span class="provider-logo ' + p.type + '">' + logo + '</span>';
+            html += statusBadge + '</div>';
+            html += '<div class="provider-stats">';
+            html += '<div class="provider-stat"><span class="stat-value">' + (p.instances || 0) + '</span><span class="stat-label">Instances</span></div>';
+            html += '<div class="provider-stat"><span class="stat-value">' + (p.databases || 0) + '</span><span class="stat-label">Databases</span></div>';
+            html += '<div class="provider-stat"><span class="stat-value">' + (p.clusters || 0) + '</span><span class="stat-label">Clusters</span></div>';
+            html += '</div>';
+            html += '<div class="provider-actions">';
+            html += '<button class="btn btn-secondary btn-manage" data-id="' + p.id + '">Manage</button>';
+            html += '<button class="btn btn-ghost btn-disconnect" data-id="' + p.id + '">Disconnect</button>';
+            html += '</div></div>';
+        });
+
+        container.innerHTML = html;
+
+        container.querySelectorAll('.btn-manage').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                alert('Managing provider: ' + this.getAttribute('data-id'));
+            });
+        });
+        container.querySelectorAll('.btn-disconnect').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                disconnectProvider(this.getAttribute('data-id'));
+            });
+        });
+    }
+
+    function connectProvider(e) {
+        e.preventDefault();
+        var data = {
+            type: document.getElementById('providerType').value,
+            name: document.getElementById('providerName').value,
+            accessKey: document.getElementById('providerKey').value,
+            region: document.getElementById('providerRegion').value
+        };
+
+        fetch('/api/cloud-providers', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(function(r) {
+            if (r.ok) { hideModal(); loadProviders(); alert('Provider connected!'); }
+            else throw new Error('Failed');
+        })
+        .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function disconnectProvider(id) {
+        if (!confirm('Disconnect this provider?')) return;
+        fetch('/api/cloud-providers/' + id, { method: 'DELETE' })
+            .then(function() { loadProviders(); })
+            .catch(function(err) { console.error(err); });
+    }
+
+    function executeAction(action) {
+        alert('Executing: ' + action + '\nThis will trigger the action on all connected providers.');
+        fetch('/api/cloud-providers/action/' + action, { method: 'POST' })
+            .then(function(r) {
+                if (r.ok) alert(action + ' completed!');
+            })
+            .catch(function() { });
+    }
+})();
+</script>

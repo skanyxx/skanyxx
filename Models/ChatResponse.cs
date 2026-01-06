@@ -1,8 +1,7 @@
-namespace SkanyxxMaui.Models;
+namespace SkanyxxWeb.Models;
 
 public class ChatResponse
 {
-    public string Message { get; set; } = string.Empty;
-    public string SessionId { get; set; } = string.Empty;
-    public string Timestamp { get; set; } = string.Empty;
+    public string ConversationId { get; set; } = string.Empty;
+    public ChatMessage Message { get; set; } = new();
 }

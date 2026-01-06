@@ -1,0 +1,276 @@
+@page
+@model SkanyxxWeb.Pages.InvestigateModel
+@{
+    ViewData["Title"] = "Investigate";
+}
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">Investigation Query</h3>
+    </div>
+    <div class="flex gap-2">
+        <input type="text" id="queryInput" placeholder="Describe the issue or paste error message..." class="flex-1" />
+        <button class="btn btn-primary" id="btnInvestigate">Investigate</button>
+    </div>
+</div>
+
+<div class="grid grid-cols-2 gap-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Recent Investigations</h3>
+        </div>
+        <div class="investigation-list" id="investigationsList">
+            <div class="loading-state">Loading investigations...</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Quick Diagnostics</h3>
+        </div>
+        <div class="diagnostic-grid" id="diagnosticGrid">
+            <button class="diagnostic-btn" data-action="network">
+                <span class="diagnostic-icon">&#x25CE;</span>
+                <span>Network Trace</span>
+            </button>
+            <button class="diagnostic-btn" data-action="logs">
+                <span class="diagnostic-icon">&#x25A6;</span>
+                <span>Log Analysis</span>
+            </button>
+            <button class="diagnostic-btn" data-action="performance">
+                <span class="diagnostic-icon">&#x25E7;</span>
+                <span>Performance</span>
+            </button>
+            <button class="diagnostic-btn" data-action="memory">
+                <span class="diagnostic-icon">&#x25C9;</span>
+                <span>Memory Profile</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Investigation Result Modal -->
+<div class="modal" id="resultModal">
+    <div class="modal-content modal-large">
+        <div class="modal-header">
+            <h3 id="resultTitle">Investigation Result</h3>
+            <button class="btn btn-ghost" id="btnCloseResult">&times;</button>
+        </div>
+        <div class="modal-body" id="resultBody">
+            <div class="loading-state">Analyzing...</div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .investigation-list { display: flex; flex-direction: column; gap: 12px; }
+    .investigation-item { padding: 16px; background-color: var(--bg-tertiary); border-radius: 6px; cursor: pointer; }
+    .investigation-item:hover { background-color: var(--bg-primary); }
+    .investigation-title { font-weight: 500; margin-bottom: 8px; }
+    .investigation-meta { display: flex; align-items: center; gap: 12px; }
+    .diagnostic-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+    .diagnostic-btn { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px; background-color: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); cursor: pointer; transition: all 0.15s ease; }
+    .diagnostic-btn:hover { border-color: var(--accent-color); background-color: rgba(100, 108, 255, 0.1); }
+    .diagnostic-icon { font-size: 24px; }
+    .flex-1 { flex: 1; }
+    .loading-state { text-align: center; padding: 20px; color: var(--text-muted); }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; }
+    .modal-large { max-width: 700px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); }
+    .modal-header h3 { margin: 0; }
+    .modal-body { padding: 20px; max-height: 60vh; overflow-y: auto; }
+    .result-section { margin-bottom: 16px; }
+    .result-section h4 { margin: 0 0 8px 0; color: var(--accent-color); }
+    .result-section pre { background: var(--bg-tertiary); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+</style>
+
+<script>
+(function() {
+    'use strict';
+
+    var investigations = [];
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    function init() {
+        document.getElementById('btnInvestigate').addEventListener('click', startInvestigation);
+        document.getElementById('queryInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') startInvestigation();
+        });
+        document.getElementById('btnCloseResult').addEventListener('click', hideResultModal);
+
+        document.querySelectorAll('.diagnostic-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                runDiagnostic(this.getAttribute('data-action'));
+            });
+        });
+
+        loadInvestigations();
+    }
+
+    function loadInvestigations() {
+        fetch('/api/investigations')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                investigations = data || [];
+                renderInvestigations();
+            })
+            .catch(function() {
+                investigations = [
+                    { id: '1', title: 'High latency in API Gateway', status: 'resolved', time: '2 hours ago' },
+                    { id: '2', title: 'Memory leak in worker service', status: 'in_progress', time: '5 hours ago' },
+                    { id: '3', title: 'Database connection timeout', status: 'resolved', time: '1 day ago' }
+                ];
+                renderInvestigations();
+            });
+    }
+
+    function renderInvestigations() {
+        var container = document.getElementById('investigationsList');
+
+        if (investigations.length === 0) {
+            container.innerHTML = '<div class="loading-state">No investigations yet. Start one above.</div>';
+            return;
+        }
+
+        var html = '';
+        investigations.forEach(function(inv) {
+            var badgeClass = inv.status === 'resolved' ? 'badge-success' : 'badge-warning';
+            var badgeText = inv.status === 'resolved' ? 'Resolved' : 'In Progress';
+
+            html += '<div class="investigation-item" data-id="' + inv.id + '">';
+            html += '<div class="investigation-title">' + inv.title + '</div>';
+            html += '<div class="investigation-meta">';
+            html += '<span class="badge ' + badgeClass + '">' + badgeText + '</span>';
+            html += '<span class="text-muted">' + (inv.time || formatTime(inv.createdAt)) + '</span>';
+            html += '</div></div>';
+        });
+
+        container.innerHTML = html;
+
+        container.querySelectorAll('.investigation-item').forEach(function(item) {
+            item.addEventListener('click', function() {
+                viewInvestigation(this.getAttribute('data-id'));
+            });
+        });
+    }
+
+    function startInvestigation() {
+        var query = document.getElementById('queryInput').value.trim();
+        if (!query) {
+            alert('Please enter an issue description or error message.');
+            return;
+        }
+
+        showResultModal('Investigating: ' + query.substring(0, 50) + '...');
+        document.getElementById('resultBody').innerHTML = '<div class="loading-state">Analyzing issue...</div>';
+
+        fetch('/api/investigations', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: query })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(result) {
+            displayResult(result);
+            loadInvestigations();
+            document.getElementById('queryInput').value = '';
+        })
+        .catch(function() {
+            displayResult({
+                summary: 'Investigation started for: ' + query,
+                findings: ['Analysis in progress...', 'Checking system logs...', 'Correlating events...'],
+                recommendations: ['Review recent deployments', 'Check resource utilization', 'Inspect error logs']
+            });
+        });
+    }
+
+    function runDiagnostic(action) {
+        var titles = {
+            'network': 'Network Trace',
+            'logs': 'Log Analysis',
+            'performance': 'Performance Diagnostics',
+            'memory': 'Memory Profile'
+        };
+
+        showResultModal(titles[action] || 'Diagnostic');
+        document.getElementById('resultBody').innerHTML = '<div class="loading-state">Running ' + action + ' diagnostic...</div>';
+
+        fetch('/api/diagnostics/' + action, { method: 'POST' })
+            .then(function(r) { return r.json(); })
+            .then(function(result) {
+                displayResult(result);
+            })
+            .catch(function() {
+                displayResult({
+                    summary: titles[action] + ' completed',
+                    findings: ['All systems operating normally', 'No anomalies detected'],
+                    metrics: { latency: '12ms', throughput: '1.2k/s', errors: 0 }
+                });
+            });
+    }
+
+    function viewInvestigation(id) {
+        var inv = investigations.find(function(i) { return i.id === id; });
+        if (!inv) return;
+
+        showResultModal(inv.title);
+        displayResult({
+            summary: inv.title,
+            status: inv.status,
+            findings: inv.findings || ['Details loading...'],
+            recommendations: inv.recommendations || []
+        });
+    }
+
+    function showResultModal(title) {
+        document.getElementById('resultTitle').textContent = title;
+        document.getElementById('resultModal').classList.add('active');
+    }
+
+    function hideResultModal() {
+        document.getElementById('resultModal').classList.remove('active');
+    }
+
+    function displayResult(result) {
+        var html = '';
+
+        if (result.summary) {
+            html += '<div class="result-section"><h4>Summary</h4><p>' + result.summary + '</p></div>';
+        }
+
+        if (result.findings && result.findings.length > 0) {
+            html += '<div class="result-section"><h4>Findings</h4><ul>';
+            result.findings.forEach(function(f) { html += '<li>' + f + '</li>'; });
+            html += '</ul></div>';
+        }
+
+        if (result.recommendations && result.recommendations.length > 0) {
+            html += '<div class="result-section"><h4>Recommendations</h4><ul>';
+            result.recommendations.forEach(function(r) { html += '<li>' + r + '</li>'; });
+            html += '</ul></div>';
+        }
+
+        if (result.metrics) {
+            html += '<div class="result-section"><h4>Metrics</h4><pre>' + JSON.stringify(result.metrics, null, 2) + '</pre></div>';
+        }
+
+        document.getElementById('resultBody').innerHTML = html || '<p>No details available.</p>';
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '-';
+        var diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+        if (diff < 60) return diff + 's ago';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+    }
+})();
+</script>

@@ -1,0 +1,47 @@
+@page
+@model SkanyxxWeb.Pages.OfflineModel
+@{
+    ViewData["Title"] = "Offline";
+}
+
+<div class="offline-page">
+    <div class="offline-content">
+        <div class="offline-icon">&#x2302;</div>
+        <h1 class="offline-title">You're Offline</h1>
+        <p class="offline-message">It looks like you've lost your internet connection. Some features may be unavailable until you reconnect.</p>
+        <div class="offline-actions">
+            <button class="btn btn-primary" onclick="location.reload()">Try Again</button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .offline-page {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 60vh;
+        text-align: center;
+    }
+
+    .offline-content {
+        max-width: 400px;
+    }
+
+    .offline-icon {
+        font-size: 64px;
+        color: var(--text-muted);
+        margin-bottom: 24px;
+    }
+
+    .offline-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 12px;
+    }
+
+    .offline-message {
+        color: var(--text-secondary);
+        margin-bottom: 24px;
+    }
+</style>

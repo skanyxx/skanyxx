@@ -1,0 +1,250 @@
+@page
+@model SkanyxxWeb.Pages.AlertsModel
+@{
+    ViewData["Title"] = "Alerts";
+}
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">Alert Management</h3>
+        <div class="header-actions">
+            <button class="btn btn-secondary" id="btnRefresh">Refresh</button>
+            <button class="btn btn-primary" id="btnNewAlert">+ New Alert</button>
+        </div>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value text-error" id="statCritical">0</div>
+        <div class="stat-label">Critical</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value text-warning" id="statWarning">0</div>
+        <div class="stat-label">Warning</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value text-accent" id="statInfo">0</div>
+        <div class="stat-label">Info</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value text-success" id="statResolved">0</div>
+        <div class="stat-label">Resolved</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Active Alerts</h3>
+        <div class="alert-filters">
+            <button class="btn btn-ghost filter-btn active" data-filter="all">All</button>
+            <button class="btn btn-ghost filter-btn" data-filter="critical">Critical</button>
+            <button class="btn btn-ghost filter-btn" data-filter="warning">Warning</button>
+            <button class="btn btn-ghost filter-btn" data-filter="info">Info</button>
+        </div>
+    </div>
+    <div class="alerts-list" id="alertsList">
+        <div class="loading-state">Loading alerts...</div>
+    </div>
+</div>
+
+<!-- New Alert Modal -->
+<div class="modal" id="alertModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Create Alert</h3>
+            <button class="btn btn-ghost" id="btnCloseAlert">&times;</button>
+        </div>
+        <form id="alertForm">
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" id="alertTitle" required placeholder="Alert title" />
+            </div>
+            <div class="form-group">
+                <label>Description</label>
+                <input type="text" id="alertDesc" placeholder="Description" />
+            </div>
+            <div class="form-group">
+                <label>Severity</label>
+                <select id="alertSeverity">
+                    <option value="critical">Critical</option>
+                    <option value="warning">Warning</option>
+                    <option value="info">Info</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Source</label>
+                <input type="text" id="alertSource" placeholder="server-01" />
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelAlert">Cancel</button>
+                <button type="submit" class="btn btn-primary">Create Alert</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .alert-filters { display: flex; gap: 4px; }
+    .alert-filters .btn.active { background-color: var(--bg-tertiary); }
+    .alerts-list { display: flex; flex-direction: column; gap: 12px; }
+    .alert-item {
+        display: flex; gap: 16px; padding: 16px;
+        background-color: var(--bg-tertiary); border-radius: 8px;
+        border-left: 4px solid transparent;
+    }
+    .alert-item.critical { border-left-color: var(--error-color); }
+    .alert-item.warning { border-left-color: var(--warning-color); }
+    .alert-item.info { border-left-color: var(--accent-color); }
+    .alert-severity { font-size: 20px; }
+    .alert-content { flex: 1; }
+    .alert-title { font-weight: 600; margin-bottom: 4px; }
+    .alert-description { color: var(--text-secondary); font-size: 13px; margin-bottom: 8px; }
+    .alert-meta { display: flex; align-items: center; gap: 12px; }
+    .alert-actions { display: flex; gap: 8px; align-items: flex-start; }
+    .loading-state { text-align: center; padding: 20px; color: var(--text-muted); }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); }
+    .modal-header h3 { margin: 0; }
+    #alertForm { padding: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; }
+    .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+</style>
+
+<script>
+(function() {
+    var alerts = [];
+    var currentFilter = 'all';
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    function init() {
+        document.getElementById('btnNewAlert').addEventListener('click', function() {
+            document.getElementById('alertModal').classList.add('active');
+        });
+        document.getElementById('btnCloseAlert').addEventListener('click', hideModal);
+        document.getElementById('btnCancelAlert').addEventListener('click', hideModal);
+        document.getElementById('btnRefresh').addEventListener('click', loadAlerts);
+        document.getElementById('alertForm').addEventListener('submit', createAlert);
+
+        document.querySelectorAll('.filter-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.filter-btn').forEach(function(b) { b.classList.remove('active'); });
+                this.classList.add('active');
+                currentFilter = this.getAttribute('data-filter');
+                renderAlerts();
+            });
+        });
+
+        loadAlerts();
+    }
+
+    function hideModal() {
+        document.getElementById('alertModal').classList.remove('active');
+    }
+
+    function loadAlerts() {
+        fetch('/api/alerts')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                alerts = data || [];
+                renderAlerts();
+                updateStats();
+            })
+            .catch(function() {
+                alerts = [];
+                renderAlerts();
+            });
+    }
+
+    function renderAlerts() {
+        var container = document.getElementById('alertsList');
+        var filtered = currentFilter === 'all' ? alerts : alerts.filter(function(a) { return a.severity === currentFilter; });
+
+        if (filtered.length === 0) {
+            container.innerHTML = '<div class="loading-state">No alerts. Click "+ New Alert" to create one.</div>';
+            return;
+        }
+
+        var html = '';
+        filtered.forEach(function(alert) {
+            var sevColor = alert.severity === 'critical' ? 'var(--error-color)' : (alert.severity === 'warning' ? 'var(--warning-color)' : 'var(--accent-color)');
+            var badgeClass = alert.severity === 'critical' ? 'badge-error' : (alert.severity === 'warning' ? 'badge-warning' : 'badge-info');
+
+            html += '<div class="alert-item ' + alert.severity + '" data-id="' + alert.id + '">';
+            html += '<div class="alert-severity"><span style="color:' + sevColor + '">&#x25B3;</span></div>';
+            html += '<div class="alert-content">';
+            html += '<div class="alert-title">' + (alert.title || alert.name || 'Alert') + '</div>';
+            html += '<div class="alert-description">' + (alert.description || alert.message || '') + '</div>';
+            html += '<div class="alert-meta"><span class="badge ' + badgeClass + '">' + alert.severity + '</span>';
+            html += '<span class="text-muted">' + (alert.source || '-') + '</span></div>';
+            html += '</div>';
+            html += '<div class="alert-actions">';
+            html += '<button class="btn btn-ghost btn-ack" data-id="' + alert.id + '">Acknowledge</button>';
+            html += '<button class="btn btn-ghost btn-dismiss" data-id="' + alert.id + '">Dismiss</button>';
+            html += '</div></div>';
+        });
+
+        container.innerHTML = html;
+
+        container.querySelectorAll('.btn-ack').forEach(function(btn) {
+            btn.addEventListener('click', function() { acknowledgeAlert(this.getAttribute('data-id')); });
+        });
+        container.querySelectorAll('.btn-dismiss').forEach(function(btn) {
+            btn.addEventListener('click', function() { dismissAlert(this.getAttribute('data-id')); });
+        });
+    }
+
+    function updateStats() {
+        var critical = alerts.filter(function(a) { return a.severity === 'critical'; }).length;
+        var warning = alerts.filter(function(a) { return a.severity === 'warning'; }).length;
+        var info = alerts.filter(function(a) { return a.severity === 'info'; }).length;
+
+        document.getElementById('statCritical').textContent = critical;
+        document.getElementById('statWarning').textContent = warning;
+        document.getElementById('statInfo').textContent = info;
+        document.getElementById('statResolved').textContent = '0';
+    }
+
+    function createAlert(e) {
+        e.preventDefault();
+        var data = {
+            title: document.getElementById('alertTitle').value,
+            description: document.getElementById('alertDesc').value,
+            severity: document.getElementById('alertSeverity').value,
+            source: document.getElementById('alertSource').value
+        };
+
+        fetch('/api/alerts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(function(r) {
+            if (r.ok) { hideModal(); loadAlerts(); alert('Alert created!'); }
+            else throw new Error('Failed');
+        })
+        .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function acknowledgeAlert(id) {
+        fetch('/api/alerts/' + id + '/acknowledge', { method: 'POST' })
+            .then(function() { loadAlerts(); })
+            .catch(function(err) { console.error(err); });
+    }
+
+    function dismissAlert(id) {
+        fetch('/api/alerts/' + id, { method: 'DELETE' })
+            .then(function() { loadAlerts(); })
+            .catch(function(err) { console.error(err); });
+    }
+})();
+</script>

@@ -1,0 +1,261 @@
+@page
+@model SkanyxxWeb.Pages.MemoryModel
+@{
+    ViewData["Title"] = "Memory";
+}
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">AI Memory Store</h3>
+        <div class="header-actions">
+            <button class="btn btn-secondary" id="btnRefresh">Refresh</button>
+            <button class="btn btn-primary" id="btnAddMemory">+ Add Memory</button>
+        </div>
+    </div>
+    <p class="text-muted">Manage persistent memory and context for AI agents.</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">Total Memories</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="statContexts">0</div>
+        <div class="stat-label">Categories</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="statSize">0 KB</div>
+        <div class="stat-label">Storage Used</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-2 gap-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Memory Categories</h3>
+        </div>
+        <div class="memory-categories" id="categoriesList">
+            <div class="loading-state">Loading categories...</div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Recent Memories</h3>
+        </div>
+        <div class="memory-list" id="memoriesList">
+            <div class="loading-state">Loading memories...</div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Memory Modal -->
+<div class="modal" id="memoryModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="memoryModalTitle">Add Memory</h3>
+            <button class="btn btn-ghost" id="btnCloseMemory">&times;</button>
+        </div>
+        <form id="memoryForm">
+            <input type="hidden" id="memoryId" value="" />
+            <div class="form-group">
+                <label>Title</label>
+                <input type="text" id="memoryTitle" required placeholder="Memory title" />
+            </div>
+            <div class="form-group">
+                <label>Content</label>
+                <textarea id="memoryContent" rows="4" placeholder="Memory content..."></textarea>
+            </div>
+            <div class="form-group">
+                <label>Category</label>
+                <select id="memoryCategory">
+                    <option value="config">System Configuration</option>
+                    <option value="incident">Incident History</option>
+                    <option value="agent">Agent Context</option>
+                    <option value="conversation">Conversation History</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelMemory">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Memory</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .memory-categories, .memory-list { display: flex; flex-direction: column; gap: 8px; }
+    .memory-category {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 16px; background-color: var(--bg-tertiary); border-radius: 6px; cursor: pointer;
+    }
+    .memory-category:hover { background-color: var(--bg-primary); }
+    .category-info { display: flex; align-items: center; gap: 12px; }
+    .category-icon { font-size: 18px; color: var(--accent-color); }
+    .category-count { color: var(--text-muted); font-size: 13px; }
+    .memory-item {
+        padding: 16px; background-color: var(--bg-tertiary); border-radius: 6px;
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .memory-info { flex: 1; }
+    .memory-title { font-weight: 500; margin-bottom: 8px; }
+    .memory-meta { display: flex; align-items: center; gap: 12px; }
+    .loading-state { text-align: center; padding: 20px; color: var(--text-muted); }
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
+    .modal.active { display: flex; }
+    .modal-content { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); }
+    .modal-header h3 { margin: 0; }
+    #memoryForm { padding: 20px; }
+    .form-group { margin-bottom: 16px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; }
+    .form-group input, .form-group select, .form-group textarea { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+</style>
+
+<script>
+(function() {
+    var memories = [];
+    var categoryIcons = { config: '&#x2699;', incident: '&#x25B3;', agent: '&#x2B21;', conversation: '&#x25F1;' };
+    var categoryNames = { config: 'System Configuration', incident: 'Incident History', agent: 'Agent Context', conversation: 'Conversation History' };
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    function init() {
+        document.getElementById('btnAddMemory').addEventListener('click', function() { showModal(null); });
+        document.getElementById('btnCloseMemory').addEventListener('click', hideModal);
+        document.getElementById('btnCancelMemory').addEventListener('click', hideModal);
+        document.getElementById('btnRefresh').addEventListener('click', loadMemories);
+        document.getElementById('memoryForm').addEventListener('submit', saveMemory);
+
+        loadMemories();
+    }
+
+    function showModal(memory) {
+        document.getElementById('memoryModalTitle').textContent = memory ? 'Edit Memory' : 'Add Memory';
+        document.getElementById('memoryId').value = memory ? memory.id : '';
+        document.getElementById('memoryTitle').value = memory ? memory.title : '';
+        document.getElementById('memoryContent').value = memory ? memory.content : '';
+        document.getElementById('memoryCategory').value = memory ? memory.category : 'config';
+        document.getElementById('memoryModal').classList.add('active');
+    }
+
+    function hideModal() {
+        document.getElementById('memoryModal').classList.remove('active');
+    }
+
+    function loadMemories() {
+        fetch('/api/memory')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                memories = data || [];
+                renderCategories();
+                renderMemories();
+                updateStats();
+            })
+            .catch(function() {
+                memories = [];
+                renderCategories();
+                renderMemories();
+            });
+    }
+
+    function renderCategories() {
+        var container = document.getElementById('categoriesList');
+        var counts = {};
+        memories.forEach(function(m) { counts[m.category] = (counts[m.category] || 0) + 1; });
+
+        var html = '';
+        Object.keys(categoryNames).forEach(function(cat) {
+            html += '<div class="memory-category" data-category="' + cat + '">';
+            html += '<div class="category-info"><span class="category-icon">' + categoryIcons[cat] + '</span>';
+            html += '<span class="category-name">' + categoryNames[cat] + '</span></div>';
+            html += '<span class="category-count">' + (counts[cat] || 0) + ' items</span></div>';
+        });
+
+        container.innerHTML = html || '<div class="loading-state">No categories</div>';
+    }
+
+    function renderMemories() {
+        var container = document.getElementById('memoriesList');
+
+        if (memories.length === 0) {
+            container.innerHTML = '<div class="loading-state">No memories. Click "+ Add Memory" to create one.</div>';
+            return;
+        }
+
+        var recent = memories.slice(0, 5);
+        var html = '';
+        recent.forEach(function(mem) {
+            html += '<div class="memory-item" data-id="' + mem.id + '">';
+            html += '<div class="memory-info"><div class="memory-title">' + (mem.title || 'Untitled') + '</div>';
+            html += '<div class="memory-meta"><span class="badge badge-info">' + (categoryNames[mem.category] || mem.category) + '</span>';
+            html += '<span class="text-muted">' + formatTime(mem.createdAt) + '</span></div></div>';
+            html += '<div class="memory-actions">';
+            html += '<button class="btn btn-ghost btn-edit" data-id="' + mem.id + '">Edit</button>';
+            html += '<button class="btn btn-ghost btn-delete" data-id="' + mem.id + '">Delete</button>';
+            html += '</div></div>';
+        });
+
+        container.innerHTML = html;
+
+        container.querySelectorAll('.btn-edit').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var m = memories.find(function(x) { return x.id === this.getAttribute('data-id'); }.bind(this));
+                if (m) showModal(m);
+            });
+        });
+        container.querySelectorAll('.btn-delete').forEach(function(btn) {
+            btn.addEventListener('click', function() { deleteMemory(this.getAttribute('data-id')); });
+        });
+    }
+
+    function updateStats() {
+        var categories = new Set(memories.map(function(m) { return m.category; }));
+        document.getElementById('statTotal').textContent = memories.length;
+        document.getElementById('statContexts').textContent = categories.size;
+        document.getElementById('statSize').textContent = Math.round(JSON.stringify(memories).length / 1024) + ' KB';
+    }
+
+    function saveMemory(e) {
+        e.preventDefault();
+        var id = document.getElementById('memoryId').value;
+        var data = {
+            title: document.getElementById('memoryTitle').value,
+            content: document.getElementById('memoryContent').value,
+            category: document.getElementById('memoryCategory').value
+        };
+
+        var url = id ? '/api/memory/' + id : '/api/memory';
+        var method = id ? 'PUT' : 'POST';
+
+        fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+            .then(function(r) {
+                if (r.ok) { hideModal(); loadMemories(); alert('Memory saved!'); }
+                else throw new Error('Failed');
+            })
+            .catch(function(err) { alert('Error: ' + err.message); });
+    }
+
+    function deleteMemory(id) {
+        if (!confirm('Delete this memory?')) return;
+        fetch('/api/memory/' + id, { method: 'DELETE' })
+            .then(function() { loadMemories(); })
+            .catch(function(err) { console.error(err); });
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '-';
+        var diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+        if (diff < 60) return diff + 's ago';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+    }
+})();
+</script>

@@ -1,0 +1,153 @@
+@{
+    var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? "/Index";
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>@ViewData["Title"] - Skanyxx</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <a href="/" class="sidebar-logo">
+                    <span class="sidebar-logo-icon">S</span>
+                    <div>
+                        <div class="sidebar-logo-text">Skanyxx</div>
+                        <div class="sidebar-subtitle">SRE Command Center</div>
+                    </div>
+                </a>
+            </div>
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">Overview</div>
+                    <a href="/Dashboard" class="nav-item @(currentPage == "/Dashboard" ? "active" : "")">
+                        <span class="nav-icon">&#x229F;</span>
+                        <span class="nav-label">Dashboard</span>
+                    </a>
+                    <a href="/Investigate" class="nav-item @(currentPage == "/Investigate" ? "active" : "")">
+                        <span class="nav-icon">&#x25CE;</span>
+                        <span class="nav-label">Investigate</span>
+                    </a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">AI & Agents</div>
+                    <a href="/Agents" class="nav-item @(currentPage == "/Agents" ? "active" : "")">
+                        <span class="nav-icon">&#x2B21;</span>
+                        <span class="nav-label">Agents</span>
+                    </a>
+                    <a href="/Chat" class="nav-item @(currentPage == "/Chat" ? "active" : "")">
+                        <span class="nav-icon">&#x25F1;</span>
+                        <span class="nav-label">Chat</span>
+                    </a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Infrastructure</div>
+                    <a href="/CloudTools" class="nav-item @(currentPage == "/CloudTools" ? "active" : "")">
+                        <span class="nav-icon">&#x25CC;</span>
+                        <span class="nav-label">Cloud Tools</span>
+                    </a>
+                    <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")">
+                        <span class="nav-icon">&#x25A6;</span>
+                        <span class="nav-label">Tool Servers</span>
+                    </a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">Insights</div>
+                    <a href="/Analytics" class="nav-item @(currentPage == "/Analytics" ? "active" : "")">
+                        <span class="nav-icon">&#x25E7;</span>
+                        <span class="nav-label">Analytics</span>
+                    </a>
+                    <a href="/Memory" class="nav-item @(currentPage == "/Memory" ? "active" : "")">
+                        <span class="nav-icon">&#x25C9;</span>
+                        <span class="nav-label">Memory</span>
+                    </a>
+                </div>
+                <div class="nav-section">
+                    <div class="nav-section-title">System</div>
+                    <a href="/Alerts" class="nav-item @(currentPage == "/Alerts" ? "active" : "")">
+                        <span class="nav-icon">&#x25B3;</span>
+                        <span class="nav-label">Alerts</span>
+                    </a>
+                    <a href="/Hooks" class="nav-item @(currentPage == "/Hooks" ? "active" : "")">
+                        <span class="nav-icon">&#x2922;</span>
+                        <span class="nav-label">Hooks</span>
+                    </a>
+                    <a href="/Debug" class="nav-item @(currentPage == "/Debug" ? "active" : "")">
+                        <span class="nav-icon">&#x27E9;</span>
+                        <span class="nav-label">Debug</span>
+                    </a>
+                    <a href="/Settings" class="nav-item @(currentPage == "/Settings" ? "active" : "")">
+                        <span class="nav-icon">&#x2699;</span>
+                        <span class="nav-label">Settings</span>
+                    </a>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="top-header">
+                <h1 class="header-title">@ViewData["Title"]</h1>
+                <div class="header-actions">
+                    <button class="pwa-install-btn" id="installBtn" style="display: none;">
+                        <span>&#x2B07;</span>
+                        <span>Install App</span>
+                    </button>
+                </div>
+            </header>
+            <div class="page-content animate-fade-in">
+                @RenderBody()
+            </div>
+        </main>
+    </div>
+
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script>
+        // PWA Install prompt
+        let deferredPrompt;
+        const installBtn = document.getElementById('installBtn');
+
+        window.addEventListener('beforeinstallprompt', (e) => {
+            e.preventDefault();
+            deferredPrompt = e;
+            installBtn.style.display = 'flex';
+        });
+
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                console.log(`User response: ${outcome}`);
+                deferredPrompt = null;
+                installBtn.style.display = 'none';
+            }
+        });
+
+        window.addEventListener('appinstalled', () => {
+            installBtn.style.display = 'none';
+            console.log('PWA installed');
+        });
+
+        // Unregister any existing service workers to fix issues
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for (let registration of registrations) {
+                    registration.unregister();
+                    console.log('ServiceWorker unregistered');
+                }
+            });
+        }
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

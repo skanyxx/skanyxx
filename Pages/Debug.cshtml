@@ -1,0 +1,215 @@
+@page
+@model SkanyxxWeb.Pages.DebugModel
+@{
+    ViewData["Title"] = "Debug";
+}
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">Debug Console</h3>
+        <div class="header-actions">
+            <button class="btn btn-secondary">Clear Logs</button>
+            <button class="btn btn-primary">Export</button>
+        </div>
+    </div>
+</div>
+
+<div class="grid grid-cols-2 gap-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">System Logs</h3>
+            <select style="width: auto;">
+                <option>All Levels</option>
+                <option>Error</option>
+                <option>Warning</option>
+                <option>Info</option>
+                <option>Debug</option>
+            </select>
+        </div>
+        <div class="log-container">
+            <div class="log-entry error">
+                <span class="log-time">14:32:15</span>
+                <span class="log-level">ERROR</span>
+                <span class="log-message">Database connection timeout after 30s</span>
+            </div>
+            <div class="log-entry warning">
+                <span class="log-time">14:32:10</span>
+                <span class="log-level">WARN</span>
+                <span class="log-message">High memory usage detected: 87%</span>
+            </div>
+            <div class="log-entry info">
+                <span class="log-time">14:32:05</span>
+                <span class="log-level">INFO</span>
+                <span class="log-message">Agent kubernetes-monitor started successfully</span>
+            </div>
+            <div class="log-entry debug">
+                <span class="log-time">14:32:00</span>
+                <span class="log-level">DEBUG</span>
+                <span class="log-message">Processing webhook payload from GitHub</span>
+            </div>
+            <div class="log-entry info">
+                <span class="log-time">14:31:55</span>
+                <span class="log-level">INFO</span>
+                <span class="log-message">API request completed: GET /api/v1/status (200)</span>
+            </div>
+            <div class="log-entry debug">
+                <span class="log-time">14:31:50</span>
+                <span class="log-level">DEBUG</span>
+                <span class="log-message">Cache hit for key: user_preferences_123</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Quick Commands</h3>
+        </div>
+        <div class="command-input-container">
+            <input type="text" placeholder="Enter command..." id="commandInput" />
+            <button class="btn btn-primary">Run</button>
+        </div>
+        <div class="command-output" id="commandOutput">
+            <pre>$ kubectl get pods -n production
+NAME                           READY   STATUS    RESTARTS   AGE
+api-gateway-7d8f9c6b5d-x2k4m   1/1     Running   0          2d
+worker-5c8d7e6f4a-p9n3j        1/1     Running   0          2d
+scheduler-3b2a1c0d9e-m8l7k     1/1     Running   0          2d</pre>
+        </div>
+    </div>
+</div>
+
+<div class="card mt-2">
+    <div class="card-header">
+        <h3 class="card-title">System Information</h3>
+        <button class="btn btn-ghost" id="btnRefreshSysInfo">Refresh</button>
+    </div>
+    <div class="system-info-grid" id="systemInfoGrid">
+        <div class="loading-state">Loading system info...</div>
+    </div>
+</div>
+
+<script>
+(function() {
+    var startTime = Date.now();
+
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSystemInfo();
+        document.getElementById('btnRefreshSysInfo').addEventListener('click', loadSystemInfo);
+    });
+
+    function loadSystemInfo() {
+        fetch('/api/settings/system-info')
+            .then(function(r) { return r.json(); })
+            .then(function(info) {
+                var uptime = Math.floor((Date.now() - startTime) / 1000);
+                var uptimeStr = formatUptime(uptime);
+
+                document.getElementById('systemInfoGrid').innerHTML =
+                    '<div class="info-item"><span class="info-label">Platform</span><span class="info-value">' + info.platform + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Environment</span><span class="info-value">' + info.environment + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Memory Usage</span><span class="info-value">' + info.memoryUsage + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Database</span><span class="info-value">' + info.database + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Session Time</span><span class="info-value">' + uptimeStr + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Version</span><span class="info-value">' + info.version + '</span></div>';
+            })
+            .catch(function(err) {
+                document.getElementById('systemInfoGrid').innerHTML = '<div class="info-item"><span class="info-value text-error">Failed to load system info</span></div>';
+            });
+    }
+
+    function formatUptime(seconds) {
+        if (seconds < 60) return seconds + 's';
+        if (seconds < 3600) return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+        var h = Math.floor(seconds / 3600);
+        var m = Math.floor((seconds % 3600) / 60);
+        return h + 'h ' + m + 'm';
+    }
+})();
+</script>
+
+<style>
+    .log-container {
+        background-color: var(--bg-primary);
+        border-radius: 6px;
+        padding: 12px;
+        max-height: 300px;
+        overflow-y: auto;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+    }
+
+    .log-entry {
+        display: flex;
+        gap: 12px;
+        padding: 6px 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .log-entry:last-child {
+        border-bottom: none;
+    }
+
+    .log-time {
+        color: var(--text-muted);
+    }
+
+    .log-level {
+        font-weight: 600;
+        width: 50px;
+    }
+
+    .log-entry.error .log-level { color: var(--error-color); }
+    .log-entry.warning .log-level { color: var(--warning-color); }
+    .log-entry.info .log-level { color: var(--accent-color); }
+    .log-entry.debug .log-level { color: var(--text-muted); }
+
+    .log-message {
+        flex: 1;
+    }
+
+    .command-input-container {
+        display: flex;
+        gap: 8px;
+        margin-bottom: 16px;
+    }
+
+    .command-input-container input {
+        flex: 1;
+    }
+
+    .command-output {
+        background-color: var(--bg-primary);
+        border-radius: 6px;
+        padding: 16px;
+        font-family: 'JetBrains Mono', 'Fira Code', monospace;
+        font-size: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+    }
+
+    .command-output pre {
+        margin: 0;
+        white-space: pre-wrap;
+    }
+
+    .system-info-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+    }
+
+    .info-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+    }
+
+    .info-label {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .info-value {
+        font-weight: 500;
+    }
+</style>

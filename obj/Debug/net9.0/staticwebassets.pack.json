@@ -1,0 +1,353 @@
+{
+  "Files": [
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/css/site.css",
+      "PackagePath": "staticwebassets/css/site.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/favicon.ico",
+      "PackagePath": "staticwebassets/favicon.ico"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-128.png",
+      "PackagePath": "staticwebassets/icons/icon-128.png"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-128.svg",
+      "PackagePath": "staticwebassets/icons/icon-128.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-144.png",
+      "PackagePath": "staticwebassets/icons/icon-144.png"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-144.svg",
+      "PackagePath": "staticwebassets/icons/icon-144.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-152.png",
+      "PackagePath": "staticwebassets/icons/icon-152.png"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-152.svg",
+      "PackagePath": "staticwebassets/icons/icon-152.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-192.png",
+      "PackagePath": "staticwebassets/icons/icon-192.png"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-192.svg",
+      "PackagePath": "staticwebassets/icons/icon-192.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-384.png",
+      "PackagePath": "staticwebassets/icons/icon-384.png"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-384.svg",
+      "PackagePath": "staticwebassets/icons/icon-384.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-512.png",
+      "PackagePath": "staticwebassets/icons/icon-512.png"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-512.svg",
+      "PackagePath": "staticwebassets/icons/icon-512.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-72.png",
+      "PackagePath": "staticwebassets/icons/icon-72.png"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-72.svg",
+      "PackagePath": "staticwebassets/icons/icon-72.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-96.png",
+      "PackagePath": "staticwebassets/icons/icon-96.png"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon-96.svg",
+      "PackagePath": "staticwebassets/icons/icon-96.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/icons/icon.svg",
+      "PackagePath": "staticwebassets/icons/icon.svg"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/js/site.js",
+      "PackagePath": "staticwebassets/js/site.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/LICENSE",
+      "PackagePath": "staticwebassets/lib/bootstrap"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-grid.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-grid.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-grid.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-grid.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-grid.min.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-grid.min.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-grid.min.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-grid.min.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-grid.rtl.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-grid.rtl.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-grid.rtl.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-grid.rtl.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-grid.rtl.min.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-grid.rtl.min.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-grid.rtl.min.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-grid.rtl.min.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-reboot.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-reboot.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-reboot.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-reboot.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-reboot.min.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-reboot.min.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-reboot.min.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-reboot.min.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-reboot.rtl.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-reboot.rtl.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-reboot.rtl.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-reboot.rtl.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-reboot.rtl.min.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-reboot.rtl.min.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-reboot.rtl.min.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-reboot.rtl.min.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-utilities.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-utilities.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-utilities.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-utilities.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-utilities.min.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-utilities.min.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-utilities.min.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-utilities.min.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-utilities.rtl.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-utilities.rtl.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-utilities.rtl.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-utilities.rtl.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-utilities.rtl.min.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-utilities.rtl.min.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap-utilities.rtl.min.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap-utilities.rtl.min.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap.min.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap.min.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap.min.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap.min.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap.rtl.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap.rtl.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap.rtl.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap.rtl.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap.rtl.min.css",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap.rtl.min.css"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/css/bootstrap.rtl.min.css.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/css/bootstrap.rtl.min.css.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.bundle.js",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.bundle.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.bundle.js.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.bundle.js.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.bundle.min.js",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.bundle.min.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.bundle.min.js.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.bundle.min.js.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.esm.js",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.esm.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.esm.js.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.esm.js.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.esm.min.js",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.esm.min.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.esm.min.js.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.esm.min.js.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.js",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.js.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.js.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.min.js",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.min.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/bootstrap/dist/js/bootstrap.min.js.map",
+      "PackagePath": "staticwebassets/lib/bootstrap/dist/js/bootstrap.min.js.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery-validation-unobtrusive/LICENSE.txt",
+      "PackagePath": "staticwebassets/lib/jquery-validation-unobtrusive/LICENSE.txt"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.js",
+      "PackagePath": "staticwebassets/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.min.js",
+      "PackagePath": "staticwebassets/lib/jquery-validation-unobtrusive/dist/jquery.validate.unobtrusive.min.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery-validation/LICENSE.md",
+      "PackagePath": "staticwebassets/lib/jquery-validation/LICENSE.md"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery-validation/dist/additional-methods.js",
+      "PackagePath": "staticwebassets/lib/jquery-validation/dist/additional-methods.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery-validation/dist/additional-methods.min.js",
+      "PackagePath": "staticwebassets/lib/jquery-validation/dist/additional-methods.min.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery-validation/dist/jquery.validate.js",
+      "PackagePath": "staticwebassets/lib/jquery-validation/dist/jquery.validate.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery-validation/dist/jquery.validate.min.js",
+      "PackagePath": "staticwebassets/lib/jquery-validation/dist/jquery.validate.min.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery/LICENSE.txt",
+      "PackagePath": "staticwebassets/lib/jquery/LICENSE.txt"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery/dist/jquery.js",
+      "PackagePath": "staticwebassets/lib/jquery/dist/jquery.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery/dist/jquery.min.js",
+      "PackagePath": "staticwebassets/lib/jquery/dist/jquery.min.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery/dist/jquery.min.map",
+      "PackagePath": "staticwebassets/lib/jquery/dist/jquery.min.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery/dist/jquery.slim.js",
+      "PackagePath": "staticwebassets/lib/jquery/dist/jquery.slim.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery/dist/jquery.slim.min.js",
+      "PackagePath": "staticwebassets/lib/jquery/dist/jquery.slim.min.js"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/lib/jquery/dist/jquery.slim.min.map",
+      "PackagePath": "staticwebassets/lib/jquery/dist/jquery.slim.min.map"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/manifest.json",
+      "PackagePath": "staticwebassets/manifest.json"
+    },
+    {
+      "Id": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/wwwroot/serviceworker.js",
+      "PackagePath": "staticwebassets/serviceworker.js"
+    },
+    {
+      "Id": "obj/Debug/net9.0/staticwebassets/msbuild.SkanyxxWeb.Microsoft.AspNetCore.StaticWebAssetEndpoints.props",
+      "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssetEndpoints.props"
+    },
+    {
+      "Id": "obj/Debug/net9.0/staticwebassets/msbuild.SkanyxxWeb.Microsoft.AspNetCore.StaticWebAssets.props",
+      "PackagePath": "build\\Microsoft.AspNetCore.StaticWebAssets.props"
+    },
+    {
+      "Id": "obj/Debug/net9.0/staticwebassets/msbuild.build.SkanyxxWeb.props",
+      "PackagePath": "build\\SkanyxxWeb.props"
+    },
+    {
+      "Id": "obj/Debug/net9.0/staticwebassets/msbuild.buildMultiTargeting.SkanyxxWeb.props",
+      "PackagePath": "buildMultiTargeting\\SkanyxxWeb.props"
+    },
+    {
+      "Id": "obj/Debug/net9.0/staticwebassets/msbuild.buildTransitive.SkanyxxWeb.props",
+      "PackagePath": "buildTransitive\\SkanyxxWeb.props"
+    }
+  ],
+  "ElementsToRemove": []
+}

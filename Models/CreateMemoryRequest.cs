@@ -1,9 +1,8 @@
-namespace SkanyxxMaui.Models;
+namespace SkanyxxWeb.Models;
 
 public class CreateMemoryRequest
 {
-    public string Ref { get; set; } = string.Empty;
-    public MemoryProvider Provider { get; set; } = new();
-    public string ApiKey { get; set; } = string.Empty;
-    public PineconeParams? PineconeParams { get; set; }
+    public string Category { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
 }

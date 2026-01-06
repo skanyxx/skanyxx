@@ -1,10 +1,11 @@
-namespace SkanyxxMaui.Models;
+namespace SkanyxxWeb.Models;
 
 public class Hook
 {
-    public string ApiVersion { get; set; } = string.Empty;
-    public string Kind { get; set; } = string.Empty;
-    public HookMetadata Metadata { get; set; } = new();
-    public HookSpec Spec { get; set; } = new();
-    public HookStatus? Status { get; set; }
+    public string Id { get; set; } = Guid.NewGuid().ToString();
+    public string Name { get; set; } = string.Empty;
+    public string Trigger { get; set; } = string.Empty;
+    public string Target { get; set; } = string.Empty;
+    public string Status { get; set; } = "Active";
+    public DateTime? LastTriggered { get; set; }
 }
