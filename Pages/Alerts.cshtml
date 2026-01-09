@@ -4,9 +4,13 @@
     ViewData["Title"] = "Alerts";
 }
 
+<!-- Header Card -->
 <div class="card mb-3">
     <div class="card-header">
-        <h3 class="card-title">Alert Management</h3>
+        <div>
+            <h3 class="card-title">Alert Management</h3>
+            <p class="text-muted" style="margin: 4px 0 0 0; font-size: 13px;">Real-time cluster event monitoring and alerting.</p>
+        </div>
         <div class="header-actions">
             <button class="btn btn-secondary" id="btnRefresh">Refresh</button>
             <button class="btn btn-primary" id="btnNewAlert">+ New Alert</button>
@@ -14,25 +18,62 @@
     </div>
 </div>
 
-<div class="stats-grid">
-    <div class="stat-card">
-        <div class="stat-value text-error" id="statCritical">0</div>
-        <div class="stat-label">Critical</div>
+<!-- Stats Cards -->
+<div class="grid grid-cols-4 gap-2 mb-3">
+    <div class="metric-card">
+        <div class="metric-icon error">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="15" y1="9" x2="9" y2="15"></line>
+                <line x1="9" y1="9" x2="15" y2="15"></line>
+            </svg>
+        </div>
+        <div class="metric-content">
+            <p class="metric-label">Critical</p>
+            <p class="metric-value text-error" id="statCritical">0</p>
+        </div>
     </div>
-    <div class="stat-card">
-        <div class="stat-value text-warning" id="statWarning">0</div>
-        <div class="stat-label">Warning</div>
+    <div class="metric-card">
+        <div class="metric-icon warning">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+        </div>
+        <div class="metric-content">
+            <p class="metric-label">Warning</p>
+            <p class="metric-value text-warning" id="statWarning">0</p>
+        </div>
     </div>
-    <div class="stat-card">
-        <div class="stat-value text-accent" id="statInfo">0</div>
-        <div class="stat-label">Info</div>
+    <div class="metric-card">
+        <div class="metric-icon info">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="16" x2="12" y2="12"></line>
+                <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+        </div>
+        <div class="metric-content">
+            <p class="metric-label">Info</p>
+            <p class="metric-value text-info" id="statInfo">0</p>
+        </div>
     </div>
-    <div class="stat-card">
-        <div class="stat-value text-success" id="statResolved">0</div>
-        <div class="stat-label">Resolved</div>
+    <div class="metric-card">
+        <div class="metric-icon success">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+        </div>
+        <div class="metric-content">
+            <p class="metric-label">Resolved</p>
+            <p class="metric-value text-success" id="statResolved">0</p>
+        </div>
     </div>
 </div>
 
+<!-- Active Alerts -->
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">Active Alerts</h3>
@@ -85,24 +126,65 @@
 </div>
 
 <style>
+    /* Metric Cards */
+    .metric-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+    }
+    .metric-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid;
+    }
+    .metric-icon.error { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: #ef4444; }
+    .metric-icon.warning { background: rgba(249, 115, 22, 0.15); border-color: rgba(249, 115, 22, 0.3); color: #f97316; }
+    .metric-icon.info { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); color: #3b82f6; }
+    .metric-icon.success { background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.3); color: #22c55e; }
+    .metric-content { flex: 1; }
+    .metric-label { font-size: 12px; color: var(--text-muted); margin: 0 0 4px 0; }
+    .metric-value { font-size: 28px; font-weight: 700; margin: 0; }
+    .text-error { color: #ef4444; }
+    .text-warning { color: #f97316; }
+    .text-info { color: #3b82f6; }
+    .text-success { color: #22c55e; }
+
+    /* Alert Filters */
     .alert-filters { display: flex; gap: 4px; }
-    .alert-filters .btn.active { background-color: var(--bg-tertiary); }
-    .alerts-list { display: flex; flex-direction: column; gap: 12px; }
+    .alert-filters .btn { padding: 6px 12px; font-size: 13px; }
+    .alert-filters .btn.active { background-color: var(--bg-tertiary); color: var(--accent-color); }
+
+    /* Alerts List */
+    .alerts-list { display: flex; flex-direction: column; gap: 12px; padding: 16px 0; }
     .alert-item {
         display: flex; gap: 16px; padding: 16px;
         background-color: var(--bg-tertiary); border-radius: 8px;
         border-left: 4px solid transparent;
     }
-    .alert-item.critical { border-left-color: var(--error-color); }
-    .alert-item.warning { border-left-color: var(--warning-color); }
-    .alert-item.info { border-left-color: var(--accent-color); }
+    .alert-item.critical { border-left-color: #ef4444; }
+    .alert-item.warning { border-left-color: #f97316; }
+    .alert-item.info { border-left-color: #3b82f6; }
     .alert-severity { font-size: 20px; }
     .alert-content { flex: 1; }
     .alert-title { font-weight: 600; margin-bottom: 4px; }
     .alert-description { color: var(--text-secondary); font-size: 13px; margin-bottom: 8px; }
     .alert-meta { display: flex; align-items: center; gap: 12px; }
     .alert-actions { display: flex; gap: 8px; align-items: flex-start; }
-    .loading-state { text-align: center; padding: 20px; color: var(--text-muted); }
+
+    /* Empty State */
+    .loading-state { text-align: center; padding: 40px; color: var(--text-muted); }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
+    .empty-state-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+
+    /* Modal */
     .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
     .modal.active { display: flex; }
     .modal-content { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; }
@@ -113,6 +195,12 @@
     .form-group label { display: block; margin-bottom: 6px; font-weight: 500; }
     .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
     .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+
+    /* Badges */
+    .badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600; text-transform: capitalize; }
+    .badge-error { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+    .badge-warning { background: rgba(249, 115, 22, 0.15); color: #f97316; }
+    .badge-info { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
 </style>
 
 <script>
@@ -162,6 +250,7 @@
             .catch(function() {
                 alerts = [];
                 renderAlerts();
+                updateStats();
             });
     }
 
@@ -170,26 +259,35 @@
         var filtered = currentFilter === 'all' ? alerts : alerts.filter(function(a) { return a.severity === currentFilter; });
 
         if (filtered.length === 0) {
-            container.innerHTML = '<div class="loading-state">No alerts. Click "+ New Alert" to create one.</div>';
+            container.innerHTML = '<div class="empty-state">' +
+                '<div class="empty-state-icon">&#x1F514;</div>' +
+                '<h3>No Alerts</h3>' +
+                '<p>No alerts found. Click "+ New Alert" to create one.</p>' +
+                '</div>';
             return;
         }
 
         var html = '';
         filtered.forEach(function(alert) {
-            var sevColor = alert.severity === 'critical' ? 'var(--error-color)' : (alert.severity === 'warning' ? 'var(--warning-color)' : 'var(--accent-color)');
+            var sevColor = alert.severity === 'critical' ? '#ef4444' : (alert.severity === 'warning' ? '#f97316' : '#3b82f6');
             var badgeClass = alert.severity === 'critical' ? 'badge-error' : (alert.severity === 'warning' ? 'badge-warning' : 'badge-info');
+            var sevIcon = alert.severity === 'critical' ? '&#x26D4;' : (alert.severity === 'warning' ? '&#x26A0;' : '&#x2139;');
 
             html += '<div class="alert-item ' + alert.severity + '" data-id="' + alert.id + '">';
-            html += '<div class="alert-severity"><span style="color:' + sevColor + '">&#x25B3;</span></div>';
+            html += '<div class="alert-severity"><span style="color:' + sevColor + '">' + sevIcon + '</span></div>';
             html += '<div class="alert-content">';
-            html += '<div class="alert-title">' + (alert.title || alert.name || 'Alert') + '</div>';
-            html += '<div class="alert-description">' + (alert.description || alert.message || '') + '</div>';
+            html += '<div class="alert-title">' + escapeHtml(alert.title || alert.name || 'Alert') + '</div>';
+            html += '<div class="alert-description">' + escapeHtml(alert.description || alert.message || '') + '</div>';
             html += '<div class="alert-meta"><span class="badge ' + badgeClass + '">' + alert.severity + '</span>';
-            html += '<span class="text-muted">' + (alert.source || '-') + '</span></div>';
+            html += '<span class="text-muted">' + escapeHtml(alert.source || '-') + '</span>';
+            if (alert.createdAt) {
+                html += '<span class="text-muted">' + formatTime(alert.createdAt) + '</span>';
+            }
+            html += '</div>';
             html += '</div>';
             html += '<div class="alert-actions">';
-            html += '<button class="btn btn-ghost btn-ack" data-id="' + alert.id + '">Acknowledge</button>';
-            html += '<button class="btn btn-ghost btn-dismiss" data-id="' + alert.id + '">Dismiss</button>';
+            html += '<button class="btn btn-ghost btn-sm btn-ack" data-id="' + alert.id + '">Acknowledge</button>';
+            html += '<button class="btn btn-ghost btn-sm btn-dismiss" data-id="' + alert.id + '">Dismiss</button>';
             html += '</div></div>';
         });
 
@@ -207,11 +305,12 @@
         var critical = alerts.filter(function(a) { return a.severity === 'critical'; }).length;
         var warning = alerts.filter(function(a) { return a.severity === 'warning'; }).length;
         var info = alerts.filter(function(a) { return a.severity === 'info'; }).length;
+        var resolved = alerts.filter(function(a) { return a.status === 'resolved'; }).length;
 
         document.getElementById('statCritical').textContent = critical;
         document.getElementById('statWarning').textContent = warning;
         document.getElementById('statInfo').textContent = info;
-        document.getElementById('statResolved').textContent = '0';
+        document.getElementById('statResolved').textContent = resolved;
     }
 
     function createAlert(e) {
@@ -229,7 +328,7 @@
             body: JSON.stringify(data)
         })
         .then(function(r) {
-            if (r.ok) { hideModal(); loadAlerts(); alert('Alert created!'); }
+            if (r.ok) { hideModal(); loadAlerts(); }
             else throw new Error('Failed');
         })
         .catch(function(err) { alert('Error: ' + err.message); });
@@ -245,6 +344,19 @@
         fetch('/api/alerts/' + id, { method: 'DELETE' })
             .then(function() { loadAlerts(); })
             .catch(function(err) { console.error(err); });
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '';
+        var date = new Date(ts);
+        return date.toLocaleString();
+    }
+
+    function escapeHtml(text) {
+        if (!text) return '';
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 })();
 </script>

@@ -1,6 +1,12 @@
 # Build results
 bin/
 obj/
+Debug/
+Release/
+**/bin/
+**/obj/
+**/Debug/
+**/Release/
 
 # IDE
 .idea/

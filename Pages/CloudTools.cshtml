@@ -6,115 +6,221 @@
 
 <div class="card mb-3">
     <div class="card-header">
-        <h3 class="card-title">Cloud Tools</h3>
-        <div class="header-actions">
-            <button class="btn btn-secondary" id="btnRefresh">Refresh</button>
-            <button class="btn btn-primary" id="btnConnectProvider">+ Connect Provider</button>
+        <div class="header-title-group">
+            <div class="header-icon cloud-icon">&#x2601;</div>
+            <div>
+                <h3 class="card-title">Cloud Tools & REPL</h3>
+                <p class="text-muted" style="margin: 0; font-size: 12px;">Infrastructure management and scripting</p>
+            </div>
         </div>
+        <button class="btn btn-ghost" id="btnConfigureTools">
+            <span>&#x2699;</span> Configure Tools
+        </button>
     </div>
-    <p class="text-muted">Manage your cloud infrastructure and resources.</p>
 </div>
 
-<div class="provider-grid" id="providerGrid">
-    <div class="loading-state">Loading providers...</div>
-</div>
-
-<div class="card mt-3">
+<!-- Tool Configuration Panel (hidden by default) -->
+<div class="card mb-3" id="toolConfigPanel" style="display: none;">
     <div class="card-header">
-        <h3 class="card-title">Quick Actions</h3>
+        <h4 style="margin: 0;">Tool Configuration</h4>
+        <button class="btn btn-primary btn-sm" id="btnRefreshTools">Refresh</button>
     </div>
-    <div class="quick-actions-grid">
-        <button class="quick-action-btn" id="btnScaleUp">
-            <span class="quick-action-icon">&#x25B3;</span>
-            <span>Scale Up</span>
-        </button>
-        <button class="quick-action-btn" id="btnScaleDown">
-            <span class="quick-action-icon">&#x25BD;</span>
-            <span>Scale Down</span>
-        </button>
-        <button class="quick-action-btn" id="btnRestart">
-            <span class="quick-action-icon">&#x21BB;</span>
-            <span>Restart Services</span>
-        </button>
-        <button class="quick-action-btn" id="btnConfigure">
-            <span class="quick-action-icon">&#x2699;</span>
-            <span>Configure</span>
-        </button>
+    <div class="tool-config-grid">
+        <div class="tool-config-card" id="azureToolConfig">
+            <div class="tool-status-header">
+                <span class="status-icon" id="azureStatusIcon">&#x2717;</span>
+                <h5>Azure Resource Finder</h5>
+            </div>
+            <div id="azureToolDetails">
+                <p class="text-muted">Checking...</p>
+            </div>
+        </div>
+        <div class="tool-config-card" id="ruchyToolConfig">
+            <div class="tool-status-header">
+                <span class="status-icon" id="ruchyStatusIcon">&#x2717;</span>
+                <h5>Ruchy REPL</h5>
+            </div>
+            <div id="ruchyToolDetails">
+                <p class="text-muted">Checking...</p>
+            </div>
+        </div>
     </div>
 </div>
 
-<!-- Connect Provider Modal -->
-<div class="modal" id="providerModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Connect Cloud Provider</h3>
-            <button class="btn btn-ghost" id="btnCloseModal">&times;</button>
+<!-- Tool Status Cards -->
+<div class="stats-grid mb-3">
+    <div class="stat-card" id="azureStatusCard">
+        <div class="stat-icon error" id="azureStatIcon">&#x2717;</div>
+        <div>
+            <div class="stat-label">Azure Resource Finder</div>
+            <div class="stat-value" id="azureStatValue">Not Found</div>
         </div>
-        <form id="providerForm">
-            <div class="form-group">
-                <label>Provider</label>
-                <select id="providerType">
-                    <option value="aws">Amazon Web Services (AWS)</option>
-                    <option value="gcp">Google Cloud Platform (GCP)</option>
-                    <option value="azure">Microsoft Azure</option>
-                    <option value="digitalocean">DigitalOcean</option>
-                </select>
+    </div>
+    <div class="stat-card" id="ruchyStatusCard">
+        <div class="stat-icon error" id="ruchyStatIcon">&#x2717;</div>
+        <div>
+            <div class="stat-label">Ruchy REPL</div>
+            <div class="stat-value" id="ruchyStatValue">Not Found</div>
+        </div>
+    </div>
+</div>
+
+<!-- Tab Navigation -->
+<div class="card">
+    <div class="tab-nav">
+        <button class="tab-btn active" data-tab="search">
+            <span>&#x1F50D;</span> Cloud Search
+        </button>
+        <button class="tab-btn" data-tab="repl">
+            <span>&#x2328;</span> Ruchy REPL
+        </button>
+    </div>
+
+    <!-- Cloud Search Tab -->
+    <div class="tab-content active" id="searchTab">
+        <!-- Provider Selection -->
+        <div class="provider-tabs">
+            <button class="provider-tab active" data-provider="azure">AZURE</button>
+            <button class="provider-tab disabled" data-provider="aws">AWS (COMING SOON)</button>
+            <button class="provider-tab disabled" data-provider="gcp">GCP (COMING SOON)</button>
+        </div>
+
+        <!-- Search Input -->
+        <div class="search-container">
+            <input type="text" id="searchQuery" placeholder="Search Azure resources (e.g., 'vm list', 'storage account show')" />
+            <button class="btn btn-primary" id="btnSearch">
+                <span>&#x1F50D;</span> Search
+            </button>
+        </div>
+
+        <!-- Azure Auth Status -->
+        <div class="auth-status error" id="azureAuthStatus">
+            <div class="auth-status-header">
+                <span class="status-icon">&#x2717;</span>
+                <span class="auth-title">Azure Authentication Required</span>
+                <div class="auth-actions">
+                    <button class="btn btn-ghost btn-sm" id="btnTestAzure">Test Azure CLI</button>
+                    <button class="btn btn-ghost btn-sm" id="btnRefreshAuth">Refresh</button>
+                </div>
             </div>
-            <div class="form-group">
-                <label>Name</label>
-                <input type="text" id="providerName" required placeholder="My AWS Account" />
+            <p class="auth-message">Azure CLI not found.</p>
+            <p class="auth-hint">Run <code>az login</code> in your terminal.</p>
+        </div>
+
+        <!-- Search Results -->
+        <div class="search-results" id="searchResults" style="display: none;">
+            <pre id="searchResultsContent"></pre>
+        </div>
+    </div>
+
+    <!-- Ruchy REPL Tab -->
+    <div class="tab-content" id="replTab">
+        <div class="repl-tip">
+            <span>&#x1F4A1;</span>
+            <div>
+                <strong>Tip: Define functions first before calling them</strong>
+                <p>Example: <code>fn square(x) { return x * x }</code></p>
+                <p id="definedFunctions" style="display: none;">Defined functions: <span></span></p>
             </div>
-            <div class="form-group">
-                <label>Access Key / Credentials</label>
-                <input type="password" id="providerKey" placeholder="Access key or credentials" />
-            </div>
-            <div class="form-group">
-                <label>Region</label>
-                <input type="text" id="providerRegion" placeholder="us-east-1" />
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-ghost" id="btnCancelModal">Cancel</button>
-                <button type="submit" class="btn btn-primary">Connect</button>
-            </div>
-        </form>
+        </div>
+
+        <!-- REPL Output -->
+        <div class="repl-output" id="replOutput">
+            <pre>Ruchy REPL - Type your commands below
+
+Examples:
+> fn square(x) { return x * x }  // Define a function
+> square(5)                       // Call the function
+> let x = 10                      // Define a variable
+> x * 2                           // Use the variable
+
+Common mistake: Don't use 'fn' when calling a function!
+&#x274C; fn square(4)  // Wrong - this tries to define a function
+&#x2705; square(4)     // Correct - this calls the function</pre>
+        </div>
+
+        <!-- REPL Input -->
+        <div class="repl-input-container">
+            <input type="text" id="replCommand" placeholder="Enter Ruchy command..." />
+            <button class="btn btn-primary" id="btnExecute">
+                <span>&#x25B6;</span> Execute
+            </button>
+        </div>
+        <button class="btn btn-error btn-sm" id="btnClearRepl">Clear Session</button>
     </div>
 </div>
 
 <style>
-    .provider-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; }
-    .provider-card { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; }
-    .provider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-    .provider-logo { font-size: 24px; font-weight: 700; }
-    .provider-logo.aws { color: #ff9900; }
-    .provider-logo.gcp { color: #4285f4; }
-    .provider-logo.azure { color: #0089d6; }
-    .provider-logo.digitalocean { color: #0080ff; }
-    .provider-stats { display: flex; gap: 16px; padding: 16px 0; border-top: 1px solid var(--border-color); border-bottom: 1px solid var(--border-color); margin-bottom: 16px; }
-    .provider-stat { display: flex; flex-direction: column; flex: 1; }
-    .provider-stat .stat-value { font-size: 20px; font-weight: 700; color: var(--accent-color); }
-    .provider-stat .stat-label { font-size: 11px; color: var(--text-muted); }
-    .provider-actions { display: flex; gap: 8px; }
-    .quick-actions-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
-    .quick-action-btn { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px; background-color: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); cursor: pointer; transition: all 0.15s ease; }
-    .quick-action-btn:hover { border-color: var(--accent-color); background-color: var(--bg-secondary); }
-    .quick-action-icon { font-size: 24px; }
-    .loading-state { text-align: center; padding: 40px; color: var(--text-muted); grid-column: 1 / -1; }
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
-    .modal.active { display: flex; }
-    .modal-content { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); }
-    .modal-header h3 { margin: 0; }
-    #providerForm { padding: 20px; }
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; margin-bottom: 6px; font-weight: 500; }
-    .form-group input, .form-group select { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+    .header-title-group { display: flex; align-items: center; gap: 12px; }
+    .header-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+    .cloud-icon { background: var(--accent-color); color: white; }
+
+    .tool-config-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; padding: 16px; }
+    .tool-config-card { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
+    .tool-status-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .tool-status-header h5 { margin: 0; font-weight: 600; }
+    .status-icon { font-size: 18px; }
+    .status-icon.success { color: var(--success-color); }
+    .status-icon.error { color: var(--error-color); }
+
+    .stats-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .stat-card { display: flex; align-items: center; gap: 12px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; }
+    .stat-icon { width: 40px; height: 40px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; }
+    .stat-icon.success { background: rgba(34, 197, 94, 0.2); color: var(--success-color); }
+    .stat-icon.error { background: rgba(239, 68, 68, 0.2); color: var(--error-color); }
+    .stat-label { font-size: 12px; color: var(--text-muted); }
+    .stat-value { font-weight: 600; }
+
+    .tab-nav { display: flex; gap: 8px; margin-bottom: 16px; }
+    .tab-btn { flex: 1; padding: 12px; background: transparent; border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; transition: all 0.15s; }
+    .tab-btn:hover { background: var(--bg-tertiary); }
+    .tab-btn.active { background: var(--accent-color); color: white; border-color: var(--accent-color); }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .provider-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+    .provider-tab { flex: 1; padding: 10px; background: transparent; border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-secondary); cursor: pointer; font-weight: 600; font-size: 12px; transition: all 0.15s; }
+    .provider-tab:hover:not(.disabled) { background: var(--bg-tertiary); }
+    .provider-tab.active { background: var(--accent-color); color: white; border-color: var(--accent-color); }
+    .provider-tab.disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .search-container { display: flex; gap: 12px; margin-bottom: 16px; }
+    .search-container input { flex: 1; }
+
+    .auth-status { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .auth-status.success { background: rgba(34, 197, 94, 0.1); border-color: rgba(34, 197, 94, 0.2); }
+    .auth-status-header { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+    .auth-title { font-weight: 600; flex: 1; }
+    .auth-status.error .auth-title { color: var(--error-color); }
+    .auth-status.success .auth-title { color: var(--success-color); }
+    .auth-actions { display: flex; gap: 8px; }
+    .auth-message { font-size: 12px; color: var(--text-secondary); margin: 0 0 4px 0; }
+    .auth-hint { font-size: 12px; color: var(--text-muted); margin: 0; }
+    .auth-hint code { background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; }
+
+    .search-results { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; max-height: 400px; overflow: auto; }
+    .search-results pre { margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+    .search-results.error pre { color: var(--error-color); }
+    .search-results.success pre { color: var(--success-color); }
+
+    .repl-tip { display: flex; gap: 12px; background: rgba(99, 102, 241, 0.1); border: 1px solid rgba(99, 102, 241, 0.2); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+    .repl-tip strong { display: block; margin-bottom: 4px; }
+    .repl-tip p { font-size: 12px; color: var(--text-secondary); margin: 0; }
+    .repl-tip code { background: var(--bg-tertiary); padding: 2px 6px; border-radius: 4px; }
+
+    .repl-output { background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; height: 300px; overflow: auto; margin-bottom: 16px; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+    .repl-output pre { margin: 0; font-size: 13px; white-space: pre-wrap; line-height: 1.5; }
+
+    .repl-input-container { display: flex; gap: 12px; margin-bottom: 12px; }
+    .repl-input-container input { flex: 1; font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 </style>
 
 <script>
 (function() {
-    var providers = [];
-    var providerNames = { aws: 'AWS', gcp: 'GCP', azure: 'Azure', digitalocean: 'DO' };
+    var toolStatus = { azure: false, ruchy: false };
+    var azureAuth = { available: false, loggedIn: false };
+    var replOutput = '';
+    var definedFunctions = [];
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -123,120 +229,236 @@
     }
 
     function init() {
-        document.getElementById('btnConnectProvider').addEventListener('click', function() { showModal(); });
-        document.getElementById('btnCloseModal').addEventListener('click', hideModal);
-        document.getElementById('btnCancelModal').addEventListener('click', hideModal);
-        document.getElementById('btnRefresh').addEventListener('click', loadProviders);
-        document.getElementById('providerForm').addEventListener('submit', connectProvider);
+        // Tab navigation
+        document.querySelectorAll('.tab-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var tab = this.getAttribute('data-tab');
+                switchTab(tab);
+            });
+        });
 
-        // Quick actions
-        document.getElementById('btnScaleUp').addEventListener('click', function() { executeAction('scale-up'); });
-        document.getElementById('btnScaleDown').addEventListener('click', function() { executeAction('scale-down'); });
-        document.getElementById('btnRestart').addEventListener('click', function() { executeAction('restart'); });
-        document.getElementById('btnConfigure').addEventListener('click', function() { alert('Opening configuration...'); });
+        // Provider tabs
+        document.querySelectorAll('.provider-tab:not(.disabled)').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.provider-tab').forEach(function(b) { b.classList.remove('active'); });
+                this.classList.add('active');
+            });
+        });
 
-        loadProviders();
+        // Buttons
+        document.getElementById('btnConfigureTools').addEventListener('click', toggleToolConfig);
+        document.getElementById('btnRefreshTools').addEventListener('click', checkToolAvailability);
+        document.getElementById('btnSearch').addEventListener('click', searchResources);
+        document.getElementById('btnTestAzure').addEventListener('click', testAzureCLI);
+        document.getElementById('btnRefreshAuth').addEventListener('click', checkAzureAuth);
+        document.getElementById('btnExecute').addEventListener('click', executeReplCommand);
+        document.getElementById('btnClearRepl').addEventListener('click', clearRepl);
+
+        // Enter key handlers
+        document.getElementById('searchQuery').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') searchResources();
+        });
+        document.getElementById('replCommand').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') executeReplCommand();
+        });
+
+        // Initial load
+        checkToolAvailability();
     }
 
-    function showModal() {
-        document.getElementById('providerForm').reset();
-        document.getElementById('providerModal').classList.add('active');
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+        document.querySelectorAll('.tab-content').forEach(function(c) { c.classList.remove('active'); });
+        document.querySelector('.tab-btn[data-tab="' + tab + '"]').classList.add('active');
+        document.getElementById(tab + 'Tab').classList.add('active');
     }
 
-    function hideModal() {
-        document.getElementById('providerModal').classList.remove('active');
+    function toggleToolConfig() {
+        var panel = document.getElementById('toolConfigPanel');
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
     }
 
-    function loadProviders() {
-        fetch('/api/cloud-providers')
+    function checkToolAvailability() {
+        fetch('/api/cloudtools/status')
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                providers = data || [];
-                renderProviders();
+                toolStatus = data;
+                updateToolStatus();
             })
             .catch(function() {
-                providers = [];
-                renderProviders();
+                toolStatus = { azure: false, ruchy: false, azureAuth: { available: false, loggedIn: false } };
+                updateToolStatus();
             });
     }
 
-    function renderProviders() {
-        var container = document.getElementById('providerGrid');
+    function updateToolStatus() {
+        // Azure status
+        var azureIcon = toolStatus.azure ? '&#x2713;' : '&#x2717;';
+        var azureClass = toolStatus.azure ? 'success' : 'error';
+        var azureValue = toolStatus.azure ? 'Available' : 'Not Found';
 
-        if (providers.length === 0) {
-            container.innerHTML = '<div class="loading-state">No cloud providers connected. Click "+ Connect Provider" to add one.</div>';
-            return;
+        document.getElementById('azureStatusIcon').innerHTML = azureIcon;
+        document.getElementById('azureStatusIcon').className = 'status-icon ' + azureClass;
+        document.getElementById('azureStatIcon').innerHTML = azureIcon;
+        document.getElementById('azureStatIcon').className = 'stat-icon ' + azureClass;
+        document.getElementById('azureStatValue').textContent = azureValue;
+
+        if (toolStatus.azure && toolStatus.azurePath) {
+            document.getElementById('azureToolDetails').innerHTML = '<p style="font-size: 12px; color: var(--text-secondary);">Path: <code>' + toolStatus.azurePath + '</code></p><p style="color: var(--success-color); font-size: 12px;"><span class="status-icon success">&#x2713;</span> Available</p>';
+        } else {
+            document.getElementById('azureToolDetails').innerHTML = '<p class="text-muted" style="font-size: 12px;">Tool not found</p><p style="font-size: 11px; color: var(--text-muted);">Install: brew install azure-resource-finder</p>';
         }
 
-        var html = '';
-        providers.forEach(function(p) {
-            var logo = providerNames[p.type] || p.type.toUpperCase();
-            var statusBadge = p.status === 'connected' ? '<span class="badge badge-success">Connected</span>' : '<span class="badge badge-warning">Pending</span>';
+        // Ruchy status
+        var ruchyIcon = toolStatus.ruchy ? '&#x2713;' : '&#x2717;';
+        var ruchyClass = toolStatus.ruchy ? 'success' : 'error';
+        var ruchyValue = toolStatus.ruchy ? 'Available' : 'Not Found';
 
-            html += '<div class="provider-card" data-id="' + p.id + '">';
-            html += '<div class="provider-header">';
-            html += '<span class="provider-logo ' + p.type + '">' + logo + '</span>';
-            html += statusBadge + '</div>';
-            html += '<div class="provider-stats">';
-            html += '<div class="provider-stat"><span class="stat-value">' + (p.instances || 0) + '</span><span class="stat-label">Instances</span></div>';
-            html += '<div class="provider-stat"><span class="stat-value">' + (p.databases || 0) + '</span><span class="stat-label">Databases</span></div>';
-            html += '<div class="provider-stat"><span class="stat-value">' + (p.clusters || 0) + '</span><span class="stat-label">Clusters</span></div>';
-            html += '</div>';
-            html += '<div class="provider-actions">';
-            html += '<button class="btn btn-secondary btn-manage" data-id="' + p.id + '">Manage</button>';
-            html += '<button class="btn btn-ghost btn-disconnect" data-id="' + p.id + '">Disconnect</button>';
-            html += '</div></div>';
-        });
+        document.getElementById('ruchyStatusIcon').innerHTML = ruchyIcon;
+        document.getElementById('ruchyStatusIcon').className = 'status-icon ' + ruchyClass;
+        document.getElementById('ruchyStatIcon').innerHTML = ruchyIcon;
+        document.getElementById('ruchyStatIcon').className = 'stat-icon ' + ruchyClass;
+        document.getElementById('ruchyStatValue').textContent = ruchyValue;
 
-        container.innerHTML = html;
+        if (toolStatus.ruchy && toolStatus.ruchyPath) {
+            document.getElementById('ruchyToolDetails').innerHTML = '<p style="font-size: 12px; color: var(--text-secondary);">Path: <code>' + toolStatus.ruchyPath + '</code></p><p style="color: var(--success-color); font-size: 12px;"><span class="status-icon success">&#x2713;</span> Available</p>';
+        } else {
+            document.getElementById('ruchyToolDetails').innerHTML = '<p class="text-muted" style="font-size: 12px;">Tool not found</p><p style="font-size: 11px; color: var(--text-muted);">Install: cargo install ruchy</p>';
+        }
 
-        container.querySelectorAll('.btn-manage').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                alert('Managing provider: ' + this.getAttribute('data-id'));
-            });
-        });
-        container.querySelectorAll('.btn-disconnect').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                disconnectProvider(this.getAttribute('data-id'));
-            });
-        });
+        // Azure auth status
+        updateAzureAuthStatus(toolStatus.azureAuth || { available: false, loggedIn: false });
     }
 
-    function connectProvider(e) {
-        e.preventDefault();
-        var data = {
-            type: document.getElementById('providerType').value,
-            name: document.getElementById('providerName').value,
-            accessKey: document.getElementById('providerKey').value,
-            region: document.getElementById('providerRegion').value
-        };
+    function updateAzureAuthStatus(auth) {
+        var statusEl = document.getElementById('azureAuthStatus');
+        if (auth.loggedIn) {
+            statusEl.className = 'auth-status success';
+            statusEl.innerHTML = '<div class="auth-status-header"><span class="status-icon success">&#x2713;</span><span class="auth-title">Azure Authenticated</span><div class="auth-actions"><button class="btn btn-ghost btn-sm" onclick="checkAzureAuth()">Refresh</button></div></div>' +
+                (auth.user ? '<p class="auth-message">Logged in as: ' + auth.user + '</p>' : '');
+        } else {
+            statusEl.className = 'auth-status error';
+            statusEl.innerHTML = '<div class="auth-status-header"><span class="status-icon error">&#x2717;</span><span class="auth-title">Azure Authentication Required</span><div class="auth-actions"><button class="btn btn-ghost btn-sm" id="btnTestAzure">Test Azure CLI</button><button class="btn btn-ghost btn-sm" id="btnRefreshAuth">Refresh</button></div></div>' +
+                '<p class="auth-message">' + (auth.error || 'Azure CLI not found.') + '</p>' +
+                '<p class="auth-hint">Run <code>az login</code> in your terminal.</p>';
 
-        fetch('/api/cloud-providers', {
+            document.getElementById('btnTestAzure').addEventListener('click', testAzureCLI);
+            document.getElementById('btnRefreshAuth').addEventListener('click', checkAzureAuth);
+        }
+    }
+
+    function checkAzureAuth() {
+        fetch('/api/cloudtools/azure-auth')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                updateAzureAuthStatus(data);
+            })
+            .catch(function() {
+                updateAzureAuthStatus({ available: false, loggedIn: false, error: 'Failed to check Azure auth' });
+            });
+    }
+
+    function testAzureCLI() {
+        fetch('/api/cloudtools/test-azure')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                alert('Azure CLI Test:\n' +
+                    'Version available: ' + (data.versionAvailable ? 'Yes' : 'No') + '\n' +
+                    'Account available: ' + (data.accountAvailable ? 'Yes' : 'No') + '\n' +
+                    (data.version ? 'Version: ' + data.version : '') +
+                    (data.error ? '\nError: ' + data.error : ''));
+            })
+            .catch(function(err) {
+                alert('Failed to test Azure CLI: ' + err.message);
+            });
+    }
+
+    function searchResources() {
+        var query = document.getElementById('searchQuery').value.trim();
+        if (!query) return;
+
+        var resultsEl = document.getElementById('searchResults');
+        var contentEl = document.getElementById('searchResultsContent');
+        resultsEl.style.display = 'block';
+        resultsEl.className = 'search-results';
+        contentEl.textContent = 'Searching...';
+
+        fetch('/api/cloudtools/search?query=' + encodeURIComponent(query))
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    resultsEl.className = 'search-results success';
+                    contentEl.textContent = data.output || 'No results found';
+                } else {
+                    resultsEl.className = 'search-results error';
+                    contentEl.textContent = data.error || 'Search failed';
+                }
+            })
+            .catch(function(err) {
+                resultsEl.className = 'search-results error';
+                contentEl.textContent = 'Error: ' + err.message;
+            });
+    }
+
+    function executeReplCommand() {
+        var command = document.getElementById('replCommand').value.trim();
+        if (!command) return;
+
+        document.getElementById('replCommand').value = '';
+        appendReplOutput('> ' + command);
+
+        fetch('/api/cloudtools/repl', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
+            body: JSON.stringify({ command: command })
         })
-        .then(function(r) {
-            if (r.ok) { hideModal(); loadProviders(); alert('Provider connected!'); }
-            else throw new Error('Failed');
-        })
-        .catch(function(err) { alert('Error: ' + err.message); });
-    }
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success && data.output) {
+                    appendReplOutput(data.output);
 
-    function disconnectProvider(id) {
-        if (!confirm('Disconnect this provider?')) return;
-        fetch('/api/cloud-providers/' + id, { method: 'DELETE' })
-            .then(function() { loadProviders(); })
-            .catch(function(err) { console.error(err); });
-    }
-
-    function executeAction(action) {
-        alert('Executing: ' + action + '\nThis will trigger the action on all connected providers.');
-        fetch('/api/cloud-providers/action/' + action, { method: 'POST' })
-            .then(function(r) {
-                if (r.ok) alert(action + ' completed!');
+                    // Check if function was defined
+                    if (command.startsWith('fn ') && command.includes('{')) {
+                        var fnMatch = command.match(/fn\s+(\w+)/);
+                        if (fnMatch) {
+                            definedFunctions.push(fnMatch[1]);
+                            appendReplOutput('Function \'' + fnMatch[1] + '\' defined successfully');
+                            updateDefinedFunctions();
+                        }
+                    }
+                } else if (data.error) {
+                    appendReplOutput('Error: ' + data.error);
+                }
             })
-            .catch(function() { });
+            .catch(function(err) {
+                appendReplOutput('Error: ' + err.message);
+            });
     }
+
+    function appendReplOutput(text) {
+        var outputEl = document.getElementById('replOutput').querySelector('pre');
+        outputEl.textContent += '\n' + text;
+        var container = document.getElementById('replOutput');
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function clearRepl() {
+        document.getElementById('replOutput').querySelector('pre').textContent = 'Ruchy REPL - Session cleared\n';
+        definedFunctions = [];
+        updateDefinedFunctions();
+    }
+
+    function updateDefinedFunctions() {
+        var el = document.getElementById('definedFunctions');
+        if (definedFunctions.length > 0) {
+            el.style.display = 'block';
+            el.querySelector('span').textContent = definedFunctions.join(', ');
+        } else {
+            el.style.display = 'none';
+        }
+    }
+
+    // Expose for inline handlers
+    window.checkAzureAuth = checkAzureAuth;
 })();
 </script>

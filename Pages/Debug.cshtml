@@ -8,8 +8,8 @@
     <div class="card-header">
         <h3 class="card-title">Debug Console</h3>
         <div class="header-actions">
-            <button class="btn btn-secondary">Clear Logs</button>
-            <button class="btn btn-primary">Export</button>
+            <button class="btn btn-secondary" id="btnClearLogs">Clear Logs</button>
+            <button class="btn btn-primary" id="btnExportLogs">Export</button>
         </div>
     </div>
 </div>
@@ -18,45 +18,16 @@
     <div class="card">
         <div class="card-header">
             <h3 class="card-title">System Logs</h3>
-            <select style="width: auto;">
-                <option>All Levels</option>
-                <option>Error</option>
-                <option>Warning</option>
-                <option>Info</option>
-                <option>Debug</option>
+            <select style="width: auto;" id="logLevelFilter">
+                <option value="all">All Levels</option>
+                <option value="error">Error</option>
+                <option value="warning">Warning</option>
+                <option value="info">Info</option>
+                <option value="debug">Debug</option>
             </select>
         </div>
-        <div class="log-container">
-            <div class="log-entry error">
-                <span class="log-time">14:32:15</span>
-                <span class="log-level">ERROR</span>
-                <span class="log-message">Database connection timeout after 30s</span>
-            </div>
-            <div class="log-entry warning">
-                <span class="log-time">14:32:10</span>
-                <span class="log-level">WARN</span>
-                <span class="log-message">High memory usage detected: 87%</span>
-            </div>
-            <div class="log-entry info">
-                <span class="log-time">14:32:05</span>
-                <span class="log-level">INFO</span>
-                <span class="log-message">Agent kubernetes-monitor started successfully</span>
-            </div>
-            <div class="log-entry debug">
-                <span class="log-time">14:32:00</span>
-                <span class="log-level">DEBUG</span>
-                <span class="log-message">Processing webhook payload from GitHub</span>
-            </div>
-            <div class="log-entry info">
-                <span class="log-time">14:31:55</span>
-                <span class="log-level">INFO</span>
-                <span class="log-message">API request completed: GET /api/v1/status (200)</span>
-            </div>
-            <div class="log-entry debug">
-                <span class="log-time">14:31:50</span>
-                <span class="log-level">DEBUG</span>
-                <span class="log-message">Cache hit for key: user_preferences_123</span>
-            </div>
+        <div class="log-container" id="logContainer">
+            <div class="loading-state">Loading logs...</div>
         </div>
     </div>
 
@@ -65,15 +36,11 @@
             <h3 class="card-title">Quick Commands</h3>
         </div>
         <div class="command-input-container">
-            <input type="text" placeholder="Enter command..." id="commandInput" />
-            <button class="btn btn-primary">Run</button>
+            <input type="text" placeholder="Enter kubectl command (e.g., get pods -n default)" id="commandInput" />
+            <button class="btn btn-primary" id="btnRunCommand">Run</button>
         </div>
         <div class="command-output" id="commandOutput">
-            <pre>$ kubectl get pods -n production
-NAME                           READY   STATUS    RESTARTS   AGE
-api-gateway-7d8f9c6b5d-x2k4m   1/1     Running   0          2d
-worker-5c8d7e6f4a-p9n3j        1/1     Running   0          2d
-scheduler-3b2a1c0d9e-m8l7k     1/1     Running   0          2d</pre>
+            <pre>Enter a kubectl command above to execute it against your cluster.</pre>
         </div>
     </div>
 </div>
@@ -91,11 +58,130 @@ scheduler-3b2a1c0d9e-m8l7k     1/1     Running   0          2d</pre>
 <script>
 (function() {
     var startTime = Date.now();
+    var logs = [];
+    var autoRefreshInterval;
 
     document.addEventListener('DOMContentLoaded', function() {
         loadSystemInfo();
-        document.getElementById('btnRefreshSysInfo').addEventListener('click', loadSystemInfo);
+        loadLogs();
+        setupEventListeners();
+
+        // Auto-refresh logs every 10 seconds
+        autoRefreshInterval = setInterval(loadLogs, 10000);
     });
+
+    function setupEventListeners() {
+        document.getElementById('btnRefreshSysInfo').addEventListener('click', loadSystemInfo);
+        document.getElementById('btnClearLogs').addEventListener('click', clearLogs);
+        document.getElementById('btnExportLogs').addEventListener('click', exportLogs);
+        document.getElementById('logLevelFilter').addEventListener('change', renderLogs);
+        document.getElementById('btnRunCommand').addEventListener('click', runCommand);
+        document.getElementById('commandInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') runCommand();
+        });
+    }
+
+    function loadLogs() {
+        fetch('/api/debug/logs')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                logs = data || [];
+                renderLogs();
+            })
+            .catch(function(err) {
+                // Show error state, not mock data
+                logs = [];
+                var container = document.getElementById('logContainer');
+                container.innerHTML = '<div class="empty-state text-error">Failed to load logs: ' + err.message + '</div>';
+            });
+    }
+
+    function renderLogs() {
+        var container = document.getElementById('logContainer');
+        var filter = document.getElementById('logLevelFilter').value;
+
+        var filteredLogs = filter === 'all'
+            ? logs
+            : logs.filter(function(l) { return l.level === filter; });
+
+        if (filteredLogs.length === 0) {
+            container.innerHTML = '<div class="empty-state">No logs to display. Logs will appear as events occur.</div>';
+            return;
+        }
+
+        var html = '';
+        filteredLogs.forEach(function(log) {
+            var levelClass = log.level || 'info';
+            html += '<div class="log-entry ' + levelClass + '">';
+            html += '<span class="log-time">' + (log.time || '-') + '</span>';
+            html += '<span class="log-level">' + (log.level || 'INFO').toUpperCase() + '</span>';
+            html += '<span class="log-message">' + escapeHtml(log.message || '') + '</span>';
+            html += '</div>';
+        });
+        container.innerHTML = html;
+    }
+
+    function clearLogs() {
+        logs = [];
+        renderLogs();
+        addLog('info', 'Logs cleared');
+    }
+
+    function exportLogs() {
+        var content = logs.map(function(l) {
+            return '[' + l.time + '] ' + l.level.toUpperCase() + ': ' + l.message;
+        }).join('\n');
+
+        var blob = new Blob([content], { type: 'text/plain' });
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'skanyxx-logs-' + new Date().toISOString().split('T')[0] + '.txt';
+        a.click();
+        URL.revokeObjectURL(url);
+
+        addLog('info', 'Logs exported');
+    }
+
+    function addLog(level, message) {
+        logs.unshift({ level: level, time: formatTime(new Date()), message: message });
+        if (logs.length > 100) logs.pop();
+        renderLogs();
+    }
+
+    function runCommand() {
+        var input = document.getElementById('commandInput');
+        var output = document.getElementById('commandOutput');
+        var command = input.value.trim();
+
+        if (!command) {
+            output.innerHTML = '<pre class="text-warning">Please enter a command</pre>';
+            return;
+        }
+
+        output.innerHTML = '<pre>Running: kubectl ' + escapeHtml(command) + '...</pre>';
+        addLog('debug', 'Executing command: kubectl ' + command);
+
+        fetch('/api/kubernetes/execute', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: command })
+        })
+            .then(function(r) { return r.json(); })
+            .then(function(result) {
+                if (result.success) {
+                    output.innerHTML = '<pre>$ kubectl ' + escapeHtml(command) + '\n' + escapeHtml(result.output || 'Command completed successfully') + '</pre>';
+                    addLog('info', 'Command completed: kubectl ' + command);
+                } else {
+                    output.innerHTML = '<pre class="text-error">$ kubectl ' + escapeHtml(command) + '\n' + escapeHtml(result.error || 'Command failed') + '</pre>';
+                    addLog('error', 'Command failed: ' + (result.error || 'Unknown error'));
+                }
+            })
+            .catch(function(err) {
+                output.innerHTML = '<pre class="text-error">$ kubectl ' + escapeHtml(command) + '\n\nError: ' + err.message + '\n\nNote: kubectl must be installed and configured on the server.</pre>';
+                addLog('error', 'Command execution failed: ' + err.message);
+            });
+    }
 
     function loadSystemInfo() {
         fetch('/api/settings/system-info')
@@ -105,16 +191,20 @@ scheduler-3b2a1c0d9e-m8l7k     1/1     Running   0          2d</pre>
                 var uptimeStr = formatUptime(uptime);
 
                 document.getElementById('systemInfoGrid').innerHTML =
-                    '<div class="info-item"><span class="info-label">Platform</span><span class="info-value">' + info.platform + '</span></div>' +
-                    '<div class="info-item"><span class="info-label">Environment</span><span class="info-value">' + info.environment + '</span></div>' +
-                    '<div class="info-item"><span class="info-label">Memory Usage</span><span class="info-value">' + info.memoryUsage + '</span></div>' +
-                    '<div class="info-item"><span class="info-label">Database</span><span class="info-value">' + info.database + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Platform</span><span class="info-value">' + (info.platform || 'Unknown') + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Environment</span><span class="info-value">' + (info.environment || 'Development') + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Memory Usage</span><span class="info-value">' + (info.memoryUsage || 'N/A') + '</span></div>' +
+                    '<div class="info-item"><span class="info-label">Database</span><span class="info-value">' + (info.database || 'SQLite') + '</span></div>' +
                     '<div class="info-item"><span class="info-label">Session Time</span><span class="info-value">' + uptimeStr + '</span></div>' +
-                    '<div class="info-item"><span class="info-label">Version</span><span class="info-value">' + info.version + '</span></div>';
+                    '<div class="info-item"><span class="info-label">Version</span><span class="info-value">' + (info.version || '1.0.0') + '</span></div>';
             })
             .catch(function(err) {
                 document.getElementById('systemInfoGrid').innerHTML = '<div class="info-item"><span class="info-value text-error">Failed to load system info</span></div>';
             });
+    }
+
+    function formatTime(date) {
+        return date.toTimeString().split(' ')[0].slice(0, 8);
     }
 
     function formatUptime(seconds) {
@@ -123,6 +213,12 @@ scheduler-3b2a1c0d9e-m8l7k     1/1     Running   0          2d</pre>
         var h = Math.floor(seconds / 3600);
         var m = Math.floor((seconds % 3600) / 60);
         return h + 'h ' + m + 'm';
+    }
+
+    function escapeHtml(text) {
+        var div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
 })();
 </script>
@@ -165,6 +261,7 @@ scheduler-3b2a1c0d9e-m8l7k     1/1     Running   0          2d</pre>
 
     .log-message {
         flex: 1;
+        word-break: break-word;
     }
 
     .command-input-container {
@@ -211,5 +308,19 @@ scheduler-3b2a1c0d9e-m8l7k     1/1     Running   0          2d</pre>
 
     .info-value {
         font-weight: 500;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding: 20px;
+        color: var(--text-muted);
+    }
+
+    .text-error {
+        color: var(--error-color);
+    }
+
+    .text-warning {
+        color: var(--warning-color);
     }
 </style>

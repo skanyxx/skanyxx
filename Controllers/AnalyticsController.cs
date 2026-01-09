@@ -16,6 +16,45 @@ public class AnalyticsController : ControllerBase
         _analyticsService = analyticsService;
     }
 
+    // Unified endpoint for Analytics page
+    [HttpGet]
+    public async Task<ActionResult<object>> GetAll([FromQuery] string range = "7d")
+    {
+        var stats = await _analyticsService.GetStatsAsync();
+        var sessionAnalytics = await _analyticsService.GetSessionAnalyticsAsync(range);
+        var toolUsage = await _analyticsService.GetToolUsageStatsAsync(range);
+        var recentSessions = await _analyticsService.GetRecentSessionsAsync(10);
+
+        return new
+        {
+            totalEvents = sessionAnalytics.TotalMessages,
+            avgResponseTime = stats.AvgResponseTimeMs,
+            successRate = stats.SuccessRate,
+            activeSessions = sessionAnalytics.TotalSessions,
+            eventsChange = sessionAnalytics.MessagesChangePercent != 0
+                ? $"{(sessionAnalytics.MessagesChangePercent > 0 ? "+" : "")}{sessionAnalytics.MessagesChangePercent}%"
+                : "-",
+            responseChange = "-",
+            successChange = "-",
+            sessionsChange = sessionAnalytics.SessionsChangePercent != 0
+                ? $"{(sessionAnalytics.SessionsChangePercent > 0 ? "+" : "")}{sessionAnalytics.SessionsChangePercent}%"
+                : "-",
+            chartData = new int[] { }, // Would need time-series data
+            eventTypes = toolUsage.Select(t => new {
+                type = t.ToolName,
+                label = t.ToolName,
+                count = t.UsageCount
+            }).ToList(),
+            sessions = recentSessions.Select(s => new {
+                id = s.Id,
+                agent = s.AgentName,
+                events = s.MessageCount,
+                duration = 0, // Calculate from LastActivity
+                status = "active"
+            }).ToList()
+        };
+    }
+
     [HttpGet("stats")]
     public async Task<ActionResult<AnalyticsData>> GetStats()
     {

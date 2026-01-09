@@ -585,9 +585,21 @@ public class KAgentMemoryService : IMemoryService
         return await _kagent.CreateMemoryAsync(request);
     }
 
-    public Task<bool> DeleteAsync(string id)
+    public async Task<bool> DeleteAsync(string id)
     {
-        throw new NotImplementedException();
+        try
+        {
+            var parts = id.Split('/');
+            var ns = parts.Length > 1 ? parts[0] : "kagent";
+            var name = parts.Length > 1 ? parts[1] : id;
+            await _kagent.DeleteMemoryAsync(ns, name);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete memory {Id}", id);
+            return false;
+        }
     }
 
     public async Task<List<MemoryItem>> SearchAsync(string query)

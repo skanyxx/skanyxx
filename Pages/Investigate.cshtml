@@ -4,25 +4,123 @@
     ViewData["Title"] = "Investigate";
 }
 
-<!-- Investigation Query -->
+<!-- Stats Cards -->
+<div class="grid grid-cols-3 gap-2 mb-3">
+    <div class="metric-card">
+        <div class="metric-icon info">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="11" cy="11" r="8"></circle>
+                <path d="m21 21-4.35-4.35"></path>
+            </svg>
+        </div>
+        <div class="metric-content">
+            <p class="metric-label">Active Investigations</p>
+            <p class="metric-value" id="activeCount">0</p>
+        </div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-icon success">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+        </div>
+        <div class="metric-content">
+            <p class="metric-label">Completed</p>
+            <p class="metric-value" id="completedCount">0</p>
+        </div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-icon warning">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+        </div>
+        <div class="metric-content">
+            <p class="metric-label">Avg Duration</p>
+            <p class="metric-value" id="avgDuration">N/A</p>
+        </div>
+    </div>
+</div>
+
+<!-- Active Investigation Banner (hidden by default) -->
+<div class="card mb-3 active-investigation-card" id="activeInvestigationCard" style="display: none;">
+    <div class="card-header">
+        <div class="investigation-title-row">
+            <div class="investigation-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <path d="m21 21-4.35-4.35"></path>
+                </svg>
+            </div>
+            <div>
+                <h3 class="card-title" id="activeInvestigationTitle">Active Investigation</h3>
+                <span class="text-muted" id="activeInvestigationTime"></span>
+            </div>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-error btn-sm" id="btnExportPdf">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                PDF
+            </button>
+            <button class="btn btn-warning btn-sm" id="btnExportJson">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+                JSON
+            </button>
+            <button class="btn btn-ghost btn-sm" id="btnClearInvestigation">Clear</button>
+            <button class="btn btn-success btn-sm" id="btnCompleteInvestigation">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                Complete
+            </button>
+        </div>
+    </div>
+    <div class="investigation-progress" id="investigationProgress">
+        <!-- Progress steps will be rendered here -->
+    </div>
+</div>
+
+<!-- Quick Start Investigations -->
 <div class="card mb-3">
     <div class="card-header">
         <h3 class="card-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
             </svg>
-            New Investigation
+            Quick Start Investigations
         </h3>
+        <div class="agents-status" id="agentsStatus">
+            <span class="status-dot"></span>
+            <span class="status-text">Loading agents...</span>
+        </div>
     </div>
-    <div class="flex gap-2">
-        <input type="text" id="queryInput" placeholder="Describe the issue or paste error message..." class="flex-1" />
-        <button class="btn btn-primary" id="btnInvestigate">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;">
-                <path d="m21 21-4.35-4.35"></path>
-                <circle cx="11" cy="11" r="8"></circle>
+    <div class="quick-start-grid" id="quickStartGrid">
+        <div class="loading-state">Loading templates...</div>
+    </div>
+</div>
+
+<!-- Custom Investigation -->
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
             </svg>
-            Investigate
+            Custom Investigation
+        </h3>
+        <button class="btn btn-primary btn-sm" id="btnToggleCustom">Create Custom</button>
+    </div>
+    <div class="custom-investigation-form" id="customInvestigationForm" style="display: none;">
+        <div class="form-section">
+            <h4>Select Agents</h4>
+            <div class="agent-selection-grid" id="agentSelectionGrid">
+                <div class="loading-state">Loading agents...</div>
+            </div>
+        </div>
+        <button class="btn btn-success" id="btnStartCustom" disabled>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+            Start Custom Investigation
         </button>
     </div>
 </div>
@@ -32,107 +130,114 @@
     <div class="card-header">
         <h3 class="card-title">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="3" y1="9" x2="21" y2="9"></line>
+                <line x1="9" y1="21" x2="9" y2="9"></line>
             </svg>
-            Quick Investigation Templates
+            Investigation Templates
         </h3>
+        <span class="text-muted" id="templateCount">0 templates available</span>
     </div>
     <div class="templates-grid" id="templatesGrid">
         <div class="loading-state">Loading templates...</div>
     </div>
 </div>
 
-<div class="grid grid-cols-2 gap-2">
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <polyline points="12 6 12 12 16 14"></polyline>
-                </svg>
-                Recent Investigations
-            </h3>
-        </div>
-        <div class="investigation-list" id="investigationsList">
-            <div class="loading-state">Loading investigations...</div>
-        </div>
+<!-- Investigation History -->
+<div class="card" id="historyCard" style="display: none;">
+    <div class="card-header">
+        <h3 class="card-title">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            Recent Investigations
+        </h3>
+        <button class="btn btn-error btn-sm" id="btnClearHistory">Clear History</button>
     </div>
-
-    <div class="card">
-        <div class="card-header">
-            <h3 class="card-title">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 8px; vertical-align: middle;">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                    <line x1="3" y1="9" x2="21" y2="9"></line>
-                    <line x1="9" y1="21" x2="9" y2="9"></line>
-                </svg>
-                Quick Diagnostics
-            </h3>
-        </div>
-        <div class="diagnostic-grid" id="diagnosticGrid">
-            <button class="diagnostic-btn" data-action="network">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="2" y1="12" x2="22" y2="12"></line>
-                    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
-                </svg>
-                <span>Network Trace</span>
-            </button>
-            <button class="diagnostic-btn" data-action="logs">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                    <polyline points="14 2 14 8 20 8"></polyline>
-                    <line x1="16" y1="13" x2="8" y2="13"></line>
-                    <line x1="16" y1="17" x2="8" y2="17"></line>
-                </svg>
-                <span>Log Analysis</span>
-            </button>
-            <button class="diagnostic-btn" data-action="performance">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="18" y1="20" x2="18" y2="10"></line>
-                    <line x1="12" y1="20" x2="12" y2="4"></line>
-                    <line x1="6" y1="20" x2="6" y2="14"></line>
-                </svg>
-                <span>Performance</span>
-            </button>
-            <button class="diagnostic-btn" data-action="memory">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect>
-                    <rect x="9" y="9" width="6" height="6"></rect>
-                    <line x1="9" y1="1" x2="9" y2="4"></line>
-                    <line x1="15" y1="1" x2="15" y2="4"></line>
-                    <line x1="9" y1="20" x2="9" y2="23"></line>
-                    <line x1="15" y1="20" x2="15" y2="23"></line>
-                </svg>
-                <span>Memory Profile</span>
-            </button>
-        </div>
-    </div>
-</div>
-
-<!-- Investigation Result Modal -->
-<div class="modal" id="resultModal">
-    <div class="modal-content modal-large">
-        <div class="modal-header">
-            <h3 id="resultTitle">Investigation Result</h3>
-            <button class="btn btn-ghost" id="btnCloseResult">&times;</button>
-        </div>
-        <div class="modal-body" id="resultBody">
-            <div class="loading-state">Analyzing...</div>
-        </div>
+    <div class="investigation-history-list" id="historyList">
+        <!-- History items will be rendered here -->
     </div>
 </div>
 
 <style>
-    .investigation-list { display: flex; flex-direction: column; gap: 12px; max-height: 400px; overflow-y: auto; }
-    .investigation-item { padding: 16px; background-color: var(--bg-tertiary); border-radius: 8px; cursor: pointer; border: 1px solid var(--border-color); transition: all 0.15s ease; }
-    .investigation-item:hover { border-color: var(--accent-color); background-color: rgba(100, 108, 255, 0.05); }
-    .investigation-title { font-weight: 500; margin-bottom: 8px; }
-    .investigation-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    /* Metric Cards */
+    .metric-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+    }
+    .metric-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid;
+    }
+    .metric-icon.info { background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.3); color: #3b82f6; }
+    .metric-icon.success { background: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.3); color: #22c55e; }
+    .metric-icon.warning { background: rgba(249, 115, 22, 0.15); border-color: rgba(249, 115, 22, 0.3); color: #f97316; }
+    .metric-content { flex: 1; }
+    .metric-label { font-size: 12px; color: var(--text-muted); margin: 0 0 4px 0; }
+    .metric-value { font-size: 24px; font-weight: 700; margin: 0; color: var(--text-primary); }
+
+    /* Active Investigation Card */
+    .active-investigation-card { background: rgba(100, 108, 255, 0.05); border-color: rgba(100, 108, 255, 0.2); }
+    .investigation-title-row { display: flex; align-items: center; gap: 12px; }
+    .investigation-icon { width: 40px; height: 40px; background: var(--accent-color); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; }
+    .investigation-progress { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+    .progress-step { display: flex; align-items: center; gap: 12px; padding: 12px; background: var(--bg-tertiary); border-radius: 8px; }
+    .progress-step.active { background: rgba(100, 108, 255, 0.1); border: 1px solid rgba(100, 108, 255, 0.3); }
+    .progress-step.completed { opacity: 0.6; }
+    .step-indicator { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+    .step-indicator.pending { background: var(--bg-primary); color: var(--text-muted); border: 1px solid var(--border-color); }
+    .step-indicator.active { background: var(--accent-color); color: white; }
+    .step-indicator.completed { background: var(--success-color); color: white; }
+    .step-info { flex: 1; }
+    .step-name { font-weight: 500; margin-bottom: 2px; }
+    .step-status { font-size: 12px; color: var(--text-muted); }
+
+    /* Agents Status */
+    .agents-status { display: flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 4px; font-size: 12px; }
+    .agents-status.online { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); }
+    .agents-status.offline { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .agents-status.online .status-dot { background: #22c55e; animation: pulse 2s infinite; }
+    .agents-status.offline .status-dot { background: #ef4444; }
+    .agents-status.online .status-text { color: #22c55e; }
+    .agents-status.offline .status-text { color: #ef4444; }
+
+    /* Quick Start Grid */
+    .quick-start-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    .quick-start-btn { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 12px; cursor: pointer; transition: all 0.2s ease; text-align: center; }
+    .quick-start-btn:hover { border-color: var(--accent-color); transform: translateY(-2px); }
+    .quick-start-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .quick-start-icon { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; }
+    .quick-start-icon.red { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    .quick-start-icon.orange { background: linear-gradient(135deg, #f97316, #ea580c); }
+    .quick-start-icon.blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+    .quick-start-title { font-weight: 600; font-size: 14px; }
+    .quick-start-desc { font-size: 12px; color: var(--text-secondary); }
+
+    /* Custom Investigation Form */
+    .custom-investigation-form { padding: 20px; border-top: 1px solid var(--border-color); }
+    .form-section { margin-bottom: 20px; }
+    .form-section h4 { margin: 0 0 12px 0; font-size: 14px; color: var(--text-primary); }
+    .agent-selection-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .agent-checkbox { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; font-size: 13px; transition: all 0.15s ease; }
+    .agent-checkbox:hover { border-color: var(--accent-color); }
+    .agent-checkbox.selected { background: var(--success-color); color: white; border-color: var(--success-color); }
+    .agent-checkbox .check-icon { font-size: 14px; }
 
     /* Templates Grid */
-    .templates-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
-    .template-card { padding: 20px; background-color: var(--bg-tertiary); border-radius: 12px; cursor: pointer; border: 2px solid var(--border-color); transition: all 0.2s ease; position: relative; overflow: hidden; }
+    .templates-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+    .template-card { padding: 20px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; cursor: pointer; transition: all 0.2s ease; position: relative; overflow: hidden; }
     .template-card:hover { border-color: var(--accent-color); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
     .template-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; }
     .template-card.red::before { background: linear-gradient(90deg, #ef4444, #dc2626); }
@@ -140,56 +245,50 @@
     .template-card.blue::before { background: linear-gradient(90deg, #3b82f6, #2563eb); }
     .template-card.purple::before { background: linear-gradient(90deg, #8b5cf6, #7c3aed); }
     .template-card.green::before { background: linear-gradient(90deg, #22c55e, #16a34a); }
-    .template-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
-    .template-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; }
+    .template-header { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+    .template-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
     .template-card.red .template-icon { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
     .template-card.orange .template-icon { background: rgba(249, 115, 22, 0.15); color: #f97316; }
     .template-card.blue .template-icon { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
     .template-card.purple .template-icon { background: rgba(139, 92, 246, 0.15); color: #8b5cf6; }
     .template-card.green .template-icon { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
-    .template-title { font-weight: 600; font-size: 15px; }
-    .template-urgency { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; }
+    .template-title-row { flex: 1; }
+    .template-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+    .template-urgency { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; display: inline-block; }
     .template-urgency.P0 { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
     .template-urgency.P1 { background: rgba(249, 115, 22, 0.15); color: #f97316; }
     .template-urgency.P2 { background: rgba(59, 130, 246, 0.15); color: #3b82f6; }
     .template-urgency.P3 { background: rgba(34, 197, 94, 0.15); color: #22c55e; }
     .template-desc { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; line-height: 1.4; }
-    .template-agents { display: flex; flex-wrap: wrap; gap: 6px; }
-    .template-agent-tag { font-size: 11px; padding: 2px 8px; background: var(--bg-primary); border-radius: 4px; color: var(--text-secondary); }
+    .template-agents { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .agent-tag { font-size: 11px; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 4px; font-weight: 500; }
+    .agent-tag.available { background: rgba(34, 197, 94, 0.15); color: #22c55e; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .agent-tag.unavailable { background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .template-footer { padding: 8px 12px; background: var(--bg-tertiary); border-radius: 6px; font-size: 12px; color: var(--text-muted); }
 
-    /* Diagnostic Grid */
-    .diagnostic-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .diagnostic-btn { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 20px; background-color: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 8px; color: var(--text-primary); cursor: pointer; transition: all 0.15s ease; }
-    .diagnostic-btn:hover { border-color: var(--accent-color); background-color: rgba(100, 108, 255, 0.1); }
-    .diagnostic-btn svg { opacity: 0.7; }
-    .diagnostic-btn:hover svg { opacity: 1; color: var(--accent-color); }
+    /* Investigation History */
+    .investigation-history-list { display: flex; flex-direction: column; gap: 12px; }
+    .history-item { display: flex; align-items: center; justify-content: space-between; padding: 16px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; }
+    .history-info h4 { margin: 0 0 4px 0; font-size: 14px; font-weight: 600; }
+    .history-info p { margin: 0; font-size: 12px; color: var(--text-muted); }
+    .history-actions { display: flex; gap: 8px; }
 
-    .flex-1 { flex: 1; }
-    .loading-state { text-align: center; padding: 20px; color: var(--text-muted); }
+    /* Utility */
+    .loading-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
     .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-    .empty-state svg { opacity: 0.3; margin-bottom: 12px; }
-
-    /* Modal */
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; align-items: center; justify-content: center; }
-    .modal.active { display: flex; }
-    .modal-content { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; }
-    .modal-large { max-width: 700px; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); }
-    .modal-header h3 { margin: 0; }
-    .modal-body { padding: 20px; max-height: 60vh; overflow-y: auto; }
-    .result-section { margin-bottom: 16px; }
-    .result-section h4 { margin: 0 0 8px 0; color: var(--accent-color); }
-    .result-section ul { margin: 0; padding-left: 20px; }
-    .result-section li { margin-bottom: 6px; line-height: 1.4; }
-    .result-section pre { background: var(--bg-tertiary); padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    @@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 </style>
 
 <script>
 (function() {
     'use strict';
 
-    var investigations = [];
+    var agents = [];
     var templates = [];
+    var activeInvestigation = null;
+    var investigationHistory = [];
+    var selectedAgents = [];
 
     var templateIcons = {
         'prod-incident': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>',
@@ -200,6 +299,16 @@
         'capacity-planning': '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2" ry="2"></rect><rect x="9" y="9" width="6" height="6"></rect><line x1="9" y1="1" x2="9" y2="4"></line><line x1="15" y1="1" x2="15" y2="4"></line></svg>'
     };
 
+    // Default templates matching the original
+    var defaultTemplates = [
+        { id: 'prod-incident', name: 'Production Incident', description: 'Immediate response for critical production issues', agents: ['k8s-agent', 'observability-agent', 'promql-agent'], color: 'red', urgency: 'P0' },
+        { id: 'perf-degradation', name: 'Performance Degradation', description: 'Analyze slow response times and resource usage', agents: ['promql-agent', 'observability-agent', 'k8s-agent'], color: 'orange', urgency: 'P1' },
+        { id: 'deployment-rollback', name: 'Deployment Rollback', description: 'Investigate failed deployments and rollback', agents: ['k8s-agent', 'argo-rollouts-agent', 'helm-agent'], color: 'blue', urgency: 'P2' },
+        { id: 'network-connectivity', name: 'Network Connectivity', description: 'Diagnose service mesh and network issues', agents: ['cilium-debug-agent', 'istio-agent', 'kgateway-agent'], color: 'purple', urgency: 'P1' },
+        { id: 'security-alert', name: 'Security Alert', description: 'Investigate security incidents and vulnerabilities', agents: ['k8s-agent', 'cilium-debug-agent', 'observability-agent'], color: 'red', urgency: 'P0' },
+        { id: 'capacity-planning', name: 'Capacity Planning', description: 'Resource utilization analysis and scaling', agents: ['promql-agent', 'observability-agent', 'k8s-agent'], color: 'green', urgency: 'P3' }
+    ];
+
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
@@ -207,33 +316,133 @@
     }
 
     function init() {
-        document.getElementById('btnInvestigate').addEventListener('click', startInvestigation);
-        document.getElementById('queryInput').addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') startInvestigation();
-        });
-        document.getElementById('btnCloseResult').addEventListener('click', hideResultModal);
-
-        document.querySelectorAll('.diagnostic-btn').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                runDiagnostic(this.getAttribute('data-action'));
-            });
-        });
-
+        loadFromStorage();
+        setupEventListeners();
+        loadAgents();
         loadTemplates();
-        loadInvestigations();
+        updateStats();
+        renderAll();
+    }
+
+    function loadFromStorage() {
+        try {
+            var savedHistory = localStorage.getItem('skanyxx-investigation-history');
+            if (savedHistory) investigationHistory = JSON.parse(savedHistory);
+
+            var savedActive = localStorage.getItem('skanyxx-active-investigation');
+            if (savedActive) activeInvestigation = JSON.parse(savedActive);
+        } catch (e) {
+            console.error('Failed to load from storage:', e);
+        }
+    }
+
+    function saveToStorage() {
+        localStorage.setItem('skanyxx-investigation-history', JSON.stringify(investigationHistory));
+        if (activeInvestigation) {
+            localStorage.setItem('skanyxx-active-investigation', JSON.stringify(activeInvestigation));
+        } else {
+            localStorage.removeItem('skanyxx-active-investigation');
+        }
+    }
+
+    function setupEventListeners() {
+        document.getElementById('btnToggleCustom').addEventListener('click', toggleCustomForm);
+        document.getElementById('btnStartCustom').addEventListener('click', startCustomInvestigation);
+        document.getElementById('btnClearHistory').addEventListener('click', clearHistory);
+        document.getElementById('btnExportPdf').addEventListener('click', function() { exportInvestigation('pdf'); });
+        document.getElementById('btnExportJson').addEventListener('click', function() { exportInvestigation('json'); });
+        document.getElementById('btnClearInvestigation').addEventListener('click', clearInvestigation);
+        document.getElementById('btnCompleteInvestigation').addEventListener('click', completeInvestigation);
+    }
+
+    function loadAgents() {
+        fetch('/api/agents')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                agents = data || [];
+                updateAgentsStatus();
+                renderAgentSelection();
+                renderTemplates();
+            })
+            .catch(function() {
+                agents = [];
+                updateAgentsStatus();
+            });
     }
 
     function loadTemplates() {
         fetch('/api/investigations/templates')
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                templates = data || [];
+                templates = data && data.length > 0 ? data : defaultTemplates;
+                renderQuickStart();
                 renderTemplates();
+                document.getElementById('templateCount').textContent = templates.length + ' templates available';
             })
             .catch(function() {
-                templates = [];
+                templates = defaultTemplates;
+                renderQuickStart();
                 renderTemplates();
+                document.getElementById('templateCount').textContent = templates.length + ' templates available';
             });
+    }
+
+    function updateAgentsStatus() {
+        var statusEl = document.getElementById('agentsStatus');
+        if (agents.length > 0) {
+            statusEl.className = 'agents-status online';
+            statusEl.querySelector('.status-text').textContent = agents.length + ' agents ready';
+        } else {
+            statusEl.className = 'agents-status offline';
+            statusEl.querySelector('.status-text').textContent = 'No agents available';
+        }
+    }
+
+    function updateStats() {
+        document.getElementById('activeCount').textContent = activeInvestigation ? '1' : '0';
+        document.getElementById('completedCount').textContent = investigationHistory.length;
+
+        if (investigationHistory.length > 0) {
+            var totalDuration = investigationHistory.reduce(function(acc, inv) { return acc + (inv.duration || 0); }, 0);
+            var avgMinutes = Math.round(totalDuration / investigationHistory.length / 60000);
+            document.getElementById('avgDuration').textContent = avgMinutes + 'm';
+        } else {
+            document.getElementById('avgDuration').textContent = 'N/A';
+        }
+    }
+
+    function renderAll() {
+        renderActiveInvestigation();
+        renderHistory();
+    }
+
+    function renderQuickStart() {
+        var container = document.getElementById('quickStartGrid');
+        var quickTemplates = templates.slice(0, 3);
+
+        if (quickTemplates.length === 0) {
+            container.innerHTML = '<div class="empty-state">No templates available</div>';
+            return;
+        }
+
+        var html = '';
+        quickTemplates.forEach(function(t) {
+            var icon = templateIcons[t.id] || templateIcons['prod-incident'];
+            var colorClass = t.color || 'blue';
+            html += '<button class="quick-start-btn" data-template-id="' + t.id + '" ' + (agents.length === 0 ? 'disabled' : '') + '>';
+            html += '<div class="quick-start-icon ' + colorClass + '">' + icon + '</div>';
+            html += '<div class="quick-start-title">' + escapeHtml(t.name) + '</div>';
+            html += '<div class="quick-start-desc">' + escapeHtml(t.description) + '</div>';
+            html += '</button>';
+        });
+        container.innerHTML = html;
+
+        container.querySelectorAll('.quick-start-btn').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var templateId = this.getAttribute('data-template-id');
+                startInvestigation(templateId);
+            });
+        });
     }
 
     function renderTemplates() {
@@ -247,101 +456,317 @@
         var html = '';
         templates.forEach(function(t) {
             var icon = templateIcons[t.id] || templateIcons['prod-incident'];
-            html += '<div class="template-card ' + t.color + '" data-id="' + t.id + '">';
+            html += '<div class="template-card ' + t.color + '" data-template-id="' + t.id + '">';
             html += '<div class="template-header">';
             html += '<div class="template-icon">' + icon + '</div>';
-            html += '<div><div class="template-title">' + t.name + '</div>';
-            html += '<span class="template-urgency ' + t.urgency + '">' + t.urgency + '</span></div>';
-            html += '</div>';
-            html += '<div class="template-desc">' + t.description + '</div>';
-            html += '<div class="template-agents">';
-            t.agents.slice(0, 3).forEach(function(agent) {
-                html += '<span class="template-agent-tag">' + agent + '</span>';
-            });
-            if (t.agents.length > 3) {
-                html += '<span class="template-agent-tag">+' + (t.agents.length - 3) + ' more</span>';
-            }
+            html += '<div class="template-title-row">';
+            html += '<div class="template-title">' + escapeHtml(t.name) + '</div>';
+            html += '<span class="template-urgency ' + t.urgency + '">' + t.urgency + '</span>';
             html += '</div></div>';
+            html += '<div class="template-desc">' + escapeHtml(t.description) + '</div>';
+            html += '<div class="template-agents">';
+
+            var availableCount = 0;
+            t.agents.forEach(function(agentName) {
+                var isAvailable = isAgentAvailable(agentName);
+                if (isAvailable) availableCount++;
+                var tagClass = isAvailable ? 'available' : 'unavailable';
+                var checkmark = isAvailable ? '✓' : '✗';
+                html += '<span class="agent-tag ' + tagClass + '">' + checkmark + ' ' + escapeHtml(agentName) + '</span>';
+            });
+
+            html += '</div>';
+            html += '<div class="template-footer">' + availableCount + ' of ' + t.agents.length + ' agents available</div>';
+            html += '</div>';
         });
 
         container.innerHTML = html;
 
         container.querySelectorAll('.template-card').forEach(function(card) {
             card.addEventListener('click', function() {
-                startFromTemplate(this.getAttribute('data-id'));
+                var templateId = this.getAttribute('data-template-id');
+                startInvestigation(templateId);
             });
         });
     }
 
-    function startFromTemplate(templateId) {
-        var template = templates.find(function(t) { return t.id === templateId; });
-        if (!template) return;
+    function renderAgentSelection() {
+        var container = document.getElementById('agentSelectionGrid');
 
-        showResultModal('Starting: ' + template.name);
-        document.getElementById('resultBody').innerHTML = '<div class="loading-state">Initializing investigation...</div>';
-
-        fetch('/api/investigations/template/' + templateId, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: template.description })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(result) {
-            displayResult(result);
-            loadInvestigations();
-        })
-        .catch(function(err) {
-            displayResult({
-                summary: 'Investigation started: ' + template.name,
-                findings: ['Using template: ' + template.description, 'Agents: ' + template.agents.join(', ')],
-                recommendations: ['Follow standard runbook for ' + template.urgency + ' incidents']
-            });
-        });
-    }
-
-    function loadInvestigations() {
-        fetch('/api/investigations')
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                investigations = data || [];
-                renderInvestigations();
-            })
-            .catch(function() {
-                investigations = [];
-                renderInvestigations();
-            });
-    }
-
-    function renderInvestigations() {
-        var container = document.getElementById('investigationsList');
-
-        if (investigations.length === 0) {
-            container.innerHTML = '<div class="empty-state"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg><p>No investigations yet.<br>Start one above or select a template.</p></div>';
+        if (agents.length === 0) {
+            container.innerHTML = '<div class="empty-state">No agents available</div>';
             return;
         }
 
         var html = '';
-        investigations.forEach(function(inv) {
-            var badgeClass = inv.status === 'resolved' ? 'badge-success' : 'badge-warning';
-            var badgeText = inv.status === 'resolved' ? 'Resolved' : 'In Progress';
-            var urgencyBadge = inv.urgency ? '<span class="template-urgency ' + inv.urgency + '">' + inv.urgency + '</span>' : '';
-
-            html += '<div class="investigation-item" data-id="' + inv.id + '">';
-            html += '<div class="investigation-title">' + escapeHtml(inv.title) + '</div>';
-            html += '<div class="investigation-meta">';
-            html += '<span class="badge ' + badgeClass + '">' + badgeText + '</span>';
-            html += urgencyBadge;
-            html += '<span class="text-muted">' + (inv.time || formatTime(inv.createdAt)) + '</span>';
-            html += '</div></div>';
+        agents.forEach(function(agent) {
+            var isSelected = selectedAgents.indexOf(agent.name) !== -1;
+            html += '<div class="agent-checkbox' + (isSelected ? ' selected' : '') + '" data-agent="' + escapeHtml(agent.name) + '">';
+            html += '<span class="check-icon">' + (isSelected ? '✓' : '○') + '</span>';
+            html += escapeHtml(agent.name);
+            html += '</div>';
         });
-
         container.innerHTML = html;
 
-        container.querySelectorAll('.investigation-item').forEach(function(item) {
-            item.addEventListener('click', function() {
-                viewInvestigation(this.getAttribute('data-id'));
+        container.querySelectorAll('.agent-checkbox').forEach(function(checkbox) {
+            checkbox.addEventListener('click', function() {
+                var agentName = this.getAttribute('data-agent');
+                toggleAgentSelection(agentName);
             });
         });
+    }
+
+    function toggleAgentSelection(agentName) {
+        var idx = selectedAgents.indexOf(agentName);
+        if (idx === -1) {
+            selectedAgents.push(agentName);
+        } else {
+            selectedAgents.splice(idx, 1);
+        }
+        renderAgentSelection();
+        document.getElementById('btnStartCustom').disabled = selectedAgents.length === 0;
+    }
+
+    function renderActiveInvestigation() {
+        var card = document.getElementById('activeInvestigationCard');
+
+        if (!activeInvestigation) {
+            card.style.display = 'none';
+            return;
+        }
+
+        card.style.display = 'block';
+        document.getElementById('activeInvestigationTitle').textContent = 'Active: ' + activeInvestigation.name;
+        document.getElementById('activeInvestigationTime').textContent = 'Started ' + formatTime(activeInvestigation.startTime);
+
+        var progressHtml = '';
+        activeInvestigation.agents.forEach(function(agentName, idx) {
+            var status = idx < activeInvestigation.currentStep ? 'completed' : (idx === activeInvestigation.currentStep ? 'active' : 'pending');
+            var statusIcon = status === 'completed' ? '✓' : (idx + 1);
+            progressHtml += '<div class="progress-step ' + status + '">';
+            progressHtml += '<div class="step-indicator ' + status + '">' + statusIcon + '</div>';
+            progressHtml += '<div class="step-info">';
+            progressHtml += '<div class="step-name">' + escapeHtml(agentName) + '</div>';
+            progressHtml += '<div class="step-status">' + (status === 'completed' ? 'Completed' : (status === 'active' ? 'In Progress' : 'Pending')) + '</div>';
+            progressHtml += '</div>';
+            if (status === 'active') {
+                progressHtml += '<button class="btn btn-primary btn-sm" onclick="window.goToChat(\'' + escapeHtml(agentName) + '\')">Go to Chat</button>';
+                if (idx < activeInvestigation.agents.length - 1) {
+                    progressHtml += '<button class="btn btn-ghost btn-sm" onclick="window.nextStep()">Next →</button>';
+                }
+            }
+            progressHtml += '</div>';
+        });
+        document.getElementById('investigationProgress').innerHTML = progressHtml;
+    }
+
+    function renderHistory() {
+        var card = document.getElementById('historyCard');
+        var container = document.getElementById('historyList');
+
+        if (investigationHistory.length === 0) {
+            card.style.display = 'none';
+            return;
+        }
+
+        card.style.display = 'block';
+        var html = '';
+        investigationHistory.slice(0, 5).forEach(function(inv) {
+            html += '<div class="history-item">';
+            html += '<div class="history-info">';
+            html += '<h4>' + escapeHtml(inv.name) + '</h4>';
+            html += '<p>' + new Date(inv.endTime).toLocaleString() + ' • Duration: ' + Math.round((inv.duration || 0) / 60000) + ' min</p>';
+            html += '</div>';
+            html += '<div class="history-actions">';
+            html += '<button class="btn btn-primary btn-sm" onclick="window.continueInvestigation(\'' + inv.id + '\')">Continue</button>';
+            html += '<button class="btn btn-error btn-sm" onclick="window.exportHistoryItem(\'' + inv.id + '\', \'pdf\')">PDF</button>';
+            html += '<button class="btn btn-warning btn-sm" onclick="window.exportHistoryItem(\'' + inv.id + '\', \'json\')">JSON</button>';
+            html += '</div>';
+            html += '</div>';
+        });
+        container.innerHTML = html;
+    }
+
+    function isAgentAvailable(agentName) {
+        return agents.some(function(a) {
+            return a.name === agentName || a.name.toLowerCase().indexOf(agentName.toLowerCase()) !== -1;
+        });
+    }
+
+    function startInvestigation(templateId) {
+        var template = templates.find(function(t) { return t.id === templateId; });
+        if (!template) return;
+
+        if (agents.length === 0) {
+            alert('No agents available. Please check your connection.');
+            return;
+        }
+
+        activeInvestigation = {
+            id: 'inv-' + Date.now(),
+            name: template.name,
+            description: template.description,
+            agents: template.agents,
+            urgency: template.urgency,
+            startTime: new Date().toISOString(),
+            currentStep: 0,
+            status: 'active'
+        };
+
+        saveToStorage();
+        updateStats();
+        renderAll();
+
+        // Start chat with first agent
+        var firstAgentName = template.agents[0];
+        var firstAgent = findAgent(firstAgentName);
+        if (firstAgent) {
+            goToChat(firstAgent.name);
+        }
+    }
+
+    function startCustomInvestigation() {
+        if (selectedAgents.length === 0) return;
+
+        activeInvestigation = {
+            id: 'inv-' + Date.now(),
+            name: 'Custom Investigation (' + selectedAgents.join(', ') + ')',
+            description: 'Custom investigation with selected agents',
+            agents: selectedAgents.slice(),
+            startTime: new Date().toISOString(),
+            currentStep: 0,
+            status: 'active'
+        };
+
+        saveToStorage();
+        updateStats();
+        renderAll();
+        toggleCustomForm();
+
+        var firstAgent = findAgent(selectedAgents[0]);
+        if (firstAgent) {
+            goToChat(firstAgent.name);
+        }
+    }
+
+    function findAgent(agentName) {
+        return agents.find(function(a) {
+            return a.name === agentName || a.name.toLowerCase().indexOf(agentName.toLowerCase()) !== -1;
+        }) || (agents.length > 0 ? agents[0] : null);
+    }
+
+    function toggleCustomForm() {
+        var form = document.getElementById('customInvestigationForm');
+        var btn = document.getElementById('btnToggleCustom');
+        if (form.style.display === 'none') {
+            form.style.display = 'block';
+            btn.textContent = 'Hide';
+        } else {
+            form.style.display = 'none';
+            btn.textContent = 'Create Custom';
+        }
+    }
+
+    function completeInvestigation() {
+        if (!activeInvestigation) return;
+
+        var completed = Object.assign({}, activeInvestigation, {
+            status: 'completed',
+            endTime: new Date().toISOString(),
+            duration: Date.now() - new Date(activeInvestigation.startTime).getTime()
+        });
+
+        investigationHistory.unshift(completed);
+        activeInvestigation = null;
+
+        saveToStorage();
+        updateStats();
+        renderAll();
+    }
+
+    function clearInvestigation() {
+        activeInvestigation = null;
+        localStorage.removeItem('skanyxx-active-investigation');
+        updateStats();
+        renderAll();
+    }
+
+    function clearHistory() {
+        investigationHistory = [];
+        localStorage.removeItem('skanyxx-investigation-history');
+        renderHistory();
+        updateStats();
+    }
+
+    function exportInvestigation(format) {
+        if (!activeInvestigation) return;
+        doExport(activeInvestigation, format);
+    }
+
+    function doExport(inv, format) {
+        if (format === 'json') {
+            var blob = new Blob([JSON.stringify(inv, null, 2)], { type: 'application/json' });
+            downloadBlob(blob, 'investigation-' + inv.id + '.json');
+        } else {
+            // Simple text export as PDF alternative
+            var content = 'INVESTIGATION REPORT\n';
+            content += '===================\n\n';
+            content += 'Name: ' + inv.name + '\n';
+            content += 'Description: ' + inv.description + '\n';
+            content += 'Start Time: ' + inv.startTime + '\n';
+            if (inv.endTime) content += 'End Time: ' + inv.endTime + '\n';
+            content += 'Status: ' + inv.status + '\n';
+            content += 'Agents: ' + inv.agents.join(', ') + '\n';
+
+            var blob = new Blob([content], { type: 'text/plain' });
+            downloadBlob(blob, 'investigation-' + inv.id + '.txt');
+        }
+    }
+
+    function downloadBlob(blob, filename) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // Global functions for button handlers
+    window.goToChat = function(agentName) {
+        // Navigate to chat page or trigger chat modal
+        window.location.href = '/Chat?agent=' + encodeURIComponent(agentName);
+    };
+
+    window.nextStep = function() {
+        if (!activeInvestigation) return;
+        if (activeInvestigation.currentStep < activeInvestigation.agents.length - 1) {
+            activeInvestigation.currentStep++;
+            saveToStorage();
+            renderAll();
+            var nextAgent = activeInvestigation.agents[activeInvestigation.currentStep];
+            goToChat(nextAgent);
+        }
+    };
+
+    window.continueInvestigation = function(invId) {
+        var inv = investigationHistory.find(function(i) { return i.id === invId; });
+        if (inv) {
+            activeInvestigation = Object.assign({}, inv, { status: 'active', currentStep: 0 });
+            saveToStorage();
+            updateStats();
+            renderAll();
+        }
+    };
+
+    window.exportHistoryItem = function(invId, format) {
+        var inv = investigationHistory.find(function(i) { return i.id === invId; });
+        if (inv) doExport(inv, format);
+    };
+
+    function formatTime(ts) {
+        if (!ts) return '-';
+        return new Date(ts).toLocaleString();
     }
 
     function escapeHtml(text) {
@@ -349,118 +774,6 @@
         var div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
-    }
-
-    function startInvestigation() {
-        var query = document.getElementById('queryInput').value.trim();
-        if (!query) {
-            alert('Please enter an issue description or error message.');
-            return;
-        }
-
-        showResultModal('Investigating: ' + query.substring(0, 50) + '...');
-        document.getElementById('resultBody').innerHTML = '<div class="loading-state">Analyzing issue...</div>';
-
-        fetch('/api/investigations', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ query: query })
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(result) {
-            displayResult(result);
-            loadInvestigations();
-            document.getElementById('queryInput').value = '';
-        })
-        .catch(function() {
-            displayResult({
-                summary: 'Investigation started for: ' + query,
-                findings: ['Analysis in progress...', 'Checking system logs...', 'Correlating events...'],
-                recommendations: ['Review recent deployments', 'Check resource utilization', 'Inspect error logs']
-            });
-        });
-    }
-
-    function runDiagnostic(action) {
-        var titles = {
-            'network': 'Network Trace',
-            'logs': 'Log Analysis',
-            'performance': 'Performance Diagnostics',
-            'memory': 'Memory Profile'
-        };
-
-        showResultModal(titles[action] || 'Diagnostic');
-        document.getElementById('resultBody').innerHTML = '<div class="loading-state">Running ' + action + ' diagnostic...</div>';
-
-        fetch('/api/diagnostics/' + action, { method: 'POST' })
-            .then(function(r) { return r.json(); })
-            .then(function(result) {
-                displayResult(result);
-            })
-            .catch(function() {
-                displayResult({
-                    summary: titles[action] + ' completed',
-                    findings: ['All systems operating normally', 'No anomalies detected'],
-                    metrics: { latency: '12ms', throughput: '1.2k/s', errors: 0 }
-                });
-            });
-    }
-
-    function viewInvestigation(id) {
-        var inv = investigations.find(function(i) { return i.id === id; });
-        if (!inv) return;
-
-        showResultModal(inv.title);
-        displayResult({
-            summary: inv.title,
-            status: inv.status,
-            findings: inv.findings || ['Details loading...'],
-            recommendations: inv.recommendations || []
-        });
-    }
-
-    function showResultModal(title) {
-        document.getElementById('resultTitle').textContent = title;
-        document.getElementById('resultModal').classList.add('active');
-    }
-
-    function hideResultModal() {
-        document.getElementById('resultModal').classList.remove('active');
-    }
-
-    function displayResult(result) {
-        var html = '';
-
-        if (result.summary) {
-            html += '<div class="result-section"><h4>Summary</h4><p>' + result.summary + '</p></div>';
-        }
-
-        if (result.findings && result.findings.length > 0) {
-            html += '<div class="result-section"><h4>Findings</h4><ul>';
-            result.findings.forEach(function(f) { html += '<li>' + f + '</li>'; });
-            html += '</ul></div>';
-        }
-
-        if (result.recommendations && result.recommendations.length > 0) {
-            html += '<div class="result-section"><h4>Recommendations</h4><ul>';
-            result.recommendations.forEach(function(r) { html += '<li>' + r + '</li>'; });
-            html += '</ul></div>';
-        }
-
-        if (result.metrics) {
-            html += '<div class="result-section"><h4>Metrics</h4><pre>' + JSON.stringify(result.metrics, null, 2) + '</pre></div>';
-        }
-
-        document.getElementById('resultBody').innerHTML = html || '<p>No details available.</p>';
-    }
-
-    function formatTime(ts) {
-        if (!ts) return '-';
-        var diff = Math.floor((Date.now() - new Date(ts)) / 1000);
-        if (diff < 60) return diff + 's ago';
-        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
-        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
-        return Math.floor(diff / 86400) + 'd ago';
     }
 })();
 </script>

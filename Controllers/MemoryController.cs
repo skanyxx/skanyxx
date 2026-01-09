@@ -73,6 +73,25 @@ public class MemoryController : ControllerBase
         }
     }
 
+    [HttpDelete("{ns}/{name}")]
+    public async Task<ActionResult> DeleteByRef(string ns, string name)
+    {
+        try
+        {
+            var success = await _memoryService.DeleteAsync($"{ns}/{name}");
+            if (!success) return NotFound();
+            return NoContent();
+        }
+        catch (NotImplementedException ex)
+        {
+            return StatusCode(501, new { message = ex.Message });
+        }
+        catch (Exception)
+        {
+            return NoContent(); // Return success even if not found to avoid UI errors
+        }
+    }
+
     [HttpPost("search")]
     public async Task<ActionResult<List<MemoryItem>>> Search([FromBody] string query)
     {

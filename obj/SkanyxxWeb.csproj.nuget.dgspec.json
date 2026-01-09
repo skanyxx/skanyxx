@@ -1,30 +1,31 @@
 {
   "format": 1,
   "restore": {
-    "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/SkanyxxWeb.csproj": {}
+    "/Users/anatolipakastrofski/Dev/Denis/skanyxx/SkanyxxWeb.csproj": {}
   },
   "projects": {
-    "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/SkanyxxWeb.csproj": {
+    "/Users/anatolipakastrofski/Dev/Denis/skanyxx/SkanyxxWeb.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/SkanyxxWeb.csproj",
+        "projectUniqueName": "/Users/anatolipakastrofski/Dev/Denis/skanyxx/SkanyxxWeb.csproj",
         "projectName": "SkanyxxWeb",
-        "projectPath": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/SkanyxxWeb.csproj",
+        "projectPath": "/Users/anatolipakastrofski/Dev/Denis/skanyxx/SkanyxxWeb.csproj",
         "packagesPath": "/Users/anatolipakastrofski/.nuget/packages/",
-        "outputPath": "/Users/anatolipakastrofski/Dev/Denis/SkanyxxWeb/SkanyxxWeb/obj/",
+        "outputPath": "/Users/anatolipakastrofski/Dev/Denis/skanyxx/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
           "/Users/anatolipakastrofski/.nuget/NuGet/NuGet.Config"
         ],
         "originalTargetFrameworks": [
-          "net9.0"
+          "net8.0"
         ],
         "sources": {
+          "/Users/anatolipakastrofski/.dotnet/library-packs": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "net9.0": {
-            "targetAlias": "net9.0",
+          "net8.0": {
+            "targetAlias": "net8.0",
             "projectReferences": {}
           }
         },
@@ -38,11 +39,11 @@
           "auditLevel": "low",
           "auditMode": "direct"
         },
-        "SdkAnalysisLevel": "9.0.100"
+        "SdkAnalysisLevel": "10.0.100"
       },
       "frameworks": {
-        "net9.0": {
-          "targetAlias": "net9.0",
+        "net8.0": {
+          "targetAlias": "net8.0",
           "dependencies": {
             "Asp.Versioning.Mvc": {
               "target": "Package",
@@ -60,15 +61,15 @@
               "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",
               "suppressParent": "All",
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[8.0.10, )"
             },
             "Microsoft.EntityFrameworkCore.Sqlite": {
               "target": "Package",
-              "version": "[9.0.0, )"
+              "version": "[8.0.10, )"
             },
             "Microsoft.Extensions.Http.Polly": {
               "target": "Package",
-              "version": "[10.0.1, )"
+              "version": "[8.0.10, )"
             },
             "Polly.Extensions.Http": {
               "target": "Package",
@@ -106,7 +107,7 @@
               "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/9.0.101/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "/Users/anatolipakastrofski/.dotnet/sdk/10.0.101/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

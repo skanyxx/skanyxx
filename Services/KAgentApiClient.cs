@@ -413,6 +413,11 @@ public class KAgentApiClient
         return await RequestAsync<List<MemoryItem>>("/api/memories/search", HttpMethod.Post, new { query });
     }
 
+    public async Task DeleteMemoryAsync(string ns, string name)
+    {
+        await RequestAsync<object>($"/api/memories/{ns}/{name}", HttpMethod.Delete);
+    }
+
     public async Task<List<Hook>> GetHooksAsync()
     {
         return await RequestAsync<List<Hook>>("/api/hooks", HttpMethod.Get);
