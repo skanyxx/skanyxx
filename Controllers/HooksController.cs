@@ -30,19 +30,15 @@ public class HooksController : ControllerBase
         return hook;
     }
 
-    [HttpGet("executions")]
-    public async Task<ActionResult<List<HookExecution>>> GetExecutions([FromQuery] int limit = 10)
-    {
-        return await _hookService.GetExecutionsAsync(limit);
-    }
-
     [HttpGet("stats")]
     public async Task<ActionResult> GetStats()
     {
         var hooks = await _hookService.GetAllAsync();
+        var activeCount = hooks.Count(h => h.Status?.ActiveEvents?.Count > 0);
         return Ok(new
         {
-            ActiveHooks = hooks.Count(h => h.Status == "Active"),
+            TotalHooks = hooks.Count,
+            ActiveHooks = activeCount,
             TriggersToday = 0,
             SuccessRate = 0m,
             AvgLatencyMs = 0
@@ -55,7 +51,8 @@ public class HooksController : ControllerBase
         try
         {
             var created = await _hookService.CreateAsync(hook);
-            return CreatedAtAction(nameof(GetById), new { id = created.Id }, created);
+            var hookId = $"{created.Metadata.Namespace}/{created.Metadata.Name}";
+            return CreatedAtAction(nameof(GetById), new { id = hookId }, created);
         }
         catch (NotImplementedException ex)
         {

@@ -91,6 +91,8 @@ public class KAgentAgentService : IAgentService
                     Name = name,
                     Type = "KAgent",
                     Status = "Active",
+                    Ready = true,
+                    Accepted = true,
                     Description = description.Length > 100 ? description[..100] + "..." : description
                 });
             }
@@ -661,16 +663,31 @@ public class KAgentAlertService : IAlertService
         return await _kagent.ResolveAlertAsync(id);
     }
 
-    public async Task<object> GetStatsAsync()
+    public async Task<AlertSummary> GetStatsAsync()
     {
-        var alerts = await GetAllAsync();
-        return new
+        try
         {
-            Critical = alerts.Count(a => a.Severity == "Critical" && a.Status == "Active"),
-            Warning = alerts.Count(a => a.Severity == "Warning" && a.Status == "Active"),
-            Info = alerts.Count(a => a.Severity == "Info" && a.Status == "Active"),
-            ResolvedToday = alerts.Count(a => a.Status == "Resolved" && a.ResolvedAt?.Date == DateTime.UtcNow.Date)
-        };
+            return await _kagent.GetAlertSummaryAsync();
+        }
+        catch
+        {
+            // Fallback: compute from alerts list
+            var alerts = await GetAllAsync();
+            return new AlertSummary
+            {
+                Total = alerts.Count,
+                Firing = alerts.Count(a => a.Status == "firing"),
+                Acknowledged = alerts.Count(a => a.Status == "acknowledged"),
+                Resolved = alerts.Count(a => a.Status == "resolved"),
+                BySeverity = new AlertSeverityBreakdown
+                {
+                    Critical = alerts.Count(a => a.Severity == "critical"),
+                    High = alerts.Count(a => a.Severity == "high"),
+                    Medium = alerts.Count(a => a.Severity == "medium"),
+                    Low = alerts.Count(a => a.Severity == "low")
+                }
+            };
+        }
     }
 }
 
@@ -723,19 +740,34 @@ public class KAgentHookService : IHookService
         return await _kagent.DisableHookAsync(id);
     }
 
-    public Task<bool> DeleteAsync(string id)
+    public async Task<bool> DeleteAsync(string id)
     {
-        throw new NotImplementedException();
+        // Parse namespace/name from id
+        var parts = id.Split('/');
+        if (parts.Length == 2)
+        {
+            return await DeleteAsync(parts[0], parts[1]);
+        }
+        return await DeleteAsync("kagent", id);
+    }
+
+    public async Task<bool> DeleteAsync(string ns, string name)
+    {
+        try
+        {
+            await _kagent.DeleteHookAsync(ns, name);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to delete hook {Namespace}/{Name}", ns, name);
+            return false;
+        }
     }
 
     public Task<object> TestAsync(string id)
     {
         throw new NotImplementedException();
-    }
-
-    public Task<List<HookExecution>> GetExecutionsAsync(int limit = 10)
-    {
-        return Task.FromResult(new List<HookExecution>());
     }
 }
 

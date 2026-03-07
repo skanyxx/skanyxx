@@ -159,6 +159,20 @@ public class KAgentApiClient
                         }
                     }
 
+                    // Check accepted status from conditions
+                    var isAccepted = false;
+                    if (status.TryGetProperty("conditions", out var acceptConds))
+                    {
+                        foreach (var cond in acceptConds.EnumerateArray())
+                        {
+                            if (GetStringProperty(cond, "type") == "Accepted" && GetStringProperty(cond, "status") == "True")
+                            {
+                                isAccepted = true;
+                                break;
+                            }
+                        }
+                    }
+
                     agents.Add(new Agent
                     {
                         Id = GetStringProperty(agentData, "id") ?? name,
@@ -166,7 +180,9 @@ public class KAgentApiClient
                         Namespace = ns,
                         Type = GetStringProperty(spec, "type") ?? "Declarative",
                         Description = GetStringProperty(spec, "description") ?? "",
-                        Status = isReady ? "Active" : "Inactive"
+                        Status = isReady ? "Active" : "Inactive",
+                        Ready = isReady,
+                        Accepted = isAccepted
                     });
                 }
                 catch (Exception ex)
@@ -360,12 +376,21 @@ public class KAgentApiClient
 
     public async Task<List<KAgentEvent>> GetSessionEventsAsync(string sessionId, int? limit = null)
     {
-        var url = $"/api/sessions/{sessionId}";
-        if (limit.HasValue)
+        try
         {
-            url += $"?limit={limit}";
+            var url = $"/api/sessions/{sessionId}";
+            if (limit.HasValue)
+            {
+                url += $"?limit={limit}";
+            }
+            var response = await RequestAsync<SessionWithEventsResponse>(url, HttpMethod.Get);
+            return response?.Events ?? new List<KAgentEvent>();
         }
-        return await RequestAsync<List<KAgentEvent>>(url, HttpMethod.Get);
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to get session events for {SessionId}, returning empty list", sessionId);
+            return new List<KAgentEvent>();
+        }
     }
 
     public async Task<List<KAgentTask>> GetSessionTasksAsync(string sessionId)
@@ -420,7 +445,17 @@ public class KAgentApiClient
 
     public async Task<List<Hook>> GetHooksAsync()
     {
-        return await RequestAsync<List<Hook>>("/api/hooks", HttpMethod.Get);
+        try
+        {
+            // khook API returns a HookList CRD (apiVersion, kind, metadata, items)
+            var hookList = await RequestAsync<HookList>("/api/hooks", HttpMethod.Get);
+            return hookList?.Items ?? new List<Hook>();
+        }
+        catch
+        {
+            // Fallback: try direct list deserialization
+            return await RequestAsync<List<Hook>>("/api/hooks", HttpMethod.Get);
+        }
     }
 
     public async Task<Hook> CreateHookAsync(Hook hook)
@@ -430,14 +465,26 @@ public class KAgentApiClient
 
     public async Task<bool> EnableHookAsync(string hookId)
     {
-        await RequestAsync<object>($"/api/hooks/{hookId}/enable", HttpMethod.Post);
+        // Parse namespace/name from hookId
+        var parts = hookId.Split('/');
+        var ns = parts.Length > 1 ? parts[0] : "kagent";
+        var name = parts.Length > 1 ? parts[1] : hookId;
+        await RequestAsync<object>($"/api/hooks/{ns}/{name}/enable", HttpMethod.Post);
         return true;
     }
 
     public async Task<bool> DisableHookAsync(string hookId)
     {
-        await RequestAsync<object>($"/api/hooks/{hookId}/disable", HttpMethod.Post);
+        var parts = hookId.Split('/');
+        var ns = parts.Length > 1 ? parts[0] : "kagent";
+        var name = parts.Length > 1 ? parts[1] : hookId;
+        await RequestAsync<object>($"/api/hooks/{ns}/{name}/disable", HttpMethod.Post);
         return true;
+    }
+
+    public async Task DeleteHookAsync(string ns, string name)
+    {
+        await RequestAsync<object>($"/api/hooks/{ns}/{name}", HttpMethod.Delete);
     }
 
     public async Task<List<Alert>> GetAlertsAsync()

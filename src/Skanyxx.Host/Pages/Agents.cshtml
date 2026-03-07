@@ -1,0 +1,306 @@
+@page
+@model Skanyxx.Host.Pages.AgentsModel
+@{
+    ViewData["Title"] = "Agents";
+}
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">Available Agents</h3>
+        <button class="btn btn-ghost" onclick="loadAgents()">Refresh</button>
+    </div>
+    <p class="text-muted">AI agents available from your KAgent cluster. Agents are managed via kubectl/helm.</p>
+</div>
+
+<div class="agent-grid" id="agentGrid">
+    <div class="loading-state">Loading agents...</div>
+</div>
+
+
+<style>
+    .agent-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        gap: 16px;
+    }
+
+    .agent-card {
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 20px;
+    }
+
+    .agent-header {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+
+    .agent-icon {
+        font-size: 28px;
+        color: var(--accent-color);
+    }
+
+    .agent-header > div {
+        flex: 1;
+    }
+
+    .agent-name {
+        font-weight: 600;
+        font-size: 16px;
+    }
+
+    .agent-type {
+        font-size: 12px;
+    }
+
+    .agent-description {
+        font-size: 13px;
+        color: var(--text-muted);
+        margin-bottom: 16px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .agent-stats {
+        display: flex;
+        gap: 24px;
+        padding: 16px 0;
+        border-top: 1px solid var(--border-color);
+        border-bottom: 1px solid var(--border-color);
+        margin-bottom: 16px;
+    }
+
+    .agent-stat {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .agent-stat .stat-value {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--accent-color);
+    }
+
+    .agent-stat .stat-label {
+        font-size: 11px;
+        color: var(--text-muted);
+    }
+
+    .agent-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .badge-success {
+        background-color: rgba(34, 197, 94, 0.2);
+        color: #22c55e;
+    }
+
+    .badge-warning {
+        background-color: rgba(234, 179, 8, 0.2);
+        color: #eab308;
+    }
+
+    .badge-pending {
+        background-color: rgba(59, 130, 246, 0.2);
+        color: #3b82f6;
+    }
+
+    .badge-error {
+        background-color: rgba(239, 68, 68, 0.2);
+        color: #ef4444;
+    }
+
+    .loading-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 40px;
+        color: var(--text-muted);
+    }
+
+    .empty-state {
+        grid-column: 1 / -1;
+        text-align: center;
+        padding: 60px 20px;
+        color: var(--text-muted);
+    }
+
+    .empty-state h3 {
+        margin-bottom: 8px;
+        color: var(--text-primary);
+    }
+
+    /* Modal styles */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal.active {
+        display: flex;
+    }
+
+    .modal-content {
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .modal-header h3 {
+        margin: 0;
+    }
+
+    #createAgentForm {
+        padding: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+        outline: none;
+        border-color: var(--accent-color);
+    }
+
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border-color);
+    }
+</style>
+
+<script>
+    let agents = [];
+
+    async function loadAgents() {
+        const grid = document.getElementById('agentGrid');
+        grid.innerHTML = '<div class="loading-state">Loading agents...</div>';
+
+        try {
+            const response = await fetch('/api/agents');
+            if (!response.ok) throw new Error('Failed to load agents');
+            agents = await response.json();
+            renderAgents();
+        } catch (error) {
+            console.error('Error loading agents:', error);
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <h3>No agents found</h3>
+                    <p>Connect to KAgent to see available agents. Agents are created via kubectl/helm.</p>
+                </div>
+            `;
+        }
+    }
+
+    function renderAgents() {
+        const grid = document.getElementById('agentGrid');
+
+        if (agents.length === 0) {
+            grid.innerHTML = `
+                <div class="empty-state">
+                    <h3>No Agents Available</h3>
+                    <p>Connect to KAgent to see available agents. Use kubectl or helm to create new agents.</p>
+                </div>
+            `;
+            return;
+        }
+
+        grid.innerHTML = agents.map(agent => {
+            const statusClass = getStatusClass(agent.status);
+            const isReady = agent.status === 'Active' || agent.status === 'Ready';
+            return `
+                <div class="agent-card" data-id="${agent.id}">
+                    <div class="agent-header">
+                        <span class="agent-icon">&#x2B21;</span>
+                        <div>
+                            <div class="agent-name">${agent.name}</div>
+                            <div class="agent-type text-muted">${agent.type || 'Declarative'}</div>
+                        </div>
+                        <span class="badge ${statusClass}">${isReady ? 'Ready' : (agent.status || 'Unknown')}</span>
+                    </div>
+                    ${agent.description ? `<div class="agent-description">${agent.description}</div>` : ''}
+                    <div class="agent-actions">
+                        <button class="btn btn-primary" onclick="startChat('${agent.name}')">Chat</button>
+                        <button class="btn btn-ghost" onclick="viewAgentDetails('${agent.id}')">Details</button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function getStatusClass(status) {
+        switch ((status || '').toLowerCase()) {
+            case 'active':
+            case 'ready':
+                return 'badge-success';
+            case 'paused':
+            case 'inactive':
+                return 'badge-warning';
+            case 'pending':
+                return 'badge-pending';
+            case 'error':
+            case 'failed':
+                return 'badge-error';
+            default:
+                return 'badge-warning';
+        }
+    }
+
+    function startChat(agentName) {
+        window.location.href = `/Chat?agent=${encodeURIComponent(agentName)}`;
+    }
+
+    function viewAgentDetails(id) {
+        window.location.href = `/Debug?agent=${encodeURIComponent(id)}`;
+    }
+
+    // Load agents on page load
+    document.addEventListener('DOMContentLoaded', loadAgents);
+</script>

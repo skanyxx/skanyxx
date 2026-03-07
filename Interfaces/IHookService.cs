@@ -11,6 +11,6 @@ public interface IHookService
     Task<bool> EnableAsync(string id);
     Task<bool> DisableAsync(string id);
     Task<bool> DeleteAsync(string id);
+    Task<bool> DeleteAsync(string ns, string name);
     Task<object> TestAsync(string id);
-    Task<List<HookExecution>> GetExecutionsAsync(int limit = 10);
 }

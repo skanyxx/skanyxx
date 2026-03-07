@@ -9,5 +9,5 @@ public interface IAlertService
     Task<Alert> CreateAsync(Alert alert);
     Task<bool> AcknowledgeAsync(string id);
     Task<bool> ResolveAsync(string id);
-    Task<object> GetStatsAsync();
+    Task<AlertSummary> GetStatsAsync();
 }

@@ -1,14 +1,48 @@
+using System.Text.Json.Serialization;
+
 namespace SkanyxxWeb.Models;
 
 public class Alert
 {
-    public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string Title { get; set; } = string.Empty;
-    public string Description { get; set; } = string.Empty;
-    public string Severity { get; set; } = "Info";
-    public string Source { get; set; } = string.Empty;
-    public string Status { get; set; } = "Active";
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime? AcknowledgedAt { get; set; }
-    public DateTime? ResolvedAt { get; set; }
+    [JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [JsonPropertyName("hookName")]
+    public string HookName { get; set; } = string.Empty;
+
+    [JsonPropertyName("namespace")]
+    public string Namespace { get; set; } = string.Empty;
+
+    [JsonPropertyName("eventType")]
+    public string EventType { get; set; } = string.Empty;
+
+    [JsonPropertyName("resourceName")]
+    public string ResourceName { get; set; } = string.Empty;
+
+    [JsonPropertyName("severity")]
+    public string Severity { get; set; } = "medium";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "firing";
+
+    [JsonPropertyName("firstSeen")]
+    public string FirstSeen { get; set; } = string.Empty;
+
+    [JsonPropertyName("lastSeen")]
+    public string LastSeen { get; set; } = string.Empty;
+
+    [JsonPropertyName("message")]
+    public string Message { get; set; } = string.Empty;
+
+    [JsonPropertyName("agentId")]
+    public string AgentId { get; set; } = string.Empty;
+
+    [JsonPropertyName("sessionId")]
+    public string? SessionId { get; set; }
+
+    [JsonPropertyName("taskId")]
+    public string? TaskId { get; set; }
+
+    [JsonPropertyName("remediationStatus")]
+    public string? RemediationStatus { get; set; }
 }

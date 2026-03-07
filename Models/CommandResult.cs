@@ -6,4 +6,9 @@ public class CommandResult
     public string Stdout { get; set; } = string.Empty;
     public string Stderr { get; set; } = string.Empty;
     public int ExitCode { get; set; }
+
+    /// <summary>
+    /// Alias for Stdout, used by CloudToolsApiController and compatible APIs.
+    /// </summary>
+    public string Output => Stdout;
 }

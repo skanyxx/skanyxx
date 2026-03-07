@@ -51,6 +51,8 @@ Desktop.ini
 
 # Secrets
 *.env
+appsettings.json
 appsettings.Development.json
 appsettings.Local.json
 secrets.json
+scripts/kagent_setup.sh

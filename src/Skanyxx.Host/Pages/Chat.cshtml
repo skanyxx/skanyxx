@@ -1,0 +1,1141 @@
+@page
+@model Skanyxx.Host.Pages.ChatModel
+@{
+    ViewData["Title"] = "Chat";
+}
+
+<div class="chat-wrapper">
+    <!-- Header with Agent Info -->
+    <div class="chat-header">
+        <div class="agent-info">
+            <div class="agent-avatar">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                </svg>
+            </div>
+            <div class="agent-details">
+                <h3 id="agentName">Select Agent</h3>
+                <p id="sessionInfo">Session: Not started</p>
+            </div>
+        </div>
+        <div class="header-actions">
+            <select id="agentSelect" class="form-control">
+                <option value="">Loading agents...</option>
+            </select>
+            <button class="btn btn-secondary" onclick="toggleAnalytics()" id="analyticsBtn">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                </svg>
+                Analytics
+            </button>
+            <button class="btn btn-secondary" onclick="newChat()">New Chat</button>
+        </div>
+    </div>
+
+    <!-- Token Analytics Panel -->
+    <div class="analytics-panel" id="analyticsPanel">
+        <div class="stat-card">
+            <div class="stat-icon" style="color: var(--info-color);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="4" y1="9" x2="20" y2="9"></line>
+                    <line x1="4" y1="15" x2="20" y2="15"></line>
+                    <line x1="10" y1="3" x2="8" y2="21"></line>
+                    <line x1="16" y1="3" x2="14" y2="21"></line>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Total Tokens</span>
+                <span class="stat-value" id="totalTokens">0</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="color: var(--success-color);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="12" y1="1" x2="12" y2="23"></line>
+                    <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Est. Cost</span>
+                <span class="stat-value" id="estCost">$0.0000</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="color: var(--accent-color);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Avg/Message</span>
+                <span class="stat-value" id="avgTokens">0</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="color: var(--warning-color);">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                </svg>
+            </div>
+            <div class="stat-content">
+                <span class="stat-label">Tokens Used</span>
+                <span class="stat-value" id="tokensUsed">0%</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Security Warning Panel (hidden by default) -->
+    <div class="security-warning" id="securityWarning" style="display: none;">
+        <div class="warning-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+            </svg>
+        </div>
+        <div class="warning-content">
+            <h4>Sensitive Data Detected</h4>
+            <div class="warning-summary" id="warningSummary"></div>
+            <div class="warning-findings" id="warningFindings"></div>
+            <div class="warning-actions">
+                <label class="mask-checkbox">
+                    <input type="checkbox" id="maskCheckbox" checked onchange="toggleMasking(this.checked)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                        <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                    </svg>
+                    Auto-mask sensitive data before sending
+                </label>
+            </div>
+        </div>
+        <button class="dismiss-btn" onclick="dismissWarning()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+        </button>
+    </div>
+
+    <!-- Chat Messages -->
+    <div class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+            <div class="welcome-message">
+                <div class="welcome-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </div>
+                <h3>Start a conversation</h3>
+                <p>Ask questions, get insights, or explore your infrastructure with AI assistance.</p>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="chat-input-container">
+            <div class="input-wrapper">
+                <textarea
+                    id="chatInput"
+                    class="chat-input"
+                    placeholder="Type your message... (Press Enter to send, Shift+Enter for new line)"
+                    rows="1"></textarea>
+                <div class="token-counter" id="inputTokenCounter">~0 tokens</div>
+            </div>
+            <button class="btn btn-primary send-btn" id="sendBtn" onclick="sendMessage()">
+                <span id="sendBtnContent">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                    </svg>
+                    Send
+                </span>
+                <span id="sendBtnLoading" style="display: none;">
+                    <svg class="spinner" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56"></path>
+                    </svg>
+                    Sending...
+                </span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<style>
+    .chat-wrapper {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - 120px);
+        background: var(--bg-primary);
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+    }
+
+    /* Header Styles */
+    .chat-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 20px;
+        background: var(--bg-secondary);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .agent-info {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .agent-avatar {
+        width: 40px;
+        height: 40px;
+        background: var(--accent-color);
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+    }
+
+    .agent-details h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .agent-details p {
+        margin: 2px 0 0 0;
+        font-size: 12px;
+        color: var(--text-secondary);
+        font-family: 'Monaco', 'Menlo', monospace;
+    }
+
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .header-actions select {
+        width: 200px;
+    }
+
+    #analyticsBtn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    #analyticsBtn.active {
+        background: var(--accent-color);
+        color: white;
+    }
+
+    /* Analytics Panel */
+    .analytics-panel {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        padding: 12px 16px;
+        background: var(--bg-tertiary);
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .analytics-panel.hidden {
+        display: none;
+    }
+
+    .stat-card {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 12px;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        border: 1px solid var(--border-color);
+    }
+
+    .stat-icon {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.8;
+    }
+
+    .stat-content {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .stat-label {
+        font-size: 11px;
+        color: var(--text-secondary);
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .stat-value {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text-primary);
+        font-family: 'Monaco', 'Menlo', monospace;
+    }
+
+    /* Chat Container */
+    .chat-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+    }
+
+    .chat-messages {
+        flex: 1;
+        overflow-y: auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    /* Welcome Message */
+    .welcome-message {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text-secondary);
+        text-align: center;
+        padding: 40px;
+    }
+
+    .welcome-icon {
+        opacity: 0.4;
+        margin-bottom: 16px;
+    }
+
+    .welcome-message h3 {
+        margin: 0 0 8px 0;
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--text-primary);
+    }
+
+    .welcome-message p {
+        margin: 0;
+        font-size: 14px;
+        max-width: 400px;
+        line-height: 1.5;
+    }
+
+    /* Message Bubbles */
+    .chat-message {
+        display: flex;
+        width: 100%;
+        margin-bottom: 8px;
+    }
+
+    .chat-message.user {
+        justify-content: flex-end;
+    }
+
+    .chat-message.assistant {
+        justify-content: flex-start;
+    }
+
+    .message-bubble {
+        max-width: 85%;
+        min-width: 200px;
+        padding: 14px 16px;
+        border-radius: 12px;
+        position: relative;
+    }
+
+    .chat-message.user .message-bubble {
+        background: var(--accent-color);
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+
+    .chat-message.assistant .message-bubble {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-bottom-left-radius: 4px;
+    }
+
+    .message-content {
+        line-height: 1.6;
+        word-wrap: break-word;
+    }
+
+    .message-content pre {
+        background: var(--bg-primary);
+        padding: 12px;
+        border-radius: 6px;
+        overflow-x: auto;
+        margin: 8px 0;
+    }
+
+    .message-content code {
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 13px;
+    }
+
+    .message-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 10px;
+        padding-top: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 11px;
+    }
+
+    .chat-message.assistant .message-footer {
+        border-top-color: var(--border-color);
+    }
+
+    .message-time, .message-tokens {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        opacity: 0.7;
+    }
+
+    .chat-message.assistant .message-time,
+    .chat-message.assistant .message-tokens {
+        color: var(--text-secondary);
+    }
+
+    /* Typing Indicator */
+    .typing-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 14px 16px;
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        max-width: 300px;
+    }
+
+    .typing-dots {
+        display: flex;
+        gap: 4px;
+    }
+
+    .typing-dot {
+        width: 8px;
+        height: 8px;
+        background: var(--accent-color);
+        border-radius: 50%;
+        animation: typing 1.4s infinite;
+    }
+
+    .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+    .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+    @@keyframes typing {
+        0%, 100% { opacity: 0.3; transform: scale(0.8); }
+        50% { opacity: 1; transform: scale(1); }
+    }
+
+    /* Error Message */
+    .error-bubble {
+        background: var(--error-color) !important;
+        border: none !important;
+    }
+
+    .error-bubble .message-footer {
+        border-top-color: rgba(255, 255, 255, 0.2);
+    }
+
+    /* Input Area */
+    .chat-input-container {
+        display: flex;
+        gap: 12px;
+        padding: 16px 20px;
+        background: var(--bg-secondary);
+        border-top: 1px solid var(--border-color);
+        align-items: flex-end;
+    }
+
+    .input-wrapper {
+        flex: 1;
+        position: relative;
+    }
+
+    .chat-input {
+        width: 100%;
+        padding: 12px 16px;
+        padding-right: 90px;
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 14px;
+        resize: none;
+        min-height: 48px;
+        max-height: 120px;
+        line-height: 1.5;
+        font-family: inherit;
+    }
+
+    .chat-input:focus {
+        outline: none;
+        border-color: var(--accent-color);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+    }
+
+    .token-counter {
+        position: absolute;
+        bottom: 10px;
+        right: 12px;
+        font-size: 11px;
+        color: var(--text-secondary);
+        background: var(--bg-tertiary);
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-family: 'Monaco', 'Menlo', monospace;
+    }
+
+    .send-btn {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 12px 20px;
+        min-width: 100px;
+        justify-content: center;
+        font-size: 14px;
+        font-weight: 500;
+        border-radius: 12px;
+    }
+
+    .spinner {
+        animation: spin 1s linear infinite;
+    }
+
+    @@keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
+
+    /* Scrollbar */
+    .chat-messages::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    .chat-messages::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb {
+        background: var(--border-color);
+        border-radius: 3px;
+    }
+
+    .chat-messages::-webkit-scrollbar-thumb:hover {
+        background: var(--text-secondary);
+    }
+
+    /* Security Warning Styles */
+    .security-warning {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 16px;
+        background: rgba(239, 68, 68, 0.1);
+        border-top: 1px solid rgba(239, 68, 68, 0.2);
+        border-bottom: 1px solid rgba(239, 68, 68, 0.2);
+    }
+
+    .warning-icon {
+        color: var(--error-color);
+        flex-shrink: 0;
+        margin-top: 2px;
+    }
+
+    .warning-content {
+        flex: 1;
+    }
+
+    .warning-content h4 {
+        margin: 0 0 6px 0;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--error-color);
+    }
+
+    .warning-summary {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 8px;
+        flex-wrap: wrap;
+    }
+
+    .warning-summary span {
+        font-size: 12px;
+        font-weight: 500;
+    }
+
+    .warning-summary .high { color: #ef4444; }
+    .warning-summary .medium { color: #f59e0b; }
+    .warning-summary .low { color: #6b7280; }
+
+    .warning-findings {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+    }
+
+    .finding-tag {
+        padding: 2px 8px;
+        background: rgba(239, 68, 68, 0.15);
+        border-radius: 4px;
+        font-size: 11px;
+        color: var(--error-color);
+        font-weight: 500;
+    }
+
+    .warning-actions {
+        display: flex;
+        align-items: center;
+    }
+
+    .mask-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        color: var(--text-secondary);
+        cursor: pointer;
+    }
+
+    .mask-checkbox input {
+        cursor: pointer;
+    }
+
+    .dismiss-btn {
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .dismiss-btn:hover {
+        background: rgba(239, 68, 68, 0.2);
+        color: var(--error-color);
+    }
+
+    /* Masked Badge Styles */
+    .masked-badge {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 2px 8px;
+        background: rgba(34, 197, 94, 0.2);
+        border-radius: 4px;
+        font-size: 10px;
+        color: #22c55e;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+</style>
+
+<script>
+    let conversationId = null;
+    let selectedAgent = null;
+    let isLoading = false;
+    let showAnalytics = true;
+    let messages = [];
+    let maskSensitiveData = true;
+    let currentScanResult = null;
+
+    // Security Scanner - detects sensitive data patterns
+    const SecurityScanner = {
+        patterns: [
+            // API Keys and Tokens
+            { name: 'API Key', pattern: /\b(api[_-]?key|apikey)\s*[:=]\s*['"]?([a-zA-Z0-9_\-]{20,})['"]?/gi, replacement: 'API_KEY=[REDACTED]', severity: 'high' },
+            { name: 'Bearer Token', pattern: /\b(bearer|token)\s*[:=]\s*['"]?([a-zA-Z0-9_\-\.]{20,})['"]?/gi, replacement: 'TOKEN=[REDACTED]', severity: 'high' },
+            { name: 'AWS Access Key', pattern: /\b(AKIA[0-9A-Z]{16})\b/g, replacement: 'AWS_KEY=[REDACTED]', severity: 'high' },
+            // Passwords
+            { name: 'Password', pattern: /\b(password|passwd|pwd)\s*[:=]\s*['"]?([^\s'"]{8,})['"]?/gi, replacement: 'PASSWORD=[REDACTED]', severity: 'high' },
+            { name: 'Password', pattern: /\b(?:my |the )?password\s+(?:is|are|:|=)\s*['"]?([^\s'"]{4,})['"]?/gi, replacement: 'password is [REDACTED]', severity: 'high' },
+            // Private Keys
+            { name: 'Private Key', pattern: /-----BEGIN\s+(RSA|DSA|EC|OPENSSH)?\s*PRIVATE KEY-----[\s\S]*?-----END\s+(RSA|DSA|EC|OPENSSH)?\s*PRIVATE KEY-----/gi, replacement: '-----BEGIN PRIVATE KEY-----[REDACTED]-----END PRIVATE KEY-----', severity: 'high' },
+            // Connection Strings
+            { name: 'Database Connection', pattern: /\b(mongodb|postgres|postgresql|mysql|redis|amqp):\/\/[^\s]+/gi, replacement: 'CONNECTION_STRING=[REDACTED]', severity: 'high' },
+            // JWT Tokens
+            { name: 'JWT Token', pattern: /\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, replacement: 'JWT=[REDACTED]', severity: 'high' },
+            // Credit Cards
+            { name: 'Credit Card', pattern: /\b(?:\d{4}[-\s]?){3}\d{4}\b/g, replacement: 'CREDIT_CARD=[REDACTED]', severity: 'high' },
+            // SSH Keys
+            { name: 'SSH Key', pattern: /ssh-rsa\s+[A-Za-z0-9+/]+[=]{0,2}/g, replacement: 'SSH_KEY=[REDACTED]', severity: 'high' },
+            // Email Addresses
+            { name: 'Email', pattern: /\b[A-Za-z0-9._%+-]+@@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g, replacement: 'EMAIL=[REDACTED]', severity: 'medium' },
+            // IP Addresses
+            { name: 'IP Address', pattern: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replacement: 'IP=[REDACTED]', severity: 'low' },
+            // SSN
+            { name: 'SSN', pattern: /\b\d{3}-\d{2}-\d{4}\b/g, replacement: 'SSN=[REDACTED]', severity: 'high' },
+            // GitHub Tokens
+            { name: 'GitHub Token', pattern: /\b(ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36}\b/g, replacement: 'GITHUB_TOKEN=[REDACTED]', severity: 'high' },
+            // Slack Tokens
+            { name: 'Slack Token', pattern: /xox[baprs]-[0-9]{10,12}-[0-9]{10,12}-[a-zA-Z0-9]{24,32}/g, replacement: 'SLACK_TOKEN=[REDACTED]', severity: 'high' }
+        ],
+
+        scan(text) {
+            if (!text || text.length === 0) {
+                return { hasSensitiveData: false, findings: [], summary: { high: 0, medium: 0, low: 0 } };
+            }
+
+            const findings = [];
+            for (const pattern of this.patterns) {
+                const regex = new RegExp(pattern.pattern);
+                let match;
+                while ((match = regex.exec(text)) !== null) {
+                    findings.push({
+                        type: pattern.name,
+                        severity: pattern.severity,
+                        match: match[0].substring(0, 30) + (match[0].length > 30 ? '...' : ''),
+                        position: match.index
+                    });
+                }
+            }
+
+            return {
+                hasSensitiveData: findings.length > 0,
+                findings,
+                summary: {
+                    high: findings.filter(f => f.severity === 'high').length,
+                    medium: findings.filter(f => f.severity === 'medium').length,
+                    low: findings.filter(f => f.severity === 'low').length
+                }
+            };
+        },
+
+        mask(text) {
+            if (!text || text.length === 0) return { maskedText: text || '', maskCount: 0 };
+
+            let maskedText = text;
+            let maskCount = 0;
+
+            for (const pattern of this.patterns) {
+                const regex = new RegExp(pattern.pattern);
+                const matches = maskedText.match(regex);
+                if (matches) {
+                    maskCount += matches.length;
+                    maskedText = maskedText.replace(regex, pattern.replacement);
+                }
+            }
+
+            return { maskedText, maskCount };
+        }
+    };
+
+    // Token counting utility (approximation: 1 token ~ 4 characters)
+    const TokenUtils = {
+        countTokens: (text) => {
+            if (!text || text.length === 0) return 0;
+            return Math.ceil(text.length / 4);
+        },
+
+        getStats: (messages) => {
+            if (!messages || messages.length === 0) {
+                return { totalTokens: 0, userTokens: 0, assistantTokens: 0, avgTokens: 0, cost: 0 };
+            }
+
+            let totalTokens = 0;
+            let userTokens = 0;
+            let assistantTokens = 0;
+
+            messages.forEach(msg => {
+                const tokens = TokenUtils.countTokens(msg.content);
+                totalTokens += tokens;
+                if (msg.role === 'user') {
+                    userTokens += tokens;
+                } else {
+                    assistantTokens += tokens;
+                }
+            });
+
+            // GPT-4 pricing estimate
+            const inputCost = (userTokens / 1000) * 0.03;
+            const outputCost = (assistantTokens / 1000) * 0.06;
+
+            return {
+                totalTokens,
+                userTokens,
+                assistantTokens,
+                avgTokens: messages.length > 0 ? Math.round(totalTokens / messages.length) : 0,
+                cost: inputCost + outputCost
+            };
+        }
+    };
+
+    // Initialize
+    document.addEventListener('DOMContentLoaded', () => {
+        loadAgents();
+        setupInputListeners();
+    });
+
+    function setupInputListeners() {
+        const input = document.getElementById('chatInput');
+
+        input.addEventListener('input', () => {
+            // Auto-resize
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+
+            // Update token counter
+            const tokens = TokenUtils.countTokens(input.value);
+            document.getElementById('inputTokenCounter').textContent = `~${tokens} tokens`;
+
+            // Scan for sensitive data
+            scanForSensitiveData(input.value);
+        });
+
+        input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !isLoading) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+    }
+
+    function scanForSensitiveData(text) {
+        currentScanResult = SecurityScanner.scan(text);
+        const warningPanel = document.getElementById('securityWarning');
+
+        if (currentScanResult.hasSensitiveData) {
+            // Update summary
+            const summaryHtml = [];
+            if (currentScanResult.summary.high > 0) {
+                summaryHtml.push(`<span class="high">${currentScanResult.summary.high} High Risk</span>`);
+            }
+            if (currentScanResult.summary.medium > 0) {
+                summaryHtml.push(`<span class="medium">${currentScanResult.summary.medium} Medium Risk</span>`);
+            }
+            if (currentScanResult.summary.low > 0) {
+                summaryHtml.push(`<span class="low">${currentScanResult.summary.low} Low Risk</span>`);
+            }
+            document.getElementById('warningSummary').innerHTML = summaryHtml.join('');
+
+            // Update findings (show first 4)
+            const uniqueTypes = [...new Set(currentScanResult.findings.map(f => f.type))];
+            const findingsHtml = uniqueTypes.slice(0, 4).map(type =>
+                `<span class="finding-tag">${type}</span>`
+            ).join('');
+            const moreCount = uniqueTypes.length - 4;
+            document.getElementById('warningFindings').innerHTML = findingsHtml +
+                (moreCount > 0 ? `<span class="finding-tag">+${moreCount} more</span>` : '');
+
+            warningPanel.style.display = 'flex';
+        } else {
+            warningPanel.style.display = 'none';
+        }
+    }
+
+    function toggleMasking(enabled) {
+        maskSensitiveData = enabled;
+    }
+
+    function dismissWarning() {
+        document.getElementById('securityWarning').style.display = 'none';
+    }
+
+    async function loadAgents() {
+        try {
+            const response = await fetch('/api/agents');
+            if (!response.ok) throw new Error('Failed to load agents');
+
+            const agents = await response.json();
+            const select = document.getElementById('agentSelect');
+
+            if (agents.length === 0) {
+                select.innerHTML = '<option value="">No agents available</option>';
+                return;
+            }
+
+            select.innerHTML = agents.map(a =>
+                `<option value="${a.name}">${a.name}</option>`
+            ).join('');
+
+            selectedAgent = agents[0];
+            select.value = selectedAgent.name;
+            updateAgentHeader();
+
+            select.addEventListener('change', function() {
+                selectedAgent = agents.find(a => a.name === this.value) || { name: this.value };
+                updateAgentHeader();
+                newChat();
+            });
+        } catch (error) {
+            console.error('Failed to load agents:', error);
+            document.getElementById('agentSelect').innerHTML = '<option value="k8s-agent">k8s-agent</option>';
+            selectedAgent = { name: 'k8s-agent' };
+            updateAgentHeader();
+        }
+    }
+
+    function updateAgentHeader() {
+        document.getElementById('agentName').textContent = selectedAgent?.name || 'Select Agent';
+        document.getElementById('sessionInfo').textContent = conversationId
+            ? `Session: ${conversationId.slice(0, 8)}...`
+            : 'Session: Not started';
+    }
+
+    function updateAnalytics() {
+        const stats = TokenUtils.getStats(messages);
+        document.getElementById('totalTokens').textContent = stats.totalTokens.toLocaleString();
+        document.getElementById('estCost').textContent = `$${stats.cost.toFixed(4)}`;
+        document.getElementById('avgTokens').textContent = stats.avgTokens.toLocaleString();
+
+        // Calculate percentage of typical context window (8k tokens)
+        const percentage = Math.min(Math.round((stats.totalTokens / 8000) * 100), 100);
+        document.getElementById('tokensUsed').textContent = `${percentage}%`;
+    }
+
+    function toggleAnalytics() {
+        showAnalytics = !showAnalytics;
+        const panel = document.getElementById('analyticsPanel');
+        const btn = document.getElementById('analyticsBtn');
+
+        if (showAnalytics) {
+            panel.classList.remove('hidden');
+            btn.classList.add('active');
+        } else {
+            panel.classList.add('hidden');
+            btn.classList.remove('active');
+        }
+    }
+
+    function newChat() {
+        conversationId = null;
+        messages = [];
+        updateAgentHeader();
+        updateAnalytics();
+
+        document.getElementById('chatMessages').innerHTML = `
+            <div class="welcome-message">
+                <div class="welcome-icon">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                </div>
+                <h3>New conversation with ${selectedAgent?.name || 'Agent'}</h3>
+                <p>Ask questions, get insights, or explore your infrastructure with AI assistance.</p>
+            </div>
+        `;
+    }
+
+    async function sendMessage() {
+        if (isLoading) return;
+
+        const input = document.getElementById('chatInput');
+        let message = input.value.trim();
+        if (!message) return;
+
+        // Apply masking if enabled and sensitive data detected
+        let messageToSend = message;
+        let wasMasked = false;
+        if (maskSensitiveData && currentScanResult?.hasSensitiveData) {
+            const maskResult = SecurityScanner.mask(message);
+            messageToSend = maskResult.maskedText;
+            wasMasked = maskResult.maskCount > 0;
+            console.log(`Security: Masked ${maskResult.maskCount} sensitive items`);
+        }
+
+        const messagesContainer = document.getElementById('chatMessages');
+
+        // Remove welcome message if present
+        const welcome = messagesContainer.querySelector('.welcome-message');
+        if (welcome) welcome.remove();
+
+        // Add user message (show original to user, but send masked)
+        const displayMessage = wasMasked ? message : messageToSend;
+        const userTokens = TokenUtils.countTokens(displayMessage);
+        const userMsg = { role: 'user', content: displayMessage, timestamp: new Date().toISOString() };
+        messages.push(userMsg);
+
+        messagesContainer.innerHTML += createMessageBubble(userMsg, userTokens, wasMasked);
+        input.value = '';
+        input.style.height = 'auto';
+        document.getElementById('inputTokenCounter').textContent = '~0 tokens';
+        document.getElementById('securityWarning').style.display = 'none';
+        currentScanResult = null;
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        // Show typing indicator
+        const typingId = 'typing-' + Date.now();
+        messagesContainer.innerHTML += `
+            <div class="chat-message assistant" id="${typingId}">
+                <div class="typing-indicator">
+                    <div class="typing-dots">
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                        <div class="typing-dot"></div>
+                    </div>
+                    <span style="color: var(--text-secondary); font-size: 14px;">Agent is thinking...</span>
+                </div>
+            </div>
+        `;
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+        setLoading(true);
+        updateAnalytics();
+
+        try {
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: messageToSend, // Send masked message to API
+                    conversationId: conversationId,
+                    agentName: selectedAgent?.name || 'k8s-agent'
+                })
+            });
+
+            document.getElementById(typingId)?.remove();
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                // Show detailed error message
+                const errorMessage = data.message || data.error || `HTTP ${response.status}: ${response.statusText}`;
+                throw new Error(errorMessage);
+            }
+
+            conversationId = data.conversationId;
+            updateAgentHeader();
+
+            // Add AI response
+            const content = data.message?.content || 'No response received';
+            const assistantMsg = { role: 'assistant', content: content, timestamp: new Date().toISOString() };
+            messages.push(assistantMsg);
+
+            const aiTokens = TokenUtils.countTokens(content);
+            messagesContainer.innerHTML += createMessageBubble(assistantMsg, aiTokens);
+
+        } catch (error) {
+            document.getElementById(typingId)?.remove();
+            console.error('Chat error:', error);
+
+            // Add error message with full details
+            const errorContent = `Error: ${error.message}`;
+            const errorMsg = { role: 'assistant', content: errorContent, timestamp: new Date().toISOString(), isError: true };
+            messages.push(errorMsg);
+
+            messagesContainer.innerHTML += `
+                <div class="chat-message assistant">
+                    <div class="message-bubble error-bubble">
+                        <div class="message-content">${escapeHtml(errorContent)}</div>
+                        <div class="message-footer">
+                            <span class="message-time">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <polyline points="12 6 12 12 16 14"></polyline>
+                                </svg>
+                                ${new Date().toLocaleTimeString()}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        setLoading(false);
+        updateAnalytics();
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    function createMessageBubble(msg, tokens, wasMasked = false) {
+        const isUser = msg.role === 'user';
+        const time = new Date(msg.timestamp).toLocaleTimeString();
+        const content = formatMessage(msg.content);
+
+        const maskedBadge = wasMasked ? `
+            <span class="masked-badge" title="Sensitive data was automatically masked before sending">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+                Masked
+            </span>
+        ` : '';
+
+        return `
+            <div class="chat-message ${isUser ? 'user' : 'assistant'}">
+                <div class="message-bubble">
+                    <div class="message-content">${content}</div>
+                    <div class="message-footer">
+                        <span class="message-time">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <polyline points="12 6 12 12 16 14"></polyline>
+                            </svg>
+                            ${time}
+                        </span>
+                        ${maskedBadge}
+                        <span class="message-tokens">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="4" y1="9" x2="20" y2="9"></line>
+                                <line x1="4" y1="15" x2="20" y2="15"></line>
+                                <line x1="10" y1="3" x2="8" y2="21"></line>
+                                <line x1="16" y1="3" x2="14" y2="21"></line>
+                            </svg>
+                            ~${tokens} tokens
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function setLoading(loading) {
+        isLoading = loading;
+        document.getElementById('sendBtn').disabled = loading;
+        document.getElementById('sendBtnContent').style.display = loading ? 'none' : 'flex';
+        document.getElementById('sendBtnLoading').style.display = loading ? 'flex' : 'none';
+        document.getElementById('chatInput').disabled = loading;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+
+    function formatMessage(content) {
+        let formatted = escapeHtml(content);
+
+        // Code blocks
+        formatted = formatted.replace(/```(\w*)\n?([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+
+        // Inline code
+        formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+        // Bold
+        formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+        // Line breaks
+        formatted = formatted.replace(/\n/g, '<br>');
+
+        return formatted;
+    }
+
+    // Initialize analytics button state
+    document.getElementById('analyticsBtn')?.classList.add('active');
+</script>

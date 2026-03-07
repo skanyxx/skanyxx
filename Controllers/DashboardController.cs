@@ -193,8 +193,8 @@ public class DashboardController : ControllerBase
                 {
                     Id = alert.Id,
                     Type = "alert",
-                    Message = $"Alert: {alert.Title}",
-                    Timestamp = alert.CreatedAt
+                    Message = $"Alert: {alert.Message}",
+                    Timestamp = DateTime.TryParse(alert.FirstSeen, out var ts) ? ts : DateTime.UtcNow
                 });
             }
         }

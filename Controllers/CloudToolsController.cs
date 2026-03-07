@@ -207,7 +207,7 @@ public class CloudToolsApiController : ControllerBase
                 {
                     success = result.Success,
                     output = result.Output,
-                    error = result.Error
+                    error = result.Stderr
                 };
             }
 
@@ -217,7 +217,7 @@ public class CloudToolsApiController : ControllerBase
             {
                 success = azResult.Success,
                 output = azResult.Output,
-                error = azResult.Error
+                error = azResult.Stderr
             };
         }
         catch (Exception ex)
@@ -249,7 +249,7 @@ public class CloudToolsApiController : ControllerBase
             {
                 success = result.Success,
                 output = result.Output,
-                error = result.Error
+                error = result.Stderr
             };
         }
         catch (Exception ex)
@@ -258,18 +258,18 @@ public class CloudToolsApiController : ControllerBase
         }
     }
 
-    private ToolInfo CheckToolAvailability(string name, string[] commands)
+    private Models.ToolInfo CheckToolAvailability(string name, string[] commands)
     {
         foreach (var cmd in commands)
         {
             var path = FindInPath(cmd);
             if (!string.IsNullOrEmpty(path))
             {
-                return new ToolInfo { Available = true, Path = path };
+                return new Models.ToolInfo { Available = true, Path = path };
             }
         }
 
-        return new ToolInfo { Available = false, Error = $"{name} not found in PATH" };
+        return new Models.ToolInfo { Available = false };
     }
 
     private string? FindInPath(string command)
@@ -376,7 +376,7 @@ public class CloudToolsApiController : ControllerBase
         return output.Split('\n').FirstOrDefault() ?? "";
     }
 
-    private CommandResult RunCommand(string command, string args)
+    private Models.CommandResult RunCommand(string command, string args)
     {
         try
         {
@@ -398,31 +398,24 @@ public class CloudToolsApiController : ControllerBase
             using var process = Process.Start(psi);
             if (process == null)
             {
-                return new CommandResult { Success = false, Error = "Failed to start process" };
+                return new Models.CommandResult { Success = false, Stderr = "Failed to start process" };
             }
 
             var output = process.StandardOutput.ReadToEnd();
             var error = process.StandardError.ReadToEnd();
             process.WaitForExit(30000); // 30 second timeout
 
-            return new CommandResult
+            return new Models.CommandResult
             {
                 Success = process.ExitCode == 0,
-                Output = output,
-                Error = error
+                Stdout = output,
+                Stderr = error
             };
         }
         catch (Exception ex)
         {
-            return new CommandResult { Success = false, Error = ex.Message };
+            return new Models.CommandResult { Success = false, Stderr = ex.Message };
         }
-    }
-
-    private class ToolInfo
-    {
-        public bool Available { get; set; }
-        public string? Path { get; set; }
-        public string? Error { get; set; }
     }
 
     private class AzureAuthInfo
@@ -431,13 +424,6 @@ public class CloudToolsApiController : ControllerBase
         public bool LoggedIn { get; set; }
         public string? User { get; set; }
         public string? Error { get; set; }
-    }
-
-    private class CommandResult
-    {
-        public bool Success { get; set; }
-        public string Output { get; set; } = "";
-        public string Error { get; set; } = "";
     }
 }
 

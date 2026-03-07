@@ -105,8 +105,8 @@ public class DebugController : ControllerBase
                     logs.Add(new LogEntry
                     {
                         Level = alert.Severity?.ToLower() == "critical" ? "error" : "warning",
-                        Time = alert.CreatedAt.ToString("HH:mm:ss"),
-                        Message = $"Alert [{alert.Severity}]: {alert.Title}"
+                        Time = DateTime.TryParse(alert.FirstSeen, out var alertTime) ? alertTime.ToString("HH:mm:ss") : "",
+                        Message = $"Alert [{alert.Severity}]: {alert.Message}"
                     });
                 }
             }
