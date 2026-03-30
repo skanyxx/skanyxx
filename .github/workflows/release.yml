@@ -73,7 +73,7 @@ jobs:
         run: dotnet restore Skanyxx.sln -r win-x64
 
       - name: Build (populates modules/)
-        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
+        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore -r win-x64
 
       - name: Publish self-contained win-x64
         run: >
@@ -143,7 +143,7 @@ jobs:
         run: dotnet restore Skanyxx.sln -r ${{ matrix.rid }}
 
       - name: Build (populates modules/)
-        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
+        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore -r ${{ matrix.rid }}
 
       - name: Publish self-contained ${{ matrix.rid }}
         run: >
@@ -233,7 +233,7 @@ jobs:
         run: dotnet restore Skanyxx.sln -r linux-x64
 
       - name: Build (populates modules/)
-        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
+        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore -r linux-x64
 
       - name: Publish self-contained linux-x64
         run: >
