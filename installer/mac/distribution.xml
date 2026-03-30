@@ -1,9 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- ─────────────────────────────────────────────────────────────
-     Skanyxx macOS Distribution XML
-     Defines the installer wizard UI shown by the macOS Installer app.
-     Used by: productbuild --distribution distribution.xml
-     ───────────────────────────────────────────────────────────── -->
 <installer-gui-script minSpecVersion="1">
 
     <title>Skanyxx SRE Platform</title>

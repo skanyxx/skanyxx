@@ -268,7 +268,8 @@ jobs:
 
           # CLI launcher → /usr/local/bin/skanyxx
           mkdir -p "$PKG_DIR/usr/local/bin"
-          cp installer/linux/usr/local/bin/skanyxx "$PKG_DIR/usr/local/bin/skanyxx"
+          printf '#!/usr/bin/env bash\nexec /usr/share/skanyxx/Skanyxx.Host --urls "http://localhost:5282" "$@"\n' \
+            > "$PKG_DIR/usr/local/bin/skanyxx"
           chmod 755 "$PKG_DIR/usr/local/bin/skanyxx"
 
           # .desktop file
