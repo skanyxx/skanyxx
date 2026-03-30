@@ -70,10 +70,10 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore Skanyxx.sln -r win-x64
+        run: dotnet restore Skanyxx.sln
 
-      - name: Build (populates modules/)
-        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore -r win-x64
+      - name: Build solution (populates modules/)
+        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
 
       - name: Publish self-contained win-x64
         run: >
@@ -81,7 +81,6 @@ jobs:
           --configuration ${{ env.CONFIGURATION }}
           --runtime win-x64
           --self-contained true
-          --no-build
           --output publish/win-x64
 
       - name: Copy module DLLs to publish output
@@ -140,10 +139,10 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore Skanyxx.sln -r ${{ matrix.rid }}
+        run: dotnet restore Skanyxx.sln
 
-      - name: Build (populates modules/)
-        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore -r ${{ matrix.rid }}
+      - name: Build solution (populates modules/)
+        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
 
       - name: Publish self-contained ${{ matrix.rid }}
         run: >
@@ -151,7 +150,6 @@ jobs:
           --configuration ${{ env.CONFIGURATION }}
           --runtime ${{ matrix.rid }}
           --self-contained true
-          --no-build
           --output publish/${{ matrix.rid }}
 
       - name: Copy module DLLs to publish output
@@ -230,10 +228,10 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore Skanyxx.sln -r linux-x64
+        run: dotnet restore Skanyxx.sln
 
-      - name: Build (populates modules/)
-        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore -r linux-x64
+      - name: Build solution (populates modules/)
+        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
 
       - name: Publish self-contained linux-x64
         run: >
@@ -241,7 +239,6 @@ jobs:
           --configuration ${{ env.CONFIGURATION }}
           --runtime linux-x64
           --self-contained true
-          --no-build
           --output publish/linux-x64
 
       - name: Copy module DLLs to publish output
