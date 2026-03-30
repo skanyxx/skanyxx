@@ -56,3 +56,8 @@ appsettings.Development.json
 appsettings.Local.json
 secrets.json
 scripts/kagent_setup.sh
+
+# SQLite database files
+*.db
+*.db-shm
+*.db-wal

@@ -1,0 +1,242 @@
+name: Release
+
+# Trigger: push a version tag (e.g. v1.2.3) OR manual dispatch
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag name (e.g. v1.2.3)"
+        required: true
+        type: string
+      release_name:
+        description: "Release title (defaults to tag name)"
+        required: false
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        default: false
+        type: boolean
+
+env:
+  DOTNET_VERSION: '8.0.x'
+  CONFIGURATION: Release
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Build self-contained executable for each target platform
+  # ──────────────────────────────────────────────────────────────
+  build:
+    name: Build — ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            label: macOS (Apple Silicon)
+            rid: osx-arm64
+            artifact: skanyxx-macos-arm64
+            archive_cmd: zip -r
+            archive_ext: .zip
+
+          - os: macos-latest
+            label: macOS (Intel)
+            rid: osx-x64
+            artifact: skanyxx-macos-x64
+            archive_cmd: zip -r
+            archive_ext: .zip
+
+          - os: ubuntu-latest
+            label: Linux (x64)
+            rid: linux-x64
+            artifact: skanyxx-linux-x64
+            archive_cmd: zip -r
+            archive_ext: .zip
+
+          - os: windows-latest
+            label: Windows (x64)
+            rid: win-x64
+            artifact: skanyxx-windows-x64
+            archive_cmd: Compress-Archive -Path
+            archive_ext: .zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ── .NET SDK ────────────────────────────────────────────────
+      - name: Set up .NET ${{ env.DOTNET_VERSION }}
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      # ── Restore ─────────────────────────────────────────────────
+      - name: Restore NuGet packages
+        run: dotnet restore Skanyxx.sln
+
+      # ── Build all modules ────────────────────────────────────────
+      # This step is critical: each module's CopyToModules MSBuild target
+      # copies the compiled DLL into src/Skanyxx.Host/modules/.
+      # The publish step (below) then packages that directory too.
+      - name: Build solution (populates modules/ directory)
+        run: >
+          dotnet build Skanyxx.sln
+          --configuration ${{ env.CONFIGURATION }}
+          --no-restore
+
+      # ── Publish self-contained host ──────────────────────────────
+      # Produces a single directory with everything needed to run on the
+      # target platform — no .NET installation required on the end machine.
+      - name: Publish self-contained host
+        run: >
+          dotnet publish src/Skanyxx.Host/Skanyxx.Host.csproj
+          --configuration ${{ env.CONFIGURATION }}
+          --runtime ${{ matrix.rid }}
+          --self-contained true
+          -p:PublishSingleFile=false
+          --no-build
+          --output ./publish/${{ matrix.artifact }}
+
+      # ── Copy module DLLs into publish output ─────────────────────
+      # dotnet publish does not include files that are placed in modules/
+      # by the CopyToModules build target, so we copy them explicitly.
+      - name: Copy module DLLs to publish output (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p ./publish/${{ matrix.artifact }}/modules
+          cp src/Skanyxx.Host/modules/*.dll       ./publish/${{ matrix.artifact }}/modules/ 2>/dev/null || true
+          cp src/Skanyxx.Host/modules/*.deps.json ./publish/${{ matrix.artifact }}/modules/ 2>/dev/null || true
+
+      - name: Copy module DLLs to publish output (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ".\publish\${{ matrix.artifact }}\modules" | Out-Null
+          Copy-Item "src\Skanyxx.Host\modules\*.dll"       ".\publish\${{ matrix.artifact }}\modules\" -ErrorAction SilentlyContinue
+          Copy-Item "src\Skanyxx.Host\modules\*.deps.json" ".\publish\${{ matrix.artifact }}\modules\" -ErrorAction SilentlyContinue
+
+      # ── Copy installer scripts into publish output ───────────────
+      - name: Copy scripts and config template (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp appsettings.template.json ./publish/${{ matrix.artifact }}/
+          cp install.sh                ./publish/${{ matrix.artifact }}/
+          cp run.sh                    ./publish/${{ matrix.artifact }}/
+          cp uninstall.sh              ./publish/${{ matrix.artifact }}/
+          chmod +x ./publish/${{ matrix.artifact }}/install.sh
+          chmod +x ./publish/${{ matrix.artifact }}/run.sh
+          chmod +x ./publish/${{ matrix.artifact }}/uninstall.sh
+
+      - name: Copy scripts and config template (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item "appsettings.template.json" ".\publish\${{ matrix.artifact }}\"
+          Copy-Item "install.ps1"               ".\publish\${{ matrix.artifact }}\"
+          Copy-Item "run.ps1"                   ".\publish\${{ matrix.artifact }}\"
+          Copy-Item "uninstall.ps1"             ".\publish\${{ matrix.artifact }}\"
+
+      # ── Create archive ───────────────────────────────────────────
+      - name: Create zip archive (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd publish
+          zip -r ${{ matrix.artifact }}.zip ${{ matrix.artifact }}/
+
+      - name: Create zip archive (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path ".\publish\${{ matrix.artifact }}\*" `
+                           -DestinationPath ".\publish\${{ matrix.artifact }}.zip"
+
+      # ── Upload artifact for release job ─────────────────────────
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: publish/${{ matrix.artifact }}.zip
+          retention-days: 1
+
+  # ──────────────────────────────────────────────────────────────
+  # Create GitHub Release and attach all platform archives
+  # ──────────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Resolve tag and release name
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}"          >> $GITHUB_OUTPUT
+            NAME="${{ inputs.release_name }}"
+            echo "name=${NAME:-${{ inputs.tag }}}" >> $GITHUB_OUTPUT
+            echo "prerelease=${{ inputs.prerelease }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ github.ref_name }}"     >> $GITHUB_OUTPUT
+            echo "name=${{ github.ref_name }}"    >> $GITHUB_OUTPUT
+            echo "prerelease=false"               >> $GITHUB_OUTPUT
+          fi
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name:   ${{ steps.meta.outputs.tag }}
+          name:       ${{ steps.meta.outputs.name }}
+          prerelease: ${{ steps.meta.outputs.prerelease == 'true' }}
+          body: |
+            ## Skanyxx SRE Platform — ${{ steps.meta.outputs.name }}
+
+            ### Downloads
+
+            | Platform | File |
+            |----------|------|
+            | macOS (Apple Silicon / M1+) | `skanyxx-macos-arm64.zip` |
+            | macOS (Intel)               | `skanyxx-macos-x64.zip` |
+            | Linux (x64)                 | `skanyxx-linux-x64.zip` |
+            | Windows (x64)               | `skanyxx-windows-x64.zip` |
+
+            ### Quick Start
+
+            **macOS / Linux**
+            ```bash
+            unzip skanyxx-<platform>.zip
+            cd skanyxx-<platform>
+            ./install.sh          # one-time setup
+            ./run.sh              # start the app
+            # open http://localhost:5282
+            ```
+
+            **Windows**
+            ```powershell
+            Expand-Archive skanyxx-windows-x64.zip
+            cd skanyxx-windows-x64
+            .\install.ps1         # one-time setup
+            .\run.ps1             # start the app
+            # open http://localhost:5282
+            ```
+
+            > Before starting, edit `appsettings.json` and set your **Anthropic API key**.
+            > Full setup guide: see `SETUP.md` in the repository.
+
+            ---
+            Built from commit `${{ github.sha }}`
+          files: |
+            artifacts/**/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+permissions:
+  contents: write
