@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────
+# Skanyxx macOS Installer — postinstall script
+# Runs automatically after the .pkg places files on disk.
+# ─────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+INSTALL_DIR="/usr/local/share/skanyxx"
+BIN_LINK="/usr/local/bin/skanyxx"
+LAUNCHD_PLIST="/Library/LaunchAgents/com.skanyxx.app.plist"
+CONFIG="$INSTALL_DIR/appsettings.json"
+TEMPLATE="$INSTALL_DIR/appsettings.template.json"
+
+# ── Permissions ───────────────────────────────────────────────────
+chmod +x "$INSTALL_DIR/Skanyxx.Host" 2>/dev/null || true
+find "$INSTALL_DIR/modules" -name "*.dll" -exec chmod 644 {} \; 2>/dev/null || true
+
+# ── Symlink CLI launcher ──────────────────────────────────────────
+ln -sf "$INSTALL_DIR/Skanyxx.Host" "$BIN_LINK" 2>/dev/null || true
+
+# ── Config file (created once, never overwritten) ─────────────────
+# IRREVERSIBLE: once created, appsettings.json holds the user's API keys.
+# The installer never overwrites it on upgrades.
+if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
+    cp "$TEMPLATE" "$CONFIG"
+fi
+
+# ── launchd agent (auto-start on login) ──────────────────────────
+cat > "$LAUNCHD_PLIST" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>          <string>com.skanyxx.app</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/share/skanyxx/Skanyxx.Host</string>
+        <string>--urls</string>
+        <string>http://localhost:5282</string>
+    </array>
+    <key>WorkingDirectory</key>  <string>/usr/local/share/skanyxx</string>
+    <key>RunAtLoad</key>         <false/>
+    <key>KeepAlive</key>         <false/>
+    <key>StandardOutPath</key>   <string>/tmp/skanyxx.log</string>
+    <key>StandardErrorPath</key> <string>/tmp/skanyxx-error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ASPNETCORE_ENVIRONMENT</key><string>Production</string>
+    </dict>
+</dict>
+</plist>
+PLIST
+
+chmod 644 "$LAUNCHD_PLIST"
+
+exit 0

@@ -1,0 +1,17 @@
+Package: skanyxx
+Version: SKANYXX_VERSION
+Architecture: amd64
+Maintainer: Skanyxx <admin@skanyxx.dev>
+Installed-Size: 120000
+Depends: libc6 (>= 2.17), libgcc-s1, libstdc++6
+Recommends: curl
+Section: utils
+Priority: optional
+Homepage: https://github.com/skanyxx/skanyxx
+Description: Skanyxx SRE Platform
+ Skanyxx is a modular SRE platform for Kubernetes management,
+ agent orchestration, and monitoring. It runs as a local web
+ application on http://localhost:5282.
+ .
+ Features: Kubernetes management, AI agent orchestration,
+ real-time monitoring, analytics, alerting, and more.

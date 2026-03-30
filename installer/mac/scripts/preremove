@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────
+# Skanyxx macOS Installer — preremove script
+# Runs before the uninstaller removes app files.
+# ─────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+# Stop the service if running
+launchctl unload /Library/LaunchAgents/com.skanyxx.app.plist 2>/dev/null || true
+
+# Remove symlink
+rm -f /usr/local/bin/skanyxx 2>/dev/null || true
+
+# Remove launchd plist
+rm -f /Library/LaunchAgents/com.skanyxx.app.plist 2>/dev/null || true
+
+exit 0

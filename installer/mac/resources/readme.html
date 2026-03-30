@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, Helvetica, sans-serif; font-size: 13px; color: #1d1d1f; margin: 20px; }
+  h2   { font-size: 17px; font-weight: 600; }
+  h3   { font-size: 14px; font-weight: 600; margin-top: 18px; }
+  p, li { line-height: 1.6; }
+  code { font-family: monospace; background: #f2f2f7; padding: 2px 5px; border-radius: 3px; }
+  pre  { background: #f2f2f7; padding: 10px; border-radius: 6px; font-size: 12px; }
+</style>
+</head>
+<body>
+  <h2>Before You Install</h2>
+
+  <h3>Requirements</h3>
+  <ul>
+    <li>macOS 12.0 (Monterey) or later</li>
+    <li>An <strong>Anthropic API key</strong> (for AI features)</li>
+    <li>KAgent server (for Kubernetes features — optional)</li>
+  </ul>
+
+  <h3>What gets installed</h3>
+  <ul>
+    <li><code>/usr/local/share/skanyxx/</code> — application files</li>
+    <li><code>/usr/local/bin/skanyxx</code> — command-line launcher</li>
+    <li><code>/Library/LaunchAgents/com.skanyxx.app.plist</code> — launchd agent (not auto-started)</li>
+  </ul>
+
+  <h3>After install</h3>
+  <p>Start the app from Terminal:</p>
+  <pre>skanyxx
+# or
+/usr/local/share/skanyxx/Skanyxx.Host --urls http://localhost:5282</pre>
+  <p>Then open <strong>http://localhost:5282</strong> in your browser.</p>
+
+  <h3>macOS Gatekeeper</h3>
+  <p>
+    If macOS says the app is "damaged" or "from an unidentified developer",
+    run this command once in Terminal:
+  </p>
+  <pre>xattr -cr /usr/local/share/skanyxx/Skanyxx.Host</pre>
+</body>
+</html>
