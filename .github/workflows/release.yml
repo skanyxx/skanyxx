@@ -70,7 +70,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore Skanyxx.sln
+        run: dotnet restore Skanyxx.sln -r win-x64
 
       - name: Build (populates modules/)
         run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
@@ -140,7 +140,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore Skanyxx.sln
+        run: dotnet restore Skanyxx.sln -r ${{ matrix.rid }}
 
       - name: Build (populates modules/)
         run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
@@ -230,7 +230,7 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore Skanyxx.sln
+        run: dotnet restore Skanyxx.sln -r linux-x64
 
       - name: Build (populates modules/)
         run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
