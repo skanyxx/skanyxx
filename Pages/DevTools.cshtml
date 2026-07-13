@@ -1,0 +1,3281 @@
+@page
+@model SkanyxxWeb.Pages.DevToolsModel
+@{
+    ViewData["Title"] = "Dev Tools";
+}
+
+@section Scripts {
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"
+            integrity="sha512-7SRCYIJtR6F8ocwW7UxW6wGKqbSyqREDbfCORCO1hzb8NDQfBhIAx72lBFLCkQFMJEBOLvRkKrzdSduPGB9Zg=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+}
+
+<style>
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+.dt-root {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 110px);
+    gap: 0;
+    overflow: hidden;
+}
+
+/* ── Workspace Tab Bar ────────────────────────────────────────────────────── */
+.dt-tabbar {
+    display: flex;
+    align-items: center;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0 8px;
+    gap: 2px;
+    min-height: 42px;
+    flex-shrink: 0;
+}
+.dt-tab {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px 7px 12px;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 13px;
+    white-space: nowrap;
+    max-width: 180px;
+    transition: all 0.15s;
+    user-select: none;
+    margin-bottom: -1px;
+}
+.dt-tab:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.dt-tab.active {
+    background: var(--bg-primary);
+    border-color: var(--border-color);
+    color: var(--text-primary);
+    font-weight: 500;
+}
+.dt-tab .tab-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 120px;
+}
+.dt-tab .tab-close {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 3px;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+.dt-tab .tab-close:hover { background: var(--error-color); color: white; }
+.dt-tab-add {
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px dashed var(--border-color);
+    border-radius: 5px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
+    transition: all 0.15s;
+    margin-left: 4px;
+}
+.dt-tab-add:hover { border-color: var(--accent-color); color: var(--accent-color); }
+
+/* ── Workspace Header ─────────────────────────────────────────────────────── */
+.dt-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 14px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+.dt-task-picker { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 300px; }
+.dt-task-picker select { padding: 5px 8px; font-size: 13px; max-width: 120px; }
+.dt-task-picker #taskSelect { flex: 1; max-width: 340px; }
+.dt-task-badge {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+.badge-bug { background: rgba(248,113,113,.15); color: var(--error-color); }
+.badge-task { background: rgba(100,108,255,.15); color: var(--accent-color); }
+.badge-story { background: rgba(74,222,128,.15); color: var(--success-color); }
+.badge-critical { background: rgba(248,113,113,.2); color: var(--error-color); }
+.badge-high { background: rgba(251,191,36,.15); color: var(--warning-color); }
+
+.dt-llm-badge {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    background: rgba(100,108,255,.12);
+    color: var(--accent-color);
+    border: 1px solid rgba(100,108,255,.25);
+    white-space: nowrap;
+}
+.dt-skills-area { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; max-width: 320px; }
+.skill-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px 3px 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    background: rgba(100,108,255,.1);
+    border: 1px solid rgba(100,108,255,.25);
+    color: var(--accent-color);
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+}
+.skill-chip::before { content: '✓'; font-size: 9px; opacity: .8; }
+.skill-chip:hover { background: rgba(239,68,68,.1); border-color: rgba(239,68,68,.3); color: var(--error-color); }
+.skill-chip:hover::before { content: '✕'; }
+
+/* ── Config Panel ─────────────────────────────────────────────────────────── */
+.dt-config-panel {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 14px 18px;
+    display: none;
+    flex-shrink: 0;
+}
+.dt-config-panel.open { display: block; }
+.dt-config-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+.dt-config-group { display: flex; flex-direction: column; gap: 4px; }
+.dt-config-group label { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); }
+.dt-config-group input, .dt-config-group select {
+    padding: 6px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--text-primary);
+    font-size: 13px;
+}
+.dt-config-group input:focus, .dt-config-group select:focus {
+    outline: none;
+    border-color: var(--accent-color);
+}
+.dt-config-actions { display: flex; gap: 8px; margin-top: 12px; }
+
+/* ── Main content area ────────────────────────────────────────────────────── */
+.dt-main { display: flex; flex-direction: column; flex: 1; overflow: hidden; }
+#dtWorkspace { display: none; flex: 1; flex-direction: column; overflow: hidden; }
+#dtWorkspace.active { display: flex; }
+
+/* Task context banner */
+.dt-task-context {
+    padding: 10px 16px;
+    background: rgba(100,108,255,.06);
+    border-bottom: 1px solid var(--border-color);
+    display: none;
+    flex-shrink: 0;
+}
+.dt-task-context.visible { display: block; }
+.dt-task-context-title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: 2px; }
+.dt-task-context-desc { font-size: 12px; color: var(--text-secondary); white-space: pre-wrap; max-height: 60px; overflow-y: auto; }
+
+/* Chat messages */
+.dt-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.dt-msg { display: flex; gap: 10px; }
+.dt-msg.user { flex-direction: row-reverse; }
+.dt-msg-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 13px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.dt-msg.user .dt-msg-avatar { background: var(--accent-color); color: white; }
+.dt-msg.assistant .dt-msg-avatar { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); }
+.dt-msg-bubble {
+    max-width: 78%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+}
+.dt-msg.user .dt-msg-bubble {
+    background: var(--accent-color);
+    color: white;
+    border-radius: 12px 2px 12px 12px;
+}
+.dt-msg.assistant .dt-msg-bubble {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 2px 12px 12px 12px;
+}
+.dt-msg-bubble pre { margin: 8px 0 0; border-radius: 6px; overflow-x: auto; }
+.dt-msg-bubble code { font-family: 'SF Mono', 'Fira Code', monospace; font-size: 12px; }
+/* Tool-call chips shown during agentic streaming */
+.dt-tool-calls { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+.dt-tool-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 20px; font-size: 11px;
+    background: rgba(100,108,255,.10); color: var(--accent-color);
+    border: 1px solid rgba(100,108,255,.25); font-family: 'SF Mono','Fira Code',monospace;
+    white-space: nowrap;
+}
+.dt-tool-chip.running { opacity: .7; }
+.dt-tool-chip.running::before { content: ''; display: inline-block; width: 8px; height: 8px; border: 1.5px solid rgba(100,108,255,.3); border-top-color: var(--accent-color); border-radius: 50%; animation: spin .6s linear infinite; }
+.dt-tool-chip.done::before { content: '✓'; font-style: normal; color: #4caf50; font-size: 10px; }
+.dt-stream-text { white-space: pre-wrap; word-break: break-word; }
+/* Blinking cursor while streaming text */
+.dt-stream-cursor::after { content: '▋'; animation: blink 1s step-end infinite; }
+@@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+.dt-msg-meta { font-size: 10px; color: var(--text-muted); margin-top: 3px; text-align: right; }
+.dt-msg.assistant .dt-msg-meta { text-align: left; }
+
+/* Summary banner */
+.dt-summary-banner {
+    padding: 8px 16px;
+    background: rgba(251,191,36,.07);
+    border: 1px solid rgba(251,191,36,.2);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 4px 16px;
+    font-style: italic;
+}
+
+/* Token bar */
+.dt-token-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 16px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+    font-size: 12px;
+}
+.dt-token-bar .token-label { color: var(--text-muted); white-space: nowrap; }
+.token-progress-wrap { flex: 1; height: 4px; background: var(--bg-tertiary); border-radius: 2px; overflow: hidden; }
+.token-progress-bar { height: 100%; background: var(--accent-color); border-radius: 2px; transition: width .3s; }
+.token-progress-bar.warn { background: var(--warning-color); }
+.token-progress-bar.danger { background: var(--error-color); }
+
+/* Input area */
+.dt-input-area {
+    display: flex;
+    flex-direction: column;
+    padding: 10px 14px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+    gap: 6px;
+}
+.dt-input-box {
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    background: var(--bg-tertiary);
+    overflow: hidden;
+    transition: border-color .15s;
+}
+.dt-input-box:focus-within { border-color: var(--accent-color); }
+.dt-input-box textarea {
+    width: 100%;
+    resize: none;
+    min-height: 56px;
+    max-height: 160px;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.5;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+.dt-input-box textarea:focus { outline: none; }
+.dt-input-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 8px;
+    border-top: 1px solid var(--border-color);
+}
+.dt-toolbar-btn {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .15s;
+}
+.dt-toolbar-btn:hover { background: var(--bg-secondary); color: var(--text-primary); border-color: var(--accent-color); }
+.dt-model-pill {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    background: rgba(100,108,255,.1);
+    border: 1px solid rgba(100,108,255,.25);
+    border-radius: 12px;
+    color: var(--accent-color);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all .15s;
+    position: relative;
+}
+.dt-model-pill:hover { background: rgba(100,108,255,.18); }
+.dt-model-dropdown {
+    position: absolute;
+    bottom: calc(100% + 4px);
+    right: 0;
+    min-width: 220px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.35);
+    z-index: 100;
+    overflow: hidden;
+    display: none;
+}
+.dt-model-dropdown.open { display: block; }
+.dt-model-opt { padding: 8px 12px; font-size: 12px; cursor: pointer; color: var(--text-primary); }
+.dt-model-opt:hover { background: var(--bg-tertiary); }
+.dt-model-opt.active { color: var(--accent-color); font-weight: 500; }
+.dt-model-input { width: 100%; padding: 6px 10px; background: var(--bg-tertiary); border: none; border-top: 1px solid var(--border-color); color: var(--text-primary); font-size: 12px; box-sizing: border-box; }
+.dt-model-input:focus { outline: none; }
+.dt-footer-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.dt-folder-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all .15s;
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.dt-folder-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.dt-folder-input {
+    font-size: 11px;
+    padding: 3px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--accent-color);
+    border-radius: 6px;
+    color: var(--text-primary);
+    flex: 1;
+    min-width: 0;
+}
+.dt-folder-input:focus { outline: none; }
+.dt-attached-images {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    padding: 6px 8px 0;
+}
+.dt-img-thumb {
+    position: relative;
+    width: 56px;
+    height: 56px;
+    border-radius: 6px;
+    overflow: hidden;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.dt-img-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.dt-img-thumb button {
+    position: absolute;
+    top: 1px;
+    right: 1px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    border: none;
+    background: rgba(0,0,0,.65);
+    color: white;
+    font-size: 9px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+.dt-send-btn {
+    padding: 5px 14px;
+    background: var(--accent-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: opacity .15s;
+    white-space: nowrap;
+    height: 28px;
+}
+.dt-send-btn:hover { opacity: .85; }
+.dt-send-btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ── Hybrid Mode ─────────────────────────────────────────────────────────── */
+.hybrid-lane {
+    flex: 1;
+    min-width: 280px;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border-color);
+    overflow: hidden;
+}
+.hybrid-lane:last-child { border-right: none; }
+.hybrid-lane-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+.hybrid-lane-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.hybrid-msg {
+    padding: 10px 12px;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+.hybrid-msg.user { background: rgba(100,108,255,.08); border-color: rgba(100,108,255,.2); }
+.hybrid-msg.error { background: rgba(239,68,68,.08); border-color: rgba(239,68,68,.25); color: var(--error-color); }
+.hybrid-msg.review { background: rgba(251,191,36,.07); border-color: rgba(251,191,36,.25); }
+.hybrid-msg.fix { background: rgba(74,222,128,.07); border-color: rgba(74,222,128,.2); }
+.hybrid-lane-actions {
+    display: flex;
+    gap: 5px;
+    flex-wrap: wrap;
+    padding: 6px 12px;
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.hybrid-action-btn {
+    font-size: 10px;
+    padding: 2px 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: all .15s;
+}
+.hybrid-action-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.hybrid-action-btn.review { border-color: rgba(251,191,36,.4); color: #fbbf24; }
+.hybrid-action-btn.fix   { border-color: rgba(74,222,128,.4); color: var(--success-color); }
+.hybrid-conn-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    font-size: 11px;
+    cursor: pointer;
+    user-select: none;
+    transition: all .15s;
+    color: var(--text-secondary);
+}
+.hybrid-conn-chip.selected { border-color: var(--accent-color); color: var(--accent-color); background: rgba(100,108,255,.1); }
+.hybrid-conn-chip input { display: none; }
+/* Agent action bar */
+.dt-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    background: var(--bg-secondary);
+    border-top: 1px solid var(--border-color);
+    flex-wrap: wrap;
+    flex-shrink: 0;
+}
+.dt-actions-label { font-size: 11px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .5px; margin-right: 2px; }
+.dt-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all .15s;
+    white-space: nowrap;
+}
+.dt-action-btn:hover { border-color: var(--accent-color); color: var(--accent-color); background: rgba(100,108,255,.06); }
+.dt-action-btn.running { opacity: .6; cursor: not-allowed; }
+.dt-action-btn svg { width: 13px; height: 13px; }
+
+/* Result modal */
+.dt-result-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.6);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    display: none;
+}
+.dt-result-overlay.open { display: flex; }
+.dt-result-modal {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    width: 100%;
+    max-width: 760px;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.dt-result-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border-color);
+    font-weight: 600;
+}
+.dt-result-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px;
+    font-size: 13px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+}
+.dt-result-modal-footer {
+    padding: 10px 18px;
+    border-top: 1px solid var(--border-color);
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+/* Empty state */
+.dt-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    gap: 10px;
+    font-size: 14px;
+}
+.dt-empty svg { width: 48px; height: 48px; opacity: .3; }
+
+/* Spinner */
+.dt-spin {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .6s linear infinite;
+}
+@@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Skills modal */
+.dt-skills-modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.65);
+    z-index: 1001;
+    display: none;
+    align-items: center;
+    justify-content: center;
+}
+.dt-skills-modal-overlay.open { display: flex; }
+.dt-skills-modal {
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    width: 560px;
+    max-width: 96vw;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,.4);
+}
+.dt-skills-modal-head {
+    display: flex;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+.dt-skills-modal-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.dt-skills-modal-foot {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-secondary);
+    flex-shrink: 0;
+}
+/* Skill card row */
+.skill-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 11px 13px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    transition: border-color .15s;
+    cursor: pointer;
+}
+.skill-row:hover { border-color: rgba(100,108,255,.35); }
+.skill-row.active { border-color: rgba(100,108,255,.4); background: rgba(100,108,255,.06); }
+/* Toggle switch */
+.skill-toggle {
+    position: relative;
+    width: 34px;
+    height: 18px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+.skill-toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.skill-toggle-track {
+    position: absolute;
+    inset: 0;
+    border-radius: 9px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    transition: all .2s;
+}
+.skill-toggle input:checked + .skill-toggle-track { background: var(--accent-color); border-color: var(--accent-color); }
+.skill-toggle-thumb {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    transition: all .2s;
+}
+.skill-toggle input:checked ~ .skill-toggle-thumb { left: 18px; background: white; }
+.skill-info { flex: 1; min-width: 0; }
+.skill-info-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+.skill-badge {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 8px;
+}
+.skill-badge.builtin { background: rgba(100,108,255,.12); color: var(--accent-color); }
+.skill-badge.custom  { background: rgba(74,222,128,.1); color: var(--success-color); }
+.skill-prompt-edit {
+    width: 100%;
+    min-height: 48px;
+    max-height: 100px;
+    resize: vertical;
+    padding: 5px 8px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-family: inherit;
+    line-height: 1.5;
+    box-sizing: border-box;
+}
+.skill-prompt-edit:focus { outline: none; border-color: var(--accent-color); }
+/* Add skill inline form */
+.skill-add-form {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px dashed var(--border-color);
+    border-radius: 8px;
+    margin-top: 4px;
+}
+.skill-add-form input, .skill-add-form textarea {
+    padding: 7px 10px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 5px;
+    color: var(--text-primary);
+    font-size: 13px;
+    font-family: inherit;
+}
+.skill-add-form input:focus, .skill-add-form textarea:focus { outline: none; border-color: var(--accent-color); }
+.dt-skills-grid { display: none; } /* old — replaced */
+</style>
+
+<div class="dt-root">
+    <!-- ── Tab Bar ─────────────────────────────────────────────────────── -->
+    <div class="dt-tabbar" id="dtTabbar">
+        <div id="dtTabsList" style="display:flex;gap:2px;align-items:flex-end;"></div>
+        <button class="dt-tab-add" id="dtAddTab" onclick="addTab()" title="Add workspace (max 10)">+</button>
+        <button class="btn btn-secondary" style="margin-left:auto;padding:4px 12px;font-size:12px;white-space:nowrap" onclick="openAdmin()">&#x2699; Admin</button>
+    </div>
+
+    <!-- ── Workspace Header ───────────────────────────────────────────── -->
+    <div class="dt-header" id="dtHeader" style="display:none">
+        <div class="dt-task-picker">
+            <select id="taskSource" onchange="onTaskSourceChange()">
+                <option value="jira">Jira</option>
+                <option value="monday">Monday.com</option>
+                <option value="linear">Linear</option>
+                <option value="github">GitHub Issues</option>
+                <option value="gitlab">GitLab Issues</option>
+                <option value="azuredevops">Azure DevOps</option>
+                <option value="asana">Asana</option>
+                <option value="clickup">ClickUp</option>
+                <option value="youtrack">YouTrack</option>
+                <option value="trello">Trello</option>
+                <option value="shortcut">Shortcut</option>
+                <option value="notion">Notion</option>
+                <option value="manual">Manual</option>
+            </select>
+            <select id="taskSelect" onchange="onTaskSelected()">
+                <option value="">-- select task --</option>
+            </select>
+            <span class="dt-task-badge" id="taskTypeBadge" style="display:none"></span>
+            <span class="dt-task-badge" id="taskPriorityBadge" style="display:none"></span>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" onclick="refreshTasks()" title="Refresh tasks">&#x21BB;</button>
+            <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;border-color:var(--error-color);color:var(--error-color)" onclick="completeTask()" id="clearTaskBtn" title="Task done — delete all session data to free space">&#x2713; Done &amp; Clear</button>
+        </div>
+        <div class="dt-llm-badge" id="llmBadge">&#x2299; Claude</div>
+        <div class="dt-skills-area" id="skillsArea"></div>
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px;margin-left:auto" onclick="openSkillsModal()">+ Skills</button>
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" id="hybridToggle" onclick="toggleHybrid()" title="Hybrid Mode: send to multiple LLMs, review &amp; fix">⟦⟧ Hybrid</button>
+        <button class="btn btn-secondary" style="padding:4px 10px;font-size:12px" id="cfgToggle" onclick="toggleConfig()">&#x2699; Config</button>
+    </div>
+
+    <!-- ── Config Panel ───────────────────────────────────────────────── -->
+    <div class="dt-config-panel" id="dtConfigPanel">
+        <div class="dt-config-grid">
+            <div class="dt-config-group">
+                <label>Workspace Name</label>
+                <input type="text" id="cfgName" placeholder="Workspace 1" />
+            </div>
+            <div class="dt-config-group">
+                <label>LLM Provider</label>
+                <select id="cfgProvider" onchange="onProviderChange()">
+                    <optgroup label="Anthropic">
+                        <option value="claude">Claude (Anthropic API)</option>
+                        <option value="claudecli">Claude Code (local CLI)</option>
+                    </optgroup>
+                    <optgroup label="OpenAI-compatible">
+                        <option value="openai">OpenAI (GPT-4o, o1…)</option>
+                        <option value="groq">Groq (Llama, Mixtral…)</option>
+                        <option value="together">Together AI</option>
+                        <option value="mistral">Mistral AI</option>
+                        <option value="perplexity">Perplexity (Sonar)</option>
+                        <option value="deepseek">DeepSeek</option>
+                        <option value="xai">xAI Grok</option>
+                        <option value="azure">Azure OpenAI</option>
+                        <option value="lmstudio">LM Studio (local)</option>
+                        <option value="custom">Custom endpoint</option>
+                    </optgroup>
+                    <optgroup label="Other">
+                        <option value="gemini">Google Gemini</option>
+                        <option value="cohere">Cohere (Command-R)</option>
+                        <option value="ollama">Ollama (local)</option>
+                    </optgroup>
+                </select>
+            </div>
+            <div class="dt-config-group">
+                <label>Model</label>
+                <input type="text" id="cfgModel" placeholder="claude-sonnet-4-6" />
+            </div>
+            <div class="dt-config-group" id="cfgApiKeyGroup">
+                <label>API Key <span style="color:var(--text-muted)">(leave blank to use global)</span></label>
+                <input type="password" id="cfgApiKey" placeholder="sk-..." autocomplete="off" />
+            </div>
+            <div class="dt-config-group" id="cfgUrlGroup" style="display:none">
+                <label>LLM Base URL</label>
+                <input type="text" id="cfgUrl" placeholder="http://localhost:11434" />
+            </div>
+            <div class="dt-config-group">
+                <label>Git Repo Path</label>
+                <input type="text" id="cfgGitPath" placeholder="/path/to/repo or ." />
+            </div>
+        </div>
+        <hr style="border-color:var(--border-color);margin:14px 0 12px">
+        <div style="font-size:12px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">Integrations</div>
+        <div class="dt-config-grid">
+            <div class="dt-config-group">
+                <label>Jira URL</label>
+                <input type="text" id="cfgJiraUrl" placeholder="https://yourcompany.atlassian.net" />
+            </div>
+            <div class="dt-config-group">
+                <label>Jira Email</label>
+                <input type="email" id="cfgJiraEmail" placeholder="you@company.com" />
+            </div>
+            <div class="dt-config-group">
+                <label>Jira API Token</label>
+                <input type="password" id="cfgJiraToken" placeholder="••••••••" autocomplete="off" />
+            </div>
+            <div class="dt-config-group">
+                <label>Jira Project Key</label>
+                <input type="text" id="cfgJiraProject" placeholder="PROJ" />
+            </div>
+            <div class="dt-config-group">
+                <label>Monday API Token</label>
+                <input type="password" id="cfgMondayToken" placeholder="••••••••" autocomplete="off" />
+            </div>
+            <div class="dt-config-group">
+                <label>Monday Board ID</label>
+                <input type="text" id="cfgMondayBoard" placeholder="1234567890" />
+            </div>
+        </div>
+        <div class="dt-config-actions">
+            <button class="btn btn-primary" onclick="saveConfig()">Save Workspace</button>
+            <button class="btn btn-secondary" onclick="toggleConfig()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- ── Main / Chat Area ───────────────────────────────────────────── -->
+    <div class="dt-main" id="dtMain">
+        <!-- Empty state before tab selected -->
+        <div class="dt-empty" id="dtEmptyState">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+            </svg>
+            <div id="dtEmptyMsg">No workspace selected. Create one with <strong>+</strong> above.</div>
+        </div>
+
+        <!-- Active workspace content (shown when tab selected) -->
+        <div id="dtWorkspace">
+            <!-- Task context banner -->
+            <div class="dt-task-context" id="dtTaskContext">
+                <div class="dt-task-context-title" id="taskContextTitle"></div>
+                <div class="dt-task-context-desc" id="taskContextDesc"></div>
+            </div>
+
+            <!-- Hybrid Panel (hidden by default) -->
+            <div id="dtHybridPanel" style="display:none;flex:1;flex-direction:column;overflow:hidden;background:var(--bg-primary)">
+                <!-- LLM selector bar -->
+                <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--bg-secondary);border-bottom:1px solid var(--border-color);flex-shrink:0;flex-wrap:wrap">
+                    <span style="font-size:12px;font-weight:600;color:var(--text-secondary)">Broadcast to:</span>
+                    <div id="hybridConnCheckboxes" style="display:flex;gap:6px;flex-wrap:wrap;flex:1"></div>
+                    <button class="btn btn-secondary" style="font-size:11px;padding:3px 9px" onclick="hybridSelectAll()">All</button>
+                    <button class="btn btn-secondary" style="font-size:11px;padding:3px 9px" onclick="hybridClearAll()">None</button>
+                </div>
+                <!-- Lanes -->
+                <div id="hybridLanes" style="display:flex;flex:1;overflow:hidden;gap:0"></div>
+                <!-- Hybrid input -->
+                <div style="display:flex;flex-direction:column;gap:6px;padding:10px 14px;background:var(--bg-secondary);border-top:1px solid var(--border-color);flex-shrink:0">
+                    <div class="dt-input-box">
+                        <textarea id="hybridInput" placeholder="Send to all selected LLMs simultaneously… (Ctrl+Enter)" style="min-height:52px;max-height:120px" onkeydown="onHybridInputKey(event)" oninput="autoResizeInput(this)"></textarea>
+                        <div class="dt-input-toolbar">
+                            <button class="dt-toolbar-btn" onclick="document.getElementById('hybridImagePicker').click()" title="Attach image">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                Image
+                            </button>
+                            <input type="file" id="hybridImagePicker" accept="image/*" multiple style="display:none" onchange="onHybridImagesSelected(event)">
+                            <div id="hybridAttachedImages" style="display:flex;gap:5px;flex-wrap:wrap"></div>
+                            <div style="flex:1"></div>
+                            <span id="hybridStatus" style="font-size:11px;color:var(--text-muted)"></span>
+                            <button class="dt-send-btn" id="hybridSendBtn" onclick="hybridBroadcast()">⟦⟧ Send all</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Messages -->
+            <div class="dt-messages" id="dtMessages"></div>
+
+            <!-- Token bar -->
+            <div class="dt-token-bar">
+                <span class="token-label" id="tokenCountLabel">0 tokens used</span>
+                <div class="token-progress-wrap">
+                    <div class="token-progress-bar" id="tokenProgressBar" style="width:0%"></div>
+                </div>
+                <span class="token-label" id="tokenPctLabel">0%</span>
+                <button class="btn btn-secondary" style="padding:3px 9px;font-size:11px" onclick="compressHistory()" title="Summarize & compress history to save tokens">&#x2913; Compress</button>
+            </div>
+
+            <!-- Input -->
+            <div class="dt-input-area">
+              <div class="dt-input-box">
+                <!-- Attached images preview -->
+                <div id="dtAttachedImages" class="dt-attached-images" style="display:none"></div>
+                <textarea id="dtInput" placeholder="Ask about this task… Enter to send, Shift+Enter for new line" onkeydown="onInputKeyDown(event)" oninput="autoResizeInput(this)"></textarea>
+                <!-- Toolbar inside input box -->
+                <div class="dt-input-toolbar">
+                  <!-- Attach image -->
+                  <button class="dt-toolbar-btn" onclick="document.getElementById('dtImagePicker').click()" title="Attach image">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    Image
+                  </button>
+                  <input type="file" id="dtImagePicker" accept="image/*" multiple style="display:none" onchange="onImagesSelected(event)">
+                  <!-- Attach file from folder -->
+                  <button class="dt-toolbar-btn" id="dtFileBrowseBtn" onclick="openFileBrowser()" title="Attach file from project folder">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    File
+                  </button>
+                  <div style="flex:1"></div>
+                  <!-- Model pill -->
+                  <div class="dt-model-pill" id="dtModelPill" onclick="toggleModelDropdown(event)">
+                    <span id="dtModelPillLabel">claude-sonnet-4-6</span>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                    <div class="dt-model-dropdown" id="dtModelDropdown">
+                      <div style="padding:6px 10px;font-size:10px;color:var(--text-muted);border-bottom:1px solid var(--border-color)">Model</div>
+                      <div id="dtModelOpts"></div>
+                      <input class="dt-model-input" id="dtModelCustom" type="text" placeholder="or type custom model…" onkeydown="onModelInputKey(event)" />
+                    </div>
+                  </div>
+                  <!-- Send -->
+                  <button class="dt-send-btn" id="dtSendBtn" onclick="sendMessage()">Send</button>
+                </div>
+              </div>
+              <!-- Footer bar: folder + provider label -->
+              <div class="dt-footer-bar">
+                <button class="dt-folder-btn" id="dtFolderBtn" onclick="toggleFolderEdit()" title="Working directory">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                  <span id="dtFolderLabel">Select folder</span>
+                </button>
+                <input class="dt-folder-input" id="dtFolderInput" type="text" placeholder="/path/to/repo" style="display:none"
+                       onblur="saveFolderPath()" onkeydown="if(event.key==='Enter')saveFolderPath();if(event.key==='Escape')cancelFolderEdit();" />
+                <div style="flex:1"></div>
+                <span id="dtProviderLabel" style="font-size:11px;color:var(--text-muted)"></span>
+              </div>
+            </div>
+
+            <!-- Agent actions -->
+            <div class="dt-actions">
+                <span class="dt-actions-label">Agents:</span>
+                <button class="dt-action-btn" onclick="runAction('branch')" title="Generate branch name & create git branch">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                    Branch
+                </button>
+                <button class="dt-action-btn" onclick="runAction('unit-tests')" title="Generate unit tests for this task">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    Unit Tests
+                </button>
+                <button class="dt-action-btn" onclick="runAction('integration-tests')" title="Generate integration tests">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="6" height="6" rx="1"/><rect x="16" y="3" width="6" height="6" rx="1"/><rect x="9" y="15" width="6" height="6" rx="1"/><path d="M5 9v3a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9M12 13v2"/></svg>
+                    Integration
+                </button>
+                <button class="dt-action-btn" onclick="runAction('system-tests')" title="Generate system / E2E tests">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+                    System Tests
+                </button>
+                <button class="dt-action-btn" onclick="runAction('qa')" title="Run QA review agent">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    QA Review
+                </button>
+                <button class="dt-action-btn" onclick="runAction('git-comment')" title="Generate PR / git discussion comment">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    Git Comment
+                </button>
+                <button class="dt-action-btn" onclick="runAction('jira-comment')" title="Post comment to Jira ticket">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                    Jira Comment
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Action Result Modal ──────────────────────────────────────────────── -->
+<div class="dt-result-overlay" id="resultOverlay">
+    <div class="dt-result-modal">
+        <div class="dt-result-modal-header">
+            <span id="resultTitle">Result</span>
+            <button class="btn btn-ghost" style="padding:4px 8px" onclick="closeResult()">&#x2715;</button>
+        </div>
+        <div class="dt-result-modal-body" id="resultBody"></div>
+        <div class="dt-result-modal-footer">
+            <button class="btn btn-secondary" onclick="copyResult()">Copy</button>
+            <button class="btn btn-primary" onclick="insertResultToChat()">Insert to Chat</button>
+            <button class="btn btn-ghost" onclick="closeResult()">Close</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Admin Panel ───────────────────────────────────────────────────────── -->
+<style>
+.admin-nav-item { display:block;padding:8px 16px;font-size:12px;color:var(--text-secondary);cursor:pointer;transition:all .15s;border-left:3px solid transparent;white-space:nowrap; }
+.admin-nav-item:hover { background:var(--bg-tertiary);color:var(--text-primary); }
+.admin-nav-item.active { background:rgba(100,108,255,.08);color:var(--accent-color);border-left-color:var(--accent-color);font-weight:500; }
+.admin-nav-group { padding:6px 16px 2px;font-size:10px;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-top:6px; }
+.conn-card { padding:11px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary);display:flex;align-items:center;gap:12px; }
+.conn-card .conn-info { flex:1;min-width:0; }
+.conn-card .conn-name { font-size:13px;font-weight:600; }
+.conn-card .conn-meta { font-size:11px;color:var(--text-muted);margin-top:2px; }
+.conn-card.disabled { opacity:.5; }
+.conn-dot { width:8px;height:8px;border-radius:50%;flex-shrink:0; }
+.conn-dot.on { background:var(--success-color); }
+.conn-dot.off { background:var(--text-muted); }
+.ts-result { margin-top:8px;font-size:12px;padding:6px 10px;border-radius:5px; }
+.ts-result.ok { background:rgba(74,222,128,.1);color:var(--success-color); }
+.ts-result.err { background:rgba(248,113,113,.1);color:var(--error-color); }
+</style>
+
+<div id="adminOverlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.75);align-items:stretch">
+  <div style="display:flex;width:100%;height:100%;max-width:1140px;margin:auto;background:var(--bg-primary);border-left:1px solid var(--border-color);border-right:1px solid var(--border-color)">
+
+    <!-- Sidebar nav -->
+    <div style="width:190px;flex-shrink:0;background:var(--bg-secondary);border-right:1px solid var(--border-color);display:flex;flex-direction:column;overflow-y:auto">
+      <div style="padding:16px;border-bottom:1px solid var(--border-color)"><strong style="font-size:14px">Dev Tools Admin</strong></div>
+      <nav style="flex:1;padding:6px 0">
+        <div class="admin-nav-group">LLM</div>
+        <a class="admin-nav-item active" data-section="connections" onclick="adminNav(this)">⊙ Connections</a>
+        <div class="admin-nav-group">Task Sources</div>
+        <a class="admin-nav-item" data-section="jira"        onclick="adminNav(this)">Jira</a>
+        <a class="admin-nav-item" data-section="monday"      onclick="adminNav(this)">Monday</a>
+        <a class="admin-nav-item" data-section="linear"      onclick="adminNav(this)">Linear</a>
+        <a class="admin-nav-item" data-section="github"      onclick="adminNav(this)">GitHub Issues</a>
+        <a class="admin-nav-item" data-section="gitlab"      onclick="adminNav(this)">GitLab Issues</a>
+        <a class="admin-nav-item" data-section="azuredevops" onclick="adminNav(this)">Azure DevOps</a>
+        <a class="admin-nav-item" data-section="asana"       onclick="adminNav(this)">Asana</a>
+        <a class="admin-nav-item" data-section="clickup"     onclick="adminNav(this)">ClickUp</a>
+        <a class="admin-nav-item" data-section="youtrack"    onclick="adminNav(this)">YouTrack</a>
+        <a class="admin-nav-item" data-section="trello"      onclick="adminNav(this)">Trello</a>
+        <a class="admin-nav-item" data-section="shortcut"    onclick="adminNav(this)">Shortcut</a>
+        <a class="admin-nav-item" data-section="notion"      onclick="adminNav(this)">Notion</a>
+        <div class="admin-nav-group">AI</div>
+        <a class="admin-nav-item" data-section="skills"      onclick="adminNav(this)">★ Skills</a>
+      </nav>
+      <div style="padding:10px 14px;border-top:1px solid var(--border-color)">
+        <button class="btn btn-secondary" style="width:100%;font-size:12px" onclick="closeAdmin()">✕ Close</button>
+      </div>
+    </div>
+
+    <!-- Content area -->
+    <div style="flex:1;overflow-y:auto;padding:22px 26px">
+
+      <!-- ── LLM Connections ── -->
+      <div class="admin-section" id="asec-connections">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <h3 style="margin:0;font-size:15px">LLM Connections</h3>
+          <button class="btn btn-primary" style="font-size:12px" onclick="showNewConnectionForm()">+ Add</button>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px">
+          Supported: Claude · OpenAI · Groq · Together AI · Mistral · Perplexity · DeepSeek · Google Gemini · Cohere · Azure OpenAI · xAI Grok · Ollama · LM Studio · Custom
+        </div>
+        <div id="connList" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div id="connForm" style="display:none;margin-top:18px;padding:16px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary)">
+          <div style="font-size:13px;font-weight:600;margin-bottom:12px" id="connFormTitle">New Connection</div>
+          <input type="hidden" id="connFormId" value="0" />
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="dt-config-group"><label>Name</label><input type="text" id="connName" placeholder="My Claude" /></div>
+            <div class="dt-config-group"><label>Provider</label>
+              <select id="connProvider" onchange="onConnProviderChange()">
+                <optgroup label="Anthropic">
+                  <option value="claude">Claude (Anthropic API)</option>
+                  <option value="claudecli">Claude Code (local CLI)</option>
+                </optgroup>
+                <optgroup label="OpenAI-compatible">
+                  <option value="openai">OpenAI (GPT-4o, o1…)</option>
+                  <option value="groq">Groq (Llama, Mixtral…)</option>
+                  <option value="together">Together AI</option>
+                  <option value="mistral">Mistral AI</option>
+                  <option value="perplexity">Perplexity (Sonar)</option>
+                  <option value="deepseek">DeepSeek</option>
+                  <option value="xai">xAI Grok</option>
+                  <option value="azure">Azure OpenAI</option>
+                  <option value="lmstudio">LM Studio (local)</option>
+                  <option value="custom">Custom endpoint</option>
+                </optgroup>
+                <optgroup label="Other">
+                  <option value="gemini">Google Gemini</option>
+                  <option value="cohere">Cohere (Command-R)</option>
+                  <option value="ollama">Ollama (local)</option>
+                </optgroup>
+              </select>
+            </div>
+            <div class="dt-config-group"><label>Model <span id="connModelHint" style="color:var(--text-muted);font-weight:400"></span></label><input type="text" id="connModel" placeholder="auto-filled" /></div>
+            <div class="dt-config-group" id="connApiKeyGroup"><label>API Key</label><input type="password" id="connApiKey" placeholder="sk-…" autocomplete="off" /></div>
+            <div class="dt-config-group" id="connUrlGroup" style="display:none"><label>Base URL <span id="connUrlHint" style="color:var(--text-muted);font-weight:400"></span></label><input type="text" id="connUrl" placeholder="" /></div>
+            <div style="display:flex;align-items:center;gap:12px;padding-top:16px">
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px"><input type="checkbox" id="connIsDefault" style="accent-color:var(--accent-color)" /> Default</label>
+              <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12px"><input type="checkbox" id="connIsEnabled" checked style="accent-color:var(--accent-color)" /> Enabled</label>
+            </div>
+          </div>
+          <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+            <button class="btn btn-primary" onclick="saveConnection()">Save</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('connForm').style.display='none'">Cancel</button>
+            <div id="connTestResult" style="font-size:12px;margin-left:8px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Jira ── -->
+      <div class="admin-section" id="asec-jira" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">Jira</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>Jira URL</label><input type="text" id="gJiraUrl" placeholder="https://company.atlassian.net" /></div>
+          <div class="dt-config-group"><label>Email</label><input type="email" id="gJiraEmail" placeholder="you@company.com" /></div>
+          <div class="dt-config-group"><label>API Token <a href="https://id.atlassian.com/manage-profile/security/api-tokens" target="_blank" style="font-size:10px;color:var(--accent-color)">get token ↗</a></label><input type="password" id="gJiraToken" placeholder="••••••••" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Default Project Key</label><input type="text" id="gJiraProject" placeholder="PROJ" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('jira')">Save &amp; Test</button>
+          <div id="ts-jira" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── Monday ── -->
+      <div class="admin-section" id="asec-monday" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">Monday.com</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>API Token <a href="https://developer.monday.com/apps/docs/apiauth" target="_blank" style="font-size:10px;color:var(--accent-color)">get token ↗</a></label><input type="password" id="gMondayToken" placeholder="••••••••" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Default Board ID</label><input type="text" id="gMondayBoard" placeholder="1234567890" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('monday')">Save &amp; Test</button>
+          <div id="ts-monday" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── Linear ── -->
+      <div class="admin-section" id="asec-linear" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">Linear</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>API Key <a href="https://linear.app/settings/api" target="_blank" style="font-size:10px;color:var(--accent-color)">get key ↗</a></label><input type="password" id="gLinearToken" placeholder="lin_api_…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Team Key (optional)</label><input type="text" id="gLinearTeam" placeholder="ENG" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('linear')">Save &amp; Test</button>
+          <div id="ts-linear" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── GitHub ── -->
+      <div class="admin-section" id="asec-github" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">GitHub Issues</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>Personal Access Token <a href="https://github.com/settings/tokens" target="_blank" style="font-size:10px;color:var(--accent-color)">get token ↗</a></label><input type="password" id="gGitHubToken" placeholder="ghp_…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Owner (user or org)</label><input type="text" id="gGitHubOwner" placeholder="my-org" /></div>
+          <div class="dt-config-group"><label>Repository</label><input type="text" id="gGitHubRepo" placeholder="my-repo" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('github')">Save &amp; Test</button>
+          <div id="ts-github" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── GitLab ── -->
+      <div class="admin-section" id="asec-gitlab" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">GitLab Issues</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>GitLab URL</label><input type="text" id="gGitLabUrl" placeholder="https://gitlab.com" /></div>
+          <div class="dt-config-group"><label>Personal Access Token</label><input type="password" id="gGitLabToken" placeholder="glpat-…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Project ID or path</label><input type="text" id="gGitLabProject" placeholder="123 or group/project" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('gitlab')">Save &amp; Test</button>
+          <div id="ts-gitlab" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── Azure DevOps ── -->
+      <div class="admin-section" id="asec-azuredevops" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">Azure DevOps</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>Organisation</label><input type="text" id="gAzdoOrg" placeholder="mycompany" /></div>
+          <div class="dt-config-group"><label>Project</label><input type="text" id="gAzdoProject" placeholder="MyProject" /></div>
+          <div class="dt-config-group"><label>Personal Access Token <a href="https://dev.azure.com" target="_blank" style="font-size:10px;color:var(--accent-color)">get PAT ↗</a></label><input type="password" id="gAzdoPat" placeholder="••••••••" autocomplete="off" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('azuredevops')">Save &amp; Test</button>
+          <div id="ts-azuredevops" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── Asana ── -->
+      <div class="admin-section" id="asec-asana" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">Asana</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>Personal Access Token <a href="https://app.asana.com/0/my-apps" target="_blank" style="font-size:10px;color:var(--accent-color)">get token ↗</a></label><input type="password" id="gAsanaToken" placeholder="1/…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Project GID</label><input type="text" id="gAsanaProject" placeholder="1234567890123456" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('asana')">Save &amp; Test</button>
+          <div id="ts-asana" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── ClickUp ── -->
+      <div class="admin-section" id="asec-clickup" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">ClickUp</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>API Token <a href="https://app.clickup.com/settings/apps" target="_blank" style="font-size:10px;color:var(--accent-color)">get token ↗</a></label><input type="password" id="gClickUpToken" placeholder="pk_…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>List ID</label><input type="text" id="gClickUpList" placeholder="901234567" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('clickup')">Save &amp; Test</button>
+          <div id="ts-clickup" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── YouTrack ── -->
+      <div class="admin-section" id="asec-youtrack" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">YouTrack</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>YouTrack URL</label><input type="text" id="gYouTrackUrl" placeholder="https://yourcompany.youtrack.cloud" /></div>
+          <div class="dt-config-group"><label>Permanent Token</label><input type="password" id="gYouTrackToken" placeholder="perm:…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Project Short Name</label><input type="text" id="gYouTrackProject" placeholder="PROJ" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('youtrack')">Save &amp; Test</button>
+          <div id="ts-youtrack" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── Trello ── -->
+      <div class="admin-section" id="asec-trello" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">Trello</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>API Key <a href="https://trello.com/app-key" target="_blank" style="font-size:10px;color:var(--accent-color)">get key ↗</a></label><input type="password" id="gTrelloKey" placeholder="…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Token</label><input type="password" id="gTrelloToken" placeholder="…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Board ID</label><input type="text" id="gTrelloBoard" placeholder="AbCdEfGh" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('trello')">Save &amp; Test</button>
+          <div id="ts-trello" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── Shortcut ── -->
+      <div class="admin-section" id="asec-shortcut" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">Shortcut (Clubhouse)</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>API Token <a href="https://app.shortcut.com/settings/api-tokens" target="_blank" style="font-size:10px;color:var(--accent-color)">get token ↗</a></label><input type="password" id="gShortcutToken" placeholder="…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Workflow State ID (optional)</label><input type="text" id="gShortcutWorkflow" placeholder="500000006" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('shortcut')">Save &amp; Test</button>
+          <div id="ts-shortcut" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── Notion ── -->
+      <div class="admin-section" id="asec-notion" style="display:none">
+        <h3 style="margin:0 0 14px;font-size:15px">Notion</h3>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="dt-config-group"><label>Integration Token <a href="https://www.notion.so/my-integrations" target="_blank" style="font-size:10px;color:var(--accent-color)">get token ↗</a></label><input type="password" id="gNotionToken" placeholder="secret_…" autocomplete="off" /></div>
+          <div class="dt-config-group"><label>Database ID</label><input type="text" id="gNotionDatabase" placeholder="32-char UUID" /></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+          <button class="btn btn-primary" onclick="saveAndTest('notion')">Save &amp; Test</button>
+          <div id="ts-notion" class="ts-result" style="display:none"></div>
+        </div>
+      </div>
+
+      <!-- ── Skills ── -->
+      <div class="admin-section" id="asec-skills" style="display:none">
+        <h3 style="margin:0 0 6px;font-size:15px">Skills</h3>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:14px">Built-in skills can be edited but not deleted.</div>
+        <div id="adminSkillsList" style="display:flex;flex-direction:column;gap:8px"></div>
+        <div style="margin-top:18px;padding:14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary)">
+          <div style="font-size:12px;font-weight:600;margin-bottom:8px">Add Custom Skill</div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <input type="text" id="adminNewSkillName" placeholder="Skill name" style="padding:7px 10px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:5px;color:var(--text-primary);font-size:13px" />
+            <textarea id="adminNewSkillPrompt" rows="4" placeholder="Instructions injected into LLM system prompt…" style="padding:7px 10px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:5px;color:var(--text-primary);font-size:13px;resize:vertical;font-family:inherit"></textarea>
+            <button class="btn btn-primary" style="align-self:flex-start" onclick="adminAddSkill()">+ Add Skill</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ── File Browser Modal ────────────────────────────────────────────────── -->
+<div id="fileBrowserOverlay" style="display:none;position:fixed;inset:0;z-index:1100;background:rgba(0,0,0,.65);align-items:center;justify-content:center">
+  <div style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:12px;width:520px;max-width:95vw;max-height:80vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.4)">
+    <div style="display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid var(--border-color);flex-shrink:0">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+      <span style="font-size:13px;font-weight:600" id="fbTitle">Project Files</span>
+      <div style="flex:1"></div>
+      <label style="display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-muted);cursor:pointer">
+        <input type="checkbox" id="fbRecursive" style="accent-color:var(--accent-color)" onchange="fbLoad()"> All files
+      </label>
+      <button class="btn btn-ghost" style="padding:3px 8px" onclick="closeFileBrowser()">&#x2715;</button>
+    </div>
+    <div style="padding:8px 12px;border-bottom:1px solid var(--border-color);flex-shrink:0">
+      <input type="text" id="fbSearch" placeholder="Filter files…" style="width:100%;padding:5px 10px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:5px;color:var(--text-primary);font-size:12px;box-sizing:border-box" oninput="fbFilterRender()" />
+    </div>
+    <div id="fbList" style="flex:1;overflow-y:auto;padding:6px 8px;display:flex;flex-direction:column;gap:1px"></div>
+    <div style="padding:10px 14px;border-top:1px solid var(--border-color);display:flex;align-items:center;gap:8px;flex-shrink:0;background:var(--bg-secondary)">
+      <span id="fbSelected" style="font-size:11px;color:var(--text-muted);flex:1">No file selected</span>
+      <button class="btn btn-secondary" style="font-size:12px" onclick="closeFileBrowser()">Cancel</button>
+      <button class="btn btn-primary" style="font-size:12px" id="fbAttachBtn" disabled onclick="fbAttachSelected()">Attach</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Skills Modal ──────────────────────────────────────────────────────── -->
+<div class="dt-skills-modal-overlay" id="skillsOverlay">
+  <div class="dt-skills-modal">
+    <!-- Header -->
+    <div class="dt-skills-modal-head">
+      <div>
+        <div style="font-size:14px;font-weight:600">Skills</div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toggle skills per workspace — each injects instructions into the system prompt</div>
+      </div>
+      <button class="btn btn-ghost" style="margin-left:auto;padding:4px 8px;font-size:16px;line-height:1" onclick="closeSkillsModal()">&#x2715;</button>
+    </div>
+
+    <!-- Skill list -->
+    <div class="dt-skills-modal-body" id="skillsGrid"></div>
+
+    <!-- Footer -->
+    <div class="dt-skills-modal-foot">
+      <button class="btn btn-secondary" style="font-size:12px;padding:5px 12px" id="skillAddToggle" onclick="toggleSkillAddForm()">+ New skill</button>
+      <div style="flex:1"></div>
+      <button class="btn btn-secondary" style="font-size:12px" onclick="closeSkillsModal()">Cancel</button>
+      <button class="btn btn-primary" style="font-size:12px" onclick="saveSkills()">Apply</button>
+    </div>
+
+    <!-- Add skill inline (hidden) -->
+    <div id="skillAddForm" class="skill-add-form" style="display:none;margin:0 20px 14px;border-radius:8px">
+      <input type="text" id="newSkillName" placeholder="Skill name  (e.g. API Design, Security Review…)" />
+      <textarea id="newSkillPrompt" rows="3" placeholder="Instructions injected into the system prompt when this skill is active…"></textarea>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-primary" style="font-size:12px" onclick="addNewSkill()">Add</button>
+        <button class="btn btn-secondary" style="font-size:12px" onclick="toggleSkillAddForm()">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+@section Scripts {
+<script>
+// ── State ───────────────────────────────────────────────────────────────────
+const state = {
+    workspaces: [],       // [{id, name, llmProvider, llmModel, enabledSkills, ...}]
+    activeId: null,       // active workspace id
+    tasks: {},            // {workspaceId: [{id, title, description, type, priority, source}]}
+    sessions: {},         // {`${wsId}:${taskId}`: {messages, summaryContext, totalTokensUsed}}
+    activeTask: null,     // current task object
+    allSkills: [],
+    pendingSkills: [],    // skills being edited in modal
+    lastResult: '',       // last agent action output
+    hasLlm: false         // true when at least one enabled LLM connection exists
+};
+
+const MAX_TOKENS = 100000; // display ceiling for bar
+
+// ── Init ────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', async () => {
+    await initSignalR();
+    await loadSkills();
+    await checkLlmConnections();
+    await loadWorkspaces();
+});
+
+async function checkLlmConnections() {
+    try {
+        const r = await fetch('/api/devtools/admin/connections');
+        const conns = await r.json();
+        state.hasLlm = Array.isArray(conns) && conns.some(c => c.isEnabled);
+    } catch { state.hasLlm = false; }
+    updateAddTabBtn();
+}
+
+function updateAddTabBtn() {
+    const btn = document.getElementById('dtAddTab');
+    const msg = document.getElementById('dtEmptyMsg');
+    if (!state.hasLlm) {
+        btn.disabled = true;
+        btn.title = 'Configure an LLM connection in Admin first';
+        btn.style.opacity = '0.4';
+        btn.style.cursor = 'not-allowed';
+        if (msg) msg.innerHTML = 'No LLM configured. Click <strong>⚙ Admin</strong> to add a connection first.';
+    } else {
+        btn.disabled = state.workspaces.length >= 10;
+        btn.title = state.workspaces.length >= 10 ? 'Max 10 workspaces' : 'Add workspace';
+        btn.style.opacity = '';
+        btn.style.cursor = '';
+        if (msg) msg.innerHTML = 'No workspace selected. Create one with <strong>+</strong> above.';
+    }
+}
+
+async function loadSkills() {
+    try {
+        const r = await fetch('/api/devtools/skills');
+        state.allSkills = await r.json(); // [{id, name, systemPromptAddition, isBuiltIn}]
+    } catch { state.allSkills = []; }
+}
+
+async function loadWorkspaces() {
+    try {
+        const r = await fetch('/api/devtools/workspaces');
+        state.workspaces = await r.json();
+    } catch { state.workspaces = []; }
+    renderTabs();
+    if (state.workspaces.length > 0) switchTab(state.workspaces[0].id);
+}
+
+// ── Tabs ────────────────────────────────────────────────────────────────────
+function renderTabs() {
+    const list = document.getElementById('dtTabsList');
+    list.innerHTML = '';
+    state.workspaces.forEach(ws => {
+        const tab = document.createElement('div');
+        tab.className = 'dt-tab' + (ws.id === state.activeId ? ' active' : '');
+        tab.innerHTML = `
+            <span class="tab-name">${escHtml(ws.name)}</span>
+            <span class="tab-close" onclick="event.stopPropagation();removeTab(${ws.id})" title="Close workspace">&#x2715;</span>
+        `;
+        tab.addEventListener('click', () => switchTab(ws.id));
+        list.appendChild(tab);
+    });
+    updateAddTabBtn();
+}
+
+async function addTab() {
+    if (!state.hasLlm) { showToast('Add an LLM connection in Admin (⚙) before creating a workspace', 'error'); return; }
+    const ws = { name: `Workspace ${state.workspaces.length + 1}`, llmProvider: 'claude', llmModel: 'claude-sonnet-4-6', enabledSkills: [] };
+    try {
+        const r = await fetch('/api/devtools/workspaces', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ws) });
+        const created = await r.json();
+        state.workspaces.push(created);
+        renderTabs();
+        switchTab(created.id);
+        toggleConfig(); // open config for new workspace
+    } catch (e) { showToast('Failed to create workspace: ' + e.message, 'error'); }
+}
+
+async function removeTab(id) {
+    if (!confirm('Remove this workspace and all its history?')) return;
+    try {
+        await fetch(`/api/devtools/workspaces/${id}`, { method: 'DELETE' });
+        state.workspaces = state.workspaces.filter(w => w.id !== id);
+        if (state.activeId === id) {
+            state.activeId = null;
+            document.getElementById('dtHeader').style.display = 'none';
+            document.getElementById('dtWorkspace').classList.remove('active');
+            document.getElementById('dtEmptyState').style.display = 'flex';
+        }
+        renderTabs();
+        if (state.workspaces.length > 0 && !state.activeId) switchTab(state.workspaces[0].id);
+    } catch (e) { showToast('Failed to remove workspace', 'error'); }
+}
+
+async function switchTab(id) {
+    state.activeId = id;
+    renderTabs();
+    const ws = state.workspaces.find(w => w.id === id);
+    if (!ws) return;
+
+    // Show header & workspace
+    document.getElementById('dtHeader').style.display = 'flex';
+    document.getElementById('dtWorkspace').classList.add('active');
+    document.getElementById('dtEmptyState').style.display = 'none';
+
+    // Close config panel
+    document.getElementById('dtConfigPanel').classList.remove('open');
+
+    updateLlmBadge(ws);
+    updateInputBar(ws);
+    renderSkillChips(ws);
+
+    // Re-evaluate Send button: disabled only if this workspace has an active stream
+    const hasActiveStream = [..._streams.keys()].some(cid => cid.startsWith(`${id}-`));
+    const btn = document.getElementById('dtSendBtn');
+    btn.disabled = hasActiveStream;
+    btn.textContent = hasActiveStream ? '' : 'Send';
+    if (hasActiveStream) btn.innerHTML = '<span class="dt-spin"></span>';
+
+    // Load tasks
+    await refreshTasks();
+
+    // Load session for current task
+    await loadSession();
+}
+
+// ── Config ──────────────────────────────────────────────────────────────────
+function toggleConfig() {
+    const panel = document.getElementById('dtConfigPanel');
+    const open = panel.classList.toggle('open');
+    if (open) populateConfig();
+}
+
+function populateConfig() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    document.getElementById('cfgName').value        = ws.name || '';
+    document.getElementById('cfgProvider').value    = ws.llmProvider || 'claude';
+    document.getElementById('cfgModel').value       = ws.llmModel || '';
+    document.getElementById('cfgApiKey').value      = '';   // never pre-fill secrets
+    document.getElementById('cfgUrl').value         = ws.llmUrl || '';
+    document.getElementById('cfgGitPath').value     = ws.gitRepoPath || '';
+    document.getElementById('cfgJiraUrl').value     = ws.jiraUrl || '';
+    document.getElementById('cfgJiraEmail').value   = ws.jiraEmail || '';
+    document.getElementById('cfgJiraToken').value   = '';   // never pre-fill secrets
+    document.getElementById('cfgJiraProject').value = ws.jiraProjectKey || '';
+    document.getElementById('cfgMondayToken').value = '';   // never pre-fill secrets
+    document.getElementById('cfgMondayBoard').value = ws.mondayBoardId || '';
+    onProviderChange(); // show/hide URL & API key groups + set placeholder
+}
+
+function onProviderChange() {
+    const p = document.getElementById('cfgProvider').value;
+    const needsUrl = ['ollama', 'openai', 'azure', 'lmstudio', 'custom'].includes(p);
+    document.getElementById('cfgUrlGroup').style.display = needsUrl ? '' : 'none';
+    document.getElementById('cfgApiKeyGroup').style.display = ['ollama', 'lmstudio', 'custom', 'claudecli'].includes(p) ? 'none' : '';
+    const urlHints = { ollama:'http://localhost:11434', openai:'https://api.openai.com', azure:'https://<resource>.openai.azure.com/openai/deployments/<deployment>', lmstudio:'http://localhost:1234' };
+    const urlEl = document.getElementById('cfgUrl');
+    if (!urlEl.value && urlHints[p]) urlEl.placeholder = urlHints[p];
+    const defaults = { claude:'claude-sonnet-4-6', claudecli:'', ollama:'llama3', openai:'gpt-4o', groq:'llama-3.3-70b-versatile', together:'meta-llama/Llama-3-70b-chat-hf', mistral:'mistral-large-latest', perplexity:'sonar-pro', deepseek:'deepseek-chat', gemini:'gemini-2.0-flash', cohere:'command-r-plus', xai:'grok-3-latest', azure:'', lmstudio:'', custom:'' };
+    const m = document.getElementById('cfgModel');
+    if (!m.value) m.value = defaults[p] || '';
+}
+
+async function saveConfig() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+
+    const urlVisible = document.getElementById('cfgUrlGroup').style.display !== 'none';
+    const urlVal = document.getElementById('cfgUrl').value.trim();
+    const dto = {
+        name: document.getElementById('cfgName').value || ws.name,
+        llmProvider: document.getElementById('cfgProvider').value,
+        llmModel: document.getElementById('cfgModel').value.trim(),
+        llmUrl: urlVisible ? urlVal : (ws.llmUrl || ''),
+        apiKey: document.getElementById('cfgApiKey').value || undefined,
+        enabledSkills: ws.enabledSkills || [],
+        jiraUrl: document.getElementById('cfgJiraUrl').value,
+        jiraEmail: document.getElementById('cfgJiraEmail').value,
+        jiraToken: document.getElementById('cfgJiraToken').value || undefined,
+        jiraProjectKey: document.getElementById('cfgJiraProject').value,
+        mondayToken: document.getElementById('cfgMondayToken').value || undefined,
+        mondayBoardId: document.getElementById('cfgMondayBoard').value,
+        gitRepoPath: document.getElementById('cfgGitPath').value
+    };
+
+    try {
+        const r = await fetch(`/api/devtools/workspaces/${ws.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dto)
+        });
+        const updated = await r.json();
+        const idx = state.workspaces.findIndex(w => w.id === ws.id);
+        state.workspaces[idx] = updated;
+        renderTabs();
+        updateLlmBadge(updated);
+        renderSkillChips(updated);
+        document.getElementById('dtConfigPanel').classList.remove('open');
+        showToast('Workspace saved', 'success');
+    } catch (e) { showToast('Save failed: ' + e.message, 'error'); }
+}
+
+// ── Tasks ───────────────────────────────────────────────────────────────────
+async function refreshTasks() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    const source = document.getElementById('taskSource').value;
+    if (source === 'manual') { renderTaskOptions([]); return; }
+
+    try {
+        const r = await fetch(`/api/devtools/tasks?workspaceId=${ws.id}&source=${source}`);
+        const tasks = await r.json();
+        state.tasks[ws.id] = tasks;
+        renderTaskOptions(tasks);
+    } catch { renderTaskOptions([]); }
+}
+
+function onTaskSourceChange() {
+    refreshTasks();
+    document.getElementById('taskSelect').innerHTML = '<option value="">-- select task --</option>';
+    clearTaskBadges();
+}
+
+function renderTaskOptions(tasks) {
+    const sel = document.getElementById('taskSelect');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">-- select task --</option>';
+    tasks.forEach(t => {
+        const opt = document.createElement('option');
+        opt.value = t.id;
+        opt.textContent = `[${t.id}] ${t.title}`;
+        opt.dataset.task = JSON.stringify(t);
+        sel.appendChild(opt);
+    });
+    if (cur) sel.value = cur;
+}
+
+async function onTaskSelected() {
+    const sel = document.getElementById('taskSelect');
+    const opt = sel.selectedOptions[0];
+    if (!opt || !opt.value) {
+        state.activeTask = null;
+        clearTaskBadges();
+        document.getElementById('dtTaskContext').classList.remove('visible');
+        document.getElementById('dtMessages').innerHTML = '';
+        return;
+    }
+
+    // manual: try to get from dataset, else build minimal
+    state.activeTask = opt.dataset.task ? JSON.parse(opt.dataset.task) : { id: opt.value, title: opt.textContent, source: 'manual' };
+
+    // Update badges
+    const typeBadge = document.getElementById('taskTypeBadge');
+    const prioBadge = document.getElementById('taskPriorityBadge');
+    if (state.activeTask.type) {
+        typeBadge.textContent = state.activeTask.type;
+        typeBadge.className = `dt-task-badge badge-${state.activeTask.type.toLowerCase()}`;
+        typeBadge.style.display = '';
+    } else { typeBadge.style.display = 'none'; }
+
+    if (state.activeTask.priority) {
+        prioBadge.textContent = state.activeTask.priority;
+        prioBadge.className = `dt-task-badge badge-${state.activeTask.priority.toLowerCase()}`;
+        prioBadge.style.display = '';
+    } else { prioBadge.style.display = 'none'; }
+
+    // Task context banner
+    document.getElementById('taskContextTitle').textContent = `[${state.activeTask.id}] ${state.activeTask.title}`;
+    document.getElementById('taskContextDesc').textContent = state.activeTask.description || '';
+    document.getElementById('dtTaskContext').classList.toggle('visible', !!state.activeTask.title);
+
+    await loadSession();
+}
+
+function clearTaskBadges() {
+    document.getElementById('taskTypeBadge').style.display = 'none';
+    document.getElementById('taskPriorityBadge').style.display = 'none';
+}
+
+// ── Session / Messages ───────────────────────────────────────────────────────
+async function loadSession() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    const taskId = state.activeTask?.id || '';
+
+    try {
+        const r = await fetch(`/api/devtools/sessions/${ws.id}?taskId=${encodeURIComponent(taskId)}`);
+        const session = await r.json();
+        const key = `${ws.id}:${taskId}`;
+        state.sessions[key] = session;
+        renderMessages(session);
+        updateTokenBar(session.totalTokensUsed);
+    } catch {
+        renderMessages({ messages: [], summaryContext: null, totalTokensUsed: 0 });
+    }
+}
+
+function renderMessages(session) {
+    const container = document.getElementById('dtMessages');
+    container.innerHTML = '';
+
+    if (session.summaryContext) {
+        const banner = document.createElement('div');
+        banner.className = 'dt-summary-banner';
+        banner.textContent = '📝 Context summary: ' + session.summaryContext;
+        container.appendChild(banner);
+    }
+
+    (session.messages || []).forEach(m => appendMessageToDOM(m.role, m.content, m.tokens, m.images));
+    container.scrollTop = container.scrollHeight;
+}
+
+function appendMessageToDOM(role, content, tokens, images) {
+    const container = document.getElementById('dtMessages');
+    const el = document.createElement('div');
+    el.className = `dt-msg ${role}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'dt-msg-avatar';
+    avatar.textContent = role === 'user' ? 'U' : 'AI';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'dt-msg-bubble';
+
+    // Show attached images above the text
+    if (images?.length) {
+        const imgRow = document.createElement('div');
+        imgRow.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px';
+        images.forEach(src => {
+            const img = document.createElement('img');
+            img.src = src;
+            img.style.cssText = 'max-width:180px;max-height:140px;border-radius:6px;border:1px solid var(--border-color);object-fit:cover';
+            imgRow.appendChild(img);
+        });
+        bubble.appendChild(imgRow);
+    }
+    const textNode = document.createElement('div');
+    textNode.innerHTML = formatMarkdown(content);
+    bubble.appendChild(textNode);
+
+    const meta = document.createElement('div');
+    meta.className = 'dt-msg-meta';
+    meta.textContent = tokens ? `${tokens} tokens` : new Date().toLocaleTimeString();
+
+    el.appendChild(avatar);
+    const right = document.createElement('div');
+    right.appendChild(bubble);
+    right.appendChild(meta);
+    el.appendChild(right);
+
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+}
+
+// ── SignalR chat connection ───────────────────────────────────────────────────
+
+let dtConnection = null;
+
+// Keyed by correlationId → { el, raw, wsId }
+// Allows multiple concurrent streams (one per workspace tab) without interference.
+const _streams = new Map();
+
+async function initSignalR() {
+    dtConnection = new signalR.HubConnectionBuilder()
+        .withUrl('/hubs/devtools')
+        .withAutomaticReconnect([0, 1000, 3000, 5000])
+        .configureLogging(signalR.LogLevel.Warning)
+        .build();
+
+    dtConnection.on('ReceiveStart', cid => {
+        _streams.set(cid, { el: createStreamingBubble(cid), raw: '' });
+    });
+
+    dtConnection.on('ReceiveTool', (cid, label) => {
+        const s = _streams.get(cid);
+        if (s) appendToolChip(s.el, label);
+    });
+
+    dtConnection.on('ReceiveToken', (cid, chunk) => {
+        const s = _streams.get(cid);
+        if (!s) return;
+        s.raw += chunk;
+        updateStreamingText(s.el, s.raw);
+    });
+
+    dtConnection.on('ReceiveDone', (cid, stats) => {
+        const s = _streams.get(cid);
+        if (s) finalizeStreamingBubble(s.el, s.raw, stats.outputTokens);
+        updateTokenBar(stats.totalSessionTokens);
+        _streams.delete(cid);
+        enableSendBtnFor(cid);
+    });
+
+    dtConnection.on('ReceiveError', (cid, error) => {
+        const s = _streams.get(cid);
+        const msg = '⚠️ ' + error;
+        if (s) finalizeStreamingBubble(s.el, msg, 0);
+        else   appendMessageToDOM('assistant', msg, 0);
+        _streams.delete(cid);
+        enableSendBtnFor(cid);
+    });
+
+    dtConnection.onreconnecting(() => showToast('Reconnecting to server…', 'error'));
+    dtConnection.onreconnected(() => showToast('Reconnected', 'success'));
+
+    try { await dtConnection.start(); }
+    catch (e) { console.warn('SignalR start failed, will retry automatically:', e); }
+}
+
+function createStreamingBubble(cid) {
+    const container = document.getElementById('dtMessages');
+    const el = document.createElement('div');
+    el.className = 'dt-msg assistant';
+    el.dataset.cid = cid;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'dt-msg-avatar';
+    avatar.textContent = 'AI';
+
+    const bubble = document.createElement('div');
+    bubble.className = 'dt-msg-bubble';
+
+    // Tool chips row (hidden until first tool fires)
+    const toolCalls = document.createElement('div');
+    toolCalls.className = 'dt-tool-calls';
+    toolCalls.style.display = 'none';
+    bubble.appendChild(toolCalls);
+
+    // Text area — starts with spinner, replaced by streaming text
+    const textArea = document.createElement('div');
+    textArea.className = 'dt-stream-text dt-stream-cursor';
+    textArea.innerHTML = '<span class="dt-spin" style="display:inline-block;vertical-align:middle;margin-right:4px"></span>'
+                       + '<span style="opacity:.5;font-size:12px">Thinking…</span>';
+    bubble.appendChild(textArea);
+
+    const meta = document.createElement('div');
+    meta.className = 'dt-msg-meta';
+    meta.textContent = '…';
+
+    const right = document.createElement('div');
+    right.appendChild(bubble);
+    right.appendChild(meta);
+
+    el.appendChild(avatar);
+    el.appendChild(right);
+    container.appendChild(el);
+    container.scrollTop = container.scrollHeight;
+
+    el._bubble    = bubble;
+    el._toolCalls = toolCalls;
+    el._textArea  = textArea;
+    el._meta      = meta;
+    el._hasText   = false;
+    return el;
+}
+
+function appendToolChip(el, label) {
+    el._toolCalls.style.display = 'flex';
+    const chip = document.createElement('span');
+    chip.className = 'dt-tool-chip running';
+    chip.textContent = label;
+    el._toolCalls.appendChild(chip);
+    // Mark previous chips as done (new chip means last one finished)
+    el._toolCalls.querySelectorAll('.dt-tool-chip.running:not(:last-child)')
+       .forEach(c => c.classList.replace('running', 'done'));
+    document.getElementById('dtMessages').scrollTop = 99999;
+}
+
+function updateStreamingText(el, rawText) {
+    if (!el._hasText) {
+        // First token — replace spinner with real text
+        el._textArea.innerHTML = '';
+        el._hasText = true;
+        // Mark all chips as done once text starts arriving
+        el._toolCalls.querySelectorAll('.dt-tool-chip.running')
+           .forEach(c => c.classList.replace('running', 'done'));
+    }
+    el._textArea.textContent = rawText;   // raw during stream, markdown on done
+    document.getElementById('dtMessages').scrollTop = 99999;
+}
+
+function finalizeStreamingBubble(el, rawText, tokens) {
+    // Mark any remaining running chips as done
+    el._toolCalls.querySelectorAll('.dt-tool-chip.running')
+       .forEach(c => c.classList.replace('running', 'done'));
+    // Remove blinking cursor, render markdown
+    el._textArea.classList.remove('dt-stream-cursor');
+    el._textArea.innerHTML = formatMarkdown(rawText);
+    el._meta.textContent = tokens ? `${tokens} tokens` : new Date().toLocaleTimeString();
+    document.getElementById('dtMessages').scrollTop = 99999;
+}
+
+// Re-enable the Send button only for the workspace that owns this correlationId.
+// Other workspaces' buttons are unaffected.
+function enableSendBtnFor(cid) {
+    // The cid encodes the wsId as the first segment: "<wsId>-<uuid>"
+    const wsId = parseInt(cid.split('-')[0], 10);
+    if (wsId === state.activeId) {
+        const btn = document.getElementById('dtSendBtn');
+        btn.disabled = false;
+        btn.textContent = 'Send';
+    }
+    // If this workspace is no longer active the button is already reset on tab switch
+}
+
+// Attached images state: [{dataUrl, name}]
+let attachedImages = [];
+
+async function sendMessage() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    const input = document.getElementById('dtInput');
+    const text = input.value.trim();
+    if (!text && attachedImages.length === 0) return;
+
+    // Ensure SignalR is connected before sending
+    if (!dtConnection || dtConnection.state !== signalR.HubConnectionState.Connected) {
+        showToast('Connecting… please try again in a moment', 'error');
+        try { await dtConnection?.start(); } catch {}
+        return;
+    }
+
+    const btn = document.getElementById('dtSendBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="dt-spin"></span>';
+    input.value = '';
+    input.style.height = '';
+
+    const images = attachedImages.map(i => i.dataUrl);
+    clearAttachedImages();
+
+    appendMessageToDOM('user', text, null, images);
+
+    // Correlation ID encodes the workspace so routing is unambiguous even with
+    // 3 simultaneous chats on the same SignalR connection.
+    const cid = `${ws.id}-${crypto.randomUUID()}`;
+
+    const payload = {
+        workspaceId: ws.id,
+        taskId: state.activeTask?.id || '',
+        taskSource: state.activeTask?.source || document.getElementById('taskSource').value,
+        taskTitle: state.activeTask?.title || '',
+        taskDescription: state.activeTask?.description || '',
+        message: text,
+        images: images.length > 0 ? images : undefined,
+        correlationId: cid
+    };
+
+    try {
+        await dtConnection.invoke('SendMessage', payload);
+        // Tokens arrive via ReceiveToken(cid, chunk) → routed by cid, never mixed up
+    } catch (e) {
+        appendMessageToDOM('assistant', '⚠️ SignalR error: ' + e.message, 0);
+        enableSendBtnFor(cid);
+    }
+}
+
+function onInputKeyDown(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+    // Shift+Enter inserts a newline (default textarea behaviour, no action needed)
+}
+
+function autoResizeInput(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+}
+
+// ── Image attach ─────────────────────────────────────────────────────────────
+
+function onImagesSelected(e) {
+    const files = Array.from(e.target.files);
+    e.target.value = '';
+    files.forEach(f => {
+        if (!f.type.startsWith('image/')) return;
+        const reader = new FileReader();
+        reader.onload = ev => {
+            attachedImages.push({ dataUrl: ev.target.result, name: f.name });
+            renderAttachedImages();
+        };
+        reader.readAsDataURL(f);
+    });
+}
+
+function renderAttachedImages() {
+    const container = document.getElementById('dtAttachedImages');
+    container.style.display = attachedImages.length > 0 ? 'flex' : 'none';
+    container.innerHTML = '';
+    attachedImages.forEach((img, i) => {
+        const thumb = document.createElement('div');
+        thumb.className = 'dt-img-thumb';
+        thumb.innerHTML = `<img src="${img.dataUrl}" alt="${escHtml(img.name)}" title="${escHtml(img.name)}" /><button onclick="removeAttachedImage(${i})" title="Remove">✕</button>`;
+        container.appendChild(thumb);
+    });
+}
+
+function removeAttachedImage(i) {
+    attachedImages.splice(i, 1);
+    renderAttachedImages();
+}
+
+function clearAttachedImages() {
+    attachedImages = [];
+    renderAttachedImages();
+}
+
+// ── Model picker ─────────────────────────────────────────────────────────────
+
+const MODEL_SUGGESTIONS = {
+    claude:    ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
+    claudecli: ['claude-opus-4-6', 'claude-sonnet-4-6', '(default)'],
+    openai:    ['gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'],
+    groq:      ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'],
+    together:  ['meta-llama/Llama-3.3-70B-Instruct-Turbo', 'mistralai/Mixtral-8x7B-Instruct-v0.1'],
+    gemini:    ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+    mistral:   ['mistral-large-latest', 'mistral-small-latest', 'codestral-latest'],
+    deepseek:  ['deepseek-chat', 'deepseek-reasoner'],
+    ollama:    ['llama3', 'mistral', 'codellama', 'phi3', 'qwen2.5-coder'],
+    lmstudio:  ['(auto-detect)'],
+    cohere:    ['command-r-plus', 'command-r'],
+    perplexity:['sonar-pro', 'sonar'],
+    xai:       ['grok-3-latest', 'grok-2'],
+    azure:     ['gpt-4o', 'gpt-4-turbo'],
+    custom:    [],
+};
+
+function toggleModelDropdown(e) {
+    e.stopPropagation();
+    const dd = document.getElementById('dtModelDropdown');
+    const isOpen = dd.classList.toggle('open');
+    if (isOpen) {
+        populateModelOpts();
+        document.getElementById('dtModelCustom').value = '';
+        // Close on outside click
+        setTimeout(() => document.addEventListener('click', closeModelDropdown, { once: true }), 0);
+    }
+}
+
+function closeModelDropdown() {
+    document.getElementById('dtModelDropdown')?.classList.remove('open');
+}
+
+function populateModelOpts() {
+    const ws = activeWorkspace();
+    const current = ws?.llmModel || '';
+    const provider = ws?.llmProvider || 'claude';
+    const opts = document.getElementById('dtModelOpts');
+    opts.innerHTML = '';
+    const suggestions = MODEL_SUGGESTIONS[provider] || [];
+    suggestions.forEach(m => {
+        const d = document.createElement('div');
+        d.className = 'dt-model-opt' + (m === current ? ' active' : '');
+        d.textContent = m;
+        d.onclick = () => applyModel(m === '(default)' || m === '(auto-detect)' ? '' : m);
+        opts.appendChild(d);
+    });
+}
+
+function onModelInputKey(e) {
+    if (e.key === 'Enter') {
+        applyModel(e.target.value.trim());
+    }
+    e.stopPropagation();
+}
+
+async function applyModel(model) {
+    closeModelDropdown();
+    const ws = activeWorkspace();
+    if (!ws) return;
+    ws.llmModel = model;
+    document.getElementById('dtModelPillLabel').textContent = model || '(default)';
+    // Persist to server
+    try {
+        await fetch(`/api/devtools/workspaces/${ws.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ws)
+        });
+    } catch { /* non-critical */ }
+}
+
+// ── Folder selector ───────────────────────────────────────────────────────────
+
+async function toggleFolderEdit() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+
+    // Try native OS folder picker first
+    const btn = document.getElementById('dtFolderBtn');
+    const origLabel = btn.innerHTML;
+    btn.innerHTML = '<span class="dt-spin" style="display:inline-block;vertical-align:middle"></span>';
+    btn.disabled = true;
+
+    try {
+        const initial = ws.gitRepoPath || '';
+        const r = await fetch(`/api/devtools/browse-folder?initial=${encodeURIComponent(initial)}`);
+        const { path, cancelled } = await r.json();
+
+        btn.innerHTML = origLabel;
+        btn.disabled = false;
+
+        if (!cancelled && path) {
+            await applyFolderPath(ws, path);
+            return;
+        }
+        // User cancelled picker → do nothing (don't fall through to text input)
+        if (cancelled) return;
+    } catch {
+        // Native picker unavailable — fall back to inline text input
+        btn.innerHTML = origLabel;
+        btn.disabled = false;
+    }
+
+    // Fallback: editable text input
+    const input = document.getElementById('dtFolderInput');
+    btn.style.display   = 'none';
+    input.style.display = '';
+    input.value = ws.gitRepoPath || '';
+    input.focus();
+    input.select();
+}
+
+function cancelFolderEdit() {
+    document.getElementById('dtFolderBtn').style.display   = '';
+    document.getElementById('dtFolderInput').style.display = 'none';
+}
+
+async function saveFolderPath() {
+    const ws  = activeWorkspace();
+    const val = document.getElementById('dtFolderInput').value.trim();
+    cancelFolderEdit();
+    if (!ws || !val) return;
+    await applyFolderPath(ws, val);
+}
+
+async function applyFolderPath(ws, path) {
+    ws.gitRepoPath = path;
+    updateFolderLabel(ws);
+    try {
+        await fetch(`/api/devtools/workspaces/${ws.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(ws)
+        });
+        showToast(`Folder set: ${path.split('/').pop() || path}`, 'success');
+    } catch { /* non-critical */ }
+}
+
+function updateFolderLabel(ws) {
+    const label = document.getElementById('dtFolderLabel');
+    if (!label) return;
+    const path = ws?.gitRepoPath;
+    label.textContent = path ? path.split('/').pop() || path : 'Select folder';
+}
+
+function updateInputBar(ws) {
+    // Model pill
+    document.getElementById('dtModelPillLabel').textContent = ws.llmModel || '(default)';
+    // Provider label
+    const provLabel = { claude:'Claude API', claudecli:'Claude CLI', ollama:'Ollama', openai:'OpenAI', groq:'Groq', together:'Together AI', mistral:'Mistral', perplexity:'Perplexity', deepseek:'DeepSeek', gemini:'Gemini', cohere:'Cohere', azure:'Azure OpenAI', xai:'xAI', lmstudio:'LM Studio', custom:'Custom' };
+    document.getElementById('dtProviderLabel').textContent = provLabel[ws.llmProvider] || ws.llmProvider || '';
+    // Folder
+    updateFolderLabel(ws);
+}
+
+async function completeTask() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    const task = state.activeTask;
+    const taskId = task?.id || '';
+    const label = task ? `[${task.id}] ${task.title}` : 'this session';
+
+    if (!confirm(`Mark "${label}" as done and permanently delete all chat history and context for it?\n\nThis frees space and cannot be undone.`)) return;
+
+    try {
+        const url = taskId
+            ? `/api/devtools/sessions/${ws.id}?taskId=${encodeURIComponent(taskId)}`
+            : `/api/devtools/sessions/${ws.id}`;
+        const r = await fetch(url, { method: 'DELETE' });
+        const data = await r.json();
+
+        // Clear local state
+        const key = `${ws.id}:${taskId}`;
+        delete state.sessions[key];
+
+        // Reset UI
+        document.getElementById('dtMessages').innerHTML = '';
+        document.getElementById('dtTaskContext').classList.remove('visible');
+        document.getElementById('taskSelect').value = '';
+        clearTaskBadges();
+        state.activeTask = null;
+        updateTokenBar(0);
+
+        showToast(`Cleared ${data.deleted} session(s) — space freed`, 'success');
+    } catch (e) { showToast('Clear failed: ' + e.message, 'error'); }
+}
+
+async function compressHistory() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    const taskId = state.activeTask?.id || '';
+
+    try {
+        const r = await fetch(`/api/devtools/sessions/${ws.id}/summarize?taskId=${encodeURIComponent(taskId)}`, { method: 'POST' });
+        const session = await r.json();
+        const key = `${ws.id}:${taskId}`;
+        state.sessions[key] = session;
+        renderMessages(session);
+        updateTokenBar(session.totalTokensUsed);
+        showToast('History compressed successfully', 'success');
+    } catch (e) { showToast('Compress failed: ' + e.message, 'error'); }
+}
+
+function updateTokenBar(total) {
+    const pct = Math.min(100, Math.round((total / MAX_TOKENS) * 100));
+    document.getElementById('tokenCountLabel').textContent = `${total.toLocaleString()} tokens used`;
+    document.getElementById('tokenPctLabel').textContent = `${pct}%`;
+    const bar = document.getElementById('tokenProgressBar');
+    bar.style.width = pct + '%';
+    bar.className = 'token-progress-bar' + (pct > 80 ? ' danger' : pct > 50 ? ' warn' : '');
+}
+
+// ── Agent Actions ────────────────────────────────────────────────────────────
+async function runAction(type) {
+    const ws = activeWorkspace();
+    if (!ws) return;
+
+    const btns = document.querySelectorAll('.dt-action-btn');
+    btns.forEach(b => b.classList.add('running'));
+
+    const payload = {
+        workspaceId: ws.id,
+        taskId: state.activeTask?.id || '',
+        taskTitle: state.activeTask?.title || '',
+        taskDescription: state.activeTask?.description || '',
+        actionType: type,
+        additionalContext: getSelectedText()
+    };
+
+    if (type === 'branch') {
+        const name = prompt('Branch name (leave blank to auto-generate from task):');
+        if (name !== null) payload.branchName = name;
+        else { btns.forEach(b => b.classList.remove('running')); return; }
+    }
+
+    if (type === 'git-comment') {
+        const prNum = prompt('PR number or description context (optional):');
+        if (prNum !== null) payload.prNumber = prNum;
+    }
+
+    try {
+        const r = await fetch('/api/devtools/actions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await r.json();
+
+        const titleMap = {
+            'branch': 'Branch Created',
+            'unit-tests': 'Unit Tests Generated',
+            'integration-tests': 'Integration Tests Generated',
+            'system-tests': 'System Tests Generated',
+            'qa': 'QA Review',
+            'git-comment': 'Git Discussion Comment',
+            'jira-comment': 'Jira Comment'
+        };
+
+        state.lastResult = result.output || result.error || '';
+        showResult(titleMap[type] || 'Agent Result', state.lastResult, !result.success);
+    } catch (e) {
+        showResult('Error', e.message, true);
+    } finally {
+        btns.forEach(b => b.classList.remove('running'));
+    }
+}
+
+function getSelectedText() {
+    return window.getSelection()?.toString() || '';
+}
+
+// ── Result modal ─────────────────────────────────────────────────────────────
+function showResult(title, content, isError) {
+    document.getElementById('resultTitle').textContent = title;
+    document.getElementById('resultBody').textContent = content;
+    document.getElementById('resultBody').style.color = isError ? 'var(--error-color)' : '';
+    document.getElementById('resultOverlay').classList.add('open');
+}
+
+function closeResult() {
+    document.getElementById('resultOverlay').classList.remove('open');
+}
+
+function copyResult() {
+    navigator.clipboard.writeText(state.lastResult).then(() => showToast('Copied', 'success'));
+}
+
+function insertResultToChat() {
+    document.getElementById('dtInput').value = state.lastResult;
+    closeResult();
+    document.getElementById('dtInput').focus();
+}
+
+// ── Skills ───────────────────────────────────────────────────────────────────
+function renderSkillChips(ws) {
+    const area   = document.getElementById('skillsArea');
+    const btn    = document.querySelector('[onclick="openSkillsModal()"]');
+    const skills = ws.enabledSkills || [];
+    area.innerHTML = '';
+    skills.forEach(s => {
+        const chip = document.createElement('span');
+        chip.className = 'skill-chip';
+        chip.textContent = s;
+        chip.title = 'Click to remove';
+        chip.onclick = () => toggleSkillChip(ws, s);
+        area.appendChild(chip);
+    });
+    // Update button label
+    if (btn) btn.textContent = skills.length > 0 ? `Skills (${skills.length})` : '+ Skills';
+}
+
+async function toggleSkillChip(ws, skill) {
+    ws.enabledSkills = ws.enabledSkills.filter(s => s !== skill);
+    try {
+        await fetch(`/api/devtools/workspaces/${ws.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...ws })
+        });
+    } catch {}
+    renderSkillChips(ws);
+}
+
+function openSkillsModal() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    state.pendingSkills = [...(ws.enabledSkills || [])];
+    renderSkillsGrid();
+    document.getElementById('newSkillName').value = '';
+    document.getElementById('newSkillPrompt').value = '';
+    document.getElementById('skillAddForm').style.display = 'none';
+    document.getElementById('skillAddToggle').style.display = '';
+    document.getElementById('skillsOverlay').classList.add('open');
+}
+
+function toggleSkillAddForm() {
+    const form = document.getElementById('skillAddForm');
+    const btn  = document.getElementById('skillAddToggle');
+    const show = form.style.display === 'none';
+    form.style.display = show ? 'flex' : 'none';
+    btn.style.display  = show ? 'none' : '';
+    if (show) document.getElementById('newSkillName').focus();
+}
+
+function renderSkillsGrid() {
+    const grid = document.getElementById('skillsGrid');
+    grid.innerHTML = '';
+    if (!state.allSkills.length) {
+        grid.innerHTML = '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:24px 0">No skills yet. Add one below.</div>';
+        return;
+    }
+    state.allSkills.forEach(skill => {
+        const enabled = state.pendingSkills.includes(skill.name);
+        const row = document.createElement('div');
+        row.className = 'skill-row' + (enabled ? ' active' : '');
+        row.onclick = (e) => {
+            if (e.target.closest('textarea') || e.target.closest('button')) return;
+            const cb = row.querySelector('input[type=checkbox]');
+            cb.checked = !cb.checked;
+            cb.dispatchEvent(new Event('change'));
+        };
+        row.innerHTML = `
+            <label class="skill-toggle" title="${enabled ? 'Disable' : 'Enable'} ${escHtml(skill.name)}">
+                <input type="checkbox" ${enabled ? 'checked' : ''}
+                    onchange="togglePendingSkill('${escHtml(skill.name)}', this.checked); this.closest('.skill-row').classList.toggle('active', this.checked)" />
+                <div class="skill-toggle-track"></div>
+                <div class="skill-toggle-thumb"></div>
+            </label>
+            <div class="skill-info">
+                <div class="skill-info-name">
+                    <span>${escHtml(skill.name)}</span>
+                    ${skill.isBuiltIn
+                        ? '<span class="skill-badge builtin">built-in</span>'
+                        : '<span class="skill-badge custom">custom</span>'}
+                </div>
+                <textarea class="skill-prompt-edit" data-skill-id="${skill.id}"
+                    onchange="updateSkillPrompt(${skill.id}, this.value)"
+                    onclick="event.stopPropagation()"
+                >${escHtml(skill.systemPromptAddition)}</textarea>
+            </div>
+            ${!skill.isBuiltIn ? `<button class="btn btn-ghost" style="padding:3px 7px;color:var(--error-color);flex-shrink:0;align-self:flex-start" onclick="event.stopPropagation();deleteSkill(${skill.id})" title="Delete">&#x2715;</button>` : ''}
+        `;
+        grid.appendChild(row);
+    });
+}
+
+function togglePendingSkill(name, checked) {
+    if (checked) { if (!state.pendingSkills.includes(name)) state.pendingSkills.push(name); }
+    else { state.pendingSkills = state.pendingSkills.filter(s => s !== name); }
+}
+
+async function updateSkillPrompt(id, newPrompt) {
+    const skill = state.allSkills.find(s => s.id === id);
+    if (!skill) return;
+    try {
+        const r = await fetch(`/api/devtools/skills/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id, name: skill.name, systemPromptAddition: newPrompt, isBuiltIn: skill.isBuiltIn })
+        });
+        const updated = await r.json();
+        const idx = state.allSkills.findIndex(s => s.id === id);
+        if (idx >= 0) state.allSkills[idx] = updated;
+    } catch { showToast('Failed to save prompt', 'error'); }
+}
+
+async function addNewSkill() {
+    const name = document.getElementById('newSkillName').value.trim();
+    const prompt = document.getElementById('newSkillPrompt').value.trim();
+    if (!name) { showToast('Skill name is required', 'error'); return; }
+    if (!prompt) { showToast('Skill prompt is required', 'error'); return; }
+
+    try {
+        const r = await fetch('/api/devtools/skills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, systemPromptAddition: prompt })
+        });
+        if (!r.ok) { const e = await r.json(); showToast(e.error || 'Failed', 'error'); return; }
+        const created = await r.json();
+        state.allSkills.push(created);
+        document.getElementById('newSkillName').value = '';
+        document.getElementById('newSkillPrompt').value = '';
+        toggleSkillAddForm(); // hide form
+        renderSkillsGrid();
+        showToast(`Skill "${name}" added`, 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteSkill(id) {
+    const skill = state.allSkills.find(s => s.id === id);
+    if (!confirm(`Delete custom skill "${skill?.name}"?`)) return;
+    try {
+        const r = await fetch(`/api/devtools/skills/${id}`, { method: 'DELETE' });
+        if (!r.ok) { const e = await r.json(); showToast(e.error, 'error'); return; }
+        state.allSkills = state.allSkills.filter(s => s.id !== id);
+        state.pendingSkills = state.pendingSkills.filter(s => s !== skill?.name);
+        renderSkillsGrid();
+        showToast('Skill deleted', 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function saveSkills() {
+    const ws = activeWorkspace();
+    if (!ws) return;
+    ws.enabledSkills = state.pendingSkills;
+    try {
+        const r = await fetch(`/api/devtools/workspaces/${ws.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...ws })
+        });
+        const updated = await r.json();
+        const idx = state.workspaces.findIndex(w => w.id === ws.id);
+        state.workspaces[idx] = updated;
+        renderSkillChips(updated);
+    } catch {}
+    closeSkillsModal();
+    showToast('Skills updated', 'success');
+}
+
+function closeSkillsModal() {
+    document.getElementById('skillsOverlay').classList.remove('open');
+}
+
+// ── LLM badge ─────────────────────────────────────────────────────────────────
+function updateLlmBadge(ws) {
+    const labels = { claude:'⊙ Claude', claudecli:'⊙ Claude CLI', ollama:'◈ Ollama', openai:'▣ OpenAI', groq:'⚡ Groq', together:'⬡ Together', mistral:'◎ Mistral', perplexity:'◉ Perplexity', deepseek:'◆ DeepSeek', gemini:'✦ Gemini', cohere:'◐ Cohere', azure:'☁ Azure', xai:'✕ xAI', lmstudio:'◈ LM Studio', custom:'○ Custom' };
+    const el = document.getElementById('llmBadge');
+    el.innerHTML = (labels[ws.llmProvider] || ws.llmProvider) + (ws.llmModel ? ` <span style="opacity:.6;font-size:11px">${escHtml(ws.llmModel)}</span>` : '');
+}
+
+// ── Utils ────────────────────────────────────────────────────────────────────
+function activeWorkspace() {
+    return state.workspaces.find(w => w.id === state.activeId) || null;
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function formatMarkdown(text) {
+    // Minimal markdown: code blocks, inline code, bold, line breaks
+    let s = escHtml(text);
+    s = s.replace(/```(\w*)\n?([\s\S]*?)```/g, (_,lang,code) => `<pre style="background:var(--bg-tertiary);padding:10px 12px;border-radius:6px;overflow-x:auto"><code class="language-${lang}">${code}</code></pre>`);
+    s = s.replace(/`([^`]+)`/g, '<code style="background:var(--bg-tertiary);padding:1px 5px;border-radius:3px">$1</code>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\n/g, '<br>');
+    return s;
+}
+
+// ── File Browser ─────────────────────────────────────────────────────────────
+
+let fbAllItems    = [];   // [{name, path, isDir, ext}]
+let fbSelectedPath = null;
+
+async function openFileBrowser() {
+    const ws = activeWorkspace();
+    const root = ws?.gitRepoPath;
+    if (!root) {
+        showToast('Set a project folder first (click "Select folder" below the input)', 'error');
+        return;
+    }
+    fbSelectedPath = null;
+    document.getElementById('fbTitle').textContent = root.split('/').pop() || root;
+    document.getElementById('fbSearch').value = '';
+    document.getElementById('fbSelected').textContent = 'No file selected';
+    document.getElementById('fbAttachBtn').disabled = true;
+    document.getElementById('fileBrowserOverlay').style.display = 'flex';
+    await fbLoad();
+}
+
+async function fbLoad() {
+    const ws        = activeWorkspace();
+    const root      = ws?.gitRepoPath;
+    const recursive = document.getElementById('fbRecursive').checked;
+    const list      = document.getElementById('fbList');
+    list.innerHTML  = '<div style="padding:16px;text-align:center;font-size:12px;color:var(--text-muted)">Loading…</div>';
+    try {
+        const r    = await fetch(`/api/devtools/fs/ls?path=${encodeURIComponent(root)}&recursive=${recursive}`);
+        if (!r.ok) { const e = await r.json(); list.innerHTML = `<div style="padding:16px;color:var(--error-color);font-size:12px">${escHtml(e.error)}</div>`; return; }
+        fbAllItems = await r.json();
+        fbFilterRender();
+    } catch (e) {
+        list.innerHTML = `<div style="padding:16px;color:var(--error-color);font-size:12px">Error: ${escHtml(e.message)}</div>`;
+    }
+}
+
+function fbFilterRender() {
+    const q    = document.getElementById('fbSearch').value.toLowerCase();
+    const list = document.getElementById('fbList');
+    list.innerHTML = '';
+    const filtered = fbAllItems.filter(i => !q || i.name.toLowerCase().includes(q) || i.path.toLowerCase().includes(q));
+    if (!filtered.length) { list.innerHTML = '<div style="padding:16px;text-align:center;font-size:12px;color:var(--text-muted)">No files match</div>'; return; }
+
+    const extIcon = ext => {
+        if (!ext) return '📁';
+        const m = { '.cs':'🔷', '.ts':'🔷', '.js':'📜', '.py':'🐍', '.json':'📋', '.md':'📝', '.html':'🌐', '.css':'🎨', '.sql':'🗄️', '.sh':'⚙️', '.yml':'⚙️', '.yaml':'⚙️', '.xml':'📄', '.txt':'📄', '.go':'🔵', '.rs':'🦀', '.java':'☕' };
+        return m[ext] || '📄';
+    };
+
+    filtered.slice(0, 300).forEach(item => {
+        const ws   = activeWorkspace();
+        const rel  = item.path.replace(ws?.gitRepoPath || '', '').replace(/^\//, '');
+        const row  = document.createElement('div');
+        row.style.cssText = `display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;cursor:${item.isDir?'default':'pointer'};font-size:12px;${fbSelectedPath===item.path&&!item.isDir?'background:rgba(100,108,255,.12);color:var(--accent-color)':''}`;
+        row.innerHTML = `<span style="font-size:13px;width:18px;text-align:center;flex-shrink:0">${extIcon(item.ext)}</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(item.path)}">${escHtml(rel)}</span>`;
+        if (!item.isDir) {
+            row.onclick = () => fbSelect(item, row);
+            row.ondblclick = () => { fbSelect(item, row); fbAttachSelected(); };
+        } else {
+            row.style.color = 'var(--text-muted)';
+        }
+        list.appendChild(row);
+    });
+}
+
+function fbSelect(item, row) {
+    fbSelectedPath = item.path;
+    document.querySelectorAll('#fbList > div').forEach(r => { r.style.background=''; r.style.color=''; });
+    row.style.background = 'rgba(100,108,255,.12)';
+    row.style.color      = 'var(--accent-color)';
+    document.getElementById('fbSelected').textContent = item.name;
+    document.getElementById('fbAttachBtn').disabled = false;
+}
+
+async function fbAttachSelected() {
+    if (!fbSelectedPath) return;
+    closeFileBrowser();
+    try {
+        const r = await fetch(`/api/devtools/fs/read?path=${encodeURIComponent(fbSelectedPath)}`);
+        if (!r.ok) { const e = await r.json(); showToast(e.error, 'error'); return; }
+        const { name, content } = await r.json();
+        const ext  = name.split('.').pop() || '';
+        const lang = { cs:'csharp', ts:'typescript', js:'javascript', py:'python', go:'go', rs:'rust', java:'java', json:'json', html:'html', css:'css', sh:'bash', yml:'yaml', yaml:'yaml', xml:'xml', sql:'sql', md:'markdown' }[ext] || ext;
+        const snippet = `\`\`\`${lang}\n// File: ${name}\n${content}\n\`\`\``;
+        const ta = document.getElementById('dtInput');
+        ta.value = ta.value ? ta.value + '\n\n' + snippet : snippet;
+        ta.focus();
+        autoResizeInput(ta);
+        showToast(`Attached ${name}`, 'success');
+    } catch (e) { showToast('Failed to read file: ' + e.message, 'error'); }
+}
+
+function closeFileBrowser() {
+    document.getElementById('fileBrowserOverlay').style.display = 'none';
+}
+
+// ── Hybrid Mode ──────────────────────────────────────────────────────────────
+
+let hybridActive    = false;
+let hybridImages    = [];
+let hybridLaneState = {}; // { connId: { lastReply, lastPrompt } }
+
+function toggleHybrid() {
+    hybridActive = !hybridActive;
+    const panel    = document.getElementById('dtHybridPanel');
+    const messages = document.getElementById('dtMessages');
+    const tokenBar = document.querySelector('.dt-token-bar');
+    const inputArea= document.querySelector('.dt-input-area');
+    const actions  = document.querySelector('.dt-actions');
+    const btn      = document.getElementById('hybridToggle');
+
+    if (hybridActive) {
+        panel.style.display    = 'flex';
+        messages.style.display = 'none';
+        if (tokenBar)  tokenBar.style.display  = 'none';
+        if (inputArea) inputArea.style.display  = 'none';
+        if (actions)   actions.style.display    = 'none';
+        btn.style.background = 'rgba(100,108,255,.15)';
+        btn.style.borderColor= 'var(--accent-color)';
+        btn.style.color      = 'var(--accent-color)';
+        initHybridPanel();
+    } else {
+        panel.style.display    = 'none';
+        messages.style.display = '';
+        if (tokenBar)  tokenBar.style.display  = '';
+        if (inputArea) inputArea.style.display  = '';
+        if (actions)   actions.style.display    = '';
+        btn.style.background  = '';
+        btn.style.borderColor = '';
+        btn.style.color       = '';
+    }
+}
+
+function initHybridPanel() {
+    renderHybridCheckboxes();
+}
+
+function renderHybridCheckboxes() {
+    const container = document.getElementById('hybridConnCheckboxes');
+    container.innerHTML = '';
+    adminConns.filter(c => c.isEnabled).forEach(c => {
+        const chip = document.createElement('label');
+        chip.className = 'hybrid-conn-chip selected';
+        chip.dataset.id = c.id;
+        chip.innerHTML = `<input type="checkbox" checked value="${c.id}"> ${escHtml(c.name)}`;
+        chip.querySelector('input').addEventListener('change', e => {
+            chip.classList.toggle('selected', e.target.checked);
+        });
+        container.appendChild(chip);
+    });
+    // Rebuild lanes for current selection
+    renderHybridLanes();
+}
+
+function getSelectedConnIds() {
+    return Array.from(document.querySelectorAll('#hybridConnCheckboxes input:checked')).map(i => parseInt(i.value));
+}
+
+function hybridSelectAll() {
+    document.querySelectorAll('#hybridConnCheckboxes input').forEach(i => { i.checked = true; i.closest('.hybrid-conn-chip').classList.add('selected'); });
+    renderHybridLanes();
+}
+
+function hybridClearAll() {
+    document.querySelectorAll('#hybridConnCheckboxes input').forEach(i => { i.checked = false; i.closest('.hybrid-conn-chip').classList.remove('selected'); });
+    renderHybridLanes();
+}
+
+function renderHybridLanes() {
+    const ids   = getSelectedConnIds();
+    const lanes = document.getElementById('hybridLanes');
+    // Keep existing lanes that are still selected, remove deselected
+    const existing = Array.from(lanes.querySelectorAll('.hybrid-lane')).map(l => parseInt(l.dataset.id));
+    existing.filter(id => !ids.includes(id)).forEach(id => lanes.querySelector(`.hybrid-lane[data-id="${id}"]`)?.remove());
+    ids.filter(id => !existing.includes(id)).forEach(id => {
+        const conn = adminConns.find(c => c.id === id);
+        if (conn) lanes.appendChild(buildLane(conn));
+    });
+}
+
+function buildLane(conn) {
+    const lane = document.createElement('div');
+    lane.className   = 'hybrid-lane';
+    lane.dataset.id  = conn.id;
+    const provLabel  = { claude:'Claude', claudecli:'Claude CLI', ollama:'Ollama', openai:'OpenAI', groq:'Groq', together:'Together', mistral:'Mistral', perplexity:'Perplexity', deepseek:'DeepSeek', gemini:'Gemini', cohere:'Cohere', azure:'Azure', xai:'xAI', lmstudio:'LM Studio', custom:'Custom' };
+    lane.innerHTML = `
+        <div class="hybrid-lane-header">
+            <div style="width:8px;height:8px;border-radius:50%;background:var(--accent-color);flex-shrink:0"></div>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">${escHtml(conn.name)}</span>
+            <span style="font-size:10px;font-weight:400;color:var(--text-muted)">${provLabel[conn.provider]||conn.provider} · ${escHtml(conn.model||'—')}</span>
+        </div>
+        <div class="hybrid-lane-body" id="hlane-${conn.id}"></div>
+        <div class="hybrid-lane-actions" id="hlane-actions-${conn.id}" style="display:none"></div>
+    `;
+    return lane;
+}
+
+function appendHybridMsg(connId, text, type /* user|reply|error|review|fix */) {
+    const body = document.getElementById(`hlane-${connId}`);
+    if (!body) return;
+    const div = document.createElement('div');
+    div.className = `hybrid-msg ${type === 'reply' ? '' : type}`;
+    div.innerHTML = formatMarkdown(text);
+    if (type === 'reply' || type === 'fix') {
+        const ms = document.createElement('div');
+        ms.style.cssText = 'font-size:10px;color:var(--text-muted);margin-top:6px';
+        ms.id = `hlane-ms-${connId}`;
+        div.appendChild(ms);
+    }
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;
+    return div;
+}
+
+function showLaneSpinner(connId, on) {
+    const body = document.getElementById(`hlane-${connId}`);
+    if (!body) return;
+    const existing = body.querySelector('.hlane-spinner');
+    if (on && !existing) {
+        const s = document.createElement('div');
+        s.className = 'hlane-spinner';
+        s.style.cssText = 'display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-muted);padding:4px 0';
+        s.innerHTML = '<span class="dt-spin"></span> Generating…';
+        body.appendChild(s);
+        body.scrollTop = body.scrollHeight;
+    } else if (!on && existing) {
+        existing.remove();
+    }
+}
+
+function updateLaneActions(connId, prompt, reply) {
+    hybridLaneState[connId] = { lastReply: reply, lastPrompt: prompt };
+    const actDiv = document.getElementById(`hlane-actions-${connId}`);
+    if (!actDiv) return;
+    actDiv.style.display = '';
+    const others = adminConns.filter(c => c.isEnabled && c.id !== connId);
+    actDiv.innerHTML = '';
+
+    // "Ask [other] to review" buttons
+    others.forEach(other => {
+        const btn = document.createElement('button');
+        btn.className = 'hybrid-action-btn review';
+        btn.textContent = `Review with ${other.name}`;
+        btn.onclick = () => hybridReview(connId, other.id, prompt, reply, other.name);
+        actDiv.appendChild(btn);
+    });
+
+    // Copy button
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'hybrid-action-btn';
+    copyBtn.textContent = 'Copy';
+    copyBtn.onclick = () => { navigator.clipboard.writeText(reply); showToast('Copied', 'success'); };
+    actDiv.appendChild(copyBtn);
+
+    // Use in chat button
+    const useBtn = document.createElement('button');
+    useBtn.className = 'hybrid-action-btn';
+    useBtn.textContent = 'Use in chat';
+    useBtn.onclick = () => {
+        toggleHybrid();
+        document.getElementById('dtInput').value = reply;
+        document.getElementById('dtInput').focus();
+    };
+    actDiv.appendChild(useBtn);
+}
+
+async function hybridBroadcast() {
+    const ids  = getSelectedConnIds();
+    if (ids.length === 0) { showToast('Select at least one LLM', 'error'); return; }
+    const text = document.getElementById('hybridInput').value.trim();
+    if (!text && hybridImages.length === 0) return;
+
+    const btn    = document.getElementById('hybridSendBtn');
+    const status = document.getElementById('hybridStatus');
+    btn.disabled = true;
+    const images = hybridImages.map(i => i.dataUrl);
+    clearHybridImages();
+    document.getElementById('hybridInput').value = '';
+
+    // Show user message in each lane
+    ids.forEach(id => appendHybridMsg(id, text, 'user'));
+    ids.forEach(id => showLaneSpinner(id, true));
+    status.textContent = `Waiting for ${ids.length} response${ids.length>1?'s':''}…`;
+
+    try {
+        const r = await fetch('/api/devtools/hybrid/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ connectionIds: ids, message: text, images: images.length ? images : undefined })
+        });
+        const results = await r.json();
+
+        ids.forEach(id => showLaneSpinner(id, false));
+        results.forEach(res => {
+            if (res.error) {
+                appendHybridMsg(res.connectionId, res.error, 'error');
+            } else {
+                const msgDiv = appendHybridMsg(res.connectionId, res.reply, 'reply');
+                if (msgDiv) {
+                    const msEl = msgDiv.querySelector(`#hlane-ms-${res.connectionId}`);
+                    if (msEl) msEl.textContent = `${res.ms}ms`;
+                }
+                updateLaneActions(res.connectionId, text, res.reply);
+            }
+        });
+        status.textContent = `Done (${results.filter(r=>!r.error).length}/${results.length} ok)`;
+    } catch (e) {
+        ids.forEach(id => showLaneSpinner(id, false));
+        ids.forEach(id => appendHybridMsg(id, 'Network error: ' + e.message, 'error'));
+        status.textContent = 'Error';
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+async function hybridReview(authorConnId, reviewerConnId, prompt, content, reviewerName) {
+    const authorConn = adminConns.find(c => c.id === authorConnId);
+    appendHybridMsg(authorConnId, `Asking ${reviewerName} to review…`, 'review');
+    const actDiv = document.getElementById(`hlane-actions-${authorConnId}`);
+    if (actDiv) actDiv.querySelectorAll('button').forEach(b => b.disabled = true);
+
+    try {
+        const r = await fetch('/api/devtools/hybrid/review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                reviewerConnectionId: reviewerConnId,
+                originalPrompt: prompt,
+                contentToReview: content,
+                authorLabel: authorConn?.name || `Connection ${authorConnId}`
+            })
+        });
+        const res = await r.json();
+        if (res.error) {
+            appendHybridMsg(authorConnId, 'Review error: ' + res.error, 'error');
+        } else {
+            appendHybridMsg(authorConnId, `Review by ${reviewerName}:\n\n${res.review}`, 'review');
+            // Add Fix button
+            if (actDiv) {
+                actDiv.querySelectorAll('button').forEach(b => b.disabled = false);
+                const fixBtn = document.createElement('button');
+                fixBtn.className = 'hybrid-action-btn fix';
+                fixBtn.textContent = `Fix with ${authorConn?.name || 'original'}`;
+                fixBtn.onclick = () => hybridFix(authorConnId, prompt, content, res.review, fixBtn);
+                actDiv.appendChild(fixBtn);
+            }
+        }
+    } catch (e) {
+        appendHybridMsg(authorConnId, 'Network error: ' + e.message, 'error');
+        if (actDiv) actDiv.querySelectorAll('button').forEach(b => b.disabled = false);
+    }
+}
+
+async function hybridFix(authorConnId, prompt, originalReply, reviewFeedback, fixBtn) {
+    if (fixBtn) fixBtn.disabled = true;
+    appendHybridMsg(authorConnId, 'Fixing based on review…', 'fix');
+
+    try {
+        const r = await fetch('/api/devtools/hybrid/fix', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ authorConnectionId: authorConnId, originalPrompt: prompt, originalReply, reviewFeedback })
+        });
+        const res = await r.json();
+        if (res.error) {
+            appendHybridMsg(authorConnId, 'Fix error: ' + res.error, 'error');
+        } else {
+            appendHybridMsg(authorConnId, res.reply, 'fix');
+            updateLaneActions(authorConnId, prompt, res.reply);
+        }
+    } catch (e) {
+        appendHybridMsg(authorConnId, 'Network error: ' + e.message, 'error');
+    } finally {
+        if (fixBtn) fixBtn.disabled = false;
+    }
+}
+
+function onHybridInputKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); hybridBroadcast(); }
+}
+
+function onHybridImagesSelected(e) {
+    Array.from(e.target.files).filter(f => f.type.startsWith('image/')).forEach(f => {
+        const reader = new FileReader();
+        reader.onload = ev => { hybridImages.push({ dataUrl: ev.target.result }); renderHybridImagePreviews(); };
+        reader.readAsDataURL(f);
+    });
+    e.target.value = '';
+}
+
+function renderHybridImagePreviews() {
+    const c = document.getElementById('hybridAttachedImages');
+    c.innerHTML = '';
+    hybridImages.forEach((img, i) => {
+        const d = document.createElement('span');
+        d.style.cssText = 'position:relative;display:inline-block';
+        d.innerHTML = `<img src="${img.dataUrl}" style="width:32px;height:32px;border-radius:4px;object-fit:cover;border:1px solid var(--border-color)" /><button onclick="hybridImages.splice(${i},1);renderHybridImagePreviews()" style="position:absolute;top:-4px;right:-4px;width:14px;height:14px;border-radius:50%;border:none;background:var(--error-color);color:white;font-size:8px;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>`;
+        c.appendChild(d);
+    });
+}
+
+function clearHybridImages() { hybridImages = []; renderHybridImagePreviews(); }
+
+function showToast(msg, type) {
+    const t = document.createElement('div');
+    t.style.cssText = `position:fixed;bottom:20px;right:20px;z-index:9999;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;color:white;background:${type==='success'?'var(--success-color)':type==='error'?'var(--error-color)':'var(--accent-color)'};box-shadow:0 4px 12px rgba(0,0,0,.3);transition:opacity .3s`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.remove(), 300); }, 2800);
+}
+
+// ── Admin Panel ─────────────────────────────────────────────────────────────
+
+async function openAdmin() {
+    document.getElementById('adminOverlay').style.display = 'flex';
+    adminNav(document.querySelector('.admin-nav-item.active') || document.querySelector('.admin-nav-item'));
+    await Promise.all([loadAdminConnections(), loadAdminGlobalSettings(), loadAdminSkills()]);
+}
+
+function closeAdmin() {
+    document.getElementById('adminOverlay').style.display = 'none';
+    // Reload skills in case they were changed
+    loadSkills().then(() => { const ws = activeWorkspace(); if (ws) renderSkillChips(ws); });
+    // Re-check LLM connections in case one was just added
+    checkLlmConnections();
+}
+
+function adminNav(el) {
+    document.querySelectorAll('.admin-nav-item').forEach(a => a.classList.remove('active'));
+    el.classList.add('active');
+    const sec = el.dataset.section;
+    document.querySelectorAll('.admin-section').forEach(s => s.style.display = 'none');
+    document.getElementById(`asec-${sec}`).style.display = 'block';
+}
+
+// ── LLM Connections ──────────────────────────────────────────────────────────
+
+let adminConns = [];
+
+async function loadAdminConnections() {
+    const r = await fetch('/api/devtools/admin/connections');
+    adminConns = await r.json();
+    renderConnList();
+}
+
+function renderConnList() {
+    const list = document.getElementById('connList');
+    list.innerHTML = '';
+    if (!adminConns.length) { list.innerHTML = '<div style="color:var(--text-muted);font-size:13px">No connections yet. Add one below.</div>'; return; }
+
+    const provLabel = { claude:'Claude', claudecli:'Claude Code CLI', ollama:'Ollama', openai:'OpenAI', groq:'Groq', together:'Together AI', mistral:'Mistral', perplexity:'Perplexity', deepseek:'DeepSeek', xai:'xAI Grok', azure:'Azure OpenAI', lmstudio:'LM Studio', gemini:'Gemini', cohere:'Cohere', custom:'Custom' };
+    adminConns.forEach(c => {
+        const card = document.createElement('div');
+        card.className = 'conn-card' + (c.isEnabled ? '' : ' disabled');
+        card.innerHTML = `
+            <div class="conn-dot ${c.isEnabled ? 'on' : 'off'}"></div>
+            <div class="conn-info">
+                <div class="conn-name">${escHtml(c.name)} ${c.isDefault ? '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(100,108,255,.15);color:var(--accent-color)">default</span>' : ''}</div>
+                <div class="conn-meta">${provLabel[c.provider]||c.provider} · ${escHtml(c.model||'—')} ${c.baseUrl ? '· ' + escHtml(c.baseUrl) : ''}</div>
+            </div>
+            <button class="btn btn-secondary" style="padding:3px 10px;font-size:12px" onclick="editConnection(${c.id})">Edit</button>
+            <button class="btn btn-ghost" style="padding:3px 8px;color:var(--error-color)" onclick="deleteConnection(${c.id})" title="Delete">&#x2715;</button>
+        `;
+        list.appendChild(card);
+    });
+}
+
+function showNewConnectionForm() {
+    document.getElementById('connFormId').value = '0';
+    document.getElementById('connFormTitle').textContent = 'New Connection';
+    document.getElementById('connName').value = '';
+    document.getElementById('connProvider').value = 'claude';
+    document.getElementById('connModel').value = 'claude-sonnet-4-6';
+    document.getElementById('connApiKey').value = '';
+    document.getElementById('connUrl').value = '';
+    document.getElementById('connIsDefault').checked = false;
+    document.getElementById('connIsEnabled').checked = true;
+    onConnProviderChange();
+    document.getElementById('connForm').style.display = 'block';
+    document.getElementById('connForm').scrollIntoView({ behavior: 'smooth' });
+}
+
+function editConnection(id) {
+    const c = adminConns.find(x => x.id === id);
+    if (!c) return;
+    document.getElementById('connFormId').value = id;
+    document.getElementById('connFormTitle').textContent = 'Edit Connection';
+    document.getElementById('connName').value = c.name;
+    document.getElementById('connProvider').value = c.provider;
+    document.getElementById('connModel').value = c.model;
+    document.getElementById('connApiKey').value = '';
+    document.getElementById('connUrl').value = c.baseUrl || '';
+    document.getElementById('connIsDefault').checked = c.isDefault;
+    document.getElementById('connIsEnabled').checked = c.isEnabled;
+    onConnProviderChange();
+    document.getElementById('connForm').style.display = 'block';
+    document.getElementById('connForm').scrollIntoView({ behavior: 'smooth' });
+}
+
+function onConnProviderChange() {
+    const p = document.getElementById('connProvider').value;
+    const needsUrl = ['ollama', 'custom', 'openai', 'azure', 'lmstudio'].includes(p);
+    document.getElementById('connUrlGroup').style.display = needsUrl ? '' : 'none';
+    document.getElementById('connApiKeyGroup').style.display = ['ollama', 'lmstudio', 'custom', 'claudecli'].includes(p) ? 'none' : '';
+    const urlHints = {
+        ollama: 'http://localhost:11434',
+        openai: 'https://api.openai.com',
+        azure: 'https://<resource>.openai.azure.com/openai/deployments/<deployment>',
+        lmstudio: 'http://localhost:1234'
+    };
+    const urlEl = document.getElementById('connUrl');
+    if (!urlEl.value && urlHints[p]) urlEl.placeholder = urlHints[p];
+    const defaults = {
+        claude: 'claude-sonnet-4-6',
+        claudecli: '',
+        ollama: 'llama3',
+        openai: 'gpt-4o',
+        groq: 'llama-3.3-70b-versatile',
+        together: 'meta-llama/Llama-3-70b-chat-hf',
+        mistral: 'mistral-large-latest',
+        perplexity: 'sonar-pro',
+        deepseek: 'deepseek-chat',
+        gemini: 'gemini-2.0-flash',
+        cohere: 'command-r-plus',
+        azure: '',
+        xai: 'grok-2',
+        lmstudio: '',
+        custom: ''
+    };
+    const m = document.getElementById('connModel');
+    if (!m.value) m.value = defaults[p] || '';
+}
+
+async function saveConnection() {
+    const id = parseInt(document.getElementById('connFormId').value);
+    const dto = {
+        name: document.getElementById('connName').value.trim(),
+        provider: document.getElementById('connProvider').value,
+        model: document.getElementById('connModel').value.trim(),
+        baseUrl: document.getElementById('connUrl').value.trim(),
+        apiKey: document.getElementById('connApiKey').value || undefined,
+        isDefault: document.getElementById('connIsDefault').checked,
+        isEnabled: document.getElementById('connIsEnabled').checked
+    };
+    if (!dto.name) { showToast('Name is required', 'error'); return; }
+
+    try {
+        const method = id > 0 ? 'PUT' : 'POST';
+        const url = id > 0 ? `/api/devtools/admin/connections/${id}` : '/api/devtools/admin/connections';
+        const r = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dto) });
+        if (!r.ok) { const e = await r.json(); showToast(e.error || 'Failed', 'error'); return; }
+        document.getElementById('connForm').style.display = 'none';
+        await loadAdminConnections();
+        showToast(id > 0 ? 'Connection updated' : 'Connection created', 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+}
+
+async function deleteConnection(id) {
+    if (!confirm('Delete this LLM connection?')) return;
+    await fetch(`/api/devtools/admin/connections/${id}`, { method: 'DELETE' });
+    await loadAdminConnections();
+    showToast('Deleted', 'success');
+}
+
+// ── Global Settings ──────────────────────────────────────────────────────────
+
+async function loadAdminGlobalSettings() {
+    const r = await fetch('/api/devtools/admin/settings');
+    const s = await r.json();
+    // Jira
+    document.getElementById('gJiraUrl').value = s.jiraUrl || '';
+    document.getElementById('gJiraEmail').value = s.jiraEmail || '';
+    document.getElementById('gJiraToken').value = s.jiraToken || '';
+    document.getElementById('gJiraProject').value = s.jiraProjectKey || '';
+    // Monday
+    document.getElementById('gMondayToken').value = s.mondayToken || '';
+    document.getElementById('gMondayBoard').value = s.mondayBoardId || '';
+    // Linear
+    document.getElementById('gLinearToken').value = s.linearToken || '';
+    document.getElementById('gLinearTeam').value = s.linearTeamKey || '';
+    // GitHub
+    document.getElementById('gGitHubToken').value = s.gitHubToken || '';
+    document.getElementById('gGitHubOwner').value = s.gitHubOwner || '';
+    document.getElementById('gGitHubRepo').value = s.gitHubRepo || '';
+    // GitLab
+    document.getElementById('gGitLabUrl').value = s.gitLabUrl || '';
+    document.getElementById('gGitLabToken').value = s.gitLabToken || '';
+    document.getElementById('gGitLabProject').value = s.gitLabProjectId || '';
+    // Azure DevOps
+    document.getElementById('gAzdoOrg').value = s.azureDevOpsOrg || '';
+    document.getElementById('gAzdoProject').value = s.azureDevOpsProject || '';
+    document.getElementById('gAzdoPat').value = s.azureDevOpsPat || '';
+    // Asana
+    document.getElementById('gAsanaToken').value = s.asanaToken || '';
+    document.getElementById('gAsanaProject').value = s.asanaProjectId || '';
+    // ClickUp
+    document.getElementById('gClickUpToken').value = s.clickUpToken || '';
+    document.getElementById('gClickUpList').value = s.clickUpListId || '';
+    // YouTrack
+    document.getElementById('gYouTrackUrl').value = s.youTrackUrl || '';
+    document.getElementById('gYouTrackToken').value = s.youTrackToken || '';
+    document.getElementById('gYouTrackProject').value = s.youTrackProject || '';
+    // Trello
+    document.getElementById('gTrelloKey').value = s.trelloKey || '';
+    document.getElementById('gTrelloToken').value = s.trelloToken || '';
+    document.getElementById('gTrelloBoard').value = s.trelloBoardId || '';
+    // Shortcut
+    document.getElementById('gShortcutToken').value = s.shortcutToken || '';
+    document.getElementById('gShortcutWorkflow').value = s.shortcutWorkflowStateId || '';
+    // Notion
+    document.getElementById('gNotionToken').value = s.notionToken || '';
+    document.getElementById('gNotionDatabase').value = s.notionDatabaseId || '';
+}
+
+function collectGlobalSettingsDto() {
+    return {
+        jiraUrl: document.getElementById('gJiraUrl').value,
+        jiraEmail: document.getElementById('gJiraEmail').value,
+        jiraToken: document.getElementById('gJiraToken').value,
+        jiraProjectKey: document.getElementById('gJiraProject').value,
+        mondayToken: document.getElementById('gMondayToken').value,
+        mondayBoardId: document.getElementById('gMondayBoard').value,
+        linearToken: document.getElementById('gLinearToken').value,
+        linearTeamKey: document.getElementById('gLinearTeam').value,
+        gitHubToken: document.getElementById('gGitHubToken').value,
+        gitHubOwner: document.getElementById('gGitHubOwner').value,
+        gitHubRepo: document.getElementById('gGitHubRepo').value,
+        gitLabUrl: document.getElementById('gGitLabUrl').value,
+        gitLabToken: document.getElementById('gGitLabToken').value,
+        gitLabProjectId: document.getElementById('gGitLabProject').value,
+        azureDevOpsOrg: document.getElementById('gAzdoOrg').value,
+        azureDevOpsProject: document.getElementById('gAzdoProject').value,
+        azureDevOpsPat: document.getElementById('gAzdoPat').value,
+        asanaToken: document.getElementById('gAsanaToken').value,
+        asanaProjectId: document.getElementById('gAsanaProject').value,
+        clickUpToken: document.getElementById('gClickUpToken').value,
+        clickUpListId: document.getElementById('gClickUpList').value,
+        youTrackUrl: document.getElementById('gYouTrackUrl').value,
+        youTrackToken: document.getElementById('gYouTrackToken').value,
+        youTrackProject: document.getElementById('gYouTrackProject').value,
+        trelloKey: document.getElementById('gTrelloKey').value,
+        trelloToken: document.getElementById('gTrelloToken').value,
+        trelloBoardId: document.getElementById('gTrelloBoard').value,
+        shortcutToken: document.getElementById('gShortcutToken').value,
+        shortcutWorkflowStateId: document.getElementById('gShortcutWorkflow').value,
+        notionToken: document.getElementById('gNotionToken').value,
+        notionDatabaseId: document.getElementById('gNotionDatabase').value
+    };
+}
+
+async function saveAndTest(source) {
+    const el = document.getElementById(`ts-${source}`);
+    el.style.display = 'inline';
+    el.style.color = 'var(--text-muted)';
+    el.textContent = 'Saving…';
+
+    // Save all settings first
+    const dto = collectGlobalSettingsDto();
+    const saveR = await fetch('/api/devtools/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dto)
+    });
+    if (!saveR.ok) {
+        el.textContent = 'Save failed.';
+        el.style.color = 'var(--error-color)';
+        return;
+    }
+
+    // Reload masked values so UI reflects saved state
+    await loadAdminGlobalSettings();
+
+    el.textContent = 'Testing…';
+    try {
+        const testR = await fetch(`/api/devtools/admin/settings/test?source=${encodeURIComponent(source)}`, { method: 'POST' });
+        const result = await testR.json();
+        el.textContent = result.success ? `✓ ${result.message}` : `✗ ${result.message}`;
+        el.style.color = result.success ? 'var(--success-color)' : 'var(--error-color)';
+    } catch (e) {
+        el.textContent = `✗ ${e.message}`;
+        el.style.color = 'var(--error-color)';
+    }
+}
+
+// ── Admin Skills ─────────────────────────────────────────────────────────────
+
+async function loadAdminSkills() {
+    await loadSkills();
+    renderAdminSkillsList();
+}
+
+function renderAdminSkillsList() {
+    const list = document.getElementById('adminSkillsList');
+    list.innerHTML = '';
+    state.allSkills.forEach(skill => {
+        const row = document.createElement('div');
+        row.style.cssText = 'padding:12px 14px;border:1px solid var(--border-color);border-radius:8px;background:var(--bg-secondary)';
+        row.innerHTML = `
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <span style="font-size:13px;font-weight:600">${escHtml(skill.name)}</span>
+                ${skill.isBuiltIn ? '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(100,108,255,.12);color:var(--accent-color)">built-in</span>' : '<span style="font-size:10px;padding:1px 6px;border-radius:8px;background:rgba(74,222,128,.1);color:var(--success-color)">custom</span>'}
+                ${!skill.isBuiltIn ? `<button class="btn btn-ghost" style="margin-left:auto;padding:2px 8px;color:var(--error-color);font-size:11px" onclick="adminDeleteSkill(${skill.id})">Delete</button>` : ''}
+            </div>
+            <textarea data-skill-id="${skill.id}"
+                style="width:100%;min-height:80px;resize:vertical;padding:7px 10px;background:var(--bg-tertiary);border:1px solid var(--border-color);border-radius:5px;color:var(--text-secondary);font-size:12px;font-family:inherit;line-height:1.5;box-sizing:border-box"
+                onchange="updateSkillPrompt(${skill.id}, this.value)">${escHtml(skill.systemPromptAddition)}</textarea>
+        `;
+        list.appendChild(row);
+    });
+}
+
+async function adminAddSkill() {
+    const name = document.getElementById('adminNewSkillName').value.trim();
+    const prompt = document.getElementById('adminNewSkillPrompt').value.trim();
+    if (!name || !prompt) { showToast('Name and prompt are required', 'error'); return; }
+    const r = await fetch('/api/devtools/skills', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, systemPromptAddition: prompt }) });
+    if (!r.ok) { showToast('Failed to add skill', 'error'); return; }
+    const created = await r.json();
+    state.allSkills.push(created);
+    document.getElementById('adminNewSkillName').value = '';
+    document.getElementById('adminNewSkillPrompt').value = '';
+    renderAdminSkillsList();
+    showToast(`Skill "${name}" added`, 'success');
+}
+
+async function adminDeleteSkill(id) {
+    const skill = state.allSkills.find(s => s.id === id);
+    if (!confirm(`Delete custom skill "${skill?.name}"?`)) return;
+    const r = await fetch(`/api/devtools/skills/${id}`, { method: 'DELETE' });
+    if (!r.ok) { const e = await r.json(); showToast(e.error, 'error'); return; }
+    state.allSkills = state.allSkills.filter(s => s.id !== id);
+    renderAdminSkillsList();
+    showToast('Skill deleted', 'success');
+}
+</script>
+}

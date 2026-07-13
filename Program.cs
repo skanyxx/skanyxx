@@ -3,6 +3,7 @@ using SkanyxxWeb.Infrastructure;
 using WebEssentials.AspNetCore.Pwa;
 using SkanyxxWeb.Services;
 using SkanyxxWeb.Data;
+using SkanyxxWeb.Hubs;
 using Microsoft.OpenApi.Models;
 using Microsoft.EntityFrameworkCore;
 using Asp.Versioning;
@@ -15,6 +16,8 @@ var builder = WebApplication.CreateBuilder(args);
 var dbPath = Path.Combine(builder.Environment.ContentRootPath, "skanyxx.db");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
+builder.Services.AddDbContextFactory<AppDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"), ServiceLifetime.Scoped);
 
 // Add Settings service
 builder.Services.AddScoped<ISettingsService, SettingsService>();
@@ -103,6 +106,11 @@ builder.Services.AddSingleton<IToolServerService, KAgentToolServerService>();
 builder.Services.AddSingleton<IHookService, KAgentHookService>();
 builder.Services.AddSingleton<IAnalyticsService, KAgentAnalyticsService>();
 
+// Register DevTools service
+builder.Services.AddScoped<DevToolsLlmClient>();
+builder.Services.AddScoped<IDevToolsService, DevToolsService>();
+builder.Services.AddScoped<DevToolsHybridService>();
+
 // Add PWA support for installable app
 // Disabled auto-registration as we have custom serviceworker.js
 builder.Services.AddProgressiveWebApp(new PwaOptions
@@ -114,6 +122,9 @@ builder.Services.AddProgressiveWebApp(new PwaOptions
     RegisterServiceWorker = false,
     RegisterWebmanifest = false
 });
+
+// Add SignalR for real-time DevTools chat streaming
+builder.Services.AddSignalR();
 
 // Add CORS for API access from other apps
 builder.Services.AddCors(options =>
@@ -133,6 +144,92 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.EnsureCreated();
+
+    // Create all DevTools tables if they were added after initial DB creation
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "DevToolsWorkspaces" (
+            "Id"               INTEGER NOT NULL CONSTRAINT "PK_DevToolsWorkspaces" PRIMARY KEY AUTOINCREMENT,
+            "Name"             TEXT    NOT NULL DEFAULT 'Workspace 1',
+            "SortOrder"        INTEGER NOT NULL DEFAULT 0,
+            "LlmProvider"      TEXT    NOT NULL DEFAULT 'claude',
+            "LlmUrl"           TEXT    NOT NULL DEFAULT '',
+            "LlmModel"         TEXT    NOT NULL DEFAULT 'claude-sonnet-4-6',
+            "ApiKey"           TEXT    NULL,
+            "EnabledSkillsJson" TEXT   NOT NULL DEFAULT '[]',
+            "JiraUrl"          TEXT    NULL,
+            "JiraEmail"        TEXT    NULL,
+            "JiraToken"        TEXT    NULL,
+            "JiraProjectKey"   TEXT    NULL,
+            "MondayToken"      TEXT    NULL,
+            "MondayBoardId"    TEXT    NULL,
+            "GitRepoPath"      TEXT    NULL,
+            "CreatedAt"        TEXT    NOT NULL DEFAULT '0001-01-01 00:00:00',
+            "UpdatedAt"        TEXT    NOT NULL DEFAULT '0001-01-01 00:00:00'
+        )
+        """);
+
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "DevToolsSessions" (
+            "Id"              INTEGER NOT NULL CONSTRAINT "PK_DevToolsSessions" PRIMARY KEY AUTOINCREMENT,
+            "WorkspaceId"     INTEGER NOT NULL DEFAULT 0,
+            "TaskId"          TEXT    NOT NULL DEFAULT '',
+            "TaskSource"      TEXT    NOT NULL DEFAULT 'manual',
+            "TaskTitle"       TEXT    NOT NULL DEFAULT '',
+            "TaskDescription" TEXT    NOT NULL DEFAULT '',
+            "MessagesJson"    TEXT    NOT NULL DEFAULT '[]',
+            "SummaryContext"  TEXT    NULL,
+            "TotalTokensUsed" INTEGER NOT NULL DEFAULT 0,
+            "CreatedAt"       TEXT    NOT NULL DEFAULT '0001-01-01 00:00:00',
+            "UpdatedAt"       TEXT    NOT NULL DEFAULT '0001-01-01 00:00:00'
+        )
+        """);
+
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "DevToolsLlmConnections" (
+            "Id"        INTEGER NOT NULL CONSTRAINT "PK_DevToolsLlmConnections" PRIMARY KEY AUTOINCREMENT,
+            "Name"      TEXT    NOT NULL DEFAULT '',
+            "Provider"  TEXT    NOT NULL DEFAULT 'claude',
+            "BaseUrl"   TEXT    NOT NULL DEFAULT '',
+            "Model"     TEXT    NOT NULL DEFAULT '',
+            "ApiKey"    TEXT    NULL,
+            "IsDefault" INTEGER NOT NULL DEFAULT 0,
+            "IsEnabled" INTEGER NOT NULL DEFAULT 1,
+            "CreatedAt" TEXT    NOT NULL DEFAULT '0001-01-01 00:00:00'
+        )
+        """);
+
+    // Seed default Claude connection if none exist
+    if (!db.DevToolsLlmConnections.Any())
+    {
+        db.DevToolsLlmConnections.Add(new SkanyxxWeb.Models.DevToolsLlmConnection
+        {
+            Name = "Claude (Anthropic)",
+            Provider = "claude",
+            Model = "claude-sonnet-4-6",
+            IsDefault = true,
+            IsEnabled = true,
+            CreatedAt = DateTime.UtcNow
+        });
+        db.SaveChanges();
+    }
+
+    // Create DevToolsSkills table if it was added after initial DB creation
+    db.Database.ExecuteSqlRaw("""
+        CREATE TABLE IF NOT EXISTS "DevToolsSkills" (
+            "Id"                    INTEGER NOT NULL CONSTRAINT "PK_DevToolsSkills" PRIMARY KEY AUTOINCREMENT,
+            "Name"                  TEXT    NOT NULL DEFAULT '',
+            "SystemPromptAddition"  TEXT    NOT NULL DEFAULT '',
+            "IsBuiltIn"             INTEGER NOT NULL DEFAULT 0,
+            "CreatedAt"             TEXT    NOT NULL DEFAULT '0001-01-01 00:00:00'
+        )
+        """);
+
+    // Seed built-in skills once
+    if (!db.DevToolsSkills.Any())
+    {
+        db.DevToolsSkills.AddRange(DevToolsSkillSeed.BuiltInSkills());
+        db.SaveChanges();
+    }
 }
 
 // Configure the HTTP request pipeline.
@@ -168,5 +265,6 @@ app.MapHealthChecks("/health", new HealthCheckOptions
 
 app.MapRazorPages();
 app.MapControllers();
+app.MapHub<DevToolsHub>("/hubs/devtools");
 
 app.Run();

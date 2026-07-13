@@ -1,9 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using SkanyxxWeb.Models;
 
 namespace SkanyxxWeb.Data;
 
-public class 
-    AppDbContext : DbContext
+public class AppDbContext : DbContext
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
@@ -12,6 +12,10 @@ public class
     public DbSet<AppSetting> Settings { get; set; } = null!;
     public DbSet<KAgentConnection> Connections { get; set; } = null!;
     public DbSet<SavedLayout> Layouts { get; set; } = null!;
+    public DbSet<DevToolsLlmConnection> DevToolsLlmConnections { get; set; } = null!;
+    public DbSet<DevToolsWorkspace> DevToolsWorkspaces { get; set; } = null!;
+    public DbSet<DevToolsSession> DevToolsSessions { get; set; } = null!;
+    public DbSet<DevToolsSkill> DevToolsSkills { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -39,6 +43,43 @@ public class
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
             entity.Property(e => e.LayoutJson).IsRequired();
+        });
+
+        // DevTools Workspaces
+        modelBuilder.Entity<DevToolsWorkspace>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.LlmProvider).HasMaxLength(50);
+            entity.Property(e => e.LlmModel).HasMaxLength(100);
+            entity.Property(e => e.LlmUrl).HasMaxLength(500);
+        });
+
+        // DevTools LLM Connections
+        modelBuilder.Entity<DevToolsLlmConnection>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+            entity.Property(e => e.Provider).HasMaxLength(50);
+            entity.Property(e => e.Model).HasMaxLength(100);
+            entity.Property(e => e.BaseUrl).HasMaxLength(500);
+        });
+
+        // DevTools Skills
+        modelBuilder.Entity<DevToolsSkill>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Name).HasMaxLength(100).IsRequired();
+        });
+
+        // DevTools Sessions
+        modelBuilder.Entity<DevToolsSession>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.TaskId).HasMaxLength(100);
+            entity.Property(e => e.TaskSource).HasMaxLength(50);
+            entity.Property(e => e.TaskTitle).HasMaxLength(500);
+            entity.HasIndex(e => new { e.WorkspaceId, e.TaskId });
         });
 
         // Seed default settings
