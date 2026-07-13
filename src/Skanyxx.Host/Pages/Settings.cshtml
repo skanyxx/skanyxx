@@ -1,0 +1,795 @@
+@page
+@model Skanyxx.Host.Pages.SettingsModel
+@{
+    ViewData["Title"] = "Settings";
+}
+
+<div class="settings-container">
+    <div class="settings-sidebar">
+        <div class="settings-nav">
+            <a href="javascript:void(0)" class="settings-nav-item active" data-section="connections">KAgent Connections</a>
+            <a href="javascript:void(0)" class="settings-nav-item" data-section="general">General</a>
+            <a href="javascript:void(0)" class="settings-nav-item" data-section="appearance">Appearance</a>
+            <a href="javascript:void(0)" class="settings-nav-item" data-section="notifications">Notifications</a>
+            <a href="javascript:void(0)" class="settings-nav-item" data-section="system">System Info</a>
+        </div>
+    </div>
+
+    <div class="settings-content">
+        <!-- KAgent Connections Section -->
+        <div class="settings-section" id="connections">
+            <h3 class="settings-section-title">KAgent Connections</h3>
+            <div id="connectionsList">
+                <div class="loading-state">Loading connections...</div>
+            </div>
+            <button class="btn btn-primary mt-2" id="btnAddConnection">+ Add Connection</button>
+        </div>
+
+        <!-- General Section -->
+        <div class="settings-section hidden" id="general">
+            <h3 class="settings-section-title">General Settings</h3>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Organization Name</div>
+                    <div class="setting-description">Your organization's display name</div>
+                </div>
+                <input type="text" id="orgName" style="width: 300px;" placeholder="My Organization" />
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Default Namespace</div>
+                    <div class="setting-description">Default Kubernetes namespace</div>
+                </div>
+                <input type="text" id="defaultNamespace" style="width: 300px;" placeholder="kagent" />
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Auto Refresh Interval (seconds)</div>
+                    <div class="setting-description">How often to refresh data</div>
+                </div>
+                <input type="number" id="autoRefreshInterval" style="width: 300px;" min="5" max="300" value="30" />
+            </div>
+            <div class="settings-actions">
+                <button class="btn btn-primary" id="btnSaveGeneral">Save Changes</button>
+            </div>
+        </div>
+
+        <!-- Appearance Section -->
+        <div class="settings-section hidden" id="appearance">
+            <h3 class="settings-section-title">Appearance</h3>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Theme</div>
+                    <div class="setting-description">Application color theme</div>
+                </div>
+                <select id="theme" style="width: 300px;">
+                    <option value="dark">Dark</option>
+                    <option value="light">Light</option>
+                    <option value="blue">Blue</option>
+                    <option value="high-contrast">High Contrast</option>
+                </select>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Compact Mode</div>
+                    <div class="setting-description">Reduce spacing for more content</div>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="compactMode" />
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="settings-actions">
+                <button class="btn btn-primary" id="btnSaveAppearance">Save Changes</button>
+            </div>
+        </div>
+
+        <!-- Notifications Section -->
+        <div class="settings-section hidden" id="notifications">
+            <h3 class="settings-section-title">Notifications</h3>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Enable Notifications</div>
+                    <div class="setting-description">Show browser notifications</div>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="notificationsEnabled" checked />
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="setting-item">
+                <div class="setting-info">
+                    <div class="setting-label">Sound Alerts</div>
+                    <div class="setting-description">Play sound for critical alerts</div>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" id="soundEnabled" checked />
+                    <span class="toggle-slider"></span>
+                </label>
+            </div>
+            <div class="settings-actions">
+                <button class="btn btn-primary" id="btnSaveNotifications">Save Changes</button>
+            </div>
+        </div>
+
+        <!-- System Info Section -->
+        <div class="settings-section hidden" id="system">
+            <h3 class="settings-section-title">System Information</h3>
+            <div id="systemInfo">
+                <div class="loading-state">Loading system info...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Connection Modal -->
+<div class="modal" id="connectionModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="connectionModalTitle">Add KAgent Connection</h3>
+            <button class="btn btn-ghost" id="btnCloseModal">&times;</button>
+        </div>
+        <form id="connectionForm">
+            <input type="hidden" id="connectionId" value="0" />
+            <div class="form-group">
+                <label for="connName">Name</label>
+                <input type="text" id="connName" required placeholder="Production KAgent" />
+            </div>
+            <div class="form-group">
+                <label for="connBaseUrl">Base URL</label>
+                <input type="text" id="connBaseUrl" required placeholder="localhost" />
+            </div>
+            <div class="form-group">
+                <label for="connPort">Port</label>
+                <input type="number" id="connPort" required value="8083" min="1" max="65535" />
+            </div>
+            <div class="form-group">
+                <label for="connProtocol">Protocol</label>
+                <select id="connProtocol">
+                    <option value="http">HTTP</option>
+                    <option value="https">HTTPS</option>
+                </select>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelModal">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Connection</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .settings-container {
+        display: flex;
+        gap: 24px;
+    }
+
+    .settings-sidebar {
+        width: 200px;
+        flex-shrink: 0;
+    }
+
+    .settings-nav {
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        overflow: hidden;
+    }
+
+    .settings-nav-item {
+        display: block;
+        padding: 12px 16px;
+        color: var(--text-secondary);
+        text-decoration: none;
+        border-left: 3px solid transparent;
+        transition: all 0.15s ease;
+        cursor: pointer;
+    }
+
+    .settings-nav-item:hover {
+        background-color: var(--bg-tertiary);
+        color: var(--text-primary);
+    }
+
+    .settings-nav-item.active {
+        background-color: rgba(100, 108, 255, 0.1);
+        color: var(--accent-color);
+        border-left-color: var(--accent-color);
+    }
+
+    .settings-content {
+        flex: 1;
+    }
+
+    .settings-section {
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        padding: 24px;
+        margin-bottom: 16px;
+    }
+
+    .settings-section.hidden {
+        display: none;
+    }
+
+    .settings-section-title {
+        font-size: 16px;
+        font-weight: 600;
+        margin-bottom: 20px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .setting-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 16px 0;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .setting-item:last-child {
+        border-bottom: none;
+    }
+
+    .setting-label {
+        font-weight: 500;
+        margin-bottom: 4px;
+    }
+
+    .setting-description {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .toggle {
+        position: relative;
+        display: inline-block;
+        width: 48px;
+        height: 24px;
+    }
+
+    .toggle input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .toggle-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: var(--border-color);
+        transition: 0.15s;
+        border-radius: 24px;
+    }
+
+    .toggle-slider:before {
+        position: absolute;
+        content: "";
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: 0.15s;
+        border-radius: 50%;
+    }
+
+    .toggle input:checked + .toggle-slider {
+        background-color: var(--accent-color);
+    }
+
+    .toggle input:checked + .toggle-slider:before {
+        transform: translateX(24px);
+    }
+
+    .connection-card {
+        background-color: var(--bg-tertiary);
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .connection-info h4 {
+        margin: 0 0 4px 0;
+        font-size: 14px;
+    }
+
+    .connection-url {
+        font-size: 12px;
+        color: var(--text-muted);
+    }
+
+    .connection-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .settings-actions {
+        display: flex;
+        gap: 12px;
+        padding-top: 16px;
+        margin-top: 16px;
+        border-top: 1px solid var(--border-color);
+    }
+
+    .loading-state {
+        text-align: center;
+        padding: 20px;
+        color: var(--text-muted);
+    }
+
+    .system-info-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+    }
+
+    .system-info-item {
+        background: var(--bg-tertiary);
+        padding: 16px;
+        border-radius: 8px;
+    }
+
+    .system-info-label {
+        font-size: 12px;
+        color: var(--text-muted);
+        margin-bottom: 4px;
+    }
+
+    .system-info-value {
+        font-size: 16px;
+        font-weight: 600;
+    }
+
+    /* Modal styles */
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .modal.active {
+        display: flex;
+    }
+
+    .modal-content {
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+    }
+
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid var(--border-color);
+    }
+
+    .modal-header h3 {
+        margin: 0;
+    }
+
+    #connectionForm {
+        padding: 20px;
+    }
+
+    .form-group {
+        margin-bottom: 16px;
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+
+    .form-group input,
+    .form-group select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border-color);
+    }
+</style>
+
+<script>
+    (function() {
+        'use strict';
+
+        console.log('Settings script starting...');
+
+        let settings = {};
+        let connections = [];
+
+        // Initialize immediately or when DOM ready
+        function init() {
+            console.log('Settings init() called');
+
+            // Initialize navigation
+            initNavigation();
+
+            // Initialize buttons
+            initButtons();
+
+            // Load data
+            loadSettings();
+            loadConnections();
+            loadSystemInfo();
+        }
+
+        // Check if DOM is already ready
+        if (document.readyState === 'loading') {
+            console.log('DOM still loading, adding event listener');
+            document.addEventListener('DOMContentLoaded', init);
+        } else {
+            console.log('DOM already ready, calling init directly');
+            init();
+        }
+
+        function initNavigation() {
+            document.querySelectorAll('.settings-nav-item').forEach(function(item) {
+                item.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const sectionId = this.getAttribute('data-section');
+                    showSection(sectionId, this);
+                });
+            });
+        }
+
+        function initButtons() {
+            // Save buttons
+            var btnSaveGeneral = document.getElementById('btnSaveGeneral');
+            var btnSaveAppearance = document.getElementById('btnSaveAppearance');
+            var btnSaveNotifications = document.getElementById('btnSaveNotifications');
+            var btnAddConnection = document.getElementById('btnAddConnection');
+            var btnCloseModal = document.getElementById('btnCloseModal');
+            var btnCancelModal = document.getElementById('btnCancelModal');
+            var form = document.getElementById('connectionForm');
+
+            if (btnSaveGeneral) {
+                btnSaveGeneral.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    saveGeneralSettings();
+                });
+            }
+            if (btnSaveAppearance) {
+                btnSaveAppearance.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    saveAppearanceSettings();
+                });
+            }
+            if (btnSaveNotifications) {
+                btnSaveNotifications.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    saveNotificationSettings();
+                });
+            }
+            if (btnAddConnection) {
+                btnAddConnection.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    showConnectionModal(null);
+                });
+            }
+            if (btnCloseModal) {
+                btnCloseModal.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    hideConnectionModal();
+                });
+            }
+            if (btnCancelModal) {
+                btnCancelModal.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    hideConnectionModal();
+                });
+            }
+            if (form) {
+                form.addEventListener('submit', saveConnection);
+            }
+        }
+
+        function showSection(sectionId, clickedNav) {
+            console.log('Showing section:', sectionId);
+            // Hide all sections
+            document.querySelectorAll('.settings-section').forEach(function(s) {
+                s.classList.add('hidden');
+            });
+            // Show selected section
+            const section = document.getElementById(sectionId);
+            if (section) {
+                section.classList.remove('hidden');
+            }
+            // Update nav
+            document.querySelectorAll('.settings-nav-item').forEach(function(n) {
+                n.classList.remove('active');
+            });
+            if (clickedNav) {
+                clickedNav.classList.add('active');
+            }
+        }
+
+        function loadSettings() {
+            console.log('Loading settings...');
+            fetch('/api/settings')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    console.log('Settings loaded:', data);
+                    settings = data;
+                    applySettings();
+                })
+                .catch(function(error) {
+                    console.error('Error loading settings:', error);
+                });
+        }
+
+        function applySettings() {
+            // General
+            var orgName = document.getElementById('orgName');
+            var defaultNs = document.getElementById('defaultNamespace');
+            var autoRefresh = document.getElementById('autoRefreshInterval');
+
+            if (orgName) orgName.value = settings['general.orgName'] || '';
+            if (defaultNs) defaultNs.value = settings['general.defaultNamespace'] || 'kagent';
+            if (autoRefresh) autoRefresh.value = settings['autoRefresh.intervalSeconds'] || '30';
+
+            // Appearance
+            var theme = document.getElementById('theme');
+            var compact = document.getElementById('compactMode');
+
+            if (theme) theme.value = settings['theme'] || 'dark';
+            if (compact) compact.checked = settings['appearance.compactMode'] === 'true';
+
+            // Notifications
+            var notifEnabled = document.getElementById('notificationsEnabled');
+            var soundEnabled = document.getElementById('soundEnabled');
+
+            if (notifEnabled) notifEnabled.checked = settings['notifications.enabled'] !== 'false';
+            if (soundEnabled) soundEnabled.checked = settings['notifications.sound'] !== 'false';
+        }
+
+        function saveGeneralSettings() {
+            console.log('Saving general settings...');
+            var data = {
+                'general.orgName': document.getElementById('orgName').value,
+                'general.defaultNamespace': document.getElementById('defaultNamespace').value,
+                'autoRefresh.intervalSeconds': document.getElementById('autoRefreshInterval').value
+            };
+            saveSettingsToServer(data);
+        }
+
+        function saveAppearanceSettings() {
+            console.log('Saving appearance settings...');
+            var theme = document.getElementById('theme').value;
+            var data = {
+                'theme': theme,
+                'appearance.compactMode': document.getElementById('compactMode').checked.toString()
+            };
+            saveSettingsToServer(data);
+            // Apply theme immediately
+            if (window.applyTheme) {
+                window.applyTheme(theme);
+            }
+        }
+
+        function saveNotificationSettings() {
+            console.log('Saving notification settings...');
+            var data = {
+                'notifications.enabled': document.getElementById('notificationsEnabled').checked.toString(),
+                'notifications.sound': document.getElementById('soundEnabled').checked.toString()
+            };
+            saveSettingsToServer(data);
+        }
+
+        function saveSettingsToServer(data) {
+            console.log('Saving to server:', data);
+            fetch('/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(function(response) {
+                if (response.ok) {
+                    alert('Settings saved successfully!');
+                    loadSettings();
+                } else {
+                    throw new Error('Failed to save settings');
+                }
+            })
+            .catch(function(error) {
+                console.error('Error saving settings:', error);
+                alert('Failed to save settings: ' + error.message);
+            });
+        }
+
+        function loadConnections() {
+            console.log('Loading connections...');
+            fetch('/api/settings/connections')
+                .then(function(response) { return response.json(); })
+                .then(function(data) {
+                    console.log('Connections loaded:', data);
+                    connections = data;
+                    renderConnections();
+                })
+                .catch(function(error) {
+                    console.error('Error loading connections:', error);
+                    document.getElementById('connectionsList').innerHTML = '<div class="loading-state">Failed to load connections</div>';
+                });
+        }
+
+        function renderConnections() {
+            var container = document.getElementById('connectionsList');
+            if (connections.length === 0) {
+                container.innerHTML = '<div class="loading-state">No connections configured. Add your first KAgent connection.</div>';
+                return;
+            }
+
+            var html = '';
+            connections.forEach(function(conn) {
+                html += '<div class="connection-card" data-id="' + conn.id + '">';
+                html += '<div class="connection-info">';
+                html += '<h4>' + conn.name + (conn.isDefault ? ' <span class="badge badge-info">Default</span>' : '') + '</h4>';
+                html += '<div class="connection-url">' + conn.protocol + '://' + conn.baseUrl + ':' + conn.port + '</div>';
+                html += '</div>';
+                html += '<div class="connection-actions">';
+                if (!conn.isDefault) {
+                    html += '<button class="btn btn-ghost btn-set-default" data-id="' + conn.id + '">Set Default</button>';
+                }
+                html += '<button class="btn btn-ghost btn-edit" data-id="' + conn.id + '">Edit</button>';
+                html += '<button class="btn btn-ghost text-error btn-delete" data-id="' + conn.id + '">Delete</button>';
+                html += '</div></div>';
+            });
+            container.innerHTML = html;
+
+            // Attach event listeners
+            container.querySelectorAll('.btn-set-default').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    setDefaultConnection(parseInt(this.getAttribute('data-id')));
+                });
+            });
+            container.querySelectorAll('.btn-edit').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    editConnection(parseInt(this.getAttribute('data-id')));
+                });
+            });
+            container.querySelectorAll('.btn-delete').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    deleteConnection(parseInt(this.getAttribute('data-id')));
+                });
+            });
+        }
+
+        function showConnectionModal(connection) {
+            console.log('Showing connection modal', connection);
+            document.getElementById('connectionModalTitle').textContent = connection ? 'Edit Connection' : 'Add KAgent Connection';
+            document.getElementById('connectionId').value = connection ? connection.id : 0;
+            document.getElementById('connName').value = connection ? connection.name : '';
+            document.getElementById('connBaseUrl').value = connection ? connection.baseUrl : 'localhost';
+            document.getElementById('connPort').value = connection ? connection.port : 8083;
+            document.getElementById('connProtocol').value = connection ? connection.protocol : 'http';
+            document.getElementById('connectionModal').classList.add('active');
+        }
+
+        function hideConnectionModal() {
+            document.getElementById('connectionModal').classList.remove('active');
+        }
+
+        function editConnection(id) {
+            var conn = connections.find(function(c) { return c.id === id; });
+            if (conn) showConnectionModal(conn);
+        }
+
+        function saveConnection(event) {
+            event.preventDefault();
+            console.log('Saving connection...');
+            var id = parseInt(document.getElementById('connectionId').value);
+            var data = {
+                name: document.getElementById('connName').value,
+                baseUrl: document.getElementById('connBaseUrl').value,
+                port: parseInt(document.getElementById('connPort').value),
+                protocol: document.getElementById('connProtocol').value
+            };
+
+            var url = id > 0 ? '/api/settings/connections/' + id : '/api/settings/connections';
+            var method = id > 0 ? 'PUT' : 'POST';
+
+            fetch(url, {
+                method: method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            })
+            .then(function(response) {
+                if (response.ok) {
+                    hideConnectionModal();
+                    loadConnections();
+                } else {
+                    throw new Error('Failed to save connection');
+                }
+            })
+            .catch(function(error) {
+                console.error('Error saving connection:', error);
+                alert('Failed to save connection: ' + error.message);
+            });
+        }
+
+        function deleteConnection(id) {
+            if (!confirm('Are you sure you want to delete this connection?')) return;
+            console.log('Deleting connection:', id);
+            fetch('/api/settings/connections/' + id, { method: 'DELETE' })
+                .then(function(response) {
+                    if (response.ok) {
+                        loadConnections();
+                    } else {
+                        throw new Error('Failed to delete connection');
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Error deleting connection:', error);
+                    alert('Failed to delete connection: ' + error.message);
+                });
+        }
+
+        function setDefaultConnection(id) {
+            console.log('Setting default connection:', id);
+            fetch('/api/settings/connections/' + id + '/default', { method: 'POST' })
+                .then(function(response) {
+                    if (response.ok) {
+                        loadConnections();
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Error setting default connection:', error);
+                });
+        }
+
+        function loadSystemInfo() {
+            console.log('Loading system info...');
+            fetch('/api/settings/system-info')
+                .then(function(response) { return response.json(); })
+                .then(function(info) {
+                    console.log('System info loaded:', info);
+                    document.getElementById('systemInfo').innerHTML =
+                        '<div class="system-info-grid">' +
+                        '<div class="system-info-item"><div class="system-info-label">Platform</div><div class="system-info-value">' + info.platform + '</div></div>' +
+                        '<div class="system-info-item"><div class="system-info-label">Environment</div><div class="system-info-value">' + info.environment + '</div></div>' +
+                        '<div class="system-info-item"><div class="system-info-label">Memory Usage</div><div class="system-info-value">' + info.memoryUsage + '</div></div>' +
+                        '<div class="system-info-item"><div class="system-info-label">Version</div><div class="system-info-value">' + info.version + '</div></div>' +
+                        '<div class="system-info-item"><div class="system-info-label">Database</div><div class="system-info-value">' + info.database + '</div></div>' +
+                        '</div>';
+                })
+                .catch(function(error) {
+                    console.error('Error loading system info:', error);
+                });
+        }
+    })();
+</script>

@@ -1,205 +1,170 @@
 # Skanyxx
 
-A professional site reliability engineering platform with AI-powered investigation tools and multi-connector support for distributed platform management.
+SRE Platform for Kubernetes management, agent orchestration, and monitoring. Built on a modular plugin architecture where each UI tab (Agents, Alerts, Chat, etc.) is an independently loadable DLL.
 
-![Skanyxx](https://img.shields.io/badge/Platform-macOS-blue)
-![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-1.0.0-orange)
+## Prerequisites
 
-## 🚀 Features
+- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- KAgent running locally (default: `http://localhost:8083`) or remote
 
-### Multi-Connector Support
-- **Distributed Platform Management**: Connect to multiple KAgent instances from one central interface
-- **Environment Management**: Support for local, staging, and production environments
-- **Centralized Agent Management**: View and manage agents across all connected platforms
-- **Professional Connector UI**: Easy-to-use interface for adding, removing, and switching between connectors
+## Quick Start
 
-### Professional SRE Tools
-- **Investigation Workflows**: Pre-built templates for common SRE scenarios
-- **Cloud Tools Integration**: Azure Resource Finder and Ruchy REPL support
-- **Real-time Monitoring**: Live status updates and system metrics
-- **Debug Information**: Comprehensive logging and error tracking
-
-### Modern UI/UX
-- **Professional Design**: Clean, SRE-focused interface with dark theme
-- **Responsive Layout**: Optimized for different screen sizes
-- **Smooth Animations**: Professional transitions and visual feedback
-- **Native macOS App**: Full system integration with Spotlight and Dock
-
-## 📦 Installation
-
-### For Users (Recommended)
-
-**Download the latest release:**
-👉 [Download from Releases](https://github.com/skanyxx/skanyxx/releases)
-
-**macOS Users - Important:**
-After installing, you may see **"skanyxx is damaged"** error. This is NOT actual damage - it's a macOS security feature.
-
-**Fix it by running this command in Terminal:**
 ```bash
-xattr -cr /Applications/skanyxx.app
+# Build everything (Core + Host + all 13 modules)
+dotnet build Skanyxx.sln
+
+# Run the app
+dotnet run --project src/Skanyxx.Host
 ```
 
-See [INSTALL_MAC.md](INSTALL_MAC.md) for detailed macOS installation instructions.
+The app starts at **http://localhost:5282** (or https://localhost:7219).
 
-### For Developers
+Swagger UI is available at http://localhost:5282/swagger in Development mode.
 
-#### Quick Start
-```bash
-# Clone the repository
-git clone https://github.com/skanyxx/skanyxx.git
-cd skanyxx
+## Project Structure
 
-# Install dependencies
-npm install
-
-# Build and install
-npm run build:mac
-npm run install:mac
+```
+Skanyxx.sln
+├── src/
+│   ├── Skanyxx.Core/              # Shared contracts, models, interfaces, services
+│   ├── Skanyxx.Host/              # Web host, ModuleLoader, DB, static files, Razor pages
+│   │   └── modules/               # Module DLLs loaded at runtime
+│   └── Modules/
+│       ├── Skanyxx.Module.Agents/
+│       ├── Skanyxx.Module.Alerts/
+│       ├── Skanyxx.Module.Analytics/
+│       ├── Skanyxx.Module.Chat/
+│       ├── Skanyxx.Module.CloudTools/
+│       ├── Skanyxx.Module.Dashboard/
+│       ├── Skanyxx.Module.Debug/
+│       ├── Skanyxx.Module.Hooks/
+│       ├── Skanyxx.Module.Investigate/
+│       ├── Skanyxx.Module.Memory/
+│       ├── Skanyxx.Module.Sessions/
+│       ├── Skanyxx.Module.Settings/
+│       └── Skanyxx.Module.ToolServers/
+└── SkanyxxWeb.csproj              # Legacy monolith (deprecated)
 ```
 
-#### Alternative: DMG Installer
-```bash
-# Build the application
-npm run build:mac
+**Dependency rule:** Modules reference only `Skanyxx.Core`. Modules never reference Host or each other. Cross-module communication uses MediatR.
 
-# Create DMG installer
-npm run create-dmg
+## Modular Architecture
 
-# Double-click the generated DMG and drag to Applications
+Each module is a self-contained DLL that gets discovered and loaded at startup by the `ModuleLoader`. Every module implements the `IModule` interface:
+
+```csharp
+public interface IModule
+{
+    string ModuleId { get; }
+    string DisplayName { get; }
+    string Version { get; }
+    IReadOnlyList<string> Dependencies { get; }
+    void RegisterServices(IServiceCollection services, IConfiguration configuration);
+    Task InitializeAsync(IServiceProvider serviceProvider);
+}
 ```
 
-## 🔧 Development
+On build, each module DLL is automatically copied to `src/Skanyxx.Host/modules/`. The Host scans that directory, loads assemblies via `PluginLoadContext`, registers controllers with `AddApplicationPart()`, and wires up DI and MediatR.
 
-### Prerequisites
-- Node.js 18+
-- Rust (for Tauri)
-- macOS (for building)
+## Enable / Disable Modules
 
-### Development Commands
-```bash
-# Install dependencies
-npm install
+Edit `src/Skanyxx.Host/appsettings.json`:
 
-# Run in development mode
-npm run dev
-
-# Build for production
-npm run build:mac
-
-# Install to Applications
-npm run install:mac
-
-# Create DMG installer
-npm run create-dmg
+```json
+{
+  "Modules": {
+    "Enabled": {
+      "agents": true,
+      "alerts": true,
+      "chat": false
+    }
+  }
+}
 ```
 
-## 🎯 Usage
+Set any module to `false` and its API routes will not be registered. You can also simply remove the DLL from the `modules/` directory.
 
-### Adding KAgent Connectors
-1. Launch Skanyxx
-2. Click "Add Connector" in the dashboard
-3. Configure your KAgent instance:
-   - **Name**: Friendly name for the connector
-   - **Base URL**: KAgent server hostname/IP
-   - **Port**: KAgent server port (default: 8083)
-   - **Protocol**: HTTP or HTTPS
-   - **Environment**: Local, Staging, or Production
+## Adding a New Module
 
-### Investigation Workflows
-1. Navigate to the "Investigate" tab
-2. Choose from pre-built templates:
-   - Production Incident (P0)
-   - Performance Degradation (P1)
-   - Deployment Rollback (P2)
-   - Network Connectivity (P1)
-   - Security Alert (P0)
-   - Capacity Planning (P3)
-3. Select required agents and start investigation
-
-### Cloud Tools
-- **Azure Resource Finder**: Search and manage Azure resources
-- **Ruchy REPL**: Interactive REPL for data analysis
-- **Tool Configuration**: Easy setup and path management
-
-## 🏗️ Architecture
-
-### Frontend
-- **React 18**: Modern React with hooks and functional components
-- **TypeScript**: Full type safety
-- **Tauri**: Cross-platform desktop framework
-- **Lucide React**: Professional icon library
-
-### Backend
-- **Rust**: High-performance system programming
-- **Tauri Commands**: Native system integration
-- **Cross-platform Support**: macOS, Windows, Linux
-
-### Key Components
-- **Multi-Connector System**: Distributed platform management
-- **Investigation Engine**: AI-powered SRE workflows
-- **Cloud Tools Integration**: Azure and Ruchy support
-- **Real-time Monitoring**: Live status and metrics
-
-## 🔌 Configuration
-
-### KAgent Setup
-1. Install KAgent using the provided setup script:
+1. Create a new project under `src/Modules/`:
    ```bash
-   ./kagent_setup.sh
+   dotnet new classlib -n Skanyxx.Module.MyFeature -o src/Modules/Skanyxx.Module.MyFeature
    ```
-2. Replace `YOUR_ANTHROPIC_API_KEY` with your actual API key
-3. Configure your KAgent instance
 
-### Environment Variables
-- `KAGENT_URL`: Default KAgent server URL
-- `KAGENT_TOKEN`: Authentication token (if required)
+2. Reference Core and add the `CopyToModules` target in the `.csproj`:
+   ```xml
+   <Project Sdk="Microsoft.NET.Sdk">
+     <PropertyGroup>
+       <TargetFramework>net8.0</TargetFramework>
+     </PropertyGroup>
+     <ItemGroup>
+       <FrameworkReference Include="Microsoft.AspNetCore.App" />
+       <ProjectReference Include="..\..\Skanyxx.Core\Skanyxx.Core.csproj" />
+     </ItemGroup>
+     <Target Name="CopyToModules" AfterTargets="Build">
+       <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SolutionDir)src/Skanyxx.Host/modules/" />
+       <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(SolutionDir)src/Skanyxx.Host/modules/" />
+     </Target>
+   </Project>
+   ```
 
-## 📁 Project Structure
+3. Implement `IModule`:
+   ```csharp
+   public class MyFeatureModule : IModule
+   {
+       public string ModuleId => "myfeature";
+       public string DisplayName => "My Feature";
+       public string Version => "1.0.0";
+       public IReadOnlyList<string> Dependencies => Array.Empty<string>();
 
-```
-skanyxx/
-├── src/                    # Frontend source code
-│   ├── components/         # React components
-│   ├── lib/               # Utility libraries
-│   └── config.ts          # Configuration management
-├── src-tauri/             # Tauri backend
-│   ├── src/               # Rust source code
-│   └── tauri.conf.json    # Tauri configuration
-├── install.sh             # Installation script
-├── create-dmg.sh          # DMG creation script
-└── kagent_setup.sh        # KAgent setup script
-```
+       public void RegisterServices(IServiceCollection services, IConfiguration configuration)
+       {
+           // Register your services here
+       }
 
-## 🤝 Contributing
+       public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;
+   }
+   ```
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+4. Add your controller(s) with `[ApiController]` and `[Route("api/[controller]")]`.
 
-### Development Setup
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+5. Add the project to `Skanyxx.sln`:
+   ```bash
+   dotnet sln add src/Modules/Skanyxx.Module.MyFeature
+   ```
 
-## 📄 License
+6. Build and run. The module is automatically discovered.
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+## Configuration
 
-## 🙏 Acknowledgments
+All configuration is in `src/Skanyxx.Host/appsettings.json`:
 
-- [KAgent](https://github.com/kagent-dev/kagent) - AI-powered Kubernetes agent
-- [Tauri](https://tauri.app/) - Cross-platform desktop framework
-- [Lucide](https://lucide.dev/) - Beautiful icon library
+| Section | Description |
+|---|---|
+| `KAgent` | KAgent API connection (BaseUrl, Port, Protocol, Token) |
+| `Kubernetes` | Optional kubeconfig path |
+| `AWS` | AWS profile and region for cloud tools |
+| `Azure` | Azure config directory |
+| `Modules` | Plugin directory and enable/disable flags |
 
-## 📞 Support
+## API Endpoints
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/skanyxx/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/skanyxx/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/skanyxx/wiki)
+Each module exposes REST endpoints under `/api/`:
 
----
+| Module | Routes |
+|---|---|
+| Agents | `/api/agents` |
+| Alerts | `/api/alerts` |
+| Analytics | `/api/analytics` |
+| Chat | `/api/chat` |
+| CloudTools | `/api/cloud`, `/api/cloudtools` |
+| Dashboard | `/api/dashboard` |
+| Debug | `/api/debug` |
+| Hooks | `/api/hooks` |
+| Investigate | `/api/investigate` |
+| Memory | `/api/memory` |
+| Sessions | `/api/sessions` |
+| Settings | `/api/settings` |
+| ToolServers | `/api/toolservers` |
 
-**Skanyxx** - Professional site reliability engineering platform with AI-powered investigation tools 🚀
-
+Health check: `GET /health`

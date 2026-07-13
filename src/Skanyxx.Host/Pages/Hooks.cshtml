@@ -1,0 +1,402 @@
+@page
+@model Skanyxx.Host.Pages.HooksModel
+@{
+    ViewData["Title"] = "Hooks";
+}
+
+<div class="card mb-3">
+    <div class="card-header">
+        <h3 class="card-title">Automation Hooks</h3>
+        <button class="btn btn-primary" id="btnNewHook">+ New Hook</button>
+    </div>
+    <p class="text-muted">Configure webhooks and automation triggers for your infrastructure.</p>
+</div>
+
+<div class="table-container card">
+    <table>
+        <thead>
+            <tr>
+                <th>Hook Name</th>
+                <th>Trigger</th>
+                <th>Target</th>
+                <th>Last Triggered</th>
+                <th>Status</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="hooksTable">
+            <tr><td colspan="6" class="loading-state">Loading hooks...</td></tr>
+        </tbody>
+    </table>
+</div>
+
+<div class="grid grid-cols-2 gap-2 mt-3">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Hook Statistics</h3>
+        </div>
+        <div class="stats-grid" id="hookStats">
+            <div class="stat-card">
+                <div class="stat-value" id="statActive">0</div>
+                <div class="stat-label">Active Hooks</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statTotal">0</div>
+                <div class="stat-label">Total Hooks</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" id="statDisabled">0</div>
+                <div class="stat-label">Disabled</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Recent Executions</h3>
+        </div>
+        <div class="execution-list" id="executionsList">
+            <div class="text-muted">No recent executions</div>
+        </div>
+    </div>
+</div>
+
+<!-- New Hook Modal -->
+<div class="modal" id="hookModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="hookModalTitle">New Hook</h3>
+            <button class="btn btn-ghost" id="btnCloseHookModal">&times;</button>
+        </div>
+        <form id="hookForm">
+            <input type="hidden" id="hookId" value="" />
+            <div class="form-group">
+                <label for="hookName">Name</label>
+                <input type="text" id="hookName" required placeholder="deploy-notification" />
+            </div>
+            <div class="form-group">
+                <label for="hookTrigger">Trigger Event</label>
+                <select id="hookTrigger">
+                    <option value="on:deploy">On Deploy</option>
+                    <option value="on:alert">On Alert</option>
+                    <option value="on:alert:critical">On Critical Alert</option>
+                    <option value="on:scale">On Scale Event</option>
+                    <option value="on:backup:complete">On Backup Complete</option>
+                    <option value="custom">Custom</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="hookTarget">Target URL</label>
+                <input type="text" id="hookTarget" required placeholder="https://hooks.slack.com/..." />
+            </div>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="hookEnabled" checked /> Enabled
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="btn btn-ghost" id="btnCancelHook">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Hook</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<style>
+    .hook-name {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-weight: 500;
+    }
+    .execution-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    .execution-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px;
+        background-color: var(--bg-tertiary);
+        border-radius: 6px;
+    }
+    .execution-item code {
+        flex: 1;
+    }
+    .loading-state {
+        text-align: center;
+        padding: 20px;
+        color: var(--text-muted);
+    }
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.6);
+        z-index: 1000;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal.active {
+        display: flex;
+    }
+    .modal-content {
+        background-color: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+    }
+    .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid var(--border-color);
+    }
+    .modal-header h3 {
+        margin: 0;
+    }
+    #hookForm {
+        padding: 20px;
+    }
+    .form-group {
+        margin-bottom: 16px;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 14px;
+        font-weight: 500;
+    }
+    .form-group input[type="text"],
+    .form-group select {
+        width: 100%;
+        padding: 10px 12px;
+        border: 1px solid var(--border-color);
+        border-radius: 6px;
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 14px;
+    }
+    .form-group input[type="checkbox"] {
+        width: auto;
+        margin-right: 8px;
+    }
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 12px;
+        padding-top: 16px;
+        border-top: 1px solid var(--border-color);
+    }
+</style>
+
+<script>
+(function() {
+    'use strict';
+
+    var hooks = [];
+
+    // Initialize when DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    function init() {
+        console.log('Hooks page init');
+
+        // Button events
+        document.getElementById('btnNewHook').addEventListener('click', function() {
+            showHookModal(null);
+        });
+        document.getElementById('btnCloseHookModal').addEventListener('click', hideHookModal);
+        document.getElementById('btnCancelHook').addEventListener('click', hideHookModal);
+        document.getElementById('hookForm').addEventListener('submit', saveHook);
+
+        // Load data
+        loadHooks();
+    }
+
+    function loadHooks() {
+        fetch('/api/hooks')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                hooks = data || [];
+                renderHooks();
+                updateStats();
+            })
+            .catch(function(err) {
+                console.error('Error loading hooks:', err);
+                // Show empty state
+                hooks = [];
+                renderHooks();
+            });
+    }
+
+    function renderHooks() {
+        var tbody = document.getElementById('hooksTable');
+
+        if (hooks.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="loading-state">No hooks configured. Click "+ New Hook" to create one.</td></tr>';
+            return;
+        }
+
+        var html = '';
+        hooks.forEach(function(hook) {
+            var isEnabled = hook.enabled !== false;
+            var statusBadge = isEnabled ? '<span class="badge badge-success">Active</span>' : '<span class="badge badge-warning">Disabled</span>';
+            var toggleBtn = isEnabled
+                ? '<button class="btn btn-ghost btn-disable" data-id="' + hook.id + '">Disable</button>'
+                : '<button class="btn btn-primary btn-enable" data-id="' + hook.id + '">Enable</button>';
+
+            html += '<tr data-id="' + hook.id + '">';
+            html += '<td><div class="hook-name"><span class="nav-icon">&#x2922;</span>' + (hook.name || 'Unnamed') + '</div></td>';
+            html += '<td><code>' + (hook.trigger || hook.event || '-') + '</code></td>';
+            html += '<td>' + (hook.target || hook.url || '-') + '</td>';
+            html += '<td>' + formatTime(hook.lastTriggered) + '</td>';
+            html += '<td>' + statusBadge + '</td>';
+            html += '<td>';
+            html += '<button class="btn btn-ghost btn-edit" data-id="' + hook.id + '">Edit</button>';
+            html += toggleBtn;
+            html += '<button class="btn btn-ghost btn-delete" data-id="' + hook.id + '">Delete</button>';
+            html += '</td>';
+            html += '</tr>';
+        });
+
+        tbody.innerHTML = html;
+
+        // Attach button events
+        tbody.querySelectorAll('.btn-edit').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var id = this.getAttribute('data-id');
+                var hook = hooks.find(function(h) { return h.id === id; });
+                if (hook) showHookModal(hook);
+            });
+        });
+
+        tbody.querySelectorAll('.btn-enable').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                enableHook(this.getAttribute('data-id'));
+            });
+        });
+
+        tbody.querySelectorAll('.btn-disable').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                disableHook(this.getAttribute('data-id'));
+            });
+        });
+
+        tbody.querySelectorAll('.btn-delete').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                deleteHook(this.getAttribute('data-id'));
+            });
+        });
+    }
+
+    function updateStats() {
+        var active = hooks.filter(function(h) { return h.enabled !== false; }).length;
+        var disabled = hooks.length - active;
+
+        document.getElementById('statActive').textContent = active;
+        document.getElementById('statTotal').textContent = hooks.length;
+        document.getElementById('statDisabled').textContent = disabled;
+    }
+
+    function showHookModal(hook) {
+        document.getElementById('hookModalTitle').textContent = hook ? 'Edit Hook' : 'New Hook';
+        document.getElementById('hookId').value = hook ? hook.id : '';
+        document.getElementById('hookName').value = hook ? hook.name : '';
+        document.getElementById('hookTrigger').value = hook ? (hook.trigger || hook.event || 'on:deploy') : 'on:deploy';
+        document.getElementById('hookTarget').value = hook ? (hook.target || hook.url || '') : '';
+        document.getElementById('hookEnabled').checked = hook ? hook.enabled !== false : true;
+        document.getElementById('hookModal').classList.add('active');
+    }
+
+    function hideHookModal() {
+        document.getElementById('hookModal').classList.remove('active');
+    }
+
+    function saveHook(e) {
+        e.preventDefault();
+        console.log('Saving hook...');
+
+        var id = document.getElementById('hookId').value;
+        var data = {
+            name: document.getElementById('hookName').value,
+            trigger: document.getElementById('hookTrigger').value,
+            target: document.getElementById('hookTarget').value,
+            enabled: document.getElementById('hookEnabled').checked
+        };
+
+        var url = id ? '/api/hooks/' + id : '/api/hooks';
+        var method = id ? 'PUT' : 'POST';
+
+        fetch(url, {
+            method: method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        })
+        .then(function(r) {
+            if (r.ok) {
+                hideHookModal();
+                loadHooks();
+                alert('Hook saved!');
+            } else {
+                throw new Error('Failed to save hook');
+            }
+        })
+        .catch(function(err) {
+            console.error('Error:', err);
+            alert('Error saving hook: ' + err.message);
+        });
+    }
+
+    function enableHook(id) {
+        console.log('Enabling hook:', id);
+        fetch('/api/hooks/' + id + '/enable', { method: 'POST' })
+            .then(function(r) {
+                if (r.ok) loadHooks();
+            })
+            .catch(function(err) { console.error('Error:', err); });
+    }
+
+    function disableHook(id) {
+        console.log('Disabling hook:', id);
+        fetch('/api/hooks/' + id + '/disable', { method: 'POST' })
+            .then(function(r) {
+                if (r.ok) loadHooks();
+            })
+            .catch(function(err) { console.error('Error:', err); });
+    }
+
+    function deleteHook(id) {
+        if (!confirm('Delete this hook?')) return;
+        console.log('Deleting hook:', id);
+        fetch('/api/hooks/' + id, { method: 'DELETE' })
+            .then(function(r) {
+                if (r.ok) loadHooks();
+            })
+            .catch(function(err) { console.error('Error:', err); });
+    }
+
+    function formatTime(timestamp) {
+        if (!timestamp) return '-';
+        var date = new Date(timestamp);
+        var now = new Date();
+        var diff = Math.floor((now - date) / 1000);
+
+        if (diff < 60) return diff + 's ago';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+    }
+})();
+</script>

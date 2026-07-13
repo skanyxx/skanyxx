@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────
+# Skanyxx .deb — postinst
+# Runs after dpkg places files on disk.
+# ─────────────────────────────────────────────────────────────────
+set -e
+
+INSTALL_DIR="/usr/share/skanyxx"
+CONFIG="$INSTALL_DIR/appsettings.json"
+TEMPLATE="$INSTALL_DIR/appsettings.template.json"
+
+# Make the binary executable
+chmod +x "$INSTALL_DIR/Skanyxx.Host" 2>/dev/null || true
+
+# Create config from template (once — never overwrites)
+# IRREVERSIBLE: once created this file holds the user's API keys
+if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
+    cp "$TEMPLATE" "$CONFIG"
+fi
+
+# Reload systemd if available
+if command -v systemctl >/dev/null 2>&1; then
+    systemctl daemon-reload 2>/dev/null || true
+fi
+
+echo "Skanyxx installed."
+echo ""
+echo "  Before starting, add your Anthropic API key:"
+echo "    $CONFIG"
+echo ""
+echo "  Start manually:"
+echo "    skanyxx"
+echo ""
+echo "  Enable auto-start on boot:"
+echo "    sudo systemctl enable skanyxx"
+echo "    sudo systemctl start skanyxx"
+echo ""
+echo "  Open in browser: http://localhost:5282"

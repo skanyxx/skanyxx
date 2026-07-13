@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\Skanyxx.Core\Skanyxx.Core.csproj" />
+  </ItemGroup>
+  <Target Name="CopyToModules" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SolutionDir)src\Skanyxx.Host\modules\" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(SolutionDir)src\Skanyxx.Host\modules\" />
+  </Target>
+</Project>

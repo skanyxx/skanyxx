@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="1">
+
+    <title>Skanyxx SRE Platform</title>
+    <background file="background.png" alignment="bottomleft" scaling="proportional"/>
+    <welcome    file="welcome.html"   mime-type="text/html"/>
+    <readme     file="readme.html"    mime-type="text/html"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+
+    <!-- Minimum macOS version: 12.0 (Monterey) -->
+    <os-version min="12.0"/>
+
+    <!-- Allow installation for the current user only (no admin required) -->
+    <options customize="never"
+             require-scripts="false"
+             allow-external-scripts="false"
+             hostArchitectures="arm64,x86_64"/>
+
+    <domains enable_anywhere="false"
+             enable_currentUserHome="false"
+             enable_localSystem="true"/>
+
+    <pkg-ref id="com.skanyxx.app"/>
+
+    <choices-outline>
+        <line choice="com.skanyxx.app"/>
+    </choices-outline>
+
+    <choice id="com.skanyxx.app"
+            visible="false"
+            title="Skanyxx SRE Platform"
+            description="Installs the Skanyxx SRE Platform to /usr/local/share/skanyxx.">
+        <pkg-ref id="com.skanyxx.app"/>
+    </choice>
+
+    <pkg-ref id="com.skanyxx.app"
+             version="SKANYXX_VERSION"
+             onConclusion="none">Skanyxx.pkg</pkg-ref>
+
+</installer-gui-script>

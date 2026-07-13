@@ -1,0 +1,22 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Skanyxx.Core;
+using Skanyxx.Core.Interfaces;
+using Skanyxx.Module.Hooks.Services;
+
+namespace Skanyxx.Module.Hooks;
+
+public class HooksModule : IModule
+{
+    public string ModuleId => "hooks";
+    public string DisplayName => "Hooks";
+    public string Version => "1.0.0";
+    public IReadOnlyList<string> Dependencies => Array.Empty<string>();
+
+    public void RegisterServices(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddSingleton<IHookService, KAgentHookService>();
+    }
+
+    public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;
+}

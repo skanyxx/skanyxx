@@ -1,0 +1,16 @@
+[Unit]
+Description=Skanyxx SRE Platform
+Documentation=https://github.com/skanyxx/skanyxx
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/share/skanyxx/Skanyxx.Host --urls http://localhost:5282
+WorkingDirectory=/usr/share/skanyxx
+Environment=ASPNETCORE_ENVIRONMENT=Production
+Restart=on-failure
+RestartSec=5
+SyslogIdentifier=skanyxx
+
+[Install]
+WantedBy=multi-user.target

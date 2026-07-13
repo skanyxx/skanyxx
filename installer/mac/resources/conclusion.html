@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { font-family: -apple-system, Helvetica, sans-serif; font-size: 13px; color: #1d1d1f; margin: 20px; }
+  h2   { font-size: 17px; font-weight: 600; color: #1c7b3a; }
+  h3   { font-size: 14px; font-weight: 600; margin-top: 18px; }
+  p, li { line-height: 1.6; }
+  code { font-family: monospace; background: #f2f2f7; padding: 2px 5px; border-radius: 3px; }
+  pre  { background: #f2f2f7; padding: 10px; border-radius: 6px; font-size: 12px; }
+  .step { display: flex; gap: 10px; margin: 8px 0; }
+  .num  { font-weight: 700; color: #1c7b3a; min-width: 20px; }
+</style>
+</head>
+<body>
+  <h2>Installation Complete!</h2>
+
+  <h3>Next steps</h3>
+
+  <div class="step"><span class="num">1.</span>
+    <span>Add your Anthropic API key:<br>
+    <code>/usr/local/share/skanyxx/appsettings.json</code><br>
+    Set <code>"ApiKey": "sk-ant-..."</code></span>
+  </div>
+
+  <div class="step"><span class="num">2.</span>
+    <span>Start the app:<br>
+    <pre>skanyxx</pre></span>
+  </div>
+
+  <div class="step"><span class="num">3.</span>
+    <span>Open in your browser:<br>
+    <a href="http://localhost:5282">http://localhost:5282</a></span>
+  </div>
+
+  <h3>To uninstall</h3>
+  <pre>sudo rm -rf /usr/local/share/skanyxx
+sudo rm -f /usr/local/bin/skanyxx
+sudo rm -f /Library/LaunchAgents/com.skanyxx.app.plist</pre>
+</body>
+</html>
