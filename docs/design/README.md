@@ -1,0 +1,27 @@
+# Skanyxx design log
+
+We design in small steps. This folder is the running record — not a product spec dump.
+
+| File | Purpose |
+|---|---|
+| [decisions.md](decisions.md) | Locked choices and **why**. If we reverse one, add a new row; do not silently edit history. |
+| [facts.md](facts.md) | Constraints from today’s Skanyxx, [kagent](https://kagent.dev/docs/kagent/), and [Joicy](https://github.com/DmarshalTU/Joicy). |
+| [open.md](open.md) | Questions not decided yet. Next conversation step lives here. |
+| [spine.md](spine.md) | Ordered walk from the start. Follow this. |
+| [three-planes.md](three-planes.md) | Step 1 deep dive: Skanyxx vs kagent vs memory. |
+| [first-hour.md](first-hour.md) | Step 2: setup → first chat message. |
+| [identity.md](identity.md) | Owner bootstrap, invite, optional Entra. |
+| [install-path.md](install-path.md) | License → one install → browser URL. |
+| [studio.md](studio.md) | Step 3: compose agent → PR. |
+| [memory-store.md](memory-store.md) | Volume + tokens: cards not chats. |
+| [memory-card.md](memory-card.md) | Tiny card schema. |
+| [memory-writes.md](memory-writes.md) | 100 agents vs one bank; not Redis-as-orchestrator. |
+| [leftovers.md](leftovers.md) | TTL, GitOps, Joicy, k8s, library. |
+| [diagrams.md](diagrams.md) | Mermaid: planes, turn, lift, factory, stack, writes. |
+| [memory-hierarchy.md](memory-hierarchy.md) | Personal → team → dept → company; lift cards. |
+| [memory-stack.md](memory-stack.md) | Postgres + MinIO + MCP; Dragonfly later. |
+| [memory-how.md](memory-how.md) | End-to-end: turn, lift, grants, stack. |
+| [seed-vs-factory.md](seed-vs-factory.md) | Seed vs factory; factory = YAML + git PR. |
+| [roles.md](roles.md) | Owner, supervisor, builder, employee. |
+
+Rule: one idea per bullet. No essays.
