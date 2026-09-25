@@ -5,7 +5,8 @@ We design in small steps. This folder is the running record — not a product sp
 | File | Purpose |
 |---|---|
 | [decisions.md](decisions.md) | Locked choices and **why**. If we reverse one, add a new row; do not silently edit history. |
-| [facts.md](facts.md) | Constraints from today’s Skanyxx, [kagent](https://kagent.dev/docs/kagent/), and [Joicy](https://github.com/DmarshalTU/Joicy). |
+| [facts.md](facts.md) | Constraints from Skanyxx today, [kagent](https://kagent.dev/docs/kagent/), [AX](https://github.com/google/ax), [Joicy](https://github.com/DmarshalTU/Joicy). |
+| [ax-tasks.md](ax-tasks.md) | kagent = Agents; AX = Tasks. v1 flags. |
 | [open.md](open.md) | Questions not decided yet. Next conversation step lives here. |
 | [spine.md](spine.md) | Ordered walk from the start. Follow this. |
 | [three-planes.md](three-planes.md) | Step 1 deep dive: Skanyxx vs kagent vs memory. |
@@ -19,7 +20,7 @@ We design in small steps. This folder is the running record — not a product sp
 | [leftovers.md](leftovers.md) | TTL, GitOps, Joicy, k8s, library. |
 | [diagrams.md](diagrams.md) | Mermaid: planes, turn, lift, factory, stack, writes. |
 | [memory-hierarchy.md](memory-hierarchy.md) | Personal → team → dept → company; lift cards. |
-| [memory-stack.md](memory-stack.md) | Postgres + MinIO + MCP; Dragonfly later. |
+| [memory-stack.md](memory-stack.md) | Postgres + MinIO + MCP; one Dragonfly (shared with AX). |
 | [memory-how.md](memory-how.md) | End-to-end: turn, lift, grants, stack. |
 | [seed-vs-factory.md](seed-vs-factory.md) | Seed vs factory; factory = YAML + git PR. |
 | [roles.md](roles.md) | Owner, supervisor, builder, employee. |

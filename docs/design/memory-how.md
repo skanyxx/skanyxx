@@ -60,7 +60,7 @@ New specialist agents default to **search `company`**, **no upsert**. Write is a
 
 Preview (draft agent, unmerged PR): may **search** production; **must not upsert**.
 
-Two writers on `company/refund-window` at once: engine serializes that key. First wins, version++. Second with old version → **conflict**, re-search. No silent last-write-wins. No Redis bus. Dragonfly only later, as cache/lock in front of **this** service.
+Two writers on `company/refund-window` at once: engine serializes that key. First wins, version++. Second with old version → **conflict**, re-search. No silent last-write-wins. No Redis bus for agents. One Dragonfly (shared with AX) may cache/lock this service (D068).
 
 Rate limit upserts per agent so a loop cannot flood Postgres.
 

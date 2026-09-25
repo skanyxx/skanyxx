@@ -10,6 +10,7 @@ We go **in this order**. A deep file exists only after we actually dived that st
 | 3 | Agent studio (build an agent) | Locked (`studio.md`, D028–D033) |
 | 4 | Memory write / retrieve / volume | Locked, then extended by hierarchy (D049–D053) |
 | 5 | Community templates | **Paused** (D054) |
-| 6 | Memory hierarchy + stack | In progress (`memory-hierarchy.md`, `memory-stack.md`) |
+| 6 | Memory hierarchy + stack | Locked (`memory-hierarchy.md`, `memory-how.md`, D049–D055) |
+| 7 | AX as Tasks (not second Agents) | Locked (`ax-tasks.md`, D063–D066) |
 
 Do not skip to 3–5 until 1 is agreed.

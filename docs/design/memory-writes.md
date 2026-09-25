@@ -30,7 +30,7 @@ No silent last-write-wins (D041). The engine is the orchestrator of **cards**, n
 | Source of truth for cards | **No.** Need durable store + unique `(collection, key)`. |
 | Later: hot cache of top-k cards, rate limit, lock if **several memory replicas** | Optional. Day one: one memory engine + DB constraint + `version` is enough. |
 
-Dragonfly/Redis as a cache in front of reads is fine **after** the bank works. When we add it, **Dragonfly** is the pick (D043). It does not replace D040–D041.
+One **Dragonfly** is on by default (D068) because AX needs Redis-protocol. Memory may use that same instance for cache/locks. It does not replace D040–D041. Cards stay in Postgres.
 
 ## 4. Extra brakes (server-side)
 

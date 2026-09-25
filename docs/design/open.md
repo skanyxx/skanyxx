@@ -1,6 +1,6 @@
 # Open
 
-Memory **how** is written (`memory-how.md`). Community paused.
+AX Tasks pack locked (D063–D066, `ax-tasks.md`). Community paused.
 
 ## Still open on memory UX
 

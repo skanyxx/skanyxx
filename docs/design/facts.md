@@ -20,6 +20,16 @@ Docs: [kagent](https://kagent.dev/docs/kagent/) · [agents](https://kagent.dev/d
 - kagent already has its own dashboard/CLI. Skanyxx’s job is the **customer workspace**, not a second k8s ops console.
 - Agents can be exposed as MCP (`/mcp` on the controller, default port 8083) — same port Skanyxx already talks to.
 
+## Google AX
+
+Repo: [google/ax](https://github.com/google/ax) · [concepts](https://github.com/google/ax/blob/main/docs/concepts.md)
+
+- k8s-shaped **task orchestrator**, not a long-lived chat-agent product. Primitives: **Task**, **Workspace**, **Model**.
+- Needs **Agent Substrate** in the cluster first. Control plane state is **Redis** (not etcd CRDs for millions of short tasks).
+- Workspace can pre-wire git, MCP, skills — similar *ingredients* to kagent, different unit of work (cheap sandboxes, suspend/resume, `ax ssh`).
+- Authors warn of **breaking changes** before a stable release.
+- Skanyxx v1: AX is the **Tasks** pack only (D063–D064). Ships **in the umbrella like kagent** (D067).
+
 ## Joicy
 
 Repo: [DmarshalTU/Joicy](https://github.com/DmarshalTU/Joicy)

@@ -8,7 +8,7 @@ Source of truth is **not** Dragonfly, **not** Joicy, **not** kagent TTL memory.
 | Sessions / chat history | **PostgreSQL** | Personal, TTL 14d (D044) |
 | Source blobs (files, audio) | **S3 / MinIO** | Pointer on the card only |
 | Memory API | **Skanyxx memory service** (MCP to kagent) | Search top-k, upsert, promote, conflict |
-| Cache / distributed lock | **Dragonfly** | Only with multiple replicas / hot reads (D043) |
+| Cache / distributed lock | **Dragonfly** (same instance AX uses as Redis) | Cache/locks only. Not the card store (D068). |
 | Semantic search | **pgvector later** | Day one is FTS + keys, like Joicy’s working POC |
 
 ## Why Postgres
@@ -25,4 +25,4 @@ Embeddings on every personal chat is how you get token *and* GPU cost while stil
 
 ## Day-one deploy (Helm umbrella)
 
-Default: bundled Postgres + MinIO + git. Flags to use theirs instead (D061). Dragonfly and pgvector stay off until needed.
+Default: bundled Postgres + MinIO + git + **one Dragonfly** (AX Redis + later memory cache). Flags to use theirs instead (D061, D068). pgvector stays off until needed.

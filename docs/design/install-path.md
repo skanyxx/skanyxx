@@ -2,7 +2,7 @@
 
 The **product** is a **Helm umbrella** (D060). Today’s fat local Skanyxx thins to a **client**.
 
-Umbrella subcharts: Skanyxx API · kagent · memory · **Postgres · MinIO · git (on by default)**. Turn any data store off and pass their URL (D061). Appliance = that chart on hidden k3s. BYO cluster = same chart on theirs.
+Umbrella subcharts: Skanyxx API · **kagent (on)** · **AX + Substrate (on)** · **Dragonfly (on, shared)** · memory · **Postgres · MinIO · git (on by default)**. Same install as kagent (D067–D068). Turn a runtime or data store off via values (D061). Appliance = that chart on hidden k3s. BYO cluster = same chart on theirs.
 
 ## Bundled vs their own (D061)
 
@@ -11,7 +11,8 @@ Umbrella subcharts: Skanyxx API · kagent · memory · **Postgres · MinIO · gi
 | Postgres | RDS, Cloud SQL, their Postgres |
 | MinIO | S3, Azure Blob, GCS |
 | Git (in-stack) | GitHub / GitLab / existing repo (D023) |
-| Dragonfly / pgvector | Off until needed (D043) |
+| **Dragonfly** | Their Redis/Dragonfly (AX + optional memory cache share it — D068) |
+| pgvector | Off until needed |
 
 Same Skanyxx/kagent/memory apps either way. Only the data plane URLs change.
 

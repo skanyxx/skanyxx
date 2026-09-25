@@ -39,6 +39,8 @@ Joicy is a **shape** for the bottom plane (memory as MCP). It is not Skanyxx, an
 
 kagent already has a UI. We still do not compete with it (facts.md). Skanyxx is where the **company** lives.
 
+AX is a **fourth** optional plane for **Tasks** only (`ax-tasks.md`). It does not replace kagent for chat.
+
 ## One turn (this is the product loop)
 
 1. Person talks to an agent (where that chat UI lives is still open).

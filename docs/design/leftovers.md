@@ -1,6 +1,6 @@
 # Leftovers (closed this pass)
 
-Dragonfly is **when needed** for memory cache/locks (D043). Not day one, not an agent bus.
+Dragonfly is **on by default** (D068): AX’s Redis-protocol store, and later memory cache/locks. Not an agent bus. Cards stay in Postgres.
 
 | Leftover | Call |
 |---|---|
