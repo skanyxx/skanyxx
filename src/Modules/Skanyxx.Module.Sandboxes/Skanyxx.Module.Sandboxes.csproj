@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <ProjectReference Include="..\..\Skanyxx.Core\Skanyxx.Core.csproj" />
+  </ItemGroup>
+  <!-- Runtime copies come from the Host (see PluginLoadContext shared list); the module ships only its own dll. -->
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" Version="3.36.2" />
+    <PackageReference Include="Grpc.Net.ClientFactory" Version="2.84.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.84.0" PrivateAssets="all" />
+  </ItemGroup>
+  <!-- Both: the server base is what the tests' fake AX implements; production only uses the client. -->
+  <ItemGroup>
+    <Protobuf Include="Protos\ax.proto" GrpcServices="Both" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skanyxx.Module.Sandboxes.Tests" />
+  </ItemGroup>
+  <Target Name="CopyToModules" AfterTargets="Build">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MSBuildThisFileDirectory)..\..\Skanyxx.Host\modules\" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(MSBuildThisFileDirectory)..\..\Skanyxx.Host\modules\" />
+  </Target>
+</Project>

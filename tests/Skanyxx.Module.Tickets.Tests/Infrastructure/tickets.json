@@ -1,0 +1,5 @@
+[
+  { "key": "SDB-1", "title": "Refund button double-charges", "description": "Clicking refund twice charges twice.", "type": "Bug", "status": "To Do", "priority": "High", "labels": ["billing"], "assignee": "Dana Levi", "url": "", "updatedAt": null },
+  { "key": "SDB-2", "title": "Export cards as CSV", "description": "Library needs a CSV export.", "type": "Story", "status": "To Do", "priority": "Medium", "labels": [], "assignee": null, "url": "", "updatedAt": null },
+  { "key": "SDB-3", "title": "Split the billing epic", "description": "", "type": "Epic", "status": "To Do", "priority": "Low", "labels": [], "assignee": "dana levi", "url": "", "updatedAt": null }
+]

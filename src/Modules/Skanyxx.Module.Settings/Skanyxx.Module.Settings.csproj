@@ -10,6 +10,8 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.10" />
+    <!-- EF Core Sqlite 8.0.x pulls 2.1.6; GHSA-2m69-gcr7-jv3q covers lib.e_sqlite3 <= 2.1.11. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.13" />
   </ItemGroup>
   <Target Name="CopyToModules" AfterTargets="Build">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SolutionDir)src\Skanyxx.Host\modules\" />

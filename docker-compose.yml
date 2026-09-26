@@ -1,0 +1,20 @@
+# Local data plane for development: the memory engine's Postgres (D053).
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: skanyxx
+      POSTGRES_USER: skanyxx
+      POSTGRES_PASSWORD: skanyxx
+    ports:
+      - "127.0.0.1:55432:5432"
+    volumes:
+      - skanyxx-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U skanyxx -d skanyxx"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  skanyxx-postgres:

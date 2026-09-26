@@ -1,0 +1,23 @@
+# Optional (not in kustomization.yaml): lets sandboxes reach the public internet (git clone, package registries,
+# model APIs) but nothing private. Add your cluster's pod and service CIDRs to `except` if they fall outside the
+# ranges below. UNVERIFIED on Substrate sandboxes, like sandbox-egress-deny.yaml.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress-internet-only
+  namespace: ax-sandboxes # SET: same namespace as sandbox-egress-deny.yaml
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8 # RFC1918
+              - 172.16.0.0/12 # RFC1918
+              - 192.168.0.0/16 # RFC1918
+              - 169.254.0.0/16 # link-local, incl. cloud metadata (169.254.169.254)
+              - 100.64.0.0/10 # carrier-grade NAT; some clusters use it for pods
+              - 127.0.0.0/8 # loopback

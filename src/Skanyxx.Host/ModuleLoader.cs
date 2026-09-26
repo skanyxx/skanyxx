@@ -116,6 +116,8 @@ public class ModuleLoader
     public IReadOnlyList<Assembly> GetModuleAssemblies() => _moduleAssemblies.AsReadOnly();
     public IReadOnlyList<IModule> GetModules() => _modules.AsReadOnly();
 
+    // A module that fails here is not skipped: its assembly is already handed to MVC/FastEndpoints discovery,
+    // so it would start "successfully" and 500 at request time. Disable it with Modules:Enabled:<id>=false instead.
     public void RegisterAllModuleServices(IServiceCollection services, IConfiguration configuration)
     {
         foreach (var module in _modules)
@@ -123,12 +125,13 @@ public class ModuleLoader
             try
             {
                 module.RegisterServices(services, configuration);
-                _logger.LogInformation("Registered services for module: {ModuleId}", module.ModuleId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to register services for module: {ModuleId}", module.ModuleId);
+                throw new InvalidOperationException(
+                    $"Module '{module.ModuleId}' failed to register its services. Fix its configuration or set Modules:Enabled:{module.ModuleId}=false.", ex);
             }
+            _logger.LogInformation("Registered services for module: {ModuleId}", module.ModuleId);
         }
     }
 
@@ -139,12 +142,13 @@ public class ModuleLoader
             try
             {
                 await module.InitializeAsync(serviceProvider);
-                _logger.LogInformation("Initialized module: {ModuleId}", module.ModuleId);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to initialize module: {ModuleId}", module.ModuleId);
+                throw new InvalidOperationException(
+                    $"Module '{module.ModuleId}' failed to initialize. Fix its configuration or set Modules:Enabled:{module.ModuleId}=false.", ex);
             }
+            _logger.LogInformation("Initialized module: {ModuleId}", module.ModuleId);
         }
     }
 }
