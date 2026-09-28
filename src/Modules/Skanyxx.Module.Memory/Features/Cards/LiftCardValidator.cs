@@ -8,7 +8,7 @@ internal sealed class LiftCardValidator : AbstractValidator<LiftCardCommand>
     public LiftCardValidator()
     {
         RuleFor(c => c.Caller).SetValidator(new CallerValidator());
-        RuleFor(c => c.Caller.AgentId).Null().WithName("X-Agent-Id").WithMessage("Lift is a human action.");
+        RuleFor(c => c.Caller.AgentId).Null().WithName("agentId").WithMessage("Lift is a human action.");
         RuleFor(c => c.FromScope).Must(s => Scope.TryParse(s, out _)).WithMessage("Invalid scope.");
         RuleFor(c => c.ToScope).Must(s => Scope.TryParse(s, out _)).WithMessage("Invalid target scope.");
         RuleFor(c => c.Key).Must(CardKey.IsValid).WithMessage("Invalid key.");

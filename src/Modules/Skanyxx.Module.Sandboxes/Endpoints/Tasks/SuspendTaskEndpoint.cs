@@ -15,7 +15,7 @@ internal sealed class SuspendTaskEndpoint(IMediator mediator) : Endpoint<TaskRou
 
     public override async Task HandleAsync(TaskRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new SetTaskSuspendedCommand(SandboxesHeaders.User(HttpContext), req.Name, Suspend: true), ct);
+        var outcome = await mediator.Send(new SetTaskSuspendedCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Name, Suspend: true), ct);
         await Send.ResultAsync(outcome.ToHttp(task => task));
     }
 }

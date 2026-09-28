@@ -95,20 +95,22 @@ public sealed class ValidationTests : SandboxesTestBase
     [InlineData("GET", "/api/sandboxes/workspaces")]
     [InlineData("PUT", "/api/sandboxes/workspaces/ws")]
     [InlineData("GET", "/api/sandboxes/models")]
-    public async Task EveryEndpoint_RequiresAValidUser(string method, string path)
+    public async Task EveryEndpoint_RequiresASignedInUser_AndIgnoresTheUserIdHeader(string method, string path)
     {
-        HttpRequestMessage Request(string? user)
+        HttpRequestMessage Request(string? header)
         {
             var request = new HttpRequestMessage(new HttpMethod(method), path) { Content = JsonContent.Create(new { image = "ghcr.io/acme/img" }) };
-            if (user is not null)
-                request.Headers.Add("X-User-Id", user);
+            if (header is not null)
+                request.Headers.Add("X-User-Id", header);
             return request;
         }
 
         var anonymous = await App.Client(userId: null).SendAsync(Request(null));
-        var invalid = await App.Client(userId: null).SendAsync(Request("Ana Smith"));
+        var headerOnly = await App.Client(userId: null).SendAsync(Request(SandboxesApp.Supervisor));
+        var invalid = await App.Client(userId: "Ana Smith").SendAsync(Request(null));
 
-        Assert.Equal(HttpStatusCode.BadRequest, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, headerOnly.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
         Assert.Empty(Ax.Atespaces);
     }

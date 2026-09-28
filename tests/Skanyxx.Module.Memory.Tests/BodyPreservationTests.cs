@@ -31,7 +31,7 @@ public sealed class BodyPreservationTests(PostgresFixture postgres) : MemoryTest
     [Fact]
     public async Task AgentUpdate_KeepsTheLibraryOnlyFields()
     {
-        var boss = App.Client(MemoryApp.Supervisor);
+        var boss = App.SupervisorClient();
         await boss.SetGrantsAsync("writer", new { scope = "company", canSearch = true, canUpsert = true });
         await boss.PutCardAsync("company", "refund-window", body: "long explanation", source: "s3://docs/policy.pdf");
         await using var client = await App.McpAsync("writer");

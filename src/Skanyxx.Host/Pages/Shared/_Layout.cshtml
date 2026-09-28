@@ -95,6 +95,17 @@
             <header class="top-header">
                 <h1 class="header-title">@ViewData["Title"]</h1>
                 <div class="header-actions">
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <span class="header-user" title="@User.Identity.Name">@(User.FindFirst(Skanyxx.Core.Platform.Identity.SkanyxxClaims.DisplayName)?.Value ?? User.Identity.Name)</span>
+                        <form method="post" asp-page="/Logout" class="header-signout">
+                            <button type="submit" class="btn btn-ghost">Sign out</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <a href="/Login" class="btn btn-ghost">Sign in</a>
+                    }
                     <button class="pwa-install-btn" id="installBtn" style="display: none;">
                         <span>&#x2B07;</span>
                         <span>Install App</span>

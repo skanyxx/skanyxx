@@ -1,25 +1,28 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
+using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Endpoints;
 
 /// <summary>
-/// Identity is read from these headers only — never from a bound request DTO, which FastEndpoints
-/// also fills from the query string and body. TODO(identity-slice): replace with authenticated claims.
+/// Identity on <c>/mcp/memory</c>. The agent is the owner of the secret the request authenticated with (D080). The user
+/// is <c>X-User-Id</c>, which the agent vouches for (kagent forwards it with <c>allowedHeaders</c>) — honoured only when
+/// the owner let that agent act for users, and only when it is a Skanyxx user id (a lowercase GUID); otherwise the call
+/// has no user and so no personal scope (D084). REST never reads these.
 /// </summary>
 public static class MemoryHeaders
 {
     public const string UserId = "X-User-Id";
-    public const string AgentId = "X-Agent-Id";
 
-    /// <summary>REST callers are always treated as humans; agents go through MCP.</summary>
-    public static Caller Human(HttpContext context) => new(Read(context, UserId), null);
-
-    public static Caller Agent(HttpContext context) => new(Read(context, UserId), Read(context, AgentId));
-
-    private static string? Read(HttpContext context, string header)
+    public static MemoryCaller Agent(HttpContext context)
     {
-        string? value = context.Request.Headers[header];
-        return string.IsNullOrEmpty(value) ? null : value;
+        var agentId = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? throw new InvalidOperationException("/mcp/memory reached without an authenticated agent.");
+        var actsForUsers = context.User.HasClaim(AgentSecretAuthentication.ActsForUsersClaim, "true");
+        return new(actsForUsers ? SkanyxxUserId(context.Request.Headers[UserId]) : null, agentId);
     }
+
+    private static string? SkanyxxUserId(string? value) =>
+        Guid.TryParseExact(value, "D", out var id) && id.ToString() == value ? value : null;
 }

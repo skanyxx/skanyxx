@@ -49,7 +49,7 @@ public sealed class TicketsOptions
     [Range(1, 1_000)]
     public int MaxActiveRunsPerUser { get; set; } = 5;
 
-    /// <summary>Unfinished runs from everyone together; more is a 429. The per-user cap alone trusts a spoofable header.</summary>
+    /// <summary>Unfinished runs from everyone together; more is a 429. The per-user cap alone does not stop many accounts.</summary>
     [Range(1, 10_000)]
     public int MaxActiveRuns { get; set; } = 20;
 
@@ -63,9 +63,6 @@ public sealed class TicketsOptions
     /// list replaces that default (the config binder would append to a non-empty default, so it starts empty).
     /// </summary>
     public string[] AllowedAgents { get; set; } = [];
-
-    /// <summary>Users who may edit pipelines, and cancel or decide anyone's run. TODO(identity-slice): roles.</summary>
-    public string[] Supervisors { get; set; } = [];
 
     /// <summary>
     /// The configured string with this module's pool settings. Npgsql keys pools by connection string, so the

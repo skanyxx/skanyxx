@@ -32,7 +32,6 @@ public sealed class TicketsModule : IModule
             .PostConfigure(o => o.AllowedAgents = o.AllowedAgents.Length > 0 ? o.AllowedAgents : DefaultPipeline.Agents)
             .ValidateDataAnnotations()
             .Validate(o => o.Source != "local" || File.Exists(o.LocalPath), "Tickets:LocalPath must name an existing file when Source is 'local'.")
-            .Validate(o => o.Supervisors.All(Identifier.IsValid), "Tickets:Supervisors entries must be valid user ids (lowercase, e.g. 'ana').")
             .ValidateOnStart();
 
         services.AddDbContext<TicketsDbContext>((sp, o) => o.UseNpgsql(

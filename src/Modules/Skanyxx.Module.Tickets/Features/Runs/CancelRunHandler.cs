@@ -1,6 +1,5 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Domain;
@@ -11,7 +10,7 @@ namespace Skanyxx.Module.Tickets.Features.Runs;
 /// Cancel wins over an in-flight stage: the worker's save then fails its version check and is dropped (the agent
 /// call itself runs to its end). Only the run's creator or a supervisor may cancel.
 /// </summary>
-internal sealed class CancelRunHandler(TicketsDbContext db, IOptions<TicketsOptions> options, TimeProvider clock)
+internal sealed class CancelRunHandler(TicketsDbContext db, TimeProvider clock)
     : IRequestHandler<CancelRunCommand, Outcome<Run>>
 {
     public async Task<Outcome<Run>> Handle(CancelRunCommand command, CancellationToken ct)
@@ -19,7 +18,7 @@ internal sealed class CancelRunHandler(TicketsDbContext db, IOptions<TicketsOpti
         var run = await db.Runs.Include(r => r.StageRuns).SingleOrDefaultAsync(r => r.Id == command.Id, ct);
         if (run is null)
             return Outcome<Run>.NotFound($"No run '{command.Id}'.");
-        if (run.CreatedBy != command.UserId && !options.Value.Supervisors.Contains(command.UserId))
+        if (run.CreatedBy != command.UserId && !command.IsSupervisor)
             return Outcome<Run>.Forbidden("Only the person who started the run, or a supervisor, may cancel it.");
         if (run.IsTerminal)
             return Outcome<Run>.Conflict(run, $"The run already ended ({run.State}).");

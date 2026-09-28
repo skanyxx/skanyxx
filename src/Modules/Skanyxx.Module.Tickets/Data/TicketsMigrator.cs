@@ -1,3 +1,4 @@
+using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -33,8 +34,10 @@ internal sealed class TicketsMigrator(IServiceScopeFactory scopes, TimeProvider 
         }
         finally
         {
-            // Explicit: a pooled connection keeps its session, and so the lock, after it is closed.
-            await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({MigrateLockKey})", CancellationToken.None);
+            // Explicit: a pooled connection keeps its session, and so the lock, after it is closed. A broken
+            // connection has lost its session and the lock with it, and unlocking there would throw over the real error.
+            if (db.Database.GetDbConnection().State == ConnectionState.Open)
+                await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_unlock({MigrateLockKey})", CancellationToken.None);
             await db.Database.CloseConnectionAsync();
         }
     }

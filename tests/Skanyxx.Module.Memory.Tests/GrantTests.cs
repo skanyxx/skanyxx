@@ -18,7 +18,7 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
     [Fact]
     public async Task SetGrants_ReplacesPreviousGrants()
     {
-        var boss = App.Client(MemoryApp.Supervisor);
+        var boss = App.SupervisorClient();
         await boss.SetGrantsAsync("seed", new { scope = "company", canSearch = true, canUpsert = true });
         await boss.SetGrantsAsync("seed", new { scope = "team:billing", canSearch = true, canUpsert = false });
 
@@ -40,7 +40,7 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
     {
         var grants = Enumerable.Range(0, 51).Select(i => (object)new { scope = $"team:t{i}", canSearch = true, canUpsert = false }).ToArray();
 
-        var response = await App.Client(MemoryApp.Supervisor).SetGrantsAsync("seed", grants);
+        var response = await App.SupervisorClient().SetGrantsAsync("seed", grants);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -52,11 +52,11 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
             .Select(i => new[] { $"team:t{i}", i % 2 == 0 ? "company" : $"department:d{i}" })
             .ToList();
 
-        var responses = await Task.WhenAll(sets.Select(set => App.Client(MemoryApp.Supervisor).SetGrantsAsync("seed",
+        var responses = await Task.WhenAll(sets.Select(set => App.SupervisorClient().SetGrantsAsync("seed",
             set.Select(s => (object)new { scope = s, canSearch = true, canUpsert = false }).ToArray())));
 
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
-        var final = (await App.Client(MemoryApp.Supervisor).GetFromJsonAsync<List<GrantEntry>>("/api/memory/grants/seed", CardApi.Json))!
+        var final = (await App.SupervisorClient().GetFromJsonAsync<List<GrantEntry>>("/api/memory/grants/seed", CardApi.Json))!
             .Select(g => g.Scope).Order().ToList();
         Assert.Contains(sets, set => set.Order().SequenceEqual(final));
     }
@@ -64,9 +64,9 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
     [Fact]
     public async Task DenyGrant_RevokesTheAgent()
     {
-        await App.Client("ana").PutCardAsync("personal:ana", "refund-window");
-        var set = await App.Client(MemoryApp.Supervisor).SetGrantsAsync("seed", new { scope = "company", canSearch = false, canUpsert = false });
-        await using var client = await App.McpAsync("seed", userId: "ana");
+        await App.Client(Users.Ana).PutCardAsync($"personal:{Users.Ana}", "refund-window");
+        var set = await App.SupervisorClient().SetGrantsAsync("seed", new { scope = "company", canSearch = false, canUpsert = false });
+        await using var client = await App.McpAsync("seed", userId: Users.Ana);
 
         var upsert = await client.CallToolAsync("memory_upsert", new Dictionary<string, object?>
         {
@@ -85,7 +85,7 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
     [InlineData("{}")]
     public async Task EmptyGrantList_Rejected_BecauseItWouldMeanTheDefault(string json)
     {
-        var response = await App.Client(MemoryApp.Supervisor).PutAsync("/api/memory/grants/seed",
+        var response = await App.SupervisorClient().PutAsync("/api/memory/grants/seed",
             new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -96,7 +96,7 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
     [InlineData("{\"grants\":[null]}")]
     public async Task NullGrants_AreAValidationError_NotA500(string json)
     {
-        var response = await App.Client(MemoryApp.Supervisor).PutAsync("/api/memory/grants/seed",
+        var response = await App.SupervisorClient().PutAsync("/api/memory/grants/seed",
             new StringContent(json, System.Text.Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
@@ -105,7 +105,7 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
     [Fact]
     public async Task TrailingNewline_InGrantScopeOrAgent_Rejected()
     {
-        var boss = App.Client(MemoryApp.Supervisor);
+        var boss = App.SupervisorClient();
 
         var badScope = await boss.SetGrantsAsync("seed", new { scope = "team:t\n", canSearch = true, canUpsert = false });
         var badAgent = await boss.SetGrantsAsync(Uri.EscapeDataString("seed\n"), new { scope = "company", canSearch = true, canUpsert = false });
@@ -121,7 +121,7 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
     [InlineData("nowhere", true, false)]
     public async Task InvalidGrant_Rejected(string scope, bool canSearch, bool canUpsert)
     {
-        var response = await App.Client(MemoryApp.Supervisor).SetGrantsAsync("seed", new { scope, canSearch, canUpsert });
+        var response = await App.SupervisorClient().SetGrantsAsync("seed", new { scope, canSearch, canUpsert });
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

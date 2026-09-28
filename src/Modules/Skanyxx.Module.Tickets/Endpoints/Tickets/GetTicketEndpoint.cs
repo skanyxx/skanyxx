@@ -15,7 +15,7 @@ internal sealed class GetTicketEndpoint(IMediator mediator) : Endpoint<TicketRou
 
     public override async Task HandleAsync(TicketRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetTicketQuery(TicketsHeaders.User(HttpContext), req.Key), ct);
+        var outcome = await mediator.Send(new GetTicketQuery(Caller.UserId(User), req.Key), ct);
         await Send.ResultAsync(outcome.ToHttp(t => t));
     }
 }

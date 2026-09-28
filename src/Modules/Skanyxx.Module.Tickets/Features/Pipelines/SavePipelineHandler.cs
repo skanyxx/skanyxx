@@ -1,19 +1,18 @@
 using MediatR;
 using Npgsql;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Domain;
 
 namespace Skanyxx.Module.Tickets.Features.Pipelines;
 
-internal sealed class SavePipelineHandler(TicketsDbContext db, IOptions<TicketsOptions> options, TimeProvider clock)
+internal sealed class SavePipelineHandler(TicketsDbContext db, TimeProvider clock)
     : IRequestHandler<SavePipelineCommand, Outcome<Pipeline>>
 {
     public async Task<Outcome<Pipeline>> Handle(SavePipelineCommand command, CancellationToken ct)
     {
-        if (!options.Value.Supervisors.Contains(command.UserId))
+        if (!command.IsSupervisor)
             return Outcome<Pipeline>.Forbidden("Only a supervisor may edit pipelines.");
 
         var now = clock.GetUtcNow().UtcDateTime;

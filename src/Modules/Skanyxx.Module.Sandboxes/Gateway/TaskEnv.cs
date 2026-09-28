@@ -15,8 +15,9 @@ internal static class TaskEnv
     public const string Owner = "SKANYXX_OWNER";
 
     /// <summary>
-    /// The memory identity; the image sends it as <c>X-Agent-Id</c> to <c>/mcp/memory</c>. Fresh on every run that
-    /// (re)activates the task, so grants given to one run never pass to a later task reusing the name.
+    /// The memory identity (grants are keyed by it). Fresh on every run that (re)activates the task, so grants given to
+    /// one run never pass to a later task reusing the name. <c>/mcp/memory</c> takes the agent from its secret (D080),
+    /// not from a header, so memory attach also needs a per-task credential (D076/D077) before it can be switched on.
     /// </summary>
     public const string AgentId = "SKANYXX_AGENT_ID";
 

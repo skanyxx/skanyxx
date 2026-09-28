@@ -19,6 +19,11 @@ public sealed class OptionsTests
         return Register(settings).BuildServiceProvider().GetRequiredService<IOptions<SandboxesOptions>>().Value;
     }
 
+    // Supervisors come from role claims now; a Sandboxes:Supervisors list left in an old config must not stop startup.
+    [Fact]
+    public void LeftoverSupervisorsKey_IsIgnored() =>
+        Assert.Equal("default", Resolve(new() { ["Sandboxes:Supervisors:0"] = "Not A Valid Id" }).Atespace);
+
     [Fact]
     public void Defaults_AreValid()
     {
@@ -35,8 +40,14 @@ public sealed class OptionsTests
     [Theory]
     [InlineData(null)]
     [InlineData("false")]
-    public void NotEnabled_RegistersNothing(string? enabled) =>
-        Assert.Empty(Register(new() { ["Sandboxes:Enabled"] = enabled, ["Sandboxes:AllowedImages:0"] = "ghcr.io/acme/" }));
+    public void NotEnabled_RegistersNoAxClientOrOptionsChecks_AndTheGatewayRefuses(string? enabled)
+    {
+        var services = Register(new() { ["Sandboxes:Enabled"] = enabled, ["Sandboxes:AllowedImages:0"] = "ghcr.io/acme/" });
+
+        Assert.DoesNotContain(services, s => s.ServiceType == typeof(Ax.V1Alpha1.AX.AXClient) || s.ServiceType == typeof(IValidateOptions<SandboxesOptions>));
+        var error = Assert.Throws<InvalidOperationException>(() => services.BuildServiceProvider().GetRequiredService<Gateway.AxGateway>());
+        Assert.Contains("Sandboxes:Enabled", error.Message);
+    }
 
     [Fact]
     public void AConfiguredAllowlist_ReplacesTheDefault() =>
@@ -74,7 +85,6 @@ public sealed class OptionsTests
     [InlineData("Sandboxes:MaxActiveTasksPerUser", "0")]
     [InlineData("Sandboxes:MaxActiveTasks", "0")]
     [InlineData("Sandboxes:AllowedImages:0", "")]
-    [InlineData("Sandboxes:Supervisors:0", "Ana")]
     [InlineData("Sandboxes:MaxCpu", "lots")]
     [InlineData("Sandboxes:MaxCpu", "500m")]
     [InlineData("Sandboxes:MaxMemory", "512Mi")]

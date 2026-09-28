@@ -15,7 +15,7 @@ internal sealed class RunTaskEndpoint(IMediator mediator) : Endpoint<RunTaskRequ
 
     public override async Task HandleAsync(RunTaskRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new RunTaskCommand(SandboxesHeaders.User(HttpContext), req.Name, req.Image,
+        var outcome = await mediator.Send(new RunTaskCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Name, req.Image,
             req.Command ?? [], req.Env ?? [], req.Workspaces ?? [], req.Resources), ct);
         await Send.ResultAsync(outcome.ToHttp(task => task));
     }

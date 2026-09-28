@@ -53,6 +53,45 @@ namespace Skanyxx.Module.Memory.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Skanyxx.Module.Memory.Domain.AgentSecret", b =>
+                {
+                    b.Property<string>("AgentId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("agent_id");
+
+                    b.Property<bool>("ActsForUsers")
+                        .HasColumnType("boolean")
+                        .HasColumnName("acts_for_users");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("created_by");
+
+                    b.Property<byte[]>("SecretHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("secret_hash");
+
+                    b.HasKey("AgentId");
+
+                    b.HasIndex("SecretHash")
+                        .IsUnique();
+
+                    b.ToTable("memory_agent_secrets", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_memory_agent_secrets_agent", "agent_id ~ '^[a-z0-9][a-z0-9._@-]{0,127}$'");
+
+                            t.HasCheckConstraint("ck_memory_agent_secrets_hash", "octet_length(secret_hash) = 32");
+                        });
+                });
+
             modelBuilder.Entity("Skanyxx.Module.Memory.Domain.Card", b =>
                 {
                     b.Property<long>("Id")

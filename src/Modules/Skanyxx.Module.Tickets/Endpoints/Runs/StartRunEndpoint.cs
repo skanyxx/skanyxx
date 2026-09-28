@@ -16,7 +16,7 @@ internal sealed class StartRunEndpoint(IMediator mediator) : Endpoint<StartRunRe
 
     public override async Task HandleAsync(StartRunRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new StartRunCommand(TicketsHeaders.User(HttpContext), req.TicketKey, req.PipelineId), ct);
+        var outcome = await mediator.Send(new StartRunCommand(Caller.UserId(User), req.TicketKey, req.PipelineId), ct);
         await Send.ResultAsync(outcome.ToHttp(RunMapper.ToDto));
     }
 }

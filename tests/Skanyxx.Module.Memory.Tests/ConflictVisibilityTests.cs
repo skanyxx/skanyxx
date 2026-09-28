@@ -20,11 +20,11 @@ public sealed class ConflictVisibilityTests(PostgresFixture postgres) : MemoryTe
     [Fact]
     public async Task UpsertOnlyAgent_ConflictDoesNotRevealTheCurrentCard()
     {
-        await App.Client(MemoryApp.Supervisor).SetGrantsAsync("blind", new { scope = "company", canSearch = false, canUpsert = true });
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "refund-window", body: "SECRET");
+        await App.SupervisorClient().SetGrantsAsync("blind", new { scope = "company", canSearch = false, canUpsert = true });
+        await App.SupervisorClient().PutCardAsync("company", "refund-window", body: "SECRET");
 
         var outcome = await SendAsync(new UpsertCardCommand(
-            new Caller(null, "blind"), "company", "refund-window", 0, "fact", "w", "y"));
+            new MemoryCaller(null, "blind"), "company", "refund-window", 0, "fact", "w", "y"));
 
         Assert.Equal(OutcomeStatus.Conflict, outcome.Status);
         Assert.Null(outcome.Value);
@@ -33,11 +33,11 @@ public sealed class ConflictVisibilityTests(PostgresFixture postgres) : MemoryTe
     [Fact]
     public async Task SearchingAgent_ConflictIncludesTheCurrentCard()
     {
-        await App.Client(MemoryApp.Supervisor).SetGrantsAsync("writer", new { scope = "company", canSearch = true, canUpsert = true });
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "refund-window");
+        await App.SupervisorClient().SetGrantsAsync("writer", new { scope = "company", canSearch = true, canUpsert = true });
+        await App.SupervisorClient().PutCardAsync("company", "refund-window");
 
         var outcome = await SendAsync(new UpsertCardCommand(
-            new Caller(null, "writer"), "company", "refund-window", 0, "fact", "w", "y"));
+            new MemoryCaller(null, "writer"), "company", "refund-window", 0, "fact", "w", "y"));
 
         Assert.Equal(OutcomeStatus.Conflict, outcome.Status);
         Assert.Equal(1, outcome.Value!.Version);

@@ -5,9 +5,9 @@ namespace Skanyxx.Module.Sandboxes.Features;
 
 internal static class SandboxRules
 {
-    /// <summary>Every sandboxes request carries the caller's <c>X-User-Id</c>. TODO(identity-slice): claims.</summary>
+    /// <summary>Every sandboxes request carries the signed-in user's id, filled by the endpoint from the principal.</summary>
     public static IRuleBuilderOptions<T, string?> ValidUser<T>(this IRuleBuilder<T, string?> rule) =>
-        rule.Must(Identifier.IsValid).OverridePropertyName("identity").WithMessage("A valid X-User-Id header is required.");
+        rule.Must(Identifier.IsValid).OverridePropertyName("identity").WithMessage("A signed-in user with a valid id is required.");
 
     public static IRuleBuilderOptions<T, string> ValidName<T>(this IRuleBuilder<T, string> rule) =>
         rule.Must(DnsLabel.IsValid).OverridePropertyName("name")

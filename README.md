@@ -10,14 +10,18 @@ SRE Platform for Kubernetes management, agent orchestration, and monitoring. Bui
 ## Quick Start
 
 ```bash
-# Build everything (Core + Host + all 15 modules)
+# Build everything (Core + Host + all 16 modules)
 dotnet build Skanyxx.sln
 
 # Run the app
 dotnet run --project src/Skanyxx.Host
 ```
 
-The app starts at **http://localhost:5282** (or https://localhost:7219).
+The app starts at **http://localhost:5282** (or https://localhost:7219). It needs Postgres (`docker compose up -d`).
+On first run, `/Setup` creates the owner account. With `dotnet run` (Development) and no token configured, that
+works from the same machine only (`http://localhost:5282`). Anywhere else — Production, the installers, a container —
+set `Identity:BootstrapToken` (32+ characters) first and enter it in the setup form; the Linux and macOS installers
+generate one for you. See Identity and security model.
 
 Swagger UI is available at http://localhost:5282/swagger in Development mode.
 
@@ -38,6 +42,7 @@ Skanyxx.sln
 │       ├── Skanyxx.Module.Dashboard/
 │       ├── Skanyxx.Module.Debug/
 │       ├── Skanyxx.Module.Hooks/
+│       ├── Skanyxx.Module.Identity/   # Accounts, owner bootstrap, sign-in (ASP.NET Core Identity)
 │       ├── Skanyxx.Module.Investigate/
 │       ├── Skanyxx.Module.Memory/     # Memory engine (Postgres cards + MCP)
 │       ├── Skanyxx.Module.Sandboxes/  # AX Tasks (experimental, off by default)
@@ -45,7 +50,7 @@ Skanyxx.sln
 │       ├── Skanyxx.Module.Settings/
 │       ├── Skanyxx.Module.Tickets/    # Ticket pipelines over kagent
 │       └── Skanyxx.Module.ToolServers/
-├── tests/                         # Memory, Tickets, Sandboxes test projects
+├── tests/                         # Host, Identity, Memory, Tickets, Sandboxes test projects
 ├── deploy/                        # kagent ticket agents, sample tickets, sandbox NetworkPolicies
 ├── docs/design/                   # Design log (decisions, open questions)
 └── SkanyxxWeb.csproj              # Legacy monolith (deprecated)
@@ -133,7 +138,7 @@ Set any module to `false` and its API routes will not be registered. You can als
    ```
 
 4. Add endpoints. New modules (Memory, Tickets, Sandboxes) use the REPR style, one class per file:
-   - a FastEndpoints `Endpoint<TRequest>` per route, under a shared `Group` (route prefix, `AllowAnonymous` until the identity slice, `DisableCors`, body limit);
+   - a FastEndpoints `Endpoint<TRequest>` per route, under a shared `Group` (route prefix, `DisableCors`, body limit); every route requires a signed-in user unless it calls `AllowAnonymous()`, and reads the caller with `Caller.UserId(User)`;
    - the endpoint sends a MediatR command/query; its handler returns an `Outcome<T>` that maps to HTTP;
    - a FluentValidation `AbstractValidator<TCommand>` per command (runs in the MediatR `ValidationBehavior`);
    - implement `IEndpointModule.MapEndpoints` only for routes FastEndpoints cannot see (e.g. Memory's MCP at `/mcp/memory`).
@@ -154,19 +159,22 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | Section | Description |
 |---|---|
 | `AllowedHosts` | Explicit host list (`skanyxx.example.com;localhost`). The Host refuses to start with `*` outside Development (DNS-rebinding guard) |
-| `Skanyxx:AllowedOrigins` | Browser origins allowed on `/api/memory`, `/api/tickets`, `/api/sandboxes` and `/mcp` (default `[]`). A request carrying any other `Origin` gets `403`; requests without `Origin` (non-browser clients) pass |
-| `Skanyxx:RateLimit` | Host-wide, per remote IP, on the same routes: `PermitLimit` (200) per `WindowSeconds` (10) → `429`. Behind a proxy the partition is the proxy's IP (ForwardedHeaders not configured) |
-| `Skanyxx:HealthCheckTimeoutSeconds` | Per-check timeout for `/health` (5). `/health` returns status only, no CORS |
+| `Skanyxx:AllowedOrigins` | Browser origins allowed to send unsafe requests (POST/PUT/PATCH/DELETE) to **any** route on the Host, plus every request to `/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity` and `/mcp` (default `[]`). On routes outside those prefixes, the Host's own origin (Origin host:port equal to the Host header) is also allowed, so the app's own forms and fetches work without listing it. Any other `Origin` gets `403`; requests without `Origin` (non-browser clients) pass |
+| `Skanyxx:RateLimit` | Per client address (IPv6 grouped per /64), on the guarded prefixes only (`/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity`, `/mcp`); legacy controllers, pages and static files are not limited: `PermitLimit` (200) per `WindowSeconds` (10) → `429`. Behind a proxy the partition is the proxy's IP (ForwardedHeaders not configured) |
+| `Skanyxx:SignInRateLimit` | Stricter window, per client address (IPv6 per /64), over the credential posts only — sign-in, bootstrap, unlock, `/Login`, `/Setup`: `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Sign-out and refresh are outside it |
+| `Skanyxx:HealthCheckTimeoutSeconds` | Per-check timeout for `/health` (5). `/health` is anonymous and lists each check's name and status; no exception text, no CORS |
 | `KAgent` | KAgent API connection (BaseUrl, Port, Protocol, Token) |
 | `Kubernetes` | Optional kubeconfig path |
 | `AWS` | AWS profile and region for cloud tools |
 | `Azure` | Azure config directory |
 | `Modules` | Plugin directory and enable/disable flags |
+| `ConnectionStrings:Identity` | Postgres for accounts, roles and the Data Protection key ring (required). **Use a separate database role (or database) from the other modules** — whoever can read the key ring can mint sessions |
+| `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `SecurityStampValidationSeconds` (60), `MaxPoolSize` (20). Validated at startup |
 | `ConnectionStrings:Memory` | Postgres for the memory engine (required; startup fails without it) |
-| `Memory` | `SearchTopK` (5), `UpsertsPerMinute` (30, per caller), `UpsertsPerMinuteTotal` (300, all callers), `MaxPoolSize` (40), `Supervisors` (user ids allowed to write/lift into `company` and set agent grants) |
+| `Memory` | `SearchTopK` (5), `UpsertsPerMinute` (30, per caller), `UpsertsPerMinuteTotal` (300, all callers), `MaxPoolSize` (40). Supervisors (write/lift into `company`, set agent grants) are users with role `owner` or `supervisor` |
 | `ConnectionStrings:Tickets` | Postgres for ticket pipelines (required; may be the same database as memory) |
-| `Tickets` | `Source` (`jira` \| `local`), `LocalPath` (JSON file, required when `local`), `Jira` (`Site` — https only, `Email`, `ApiToken`, `Project` or `Jql` (overrides `Project`), `TimeoutSeconds` (20)), `KAgentUserId` (`skanyxx-tickets`; the kagent user that owns every stage session), `StageTimeoutSeconds` (600), `PollSeconds` (5), `MaxTicketChars` (20000), `MaxPromptChars` (96000), `MaxAnswerChars` (100000), `MaxStageAttemptsPerRun` (30), `MaxActiveRunsPerUser` (5), `MaxActiveRuns` (20, all users), `MaxPoolSize` (40), `AllowedAgents` (`namespace/name`; empty = the five ticket agents; a list replaces that default), `Supervisors` (`[]`; may edit and delete pipelines) |
-| `Sandboxes` | `Address` (AX gRPC, h2c; `http://ax-server.ax-system.svc:8080`), `Atespace` (`default`), `AllowedImages` (`[]`; registry/repo prefixes, empty = nothing runs, a configured list replaces the default), `RequireDigest` (`false`; on = image must be `@sha256:`), `MaxCpu` (`4`), `MaxMemory` (`8Gi`), `DefaultCpuRequest` (`250m`), `DefaultMemoryRequest` (`256Mi`), `DefaultCpuLimit` (`1`), `DefaultMemoryLimit` (`1Gi`), `MaxActiveTasksPerUser` (`3`), `MaxActiveTasks` (`50`, whole atespace), `CountBudgetSeconds` (`30`), `Supervisors` (`[]`), `NetworkIsolationConfirmed` (`false`; must be `true` for a non-empty `AllowedImages`), `MemoryMcpUrl` (`""`; a non-empty value is **refused at startup** until a sandbox-facing listener exists, see AX Tasks), `TimeoutSeconds` (`15`), `WatchSeconds` (`120`), `KeepAliveSeconds` (`15`), `MaxWatchesPerUser` (`2`), `MaxWatches` (`50`) |
+| `Tickets` | `Source` (`jira` \| `local`), `LocalPath` (JSON file, required when `local`), `Jira` (`Site` — https only, `Email`, `ApiToken`, `Project` or `Jql` (overrides `Project`), `TimeoutSeconds` (20)), `KAgentUserId` (`skanyxx-tickets`; the kagent user that owns every stage session), `StageTimeoutSeconds` (600), `PollSeconds` (5), `MaxTicketChars` (20000), `MaxPromptChars` (96000), `MaxAnswerChars` (100000), `MaxStageAttemptsPerRun` (30), `MaxActiveRunsPerUser` (5), `MaxActiveRuns` (20, all users), `MaxPoolSize` (40), `AllowedAgents` (`namespace/name`; empty = the five ticket agents; a list replaces that default). Editing and deleting pipelines needs role `owner` or `supervisor` |
+| `Sandboxes` | `Address` (AX gRPC, h2c; `http://ax-server.ax-system.svc:8080`), `Atespace` (`default`), `AllowedImages` (`[]`; registry/repo prefixes, empty = nothing runs, a configured list replaces the default), `RequireDigest` (`false`; on = image must be `@sha256:`), `MaxCpu` (`4`), `MaxMemory` (`8Gi`), `DefaultCpuRequest` (`250m`), `DefaultMemoryRequest` (`256Mi`), `DefaultCpuLimit` (`1`), `DefaultMemoryLimit` (`1Gi`), `MaxActiveTasksPerUser` (`3`), `MaxActiveTasks` (`50`, whole atespace), `CountBudgetSeconds` (`30`), `NetworkIsolationConfirmed` (`false`; must be `true` for a non-empty `AllowedImages`), `MemoryMcpUrl` (`""`; a non-empty value is **refused at startup** until a sandbox-facing listener exists, see AX Tasks), `TimeoutSeconds` (`15`), `WatchSeconds` (`120`), `KeepAliveSeconds` (`15`), `MaxWatchesPerUser` (`2`), `MaxWatches` (`50`) |
 
 ## API Endpoints
 
@@ -182,34 +190,210 @@ Each module exposes REST endpoints under `/api/`:
 | Dashboard | `/api/dashboard` |
 | Debug | `/api/debug` |
 | Hooks | `/api/hooks` |
+| Identity | `/api/identity/status`, `/bootstrap`, `/sign-in`, `/refresh`, `/sign-out`, `/me`, `/unlock` |
 | Investigate | `/api/investigate` |
-| Memory | `/api/memory/cards`, `/api/memory/grants` (+ MCP at `/mcp/memory`) |
+| Memory | `/api/memory/cards`, `/api/memory/grants`, `/api/memory/agents/{agentId}/secret` (+ MCP at `/mcp/memory`, agent secret) |
 | Tickets | `/api/tickets/issues`, `/api/tickets/pipelines`, `/api/tickets/runs` |
 | Sandboxes (experimental) | `/api/sandboxes/tasks`, `/api/sandboxes/workspaces`, `/api/sandboxes/models` |
 | Sessions | `/api/sessions` |
 | Settings | `/api/settings` |
 | ToolServers | `/api/toolservers` |
 
-Health check: `GET /health` (overall status only; no per-check details)
+Health check: `GET /health` (anonymous; overall status plus each check's name and status, e.g.
+`identity-postgres: Healthy`; no exception text)
 
-## Security model (until the identity slice)
+## Identity and security model
 
-Memory, Tickets and Sandboxes have **no authentication yet**. Accepted for now, not safe for an open network:
+Every page and API requires a signed-in user (fallback authorization policy). Local accounts live in Postgres
+(ASP.NET Core Identity, `Skanyxx.Module.Identity`); there is no bundled IdP.
 
-- Every `*:Supervisors` entry must be a lowercase user id (startup refuses anything else).
-- **One spoofable header.** All three modules identify the caller by `X-User-Id` (memory MCP also `X-Agent-Id`).
-  Anyone who can reach the host can send any id, including a supervisor's.
-- **Three `Supervisors` lists** — `Memory:Supervisors`, `Tickets:Supervisors`, `Sandboxes:Supervisors` — are separate;
-  keep them in sync by hand.
-- **Ids are visible, and an id is effectively a credential.** Run `CreatedBy` / gate `DecidedBy`, sandbox owners and
-  sandbox agent ids are returned to any caller; a leaked id works in every module.
-- **Jira via the service account.** Any caller can read every Jira ticket the configured Jira account can see, and
-  every stored prompt (run reports and datasets hold full ticket text).
+**First run — the owner (D025).** Until an account exists, `/Login` sends you to `/Setup`, which creates the
+**owner** (role `owner`, also treated as supervisor until invites and roles land) and signs you in.
+`POST /api/identity/bootstrap {email, password, displayName?}` does the same for scripts. It works only while no
+account exists (serialized under a Postgres advisory lock, so parallel calls create exactly one owner; afterwards
+`409`). Deleting every account at the database level reopens it. Who may call it:
+
+- **Outside Development:** only whoever sends `Identity:BootstrapToken` in `X-Bootstrap-Token` (setup page: the token
+  field). The token is **required** there: without it the bootstrap API answers `403` naming `Identity:BootstrapToken`,
+  and `/Setup` shows the form again with that error (startup still succeeds). A configured token shorter than 32
+  characters, or with leading or trailing whitespace, stops startup. It is compared in constant time.
+  Installers run the app as Production: the Linux (`.deb`) and macOS (`.pkg`) installers write a random 48-character
+  token into the new `appsettings.json` (printed once by the `.deb`; not printed by the macOS installer, whose log is
+  world-readable) — it stays there under `Identity:BootstrapToken`. The new file is `0600 root` on Linux (the systemd
+  service runs as root) and `0640 root:admin` on macOS (the LaunchAgent runs as whoever logs in). If the token cannot
+  be written the install fails rather than print a token the app does not have. An **upgrade** keeps the existing
+  `appsettings.json` untouched: if it has no token, the installer says so and you set one yourself. The Windows
+  installer does not generate one: set one yourself before first use.
+- **Development only:** with no token set, a direct loopback connection may bootstrap: a loopback peer, no
+  `X-Forwarded-For` / `Forwarded`, and a `Host` of `localhost` or a loopback IP. The last rule stops a DNS-rebound
+  page in the developer's browser (loopback peer, attacker's host name) even when `AllowedHosts` is `*`.
+
+Why not loopback in production: in Kubernetes, remote traffic very often reaches the app *from* loopback without a
+forwarding header — mesh sidecars (Istio connects from 127.0.0.6, Linkerd from localhost), `kubectl port-forward`,
+SSH tunnels, socat, oauth2-proxy sidecars, and nginx set up with only `X-Real-IP`. Under a loopback rule, the first
+remote visitor to a fresh install behind any of those would become owner.
+
+**Break-glass (the owner is never locked out for good).** Anyone who knows the owner's email can keep the account
+locked by sending wrong passwords. Two token-guarded ways back in (both need `Identity:BootstrapToken` set):
+
+- **Sign in with the token** — the one that works while an attacker keeps the account locked:
+  `POST /api/identity/sign-in` with the header `X-Bootstrap-Token: <token>`, or the "Owner locked out?" token field
+  on `/Login` (at most 512 characters). For the **owner** with the right token, the lockout is not applied; the
+  password is still checked, and a wrong one is added to the failed count — which only matters for sign-ins
+  **without** the token, so a token holder can keep guessing, bounded by the sign-in rate limit alone. A wrong token,
+  or any account other than the owner, gets the ordinary sign-in (lockout applies). Every sign-in that carries a
+  token — right or wrong, success or failure — is logged as a warning with the client address.
+- **Unlock** — `POST /api/identity/unlock` (body `{"email": "…"}` + header `X-Bootstrap-Token`; `204` unlocked, `401`
+  token missing/wrong, `404` no token configured or not an owner, `400` bad email) clears the owner's lockout and
+  failed-attempt count. Against a sustained guesser it is relocked within seconds, so prefer the token sign-in there
+  and block the source at the ingress.
+
+Both are anonymous, rate limited like sign-in, and do nothing without the token. This is the "break-glass owner
+always works" rule of `docs/design/identity.md` (D081, D082).
+
+**Sign-in.** `POST /api/identity/sign-in {email, password, useCookie}`:
+
+- `useCookie: true` (browser; also the `/Login` form) → session cookie `skanyxx.auth`: HttpOnly, SameSite=Lax,
+  Secure outside Development, 8 h sliding. The security stamp is re-checked every `Identity:SecurityStampValidationSeconds` (60 s; 0 = every request), and the
+  session ends `Identity:SessionDays` after sign-in no matter how active it is.
+- `useCookie: false` (API, desktop — D059) → `{tokens: {accessToken, expiresIn, refreshToken}}`; send
+  `Authorization: Bearer <accessToken>` (valid 1 h, never past the chain cap below; `expiresIn` says how long).
+  `POST /api/identity/refresh {refreshToken}` returns a new pair.
+  **Refresh tokens are single-use**: the one you sent is spent, and presenting it again is rejected (reuse returns `401` and revokes the whole chain, including the newest token). The chain is capped: however often you refresh, it ends `Identity:SessionDays`
+  after the original sign-in (each refresh token lives min(14 days, the chain cap)). A request with an `Authorization`
+  header is authenticated by the bearer scheme only, never by the cookie.
+- **Clients must serialize refreshes: one refresh in flight per refresh token.** Two refreshes sent with the same
+  token look exactly like a stolen copy being replayed, so one gets the new pair, the other `401`, and the chain is
+  revoked — the winner's new tokens included, so the user must sign in again. Typical triggers: several requests
+  that get `401` at once each refreshing, a retry after a lost refresh response, two windows sharing one stored
+  token. Keep one refresh task and let every caller await it (pinned by
+  `SessionTests.ParallelRefresh_WithOneToken_RevokesTheChain`).
+- Failures are one answer — `401 "Invalid email or password."` — for an unknown email, a wrong password and a locked
+  account, with the same password-hashing cost. 5 failures lock the account for 15 minutes. Attempts are serialized
+  per account without queueing: an attempt that arrives while another is being checked for the same email gets
+  `429 "Sign-in is in progress for this account; try again."` with `Retry-After: 1` at once, unchecked and uncounted
+  (a double-click, a retry; `/Login` also disables its button after the first click). Unknown emails take the same
+  lock, so this reveals nothing about whether an account exists. The lock key is a 64-bit hash of the normalized
+  email, so an attacker cannot compute a different email that shares a victim's lock. So parallel guesses cannot
+  slip past the lockout, and a flood on one email cannot tie up the identity database pool.
+- **Accepted timing difference:** an existing email with a wrong password answers about 4 ms slower than an unknown
+  email (the failed-attempt write). Telling the two apart takes dozens of requests under the sign-in rate limit; it
+  will be revisited when invites add users.
+- `POST /api/identity/sign-out` (cookie or bearer) rotates the user's security stamp and clears the cookie. That
+  ends **every** session of that user on every device: all refresh tokens at once, all browser cookies at their next
+  stamp check (≤ 60 s by default). Access tokens already issued run out on their own (≤ 1 h, and never after the session cap). If the
+  rotation cannot be saved, sign-out fails loudly (`500` ProblemDetails, never `204`) instead of reporting success — retry it.
+- `GET /api/identity/me` → `{id, email, displayName, roles}`. The nav shows the signed-in user and a Sign out button.
+- Rate limits: credential posts (sign-in, bootstrap, unlock, `/Login`, `/Setup`) have their own window
+  (`Skanyxx:SignInRateLimit`); sign-out and refresh do not count against it, so a client can always sign out. Both
+  windows are per client address, with IPv6 grouped per /64 (one host usually owns a whole /64).
+- Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. Anonymous:
+  `/health`, static files, `/Login`, `/Setup`, `/Privacy`, `/Error`, `/Offline`, `GET /api/identity/status`, the
+  bootstrap/sign-in/refresh/unlock endpoints. `/mcp/memory` needs no sign-in but an agent secret (below).
+- CSRF: every POST/PUT/PATCH/DELETE on the Host (legacy controllers included) is refused with `403` when its `Origin`
+  is not listed in `Skanyxx:AllowedOrigins` (the Host's own origin — Origin host:port equal to the Host header — is allowed implicitly off the guarded prefixes; `/api/{memory,tickets,sandboxes,identity}` and `/mcp` still need an allow-listed Origin for any browser caller); the cookie is SameSite=Lax; the Razor forms carry
+  antiforgery tokens.
+
+**Caller identity.** Memory, Tickets and Sandboxes take the caller from the signed-in principal; `X-User-Id` is
+ignored on `/api/*`. Supervisor = role `owner` or `supervisor`; the `*:Supervisors` lists are gone (leftover keys are
+ignored).
+
+**User ids are GUIDs.** A user id is the account's lowercase GUID everywhere: memory cards' `who`, personal scopes
+(`personal:<guid>`), and `CreatedBy` / `DecidedBy` / owner on runs, pipelines and sandbox tasks. kagent must forward
+that GUID in `X-User-Id` over MCP to reach a user's personal cards (anything else in that header counts as no user). Data written in development under the old
+free-form ids (`personal:ana`, `CreatedBy: ana`) is orphaned; nothing migrates it.
+
+**Data Protection keys** (they sign and encrypt cookies and bearer tokens) live in Postgres
+(`identity_data_protection_keys`), shared by replicas. Whoever can read that table — or a backup of it — can mint an
+owner session. So:
+
+- give `ConnectionStrings:Identity` its **own database role (or database)**; the template's shared connection string
+  is for development only, and a SQL-injection or credential leak in any module on a shared role reaches the keys;
+- set `Identity:DataProtectionCertificatePath` (+ `DataProtectionCertificatePassword`) to encrypt the key ring at rest
+  with that certificate (e.g. mounted from a Kubernetes Secret). Without it the keys are stored unencrypted, and the
+  Host logs a warning at startup outside Development.
+- **Turning the certificate on later:** the keys already in the table stay unencrypted, and the newest of them keeps
+  protecting new cookies and tokens until it nears expiry (default key lifetime 90 days). Anyone who read the table
+  or a backup before the switch can still mint sessions until then. So, after the first start with the certificate:
+  1. stop every replica;
+  2. delete the old keys: `DELETE FROM identity_data_protection_keys WHERE "Xml" NOT LIKE '%<encryptedSecret%';`
+     (or revoke them with `IKeyManager.RevokeAllKeys`, which also revokes the encrypted ones);
+  3. start again — a new, encrypted key is created at once.
+
+  This signs everyone out (cookies and bearer/refresh tokens protected by the old keys stop working) and invalidates
+  open forms' antiforgery tokens. Rotate the identity database role's password too if the table may have been read.
+- **This storage choice (D6: key ring in the identity database, unencrypted unless a certificate is set) was made
+  during this slice and is awaiting the user's confirmation.**
+
+**`/mcp/memory` takes a per-agent secret (D080).** Agents are not users, so the memory MCP is outside sign-in; instead
+every request — `initialize` and `tools/list` included — must carry `Authorization: Bearer <agent secret>`. No header,
+another scheme, a user's access token, or an unknown or revoked secret is `401` (`WWW-Authenticate: Bearer`) before MCP
+reads the body. The agent is **whoever owns the secret**; `X-Agent-Id` is not read. The server is stateless: with a
+valid secret, `GET` (standalone SSE stream) and `DELETE` (session end) answer `405` (`Allow: POST`), as MCP asks, so
+a `401` in the log always means a missing or wrong secret.
+
+- **Issue / rotate** (supervisor = role `owner` or `supervisor`; others `403`, anonymous `401`):
+  `POST /api/memory/agents/{agentId}/secret`, optional body `{"actsForUsers": true|false}` (default `false`; `true`
+  is **owner only**, a supervisor gets `403`) → `{agentId, secret, createdAt, actsForUsers}`. The secret (`skx_mem_` + 32 random
+  bytes, base64url) is in this response and **nowhere else, ever** — only its SHA-256 is stored, it is never logged,
+  and the response is `Cache-Control: no-store`. Issuing again replaces it: the old secret stops working at once, and the new one gets whatever
+  `actsForUsers` this request says (omit it and a rotation turns it off). Issue, rotation and revocation are logged at
+  **Warning** with the acting user, the agent, the flag and the client IP — never the secret. Refused attempts
+  (`403`: a supervisor asking for `actsForUsers`, or touching an owner's acts-for-users secret; a non-supervisor) are
+  logged at Warning too, with the actor, the agent and the reason. The IP is the direct TCP peer: behind an ingress or
+  proxy it is the proxy's (Skanyxx does not trust forwarded headers), so the **actor user id** is what attributes the action.
+- **An acts-for-users secret is the owner's:** rotating or revoking it is owner only. A supervisor gets `403` and the
+  secret keeps working — checked inside the one SQL statement that writes or deletes the row, so a concurrent owner
+  issue cannot slip past it. Secrets without the flag stay rotatable and revocable by any supervisor.
+- **Status:** `GET …/secret` → `{agentId, hasSecret, createdAt, actsForUsers}` (never the secret). **Revoke:** `DELETE …/secret` →
+  `204` (`404` if there is none, `403` for a supervisor when the secret acts for users); the agent is locked out until a new secret is issued.
+- **The user (`X-User-Id`, D084)** is honoured only when the agent's secret was issued with `actsForUsers: true`,
+  and only when it is a user id (lowercase GUID). Otherwise it is ignored: the call has no user, so no personal
+  scope — personal search finds nothing personal and personal upsert is refused. **Consequence, stated plainly: an
+  agent that acts for users can read and write any user's personal memory just by naming that user's id**; the
+  secret is the whole credential and Skanyxx cannot check that the user asked. That is why only the owner can turn
+  it on. With it on, the header is exactly as trustworthy as kagent's own authentication — with kagent's Helm default
+  `auth.mode: unsecure`, whoever can talk to kagent chooses it. **Run kagent with `auth.mode: secure`**, forward the
+  header with `allowedHeaders: [x-user-id]`, and don't give such an agent shell or Kubernetes tools.
+- **kagent wiring:** one `RemoteMCPServer` per agent carrying that agent's secret from a Kubernetes Secret (the value
+  is the whole header, `Bearer <secret>` — kagent adds nothing), so the controller's own `tools/list` discovery
+  authenticates too. Example: `deploy/kagent/memory/`.
+- **Rotation runbook:** 1. `POST …/agents/{agentId}/secret` (the old secret is dead from here on — do steps 2–3 right
+  away); 2. update the Kubernetes Secret with `Bearer <new secret>`; 3. **make kagent re-render the Agent** by
+  changing one of its labels, e.g. `kubectl -n kagent label agent <agent> skanyxx.dev/memory-secret=$(date +%s)
+  --overwrite`. kagent copies header values into the agent's rendered config and watches no header Secrets, so a
+  changed Secret alone reaches nobody — and neither does a plain `rollout restart`, which reloads the same stale
+  config. A label change makes the controller reconcile (it watches generation and label changes), the config hash
+  changes, and the agent pod rolls by itself. Between steps 1 and 2 the RemoteMCPServer's ~60 s tool refresh gets
+  `401`s; expected, and it clears once the new Secret is in place. `deploy/kagent/memory/README.md` has a pipeline
+  that stops on a failed issue instead of writing an empty secret.
+- **Requirements:** `/mcp` must **not** be on the public ingress (it shares the UI's listener and host name, and a
+  leaked secret works from anywhere that can reach it), and kagent → Skanyxx traffic must be encrypted — mesh mTLS,
+  or `https://` with the RemoteMCPServer `tls` block. A NetworkPolicy example that admits only the `kagent` namespace
+  (and the ingress controller) is in `deploy/kagent/memory/`.
+
+**Still open (accepted for now):**
+
+- **Jira via the service account.** Any signed-in user can read every Jira ticket the configured Jira account can see,
+  and every stored prompt (run reports and datasets hold full ticket text).
 - **Jira text in kagent.** Stage sessions sit in kagent under the single user `Tickets:KAgentUserId`; whoever can act
   as that user in kagent can read them.
 - **Host guards.** `AllowedHosts` must be an explicit list (the Host refuses `*` outside Development); browser clients
-  must be listed in `Skanyxx:AllowedOrigins`; requests are rate limited host-wide; `/health` shows status only.
-- **Deploy only on a trusted network, behind an authenticating proxy** that sets or strips `X-User-Id`.
+  must be listed in `Skanyxx:AllowedOrigins`; only the guarded prefixes (`/api/memory|tickets|sandboxes|identity`,
+  `/mcp`) and the credential posts are rate limited — legacy controllers and pages are not; `/health` lists check names and
+  statuses anonymously (no exception text).
+- **Behind a proxy** both rate-limit windows see the proxy's address (ForwardedHeaders is not configured), so all
+  clients share one sign-in window. Configure forwarded headers with known proxies when real ingress lands.
+- **Passwords (D7):** at least 12 characters, no composition rules, no breached-password check (chosen during this
+  slice; awaiting the user's confirmation).
+- **Key ring storage (D6):** Data Protection keys in the identity database, unencrypted unless
+  `Identity:DataProtectionCertificatePath` is set (chosen during this slice; awaiting the user's confirmation).
+- Not verified against a real cluster or behind a real ingress yet.
+
+**Next slices:** invites + role assignment (D026; `supervisor`, `builder`, `employee` roles already exist), teams and
+departments (D055), the Entra ID mapper (group → role/team; unmapped users get no access, D027), a sandbox-facing
+memory credential (per-task, so AX sandboxes can attach memory). Per-agent secrets for MCP (D080) are built (D083).
+Design: `docs/design/identity.md`, D079–D084.
 
 ## Memory engine
 
@@ -224,8 +408,8 @@ dotnet test tests/Skanyxx.Module.Memory.Tests   # needs Docker (Testcontainers)
 - A card is `scope` + `key` (`personal:ana/refund-window`), `type` (decision | fact | procedure | open), `what` ≤ 200, `why` ≤ 400; `body`/`source` are never sent to agents.
 - Write with `PUT /api/memory/cards/{scope}/{key}`: `version: 0` creates, otherwise pass the version you read. A stale version is a `409` with the current card — never last-write-wins.
 - `POST …/{scope}/{key}/lift` copies a card up (personal → team → department → company); the original stays. Into `company` needs a supervisor.
-- kagent reaches the bank over MCP at `/mcp/memory` (`memory_search`, `memory_upsert`). Configure the agent's `RemoteMCPServer` with an `X-Agent-Id` header. Agents without grants search `company` + the calling user's personal scope and may upsert only that personal scope (needs `X-User-Id`); `PUT /api/memory/grants/{agentId}` replaces the default with explicit search/upsert per scope (at least one entry; revoke an agent with a single grant that has `canSearch` and `canUpsert` false).
-- **Interim identity:** callers are identified by `X-User-Id` / `X-Agent-Id` headers, which are not authenticated yet.
+- kagent reaches the bank over MCP at `/mcp/memory` (`memory_search`, `memory_upsert`) with a per-agent secret: `POST /api/memory/agents/{agentId}/secret` as a supervisor, then give the agent's `RemoteMCPServer` an `Authorization: Bearer <secret>` header from a Kubernetes Secret (`deploy/kagent/memory/`). Agents without grants search `company` + the calling user's personal scope and may upsert only that personal scope (needs `X-User-Id`, honoured only for an agent whose secret the owner issued with `actsForUsers: true`); `PUT /api/memory/grants/{agentId}` replaces the default with explicit search/upsert per scope (at least one entry; revoke an agent with a single grant that has `canSearch` and `canUpsert` false).
+- **Identity:** `/api/memory` acts as the signed-in user; on MCP the agent is the owner of the presented secret and the user is the `X-User-Id` the agent vouches for, if it may act for users (see Identity and security model).
 
 The host refuses to start if the memory database is unreachable. If a local database has an older migration history, reset it with `docker compose down -v`.
 
@@ -271,8 +455,8 @@ dotnet test tests/Skanyxx.Module.Tickets.Tests     # needs Docker; kagent is fak
 - Cancel (`POST …/runs/{id}/cancel`) is for the run's creator or a supervisor; an agent call already in flight
   finishes and its answer is dropped, and a multi-agent stage calls none of its remaining agents. Deciding a gate is
   likewise for the run's creator or a supervisor (`403` otherwise) — including on their own run (no four-eyes rule
-  until the identity slice).
-- Until the identity slice, any caller can read every run, its report and its dataset (which holds full prompts,
+  yet).
+- Any signed-in user can read every run, its report and its dataset (which holds full prompts,
   including ticket text).
 - Ticket text and agent output are fenced in `<data-…>` tags with a random nonce (a fresh one per handoff), and any
   `<data-` tag inside them is rewritten, so neither a ticket nor an agent can forge the sections Skanyxx writes.
@@ -321,7 +505,7 @@ after the NetworkPolicies below are applied and verified), and refuses any non-e
 - Names are AX's: DNS labels (lowercase, `-`, ≤ 63). There is **no local run table** — AX is the source of truth.
 - Owner: AX v0.3.1 has no labels, so the creator is stored in the task's env as `SKANYXX_OWNER`. Every `SKANYXX_*`
   env name is reserved (`400` if a caller sets one). Only the creator may run/replace a task; stop/suspend/resume
-  is for the creator or a `Sandboxes:Supervisors` user (`403` otherwise). Supervisors cannot replace another
+  is for the creator or a supervisor (role `owner` or `supervisor`; `403` otherwise). Supervisors cannot replace another
   user's task. Tasks created outside Skanyxx are supervisors' only.
 - What may run: `image` must match an `AllowedImages` prefix (empty list = every run is `400`). A prefix matches
   only at a boundary: `/`, `@`, or a `:` that starts a tag (no `/` after it), so `ghcr.io` does not admit the
@@ -330,7 +514,7 @@ after the NetworkPolicies below are applied and verified), and refuses any non-e
 - Caps (`429`): global `MaxActiveTasks` (50) and per-user `MaxActiveTasksPerUser` (3), counting tasks that are not
   Failed/Completed/Terminating (suspended count), via `ListTasks`. Re-running a stopped/failed task counts as a
   new one. Every run that makes a task active counts and writes under one atespace-wide lock, so parallel runs
-  under different `X-User-Id`s cannot pass the global cap together; replacing an already-active task is not
+  under different users cannot pass the global cap together; replacing an already-active task is not
   counted and stays parallel. Activating runs are serialised across the atespace, so the caps are exact within one replica (16 in flight on
   the lock; the next gets `429`); best-effort across replicas (AX has no conditional write).
   Counting pages the **whole atespace** on every activating run (AX v0.3.1 `ListTasks` has no owner/label filter),
@@ -353,10 +537,10 @@ after the NetworkPolicies below are applied and verified), and refuses any non-e
   owner replacing a still-active task keeps it) and `SKANYXX_USER_ID=<owner>`, so a reused task name never
   inherits old grants. AX has
   no MCP headers field and its default runner does not materialise MCP config, so **the task image must read
-  `AX_WORKSPACES_YAML` (or its metadata URL) and send `X-Agent-Id: $SKANYXX_AGENT_ID` and
-  `X-User-Id: $SKANYXX_USER_ID`** to `/mcp/memory`. Without grants that agent searches `company` + the user's
-  personal scope; a supervisor can widen it with `PUT /api/memory/grants/<agentId>`. Modules do not call each
-  other, so Sandboxes never writes grants itself.
+  `AX_WORKSPACES_YAML` (or its metadata URL) and call `/mcp/memory` itself**. Since D080 that endpoint answers only
+  an agent secret (`Authorization: Bearer`) and ignores `X-Agent-Id`, and Sandboxes issues none, so memory attach
+  does not work end to end until the per-task credential below exists. Modules do not call each other, so
+  Sandboxes never writes grants or secrets itself.
 
 **Deployment prerequisites (security).** AX has no authentication (google/ax#376); these are not optional.
 NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-server-ingress.yaml`,
@@ -372,8 +556,8 @@ NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-ser
   target cluster before relying on it.
 - **Sandboxes must not reach Skanyxx at all; `MemoryMcpUrl` stays empty (enforced at startup).** A separate memory port is **not
   implemented**: `/mcp/memory` is mapped on the main pipeline, so any extra Kestrel port/Service serves the whole
-  API (`/api/sandboxes/*`, `/api/memory/*`, Tickets, kagent proxies) — and with a spoofed supervisor `X-User-Id` a
-  sandbox could stop anyone's tasks, rewrite workspaces and write any user's memory. A NetworkPolicy filters ports,
+  API (`/api/sandboxes/*`, `/api/memory/*`, Tickets, kagent proxies) — and `/mcp/memory` believes whatever `X-User-Id`
+  a sandbox sends, so it could write any user's memory. A NetworkPolicy filters ports,
   not paths.
 - AX injects `GEMINI_API_KEY` into **every** task. Run Skanyxx's atespace in a namespace without the platform
   key (no `gemini-api-secret`, none in the controller env), or use a dedicated quota-capped key.
@@ -391,8 +575,9 @@ NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-ser
 - If AX cannot build a task's own template it falls back to its default image, which `AllowedImages` does not see.
 - The startup checks trust the operator's `NetworkIsolationConfirmed`; nothing in Skanyxx can see whether the NetworkPolicies actually apply to Substrate sandboxes.
 
-- Memory attach is not safe yet. A sandbox chooses the `X-Agent-Id` / `X-User-Id` it sends, so any sandbox that
-  can reach the memory endpoint can act as any agent and any user. The image does not bound this — `command` is
+- Memory attach is not safe yet. `/mcp/memory` now needs an agent secret (D080), but a secret handed to a sandbox is
+  readable by whatever it runs, and the sandbox still chooses the `X-User-Id` it sends, so it could act as any user
+  within that agent's grants. The image does not bound this — `command` is
   arbitrary for every caller, so an allow-listed image with a shell runs anything — and neither does
   `attachMemory`, which only declares the entry; what a sandbox reaches is decided by the network. Memory attach
   becomes safe only with both pieces of future work: a **dedicated sandbox-facing listener** that serves
@@ -405,7 +590,7 @@ NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-ser
   own actions on that task can get `429` while AX is slow.
 - Workspace writers (supervisors) influence other users' tasks: a task binding a workspace runs its git content and
   MCP endpoints under the task owner's `SKANYXX_USER_ID` memory identity.
-- Caller identity is the `X-User-Id` header, spoofable until the identity slice: anyone who sends a supervisor's
-  id is a supervisor. Do not expose these routes beyond a trusted network.
+- Caller identity is the signed-in user (cookie or bearer); supervisors are users with role `owner` or `supervisor`.
+  Until invites exist the owner is the only user, so every task belongs to the owner.
 
 On a machine with only the .NET 10 runtime, prefix `dotnet run` / `dotnet test` with `DOTNET_ROLL_FORWARD=Major`.

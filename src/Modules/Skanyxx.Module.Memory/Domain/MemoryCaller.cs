@@ -1,9 +1,10 @@
 namespace Skanyxx.Module.Memory.Domain;
 
 /// <summary>
-/// Who is asking. TODO(identity-slice): both ids come from request headers and are not authenticated.
+/// Who is asking. REST: a signed-in human, from the authenticated principal. MCP: the agent that owns the presented
+/// secret (D080), plus the user it vouches for in X-User-Id when the secret allows it (D084).
 /// </summary>
-public sealed record Caller(string? UserId, string? AgentId)
+public sealed record MemoryCaller(string? UserId, string? AgentId, bool IsSupervisor = false, bool IsOwner = false)
 {
     public bool IsAgent => AgentId is not null;
 

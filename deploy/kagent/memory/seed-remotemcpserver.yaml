@@ -1,0 +1,21 @@
+# One RemoteMCPServer per agent (D080, decision D4 of the slice): the controller discovers tools (tools/list) with the
+# server's OWN headers, and /mcp/memory answers 401 to anything without an agent secret, so a shared server without a
+# credential could not even list its tools. Skanyxx takes the agent id from the secret; no X-Agent-Id is sent.
+# Plain http:// only inside a mesh with mTLS; otherwise use https:// plus spec.tls (README.md "Transport and network").
+apiVersion: kagent.dev/v1alpha2
+kind: RemoteMCPServer
+metadata:
+  name: skanyxx-memory-seed
+  namespace: kagent
+  labels:
+    app.kubernetes.io/part-of: skanyxx-memory
+spec:
+  description: Skanyxx company memory, as the seed agent
+  protocol: STREAMABLE_HTTP
+  url: http://skanyxx.skanyxx.svc:8080/mcp/memory
+  headersFrom:
+    - name: Authorization
+      valueFrom:
+        type: Secret
+        name: skanyxx-memory-seed
+        key: token

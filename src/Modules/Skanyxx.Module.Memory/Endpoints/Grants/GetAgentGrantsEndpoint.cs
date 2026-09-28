@@ -15,7 +15,7 @@ internal sealed class GetAgentGrantsEndpoint(IMediator mediator) : Endpoint<Agen
 
     public override async Task HandleAsync(AgentGrantsRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetAgentGrantsQuery(MemoryHeaders.Human(HttpContext), req.AgentId), ct);
+        var outcome = await mediator.Send(new GetAgentGrantsQuery(HumanCaller.From(User), req.AgentId), ct);
         await Send.ResultAsync(outcome.ToHttp(g => g));
     }
 }

@@ -1,4 +1,3 @@
-using System.Net;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -7,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Skanyxx.Core.Platform;
 
-/// <summary>Origin allow-list and a per-IP rate limit on the guarded routes; everything else is untouched.</summary>
+/// <summary>Origin allow-list (guarded routes, and unsafe methods everywhere) and per-client rate limits on the guarded routes and credential posts.</summary>
 public static class ApiGuardExtensions
 {
     public static IServiceCollection AddSkanyxxApiGuards(this IServiceCollection services, IConfiguration configuration)
@@ -17,6 +16,8 @@ public static class ApiGuardExtensions
             .ValidateDataAnnotations()
             .Validate(o => o.RateLimit is { PermitLimit: > 0, WindowSeconds: > 0 },
                 "Skanyxx:RateLimit:PermitLimit and WindowSeconds must be positive.")
+            .Validate(o => o.SignInRateLimit is { PermitLimit: > 0, WindowSeconds: > 0 },
+                "Skanyxx:SignInRateLimit:PermitLimit and WindowSeconds must be positive.")
             .ValidateOnStart();
 
         services.AddRateLimiter(o =>
@@ -24,18 +25,13 @@ public static class ApiGuardExtensions
             o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
             o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(context =>
             {
-                if (!GuardedPaths.Contains(context.Request.Path))
-                    return RateLimitPartition.GetNoLimiter("");
-
-                var limit = context.RequestServices.GetRequiredService<IOptions<SkanyxxOptions>>().Value.RateLimit;
-                return RateLimitPartition.GetFixedWindowLimiter(
-                    context.Connection.RemoteIpAddress?.ToString() ?? IPAddress.None.ToString(),
-                    _ => new FixedWindowRateLimiterOptions
-                    {
-                        PermitLimit = limit.PermitLimit,
-                        Window = TimeSpan.FromSeconds(limit.WindowSeconds),
-                        QueueLimit = 0
-                    });
+                var options = context.RequestServices.GetRequiredService<IOptions<SkanyxxOptions>>().Value;
+                var ip = ClientPartition.Key(context.Connection.RemoteIpAddress);
+                if (GuardedPaths.IsCredentialPost(context.Request))
+                    return FixedWindow("sign-in:" + ip, options.SignInRateLimit);
+                if (GuardedPaths.Contains(context.Request.Path))
+                    return FixedWindow("api:" + ip, options.RateLimit);
+                return RateLimitPartition.GetNoLimiter("");
             });
             o.OnRejected = (rejected, _) =>
             {
@@ -47,6 +43,14 @@ public static class ApiGuardExtensions
         });
         return services;
     }
+
+    private static RateLimitPartition<string> FixedWindow(string key, ApiRateLimitOptions limit) =>
+        RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = limit.PermitLimit,
+            Window = TimeSpan.FromSeconds(limit.WindowSeconds),
+            QueueLimit = 0
+        });
 
     public static IApplicationBuilder UseSkanyxxApiGuards(this IApplicationBuilder app) =>
         app.UseMiddleware<OriginGuardMiddleware>().UseRateLimiter();

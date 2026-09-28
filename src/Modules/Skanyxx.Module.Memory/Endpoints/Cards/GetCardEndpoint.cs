@@ -16,7 +16,7 @@ internal sealed class GetCardEndpoint(IMediator mediator) : Endpoint<CardRouteRe
 
     public override async Task HandleAsync(CardRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetCardQuery(MemoryHeaders.Human(HttpContext), req.Scope, req.Key), ct);
+        var outcome = await mediator.Send(new GetCardQuery(HumanCaller.From(User), req.Scope, req.Key), ct);
         await Send.ResultAsync(outcome.ToHttp(CardMapper.ToDto));
     }
 }

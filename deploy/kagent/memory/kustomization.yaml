@@ -1,0 +1,6 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# The Secret is not listed on purpose: it is created with kubectl (README.md), never from a file here.
+resources:
+  - seed-remotemcpserver.yaml
+  - seed-agent.yaml

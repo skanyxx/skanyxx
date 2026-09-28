@@ -7,6 +7,7 @@ namespace Skanyxx.Module.Sandboxes.Features.Tasks;
 /// <summary>Create-or-update (AX <c>UpdateTask</c>). A new task is 202: AX starts it asynchronously.</summary>
 public sealed record RunTaskCommand(
     string? UserId,
+    bool IsSupervisor,
     string Name,
     string Image,
     IReadOnlyList<string> Command,

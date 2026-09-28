@@ -21,7 +21,7 @@ public class PluginLoadContext : AssemblyLoadContext
     [
         "Skanyxx.Core", "MediatR", "Microsoft.Extensions", "Microsoft.EntityFrameworkCore",
         "Npgsql", "Dapper", "FastEndpoints", "FluentValidation", "ModelContextProtocol", "HealthChecks",
-        "Grpc", "Google.Protobuf"
+        "Grpc", "Google.Protobuf", "Microsoft.AspNetCore.Identity", "Microsoft.AspNetCore.DataProtection"
     ];
 
     public static bool IsShared(string? name) =>

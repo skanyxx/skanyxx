@@ -15,7 +15,7 @@ internal sealed class ListTicketsEndpoint(IMediator mediator) : Endpoint<ListTic
 
     public override async Task HandleAsync(ListTicketsRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new ListTicketsQuery(TicketsHeaders.User(HttpContext), req.Assignee, req.Limit), ct);
+        var outcome = await mediator.Send(new ListTicketsQuery(Caller.UserId(User), req.Assignee, req.Limit), ct);
         await Send.ResultAsync(outcome.ToHttp(t => t));
     }
 }

@@ -10,7 +10,7 @@ namespace Skanyxx.Module.Sandboxes.Features.Workspaces;
 /// memory MCP server as <c>skanyxx-memory</c>.
 /// </summary>
 public sealed record SaveWorkspaceCommand(
-    string? UserId, string Name, IReadOnlyList<GitSource> Git, IReadOnlyList<McpServerEntry> McpServers, bool AttachMemory)
+    string? UserId, bool IsSupervisor, string Name, IReadOnlyList<GitSource> Git, IReadOnlyList<McpServerEntry> McpServers, bool AttachMemory)
     : IRequest<Outcome<SandboxWorkspace>>
 {
     public const int MaxGit = 16;

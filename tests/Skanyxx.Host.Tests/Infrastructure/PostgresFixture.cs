@@ -1,3 +1,4 @@
+using Npgsql;
 using Testcontainers.PostgreSql;
 
 namespace Skanyxx.Host.Tests.Infrastructure;
@@ -15,6 +16,17 @@ public sealed class PostgresFixture : IAsyncLifetime
     {
         await _container.StartAsync();
         Host = await HostApp.StartAsync(ConnectionString);
+    }
+
+    /// <summary>A new empty database in the same server (no owner yet), for hosts that must start un-bootstrapped.</summary>
+    public async Task<string> NewDatabaseAsync()
+    {
+        var name = "skanyxx_" + Guid.NewGuid().ToString("N");
+        await using var connection = new NpgsqlConnection(ConnectionString);
+        await connection.OpenAsync();
+        await using var command = new NpgsqlCommand($"CREATE DATABASE {name}", connection);
+        await command.ExecuteNonQueryAsync();
+        return new NpgsqlConnectionStringBuilder(ConnectionString) { Database = name }.ConnectionString;
     }
 
     /// <summary>Freezes the database (like a stalled server): connections open but nothing answers.</summary>

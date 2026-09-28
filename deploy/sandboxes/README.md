@@ -1,7 +1,7 @@
 # Sandboxes network isolation
 
-A sandbox runs caller-chosen code. Skanyxx trusts `X-User-Id` / `X-Agent-Id` headers until the identity slice,
-and ax-server has no auth, so a sandbox that can reach either one can act as anyone. These policies are the fence
+A sandbox runs caller-chosen code. Skanyxx's `/mcp/memory` trusts the `X-User-Id` an agent-secret holder sends
+(D080), and ax-server has no auth, so a sandbox that can reach either one can act as anyone it names. These policies are the fence
 (D072, D077 in `docs/design/ax-integration.md`).
 
 | File | Effect |

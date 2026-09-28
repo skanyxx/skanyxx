@@ -15,7 +15,7 @@ internal sealed class ListWorkspacesEndpoint(IMediator mediator) : EndpointWitho
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var outcome = await mediator.Send(new ListWorkspacesQuery(SandboxesHeaders.User(HttpContext)), ct);
+        var outcome = await mediator.Send(new ListWorkspacesQuery(Caller.UserId(User)), ct);
         await Send.ResultAsync(outcome.ToHttp(workspaces => workspaces));
     }
 }

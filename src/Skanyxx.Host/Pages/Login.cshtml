@@ -1,0 +1,24 @@
+@page
+@model LoginModel
+@{
+    ViewData["Title"] = "Sign in";
+    Layout = "_AuthLayout";
+}
+@* Disabled after the first click: a second sign-in in flight for the same account is refused as busy. *@
+<form method="post" class="auth-form" onsubmit="this.querySelector('button[type=submit]').disabled = true">
+    <input type="hidden" asp-for="ReturnUrl" />
+    @if (Model.Error is not null)
+    {
+        <p class="text-error" role="alert">@Model.Error</p>
+    }
+    <label asp-for="Email">Email</label>
+    <input asp-for="Email" type="email" autocomplete="username" required autofocus />
+    <label asp-for="Password">Password</label>
+    <input asp-for="Password" type="password" autocomplete="current-password" required />
+    <details>
+        <summary>Owner locked out?</summary>
+        <label asp-for="BootstrapToken">Bootstrap token (<code>Identity:BootstrapToken</code>)</label>
+        <input asp-for="BootstrapToken" type="password" autocomplete="off" maxlength="512" />
+    </details>
+    <button type="submit" class="btn btn-primary">Sign in</button>
+</form>

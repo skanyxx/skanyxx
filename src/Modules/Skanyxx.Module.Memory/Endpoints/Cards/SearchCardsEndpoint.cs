@@ -14,7 +14,7 @@ internal sealed class SearchCardsEndpoint(IMediator mediator) : Endpoint<SearchC
 
     public override async Task HandleAsync(SearchCardsRequest req, CancellationToken ct)
     {
-        var hits = await mediator.Send(new SearchCardsQuery(MemoryHeaders.Human(HttpContext), req.Q), ct);
+        var hits = await mediator.Send(new SearchCardsQuery(HumanCaller.From(User), req.Q), ct);
         await Send.OkAsync(hits, ct);
     }
 }

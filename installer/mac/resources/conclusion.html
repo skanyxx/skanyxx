@@ -33,6 +33,16 @@
     <a href="http://localhost:5282">http://localhost:5282</a></span>
   </div>
 
+  <div class="step"><span class="num">4.</span>
+    <span>Create the owner account: the setup page asks for the bootstrap token that was generated for you. It is
+    <code>"Identity": { "BootstrapToken": … }</code> in the same <code>appsettings.json</code>. Keep it: it is also
+    the owner's way back in when the account is locked. The file is readable by administrator accounts only; edit it
+    with <code>sudo</code>.<br>
+    Upgrading from a version without accounts? Your existing <code>appsettings.json</code> is left as it was and has
+    no token: set <code>Identity:BootstrapToken</code> there yourself (a random string of at least 32 characters,
+    e.g. <code>openssl rand -hex 24</code>).</span>
+  </div>
+
   <h3>To uninstall</h3>
   <pre>sudo rm -rf /usr/local/share/skanyxx
 sudo rm -f /usr/local/bin/skanyxx

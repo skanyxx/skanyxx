@@ -27,8 +27,8 @@ internal sealed class WatchTaskEndpoint(IMediator mediator) : Endpoint<TaskRoute
 
     public override async Task HandleAsync(TaskRouteRequest req, CancellationToken ct)
     {
-        // The slot is taken before the existence check, so a caller at its cap costs AX nothing. No user: validation 400s.
-        var user = SandboxesHeaders.User(HttpContext);
+        // The slot is taken before the existence check, so a caller at its cap costs AX nothing. No valid user: validation 400s.
+        var user = Caller.UserId(User);
         var watches = Resolve<WatchLimiter>();
         if (user is not null && !watches.TryEnter(user))
         {

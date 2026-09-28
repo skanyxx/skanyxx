@@ -30,7 +30,7 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
     [Fact]
     public async Task Search_NeverReturnsBodyOrSource()
     {
-        await App.Client(MemoryApp.Supervisor)
+        await App.SupervisorClient()
             .PutCardAsync("company", "refund-window", body: "SECRET-BODY-TEXT", source: "s3://secret-bucket/file.pdf");
         await using var client = await App.McpAsync("seed");
 
@@ -46,24 +46,13 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
     }
 
     [Fact]
-    public async Task MissingAgentHeader_IsAnError()
-    {
-        await using var client = await App.McpAsync(agentId: null, userId: "ana");
-
-        var result = await client.CallToolAsync("memory_search", new Dictionary<string, object?> { ["query"] = "refund" });
-
-        Assert.True(result.IsError);
-        Assert.Contains("X-Agent-Id", Text(result));
-    }
-
-    [Fact]
     public async Task DefaultAgent_SearchesCompanyAndCallersPersonal()
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "company-refund");
-        await App.Client("bob").PutCardAsync("personal:bob", "bob-refund");
-        await App.Client("ana").PutCardAsync("personal:ana", "ana-refund");
-        await App.Client("bob").PutCardAsync("team:billing", "team-refund");
-        await using var client = await App.McpAsync("seed", userId: "bob");
+        await App.SupervisorClient().PutCardAsync("company", "company-refund");
+        await App.Client(Users.Bob).PutCardAsync($"personal:{Users.Bob}", "bob-refund");
+        await App.Client(Users.Ana).PutCardAsync($"personal:{Users.Ana}", "ana-refund");
+        await App.Client(Users.Bob).PutCardAsync("team:billing", "team-refund");
+        await using var client = await App.McpAsync("seed", userId: Users.Bob);
 
         var result = await client.CallToolAsync("memory_search", new Dictionary<string, object?> { ["query"] = "refund" });
 
@@ -77,14 +66,14 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
     [Fact]
     public async Task DefaultAgent_UpsertsCallersPersonalOnly()
     {
-        await using var client = await App.McpAsync("seed", userId: "ana");
+        await using var client = await App.McpAsync("seed", userId: Users.Ana);
 
         var personal = await client.CallToolAsync("memory_upsert", Upsert("refund-window"));
         var company = await client.CallToolAsync("memory_upsert", Upsert("refund-window", scope: "company"));
         var team = await client.CallToolAsync("memory_upsert", Upsert("refund-window", scope: "team:billing"));
 
         Assert.NotEqual(true, personal.IsError);
-        Assert.Contains("personal:ana", Text(personal));
+        Assert.Contains($"personal:{Users.Ana}", Text(personal));
         Assert.True(company.IsError);
         Assert.Contains("No upsert grant", Text(company));
         Assert.True(team.IsError);
@@ -105,8 +94,8 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
     [Fact]
     public async Task ExplicitGrants_ReplaceTheDefault()
     {
-        await App.Client(MemoryApp.Supervisor).SetGrantsAsync("seed", new { scope = "company", canSearch = true, canUpsert = false });
-        await using var client = await App.McpAsync("seed", userId: "ana");
+        await App.SupervisorClient().SetGrantsAsync("seed", new { scope = "company", canSearch = true, canUpsert = false });
+        await using var client = await App.McpAsync("seed", userId: Users.Ana);
 
         var result = await client.CallToolAsync("memory_upsert", Upsert("refund-window"));
 
@@ -118,7 +107,7 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
     [Fact]
     public async Task SearchGrant_DoesNotImplyUpsert()
     {
-        await App.Client(MemoryApp.Supervisor).SetGrantsAsync("faq", new { scope = "company", canSearch = true, canUpsert = false });
+        await App.SupervisorClient().SetGrantsAsync("faq", new { scope = "company", canSearch = true, canUpsert = false });
         await using var client = await App.McpAsync("faq");
 
         var result = await client.CallToolAsync("memory_upsert", Upsert("refund-window", scope: "company"));
@@ -131,24 +120,24 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
     [Fact]
     public async Task PersonalUpsertGrant_WritesTheCallersPersonalScope()
     {
-        await App.Client(MemoryApp.Supervisor).SetGrantsAsync("seed",
+        await App.SupervisorClient().SetGrantsAsync("seed",
             new { scope = "personal", canSearch = true, canUpsert = true },
             new { scope = "company", canSearch = true, canUpsert = false });
-        await using var client = await App.McpAsync("seed", userId: "ana");
+        await using var client = await App.McpAsync("seed", userId: Users.Ana);
 
         var created = await client.CallToolAsync("memory_upsert", Upsert("refund-window"));
         var found = await client.CallToolAsync("memory_search", new Dictionary<string, object?> { ["query"] = "refund" });
 
         Assert.NotEqual(true, created.IsError);
-        Assert.Contains("personal:ana", Text(created));
-        Assert.Contains("ana via seed", Text(created));
+        Assert.Contains($"personal:{Users.Ana}", Text(created));
+        Assert.Contains($"{Users.Ana} via seed", Text(created));
         Assert.Contains("refund-window", Text(found));
     }
 
     [Fact]
     public async Task PersonalUpsert_WithoutUserContext_IsAnError()
     {
-        await App.Client(MemoryApp.Supervisor).SetGrantsAsync("seed", new { scope = "personal", canSearch = true, canUpsert = true });
+        await App.SupervisorClient().SetGrantsAsync("seed", new { scope = "personal", canSearch = true, canUpsert = true });
         await using var client = await App.McpAsync("seed");
 
         var result = await client.CallToolAsync("memory_upsert", Upsert("refund-window"));
@@ -160,7 +149,7 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
     [Fact]
     public async Task StaleUpsert_IsAConflictError_AndCardUnchanged()
     {
-        await App.Client(MemoryApp.Supervisor).SetGrantsAsync("writer", new { scope = "company", canSearch = true, canUpsert = true });
+        await App.SupervisorClient().SetGrantsAsync("writer", new { scope = "company", canSearch = true, canUpsert = true });
         await using var client = await App.McpAsync("writer");
         await client.CallToolAsync("memory_upsert", Upsert("refund-window", scope: "company"));
 
@@ -175,7 +164,7 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
     [Fact]
     public async Task InvalidArguments_ReportedAsToolError()
     {
-        await App.Client(MemoryApp.Supervisor).SetGrantsAsync("writer", new { scope = "company", canSearch = true, canUpsert = true });
+        await App.SupervisorClient().SetGrantsAsync("writer", new { scope = "company", canSearch = true, canUpsert = true });
         await using var client = await App.McpAsync("writer");
         var args = Upsert("Bad_Key", scope: "company");
         args["what"] = new string('w', 201);

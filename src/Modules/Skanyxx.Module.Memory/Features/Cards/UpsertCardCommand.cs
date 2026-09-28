@@ -9,5 +9,5 @@ namespace Skanyxx.Module.Memory.Features.Cards;
 /// A null body/source leaves the stored one untouched: agents never see those fields (D014), so they cannot resend them.
 /// </summary>
 public sealed record UpsertCardCommand(
-    Caller Caller, string Scope, string Key, int Version, string Type, string What, string Why,
+    MemoryCaller Caller, string Scope, string Key, int Version, string Type, string What, string Why,
     string? Body = null, string? Source = null) : IRequest<Outcome<Card>>;

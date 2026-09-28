@@ -4,4 +4,4 @@ using Skanyxx.Module.Tickets.Domain;
 
 namespace Skanyxx.Module.Tickets.Features.Runs;
 
-public sealed record CancelRunCommand(string? UserId, Guid Id) : IRequest<Outcome<Run>>;
+public sealed record CancelRunCommand(string? UserId, bool IsSupervisor, Guid Id) : IRequest<Outcome<Run>>;

@@ -26,10 +26,12 @@ public sealed class OptionsTests
         Assert.Equal(40, options.MaxPoolSize);
     }
 
-    // CR m4: ids are lowercase, so "Ana" would silently never match; it must stop startup instead.
+    // Supervisors come from role claims now; a Tickets:Supervisors list left in an old config must not stop startup.
+    [Fact]
+    public void LeftoverSupervisorsKey_IsIgnored() =>
+        Assert.Equal(20, Resolve(new() { ["Tickets:Supervisors:0"] = "Not A Valid Id" }).MaxActiveRuns);
+
     [Theory]
-    [InlineData("Tickets:Supervisors:0", "Ana")]
-    [InlineData("Tickets:Supervisors:0", "ana smith")]
     [InlineData("Tickets:MaxActiveRuns", "0")]
     [InlineData("Tickets:MaxPoolSize", "0")]
     public void InvalidSettings_FailValidation(string key, string value) =>

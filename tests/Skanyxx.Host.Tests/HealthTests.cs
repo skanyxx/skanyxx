@@ -11,7 +11,7 @@ public sealed class HealthTests(PostgresFixture fixture)
     public async Task Health_IsNotReadableCrossOrigin()
     {
         var health = await GetWithOriginAsync("/health");
-        var control = await GetWithOriginAsync("/Privacy"); // legacy page, still under the global AllowAll policy
+        var control = await GetWithOriginAsync("/Privacy"); // anonymous legacy page, still under the global AllowAll policy
 
         Assert.True(control.Headers.Contains("Access-Control-Allow-Origin"), "control should get CORS headers");
         Assert.False(health.Headers.Contains("Access-Control-Allow-Origin"));
@@ -21,7 +21,7 @@ public sealed class HealthTests(PostgresFixture fixture)
     public async Task StalledDatabase_TimesOut_ReportsStatusOnly_LogsOneWarning()
     {
         await using var host = await HostApp.StartAsync(fixture.ConnectionString, s => s["Skanyxx:HealthCheckTimeoutSeconds"] = "1");
-        var client = host.Client(userId: null);
+        var client = host.Client();
         HttpResponseMessage response = null!;
         var console = new StringWriter();
         var original = Console.Out;
@@ -58,6 +58,6 @@ public sealed class HealthTests(PostgresFixture fixture)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, path);
         request.Headers.Add("Origin", "https://evil.example");
-        return fixture.Host.Client(userId: null).SendAsync(request);
+        return fixture.Host.Client().SendAsync(request);
     }
 }

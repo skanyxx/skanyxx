@@ -18,7 +18,7 @@ internal sealed class GetReportEndpoint(IMediator mediator) : Endpoint<RunRouteR
 
     public override async Task HandleAsync(RunRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetRunQuery(TicketsHeaders.User(HttpContext), req.Id), ct);
+        var outcome = await mediator.Send(new GetRunQuery(Caller.UserId(User), req.Id), ct);
         await Send.ResultAsync(outcome.Status == OutcomeStatus.Ok
             ? Results.Text(outcome.Value!.ToMarkdown(), "text/markdown", Encoding.UTF8)
             : outcome.ToHttp(r => r.Id));

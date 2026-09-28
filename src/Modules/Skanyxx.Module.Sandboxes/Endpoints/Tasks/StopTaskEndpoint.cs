@@ -15,7 +15,7 @@ internal sealed class StopTaskEndpoint(IMediator mediator) : Endpoint<TaskRouteR
 
     public override async Task HandleAsync(TaskRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new StopTaskCommand(SandboxesHeaders.User(HttpContext), req.Name), ct);
+        var outcome = await mediator.Send(new StopTaskCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Name), ct);
         await Send.ResultAsync(outcome.ToHttp(task => task));
     }
 }

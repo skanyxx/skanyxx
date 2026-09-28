@@ -38,8 +38,10 @@ public static class PlatformExtensions
         return app;
     }
 
-    private static bool IsApi(Microsoft.AspNetCore.Http.HttpContext context) =>
-        context.Request.Path.StartsWithSegments("/api") || context.Request.Path.StartsWithSegments("/mcp");
+    private static bool IsApi(Microsoft.AspNetCore.Http.HttpContext context) => IsApi(context.Request.Path);
+
+    internal static bool IsApi(Microsoft.AspNetCore.Http.PathString path) =>
+        path.StartsWithSegments("/api") || path.StartsWithSegments("/mcp");
 
     public static WebApplication UseSkanyxxPlatform(this WebApplication app, IEnumerable<IModule> modules)
     {

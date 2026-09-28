@@ -64,7 +64,7 @@ public sealed class TicketApiTests(PostgresFixture postgres) : TicketsTestBase(p
         var anonymous = await App.Client(userId: null).GetAsync(path);
         var invalid = App.Client(userId: "Ana Smith");
 
-        Assert.Equal(HttpStatusCode.BadRequest, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, (await invalid.GetAsync(path)).StatusCode);
     }
 

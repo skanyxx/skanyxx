@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>@ViewData["Title"] - Skanyxx</title>
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+    <main class="auth-page">
+        <div class="card auth-card">
+            <div class="sidebar-logo auth-logo">
+                <span class="sidebar-logo-icon">S</span>
+                <div>
+                    <div class="sidebar-logo-text">Skanyxx</div>
+                    <div class="sidebar-subtitle">SRE Command Center</div>
+                </div>
+            </div>
+            <h1 class="card-title">@ViewData["Title"]</h1>
+            @RenderBody()
+        </div>
+    </main>
+</body>
+</html>

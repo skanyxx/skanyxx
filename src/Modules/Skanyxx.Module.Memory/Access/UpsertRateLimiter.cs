@@ -4,8 +4,8 @@ using Microsoft.Extensions.Options;
 namespace Skanyxx.Module.Memory.Access;
 
 /// <summary>
-/// A looping agent dies here, not in the table. Per caller, then for everyone together, because the caller id is
-/// a spoofable header. In-process: one memory replica day one (D043).
+/// A looping agent dies here, not in the table. Per caller (the secret's agent, or the signed-in user), then for
+/// everyone together, so many callers at once still hit a ceiling. In-process: one memory replica day one (D043).
 /// </summary>
 public sealed class UpsertRateLimiter(IOptions<MemoryOptions> options) : IDisposable
 {

@@ -6,6 +6,9 @@ public enum OutcomeStatus
     Created,
     NotFound,
     Forbidden,
+
+    /// <summary>The caller could not be authenticated (e.g. a failed sign-in); always a generic message.</summary>
+    Unauthorized,
     Conflict,
     RateLimited,
     Accepted,

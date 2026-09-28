@@ -22,7 +22,7 @@ internal sealed class GetDatasetEndpoint(IMediator mediator) : Endpoint<RunRoute
 
     public override async Task HandleAsync(RunRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetRunQuery(TicketsHeaders.User(HttpContext), req.Id, WithPrompts: true), ct);
+        var outcome = await mediator.Send(new GetRunQuery(Caller.UserId(User), req.Id, WithPrompts: true), ct);
         await Send.ResultAsync(outcome.Status == OutcomeStatus.Ok
             ? Results.Text(string.Concat(outcome.Value!.ToDataset().Select(row => JsonSerializer.Serialize(row, Json) + "\n")),
                 "application/x-ndjson", Encoding.UTF8)

@@ -26,7 +26,7 @@ internal sealed class RunTaskHandler(AxGateway ax, KeyedLock locks, IOptions<San
         var user = command.UserId!;
         var existing = await ax.FindTaskAsync(command.Name, ct);
         var owner = existing is null ? null : TaskEnv.Read(existing, TaskEnv.Owner);
-        if (existing is not null && !Ownership.CanReplace(options.Value, user, owner))
+        if (existing is not null && !Ownership.CanReplace(command.IsSupervisor, user, owner))
             return Outcome<SandboxTask>.Forbidden(
                 "Only the person who started the task may replace it; a supervisor may stop, suspend or resume it.");
 

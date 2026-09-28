@@ -79,6 +79,8 @@ try
     // MediatR (+ validation/logging pipeline), validators and FastEndpoints over Core + module assemblies
     builder.Services.AddSkanyxxPlatform(moduleLoader.GetModuleAssemblies());
     builder.Services.AddSkanyxxApiGuards(builder.Configuration).AddSkanyxxHealthTimeouts();
+    // Cookie (browser) + bearer (API/desktop) over the identity module's store; everything requires sign-in by default.
+    builder.Services.AddSkanyxxAuthentication(builder.Environment);
 
     // Add API Versioning
     builder.Services.AddApiVersioning(options =>
@@ -113,7 +115,7 @@ try
 
         options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
         {
-            Description = "JWT Authorization header using the Bearer scheme",
+            Description = "Bearer access token from POST /api/identity/sign-in (not a JWT)",
             Name = "Authorization",
             In = ParameterLocation.Header,
             Type = SecuritySchemeType.ApiKey,
@@ -200,6 +202,7 @@ try
     app.UseRouting();
     app.UseCors("AllowAll");
 
+    app.UseAuthentication();
     app.UseAuthorization();
 
     app.MapSkanyxxHealth("/health");

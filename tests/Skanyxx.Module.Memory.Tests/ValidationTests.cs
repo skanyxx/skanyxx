@@ -33,13 +33,12 @@ public sealed class ValidationTests(PostgresFixture postgres) : MemoryTestBase(p
     }
 
     [Fact]
-    public async Task MissingIdentity_Rejected()
+    public async Task MissingIdentity_IsUnauthorized()
     {
         var response = await App.Client().PutCardAsync("personal:ana", "refund-window");
 
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        var errors = (await response.JsonAsync()).GetProperty("errors");
-        Assert.Contains(errors.EnumerateObject(), e => e.Name.Equals("caller.identity", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(0, await Postgres.CardCountAsync());
     }
 
     [Fact]

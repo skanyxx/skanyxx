@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Skanyxx.Module.Memory.Tests.Infrastructure;
 
@@ -19,19 +20,18 @@ public sealed class OptionsTests
         await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
     }
 
-    // CR m4: ids are lowercase, so "Ana" would silently never match; it must stop startup instead.
-    [Theory]
-    [InlineData("Ana")]
-    [InlineData("ana smith")]
-    public async Task AnInvalidSupervisorId_StopsStartup(string supervisor)
+    // Supervisors come from role claims now; a Memory:Supervisors list left in an old config must not stop startup.
+    [Fact]
+    public async Task LeftoverSupervisorsKey_IsIgnored()
     {
         await using var app = MemoryApp.Build(new Dictionary<string, string?>
         {
             ["ConnectionStrings:Memory"] = "Host=localhost",
-            ["Memory:Supervisors:0"] = supervisor
+            ["Memory:Supervisors:0"] = "Not A Valid Id"
         });
 
-        var error = await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
-        Assert.Contains("Memory:Supervisors", error.Message);
+        var options = app.Services.GetRequiredService<IOptions<MemoryOptions>>().Value;
+
+        Assert.Equal(5, options.SearchTopK);
     }
 }

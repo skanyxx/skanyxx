@@ -21,8 +21,28 @@ ln -sf "$INSTALL_DIR/Skanyxx.Host" "$BIN_LINK" 2>/dev/null || true
 # ── Config file (created once, never overwritten) ─────────────────
 # IRREVERSIBLE: once created, appsettings.json holds the user's API keys.
 # The installer never overwrites it on upgrades.
+# The app runs as Production, where the owner account can only be created with Identity:BootstrapToken, so a
+# fresh config gets a random 48-character one. It is NOT printed: install.log is world-readable. The conclusion
+# page tells the user where it is.
+# Mode 0640 root:admin: the LaunchAgent runs as whichever user logs in, so no single owner fits; admin accounts
+# (who run a tool like this) can read it, standard and guest accounts on a shared Mac cannot.
 if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
-    cp "$TEMPLATE" "$CONFIG"
+    (umask 077 && cp "$TEMPLATE" "$CONFIG")
+    BOOTSTRAP_TOKEN="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    sed -i '' "s/\"BootstrapToken\": \"\"/\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"/" "$CONFIG"
+    if [[ ${#BOOTSTRAP_TOKEN} -ne 48 ]] || ! grep -q "\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"" "$CONFIG"; then
+        rm -f "$CONFIG"  # so reinstalling generates it again
+        echo "Skanyxx: could not write Identity:BootstrapToken into $CONFIG; the template no longer has" >&2
+        echo "  \"BootstrapToken\": \"\"." >&2
+        exit 1
+    fi
+    chgrp admin "$CONFIG"
+    chmod 640 "$CONFIG"
+elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
+    # An upgrade from a config written before accounts existed: never edited, only pointed out (also on the
+    # conclusion page).
+    echo "Skanyxx: set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
+    echo "  the first-run setup page asks for it to create the owner account."
 fi
 
 # ── launchd agent (auto-start on login) ──────────────────────────

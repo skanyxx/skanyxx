@@ -11,7 +11,7 @@ public sealed class RateLimitTests(PostgresFixture postgres) : MemoryTestBase(po
     [Fact]
     public async Task AgentOverLimit_Rejected_OtherAgentsUnaffected()
     {
-        var boss = App.Client(MemoryApp.Supervisor);
+        var boss = App.SupervisorClient();
         await boss.SetGrantsAsync("loop", new { scope = "company", canSearch = true, canUpsert = true });
         await boss.SetGrantsAsync("calm", new { scope = "company", canSearch = true, canUpsert = true });
         await using var loop = await App.McpAsync("loop");

@@ -13,6 +13,7 @@ public static class OutcomeResults
             statusCode: StatusCodes.Status409Conflict),
         OutcomeStatus.NotFound => Results.Problem(outcome.Message, statusCode: StatusCodes.Status404NotFound),
         OutcomeStatus.Forbidden => Results.Problem(outcome.Message, statusCode: StatusCodes.Status403Forbidden),
+        OutcomeStatus.Unauthorized => Results.Problem(outcome.Message, statusCode: StatusCodes.Status401Unauthorized),
         OutcomeStatus.RateLimited => Results.Problem(outcome.Message, statusCode: StatusCodes.Status429TooManyRequests),
         OutcomeStatus.Accepted => Results.Json(map(outcome.Value!), statusCode: StatusCodes.Status202Accepted),
         OutcomeStatus.Unavailable => Results.Problem(outcome.Message, statusCode: StatusCodes.Status502BadGateway),

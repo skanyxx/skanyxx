@@ -15,7 +15,7 @@ internal sealed class ListPipelinesEndpoint(IMediator mediator) : EndpointWithou
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        var outcome = await mediator.Send(new ListPipelinesQuery(TicketsHeaders.User(HttpContext)), ct);
+        var outcome = await mediator.Send(new ListPipelinesQuery(Caller.UserId(User)), ct);
         await Send.ResultAsync(outcome.ToHttp(p => p));
     }
 }

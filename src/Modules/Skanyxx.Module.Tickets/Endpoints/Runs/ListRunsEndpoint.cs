@@ -15,7 +15,7 @@ internal sealed class ListRunsEndpoint(IMediator mediator) : Endpoint<ListRunsRe
 
     public override async Task HandleAsync(ListRunsRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new ListRunsQuery(TicketsHeaders.User(HttpContext), req.TicketKey), ct);
+        var outcome = await mediator.Send(new ListRunsQuery(Caller.UserId(User), req.TicketKey), ct);
         await Send.ResultAsync(outcome.ToHttp(runs => runs));
     }
 }

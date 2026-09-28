@@ -45,7 +45,7 @@ public sealed class LiftTests(PostgresFixture postgres) : MemoryTestBase(postgre
     [InlineData("team:billing", "team:sales")]
     public async Task Lift_NotUpward_Rejected(string from, string to)
     {
-        var response = await App.Client(MemoryApp.Supervisor).LiftAsync(from, "refund-window", to);
+        var response = await App.SupervisorClient().LiftAsync(from, "refund-window", to);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         var errors = (await response.JsonAsync()).GetProperty("errors");
@@ -66,7 +66,7 @@ public sealed class LiftTests(PostgresFixture postgres) : MemoryTestBase(postgre
     [Fact]
     public async Task LiftToCompany_Supervisor_Allowed()
     {
-        var boss = App.Client(MemoryApp.Supervisor);
+        var boss = App.SupervisorClient();
         await boss.PutCardAsync("personal:boss", "refund-window");
 
         var response = await boss.LiftAsync("personal:boss", "refund-window", "company");

@@ -8,7 +8,7 @@ public sealed class SandboxesOptions
     public const string Section = "Sandboxes";
 
     /// <summary>
-    /// Off unless set: a sandbox runs caller-chosen code inside the network every module's header identity trusts.
+    /// Off unless set: a sandbox runs caller-chosen code inside the network whose /mcp/memory still trusts agent headers.
     /// Off, the module registers nothing and answers 404 on every route.
     /// </summary>
     public bool Enabled { get; set; }
@@ -54,16 +54,13 @@ public sealed class SandboxesOptions
     [Range(1, 1_000)]
     public int MaxActiveTasksPerUser { get; set; } = 3;
 
-    /// <summary>Active tasks in the whole atespace, anyone's; more is a 429. The per-user cap alone trusts a spoofable header.</summary>
+    /// <summary>Active tasks in the whole atespace, anyone's; more is a 429. The per-user cap alone does not stop many accounts.</summary>
     [Range(1, 10_000)]
     public int MaxActiveTasks { get; set; } = 50;
 
     /// <summary>Overall deadline for counting active tasks before a run; past it the run is refused.</summary>
     [Range(1, 600)]
     public int CountBudgetSeconds { get; set; } = 30;
-
-    /// <summary>Users who may stop, suspend or resume anyone's task, adopt tasks made outside Skanyxx, and write workspaces. TODO(identity-slice): roles.</summary>
-    public string[] Supervisors { get; set; } = [];
 
     /// <summary>
     /// Skanyxx's <c>/mcp/memory</c> as reachable from inside a sandbox. Must stay empty: startup refuses any value

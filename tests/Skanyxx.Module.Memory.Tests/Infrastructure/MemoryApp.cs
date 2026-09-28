@@ -1,3 +1,6 @@
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -10,17 +13,20 @@ using Skanyxx.Core.Platform;
 namespace Skanyxx.Module.Memory.Tests.Infrastructure;
 
 /// <summary>
-/// The memory module on real Kestrel (random loopback port), wired exactly like the Host
-/// (platform extensions + module hooks). Kestrel rather than TestServer: it is what ships.
+/// The memory module on real Kestrel (random loopback port), wired like the Host (platform extensions + module hooks
+/// + authentication/authorization), with <see cref="TestAuthHandler"/> in place of the Host's cookie/bearer schemes.
+/// Kestrel rather than TestServer: it is what ships.
 /// </summary>
 public sealed class MemoryApp : IAsyncDisposable
 {
     public const string Supervisor = "boss";
+    public const string Owner = "olivia";
     public const string CorsControlPath = "/cors-control";
     public const string ApiFailurePath = "/api/test-failure";
     private const string AllowAll = "AllowAll";
 
     private readonly WebApplication _app;
+    private readonly Dictionary<string, (string Secret, bool ActsForUsers)> _secrets = [];
 
     private MemoryApp(WebApplication app) => _app = app;
 
@@ -28,6 +34,9 @@ public sealed class MemoryApp : IAsyncDisposable
 
     /// <summary>Every Error-level log line: an expected conflict must not be reported as a failure.</summary>
     public IReadOnlyList<string> Errors => _app.Services.GetRequiredService<ErrorLog>().Entries;
+
+    /// <summary>Every log entry at every level (the app logs at Trace).</summary>
+    public string Logs => _app.Services.GetRequiredService<LogCapture>().All;
 
     // After start, Urls holds the port Kestrel actually bound.
     private Uri BaseAddress => new(_app.Urls.First());
@@ -39,6 +48,10 @@ public sealed class MemoryApp : IAsyncDisposable
         var errors = new ErrorLog();
         builder.Logging.AddProvider(errors);
         builder.Services.AddSingleton(errors);
+        var logs = new LogCapture();
+        builder.Logging.AddProvider(logs);
+        builder.Logging.SetMinimumLevel(LogLevel.Trace);
+        builder.Services.AddSingleton(logs);
         // Only these settings: the Host's appsettings.json is copied into this bin by the project reference.
         builder.Configuration.Sources.Clear();
         builder.Configuration.AddInMemoryCollection(settings);
@@ -47,6 +60,10 @@ public sealed class MemoryApp : IAsyncDisposable
         var module = new MemoryModule();
         module.RegisterServices(builder.Services, builder.Configuration);
         builder.Services.AddSkanyxxPlatform([typeof(MemoryModule).Assembly]);
+        builder.Services.AddAuthentication(TestAuthHandler.SchemeName)
+            .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);
+        // The Host's fallback: every endpoint without its own rule needs a signed-in user (e.g. /mcp/memory must opt out).
+        builder.Services.AddAuthorization(o => o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         // Same global policy as the Host, so the tests can prove memory endpoints opt out of it.
         builder.Services.AddCors(o => o.AddPolicy(AllowAll, p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
 
@@ -54,10 +71,12 @@ public sealed class MemoryApp : IAsyncDisposable
         app.UseSkanyxxErrorHandling("/Error");
         app.UseRouting();
         app.UseCors(AllowAll);
-        app.MapGet(CorsControlPath, () => "ok");
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapGet(CorsControlPath, () => "ok").AllowAnonymous();
         app.MapGet(ApiFailurePath, IResult () => throw new InvalidOperationException("boom: internal detail"));
         // Stands in for the Host's Razor error page, so a mis-ordered handler would visibly serve HTML to the API.
-        app.Map("/Error", () => Results.Content("<html>error page</html>", "text/html"));
+        app.Map("/Error", () => Results.Content("<html>error page</html>", "text/html")).AllowAnonymous();
         app.UseSkanyxxPlatform([module]);
         return app;
     }
@@ -69,34 +88,85 @@ public sealed class MemoryApp : IAsyncDisposable
             ["ConnectionStrings:Memory"] = connectionString,
             ["Memory:SearchTopK"] = "5",
             ["Memory:UpsertsPerMinute"] = upsertsPerMinute.ToString(),
-            ["Memory:UpsertsPerMinuteTotal"] = upsertsPerMinuteTotal.ToString(),
-            ["Memory:Supervisors:0"] = Supervisor
+            ["Memory:UpsertsPerMinuteTotal"] = upsertsPerMinuteTotal.ToString()
         });
         await app.StartAsync();
         return new MemoryApp(app);
     }
 
-    public HttpClient Client(string? userId = null)
+    /// <summary>Signed in as <paramref name="userId"/> with <paramref name="roles"/>; no user means an anonymous client.</summary>
+    public HttpClient Client(string? userId = null, params string[] roles)
     {
         var client = new HttpClient { BaseAddress = BaseAddress };
         if (userId is not null)
-            client.DefaultRequestHeaders.Add("X-User-Id", userId);
+            client.DefaultRequestHeaders.Add(TestAuthHandler.UserHeader, userId);
+        if (roles.Length > 0)
+            client.DefaultRequestHeaders.Add(TestAuthHandler.RolesHeader, string.Join(',', roles));
         return client;
     }
 
-    public async Task<McpClient> McpAsync(string? agentId, string? userId = null)
+    public HttpClient SupervisorClient() => Client(Supervisor, SkanyxxRoles.Supervisor);
+
+    public HttpClient OwnerClient() => Client(Owner, SkanyxxRoles.Owner);
+
+    /// <summary>
+    /// Issues (or rotates) the agent's secret and returns it: as the supervisor, or as the owner when the agent is to
+    /// act for users (D084).
+    /// </summary>
+    public async Task<string> IssueSecretAsync(string agentId, bool actsForUsers = false)
     {
-        var headers = new Dictionary<string, string>();
-        if (agentId is not null) headers["X-Agent-Id"] = agentId;
-        if (userId is not null) headers["X-User-Id"] = userId;
+        var client = actsForUsers ? OwnerClient() : SupervisorClient();
+        var response = await client.PostAsJsonAsync($"/api/memory/agents/{agentId}/secret", new { actsForUsers });
+        response.EnsureSuccessStatusCode();
+        var secret = (await response.JsonAsync()).GetProperty("secret").GetString()!;
+        _secrets[agentId] = (secret, actsForUsers);
+        return secret;
+    }
+
+    /// <summary>
+    /// An MCP client for the agent, with its secret (issued on first use). With a user, the agent acts for users, so
+    /// the user is honoured; without one it does not.
+    /// </summary>
+    public async Task<McpClient> McpAsync(string agentId, string? userId = null)
+    {
+        var actsForUsers = userId is not null;
+        var secret = _secrets.TryGetValue(agentId, out var issued) && issued.ActsForUsers == actsForUsers
+            ? issued.Secret
+            : await IssueSecretAsync(agentId, actsForUsers);
+        return await McpWithSecretAsync(secret, userId);
+    }
+
+    public async Task<McpClient> McpWithSecretAsync(string secret, string? userId = null, IDictionary<string, string>? headers = null)
+    {
+        var all = new Dictionary<string, string>(headers ?? new Dictionary<string, string>()) { ["Authorization"] = $"Bearer {secret}" };
+        if (userId is not null) all["X-User-Id"] = userId;
 
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
             Endpoint = new Uri(BaseAddress, MemoryModule.McpPath),
             TransportMode = HttpTransportMode.StreamableHttp,
-            AdditionalHeaders = headers
+            AdditionalHeaders = all
         }, LoggerFactory.Create(_ => { }));
         return await McpClient.CreateAsync(transport);
+    }
+
+    /// <summary>One raw JSON-RPC POST to <c>/mcp/memory</c>, for asserting HTTP-level answers the MCP client hides.</summary>
+    public Task<HttpResponseMessage> PostMcpAsync(string method, string? authorization, string? userId = null)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, MemoryModule.McpPath)
+        {
+            Content = new StringContent(
+                """{"jsonrpc":"2.0","id":1,"method":""" + $"\"{method}\"" +
+                ""","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"1"}}}""",
+                System.Text.Encoding.UTF8, "application/json")
+        };
+        request.Headers.Accept.ParseAdd("application/json");
+        request.Headers.Accept.ParseAdd("text/event-stream");
+        if (authorization is not null)
+            request.Headers.TryAddWithoutValidation("Authorization", authorization);
+        if (userId is not null)
+            request.Headers.Add("X-User-Id", userId);
+        return Client().SendAsync(request);
     }
 
     public async ValueTask DisposeAsync()

@@ -16,7 +16,7 @@ internal sealed class SavePipelineEndpoint(IMediator mediator) : Endpoint<SavePi
     public override async Task HandleAsync(SavePipelineRequest req, CancellationToken ct)
     {
         var outcome = await mediator.Send(
-            new SavePipelineCommand(TicketsHeaders.User(HttpContext), req.Id, req.Name, req.Description, req.Stages), ct);
+            new SavePipelineCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Id, req.Name, req.Description, req.Stages), ct);
         await Send.ResultAsync(outcome.ToHttp(p => p));
     }
 }

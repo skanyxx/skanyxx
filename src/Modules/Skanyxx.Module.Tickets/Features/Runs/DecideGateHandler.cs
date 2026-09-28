@@ -1,6 +1,5 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Domain;
@@ -13,7 +12,7 @@ namespace Skanyxx.Module.Tickets.Features.Runs;
 /// verdict would. The decision and note are recorded on the attempt; its verdict stays what the agent said.
 /// Only the run's creator or a supervisor may decide, as with cancel.
 /// </summary>
-internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, IOptions<TicketsOptions> options, TimeProvider clock)
+internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, TimeProvider clock)
     : IRequestHandler<DecideGateCommand, Outcome<Run>>
 {
     public async Task<Outcome<Run>> Handle(DecideGateCommand command, CancellationToken ct)
@@ -21,7 +20,7 @@ internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, I
         var run = await db.Runs.Include(r => r.StageRuns).SingleOrDefaultAsync(r => r.Id == command.Id, ct);
         if (run is null)
             return Outcome<Run>.NotFound($"No run '{command.Id}'.");
-        if (run.CreatedBy != command.UserId && !options.Value.Supervisors.Contains(command.UserId))
+        if (run.CreatedBy != command.UserId && !command.IsSupervisor)
             return Outcome<Run>.Forbidden("Only the person who started the run, or a supervisor, may decide its gate.");
         if (run.State != RunState.AwaitingHuman)
             return Outcome<Run>.Conflict(run, $"The run is {run.State}, not waiting for a decision.");

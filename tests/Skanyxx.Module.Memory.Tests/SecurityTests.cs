@@ -9,13 +9,13 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     [Fact]
     public async Task Identity_InQueryString_IsIgnored()
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("personal:boss", "secret");
+        await App.SupervisorClient().PutCardAsync("personal:boss", "secret");
 
         var read = await App.Client().GetAsync("/api/memory/cards/personal:boss/secret?userId=boss");
         var search = await App.Client().GetAsync("/api/memory/cards?q=refund&userId=boss");
 
-        Assert.Equal(HttpStatusCode.BadRequest, read.StatusCode);
-        Assert.Equal(HttpStatusCode.BadRequest, search.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, read.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, search.StatusCode);
     }
 
     [Fact]
@@ -26,7 +26,7 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
         var asAna = await App.Client("ana").PutAsJsonAsync("/api/memory/cards/company/k1",
             new { userId = MemoryApp.Supervisor, version = 0, type = "fact", what = "w", why = "y" });
 
-        Assert.Equal(HttpStatusCode.BadRequest, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, asAna.StatusCode);
         Assert.Equal(0, await Postgres.CardCountAsync());
     }
@@ -34,7 +34,7 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     [Fact]
     public async Task QueryString_CannotRetargetRouteOrBody()
     {
-        var boss = App.Client(MemoryApp.Supervisor);
+        var boss = App.SupervisorClient();
         await boss.PutCardAsync("personal:boss", "secret", body: "BOSS-ONLY");
         await App.Client("ana").PutCardAsync("personal:ana", "note");
 
@@ -92,6 +92,7 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
         var request = new HttpRequestMessage(HttpMethod.Post, "/mcp/memory") { Content = huge };
         request.Headers.Accept.ParseAdd("application/json");
         request.Headers.Accept.ParseAdd("text/event-stream");
+        request.Headers.Authorization = new("Bearer", await App.IssueSecretAsync("seed"));
 
         var response = await App.Client().SendAsync(request);
 
@@ -115,7 +116,7 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
         var response = await App.Client("ana").PutAsync("/api/memory/cards/personal:ana/k", new StringContent(
             "{\"version\":\"<script>alert(1)</script>\",\"type\":\"fact\",\"what\":\"w\",\"why\":\"y\"}",
             System.Text.Encoding.UTF8, "application/json"));
-        var grants = await App.Client(MemoryApp.Supervisor).PutAsync("/api/memory/grants/seed",
+        var grants = await App.SupervisorClient().PutAsync("/api/memory/grants/seed",
             new StringContent("{\"grants\":\"not-a-list\"}", System.Text.Encoding.UTF8, "application/json"));
 
         foreach (var r in new[] { response, grants })

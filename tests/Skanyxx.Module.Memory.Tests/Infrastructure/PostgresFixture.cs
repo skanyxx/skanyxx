@@ -25,7 +25,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public async Task ResetAsync()
     {
         await using var db = CreateDbContext();
-        await db.Database.ExecuteSqlRawAsync("TRUNCATE memory_cards, memory_agent_grants RESTART IDENTITY CASCADE");
+        await db.Database.ExecuteSqlRawAsync("TRUNCATE memory_cards, memory_agent_grants, memory_agent_secrets RESTART IDENTITY CASCADE");
     }
 
     public async Task<int> CardCountAsync()

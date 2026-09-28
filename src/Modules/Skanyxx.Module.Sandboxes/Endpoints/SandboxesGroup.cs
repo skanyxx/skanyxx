@@ -9,10 +9,10 @@ using Microsoft.Extensions.DependencyInjection;
 namespace Skanyxx.Module.Sandboxes.Endpoints;
 
 /// <summary>
-/// Shared settings for every sandboxes endpoint. CORS is off for the same reason as memory and tickets: identity is
-/// a plain header until the identity slice, so no web page may drive these from an employee's browser.
-/// While the module is off (<see cref="SandboxesOptions.Enabled"/>) it registered no services, and every route is a 404
-/// before any binding, validation or handler runs.
+/// Shared settings for every sandboxes endpoint: a signed-in user is required (FastEndpoints' default, against the
+/// Host's authentication schemes), CORS stays off so no other origin can drive them with the user's cookie, and the
+/// body is capped. While the module is off (<see cref="SandboxesOptions.Enabled"/>) it registered no services, and every route is a 404
+/// before any binding, validation or handler runs (after authentication: an anonymous call is a 401 either way).
 /// </summary>
 internal sealed class SandboxesGroup : Group
 {
@@ -22,7 +22,6 @@ internal sealed class SandboxesGroup : Group
     public SandboxesGroup() =>
         Configure("api/sandboxes", ep =>
         {
-            ep.AllowAnonymous(); // TODO(identity-slice)
             ep.Options(b => b
                 .WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MaxBodyBytes))
                 .AddEndpointFilter((context, next) => IsEnabled(context.HttpContext) ? next(context) : ValueTask.FromResult<object?>(Results.NotFound())));

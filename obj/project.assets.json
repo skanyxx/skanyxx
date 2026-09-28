@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "targets": {
     "net8.0": {
       "Asp.Versioning.Abstractions/8.1.0": {
@@ -3815,29 +3815,29 @@
     ]
   },
   "packageFolders": {
-    "/Users/anatolipakastrofski/.nuget/packages/": {}
+    "/Users/anatoli/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/Users/anatolipakastrofski/Dev/Denis/skanyxx/SkanyxxWeb.csproj",
+      "projectUniqueName": "/Users/anatoli/Desktop/Dev/skanyxx/SkanyxxWeb.csproj",
       "projectName": "SkanyxxWeb",
-      "projectPath": "/Users/anatolipakastrofski/Dev/Denis/skanyxx/SkanyxxWeb.csproj",
-      "packagesPath": "/Users/anatolipakastrofski/.nuget/packages/",
-      "outputPath": "/Users/anatolipakastrofski/Dev/Denis/skanyxx/obj/",
+      "projectPath": "/Users/anatoli/Desktop/Dev/skanyxx/SkanyxxWeb.csproj",
+      "packagesPath": "/Users/anatoli/.nuget/packages/",
+      "outputPath": "/Users/anatoli/Desktop/Dev/skanyxx/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/Users/anatolipakastrofski/.nuget/NuGet/NuGet.Config"
+        "/Users/anatoli/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net8.0"
       ],
       "sources": {
-        "/Users/anatolipakastrofski/.dotnet/library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
         "net8.0": {
+          "framework": "net8.0",
           "targetAlias": "net8.0",
           "projectReferences": {}
         }
@@ -3852,10 +3852,11 @@
         "auditLevel": "low",
         "auditMode": "direct"
       },
-      "SdkAnalysisLevel": "10.0.100"
+      "SdkAnalysisLevel": "10.0.400"
     },
     "frameworks": {
       "net8.0": {
+        "framework": "net8.0",
         "targetAlias": "net8.0",
         "dependencies": {
           "Asp.Versioning.Mvc": {
@@ -3912,6 +3913,20 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[8.0.31, 8.0.31]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Host.osx-arm64",
+            "version": "[8.0.31, 8.0.31]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[8.0.31, 8.0.31]"
+          }
+        ],
         "frameworkReferences": {
           "Microsoft.AspNetCore.App": {
             "privateAssets": "none"
@@ -3920,7 +3935,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/Users/anatolipakastrofski/.dotnet/sdk/10.0.101/PortableRuntimeIdentifierGraph.json"
+        "runtimeIdentifierGraphPath": "/usr/local/share/dotnet/sdk/10.0.401/PortableRuntimeIdentifierGraph.json"
       }
     }
   }

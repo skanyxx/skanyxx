@@ -15,7 +15,7 @@ internal sealed class GetPipelineEndpoint(IMediator mediator) : Endpoint<Pipelin
 
     public override async Task HandleAsync(PipelineRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetPipelineQuery(TicketsHeaders.User(HttpContext), req.Id), ct);
+        var outcome = await mediator.Send(new GetPipelineQuery(Caller.UserId(User), req.Id), ct);
         await Send.ResultAsync(outcome.ToHttp(p => p));
     }
 }

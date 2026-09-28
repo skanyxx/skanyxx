@@ -5,8 +5,15 @@ using Microsoft.Net.Http.Headers;
 namespace Skanyxx.Core.Platform;
 
 /// <summary>
-/// Refuses guarded routes to any browser origin not explicitly allowed. <c>DisableCors</c> only stops cross-origin
-/// reads; a DNS-rebound page is same-origin and would otherwise set the identity headers freely.
+/// Refuses browser origins that are not explicitly allowed:
+/// <list type="bullet">
+/// <item>on the guarded routes, for every method: <c>DisableCors</c> only stops cross-origin reads, and a DNS-rebound
+/// page is same-origin;</item>
+/// <item>on every other route, for unsafe methods: SameSite=Lax still sends the session cookie from a same-site
+/// origin (another port on the host, a sibling subdomain), so a form there could drive a legacy POST. The page's own
+/// origin passes, so the app's forms and fetches keep working; the host name itself is already held to
+/// <c>AllowedHosts</c>.</item>
+/// </list>
 /// Non-browser clients (kagent, curl, MCP SDKs) send no <c>Origin</c> and pass.
 /// </summary>
 public sealed class OriginGuardMiddleware(RequestDelegate next, IOptions<SkanyxxOptions> options)
@@ -16,10 +23,21 @@ public sealed class OriginGuardMiddleware(RequestDelegate next, IOptions<Skanyxx
 
     public Task InvokeAsync(HttpContext context)
     {
-        var origin = context.Request.Headers[HeaderNames.Origin];
-        if (origin.Count == 0 || !GuardedPaths.Contains(context.Request.Path) || _allowed.Contains(origin.ToString()))
+        var request = context.Request;
+        var origin = request.Headers[HeaderNames.Origin].ToString();
+        if (origin.Length == 0 || _allowed.Contains(origin))
+            return next(context);
+        if (!GuardedPaths.Contains(request.Path) && (IsSafe(request.Method) || IsSameOrigin(origin, request)))
             return next(context);
 
         return Results.Problem("This origin is not allowed.", statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
     }
+
+    private static bool IsSafe(string method) =>
+        HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method) || HttpMethods.IsTrace(method);
+
+    // Host and port only: behind a TLS-terminating proxy the request scheme is http while the page's is https.
+    private static bool IsSameOrigin(string origin, HttpRequest request) =>
+        Uri.TryCreate(origin, UriKind.Absolute, out var uri)
+        && string.Equals(uri.Authority, request.Host.Value, StringComparison.OrdinalIgnoreCase);
 }

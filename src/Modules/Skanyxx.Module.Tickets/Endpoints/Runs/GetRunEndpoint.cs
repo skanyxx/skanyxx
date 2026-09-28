@@ -16,7 +16,7 @@ internal sealed class GetRunEndpoint(IMediator mediator) : Endpoint<RunRouteRequ
 
     public override async Task HandleAsync(RunRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetRunQuery(TicketsHeaders.User(HttpContext), req.Id), ct);
+        var outcome = await mediator.Send(new GetRunQuery(Caller.UserId(User), req.Id), ct);
         await Send.ResultAsync(outcome.ToHttp(RunMapper.ToDto));
     }
 }

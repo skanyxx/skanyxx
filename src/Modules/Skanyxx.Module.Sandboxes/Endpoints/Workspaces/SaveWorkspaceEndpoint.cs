@@ -15,7 +15,7 @@ internal sealed class SaveWorkspaceEndpoint(IMediator mediator) : Endpoint<SaveW
 
     public override async Task HandleAsync(SaveWorkspaceRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new SaveWorkspaceCommand(SandboxesHeaders.User(HttpContext), req.Name,
+        var outcome = await mediator.Send(new SaveWorkspaceCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Name,
             req.Git ?? [], req.McpServers ?? [], req.AttachMemory), ct);
         await Send.ResultAsync(outcome.ToHttp(workspace => workspace));
     }

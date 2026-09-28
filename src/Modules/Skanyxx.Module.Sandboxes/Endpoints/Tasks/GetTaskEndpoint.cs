@@ -15,7 +15,7 @@ internal sealed class GetTaskEndpoint(IMediator mediator) : Endpoint<TaskRouteRe
 
     public override async Task HandleAsync(TaskRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetTaskQuery(SandboxesHeaders.User(HttpContext), req.Name), ct);
+        var outcome = await mediator.Send(new GetTaskQuery(Caller.UserId(User), req.Name), ct);
         await Send.ResultAsync(outcome.ToHttp(task => task));
     }
 }

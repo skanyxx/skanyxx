@@ -19,16 +19,13 @@ public sealed class MemoryOptions
     [Range(1, 10_000)]
     public int UpsertsPerMinute { get; set; } = 30;
 
-    /// <summary>Writes per minute from everyone together. The per-caller limit alone trusts a spoofable header.</summary>
+    /// <summary>Writes per minute from everyone together, however many agents and users are writing.</summary>
     [Range(1, 100_000)]
     public int UpsertsPerMinuteTotal { get; set; } = 300;
 
     /// <summary>Connections in memory's own Npgsql pool (distinct from tickets' by its Application Name).</summary>
     [Range(1, 1_000)]
     public int MaxPoolSize { get; set; } = 40;
-
-    /// <summary>Users who may lift into and write <c>company</c> and set agent grants. TODO(identity-slice): roles.</summary>
-    public string[] Supervisors { get; set; } = [];
 
     /// <summary>
     /// The configured string with this module's pool settings. Npgsql keys pools by connection string, so the

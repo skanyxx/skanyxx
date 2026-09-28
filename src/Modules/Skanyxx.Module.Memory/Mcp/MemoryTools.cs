@@ -14,8 +14,8 @@ using Skanyxx.Module.Memory.Features.Cards;
 namespace Skanyxx.Module.Memory.Mcp;
 
 /// <summary>
-/// The memory plane as kagent sees it. Identity comes from headers set on the RemoteMCPServer,
-/// never from tool arguments, because the model fills those in.
+/// The memory plane as kagent sees it. The agent is the owner of the secret the request authenticated with, the user
+/// the X-User-Id header when that agent may act for users (D084) — never tool arguments, because the model fills those in.
 /// </summary>
 [McpServerToolType]
 public sealed class MemoryTools(IMediator mediator, IHttpContextAccessor http)
@@ -27,7 +27,7 @@ public sealed class MemoryTools(IMediator mediator, IHttpContextAccessor http)
         [Description("What you are looking for, in plain words.")] string query,
         CancellationToken ct)
     {
-        return await Run(() => mediator.Send(new SearchCardsQuery(Caller(), query), ct));
+        return await Run(() => mediator.Send(new SearchCardsQuery(AgentCaller(), query), ct));
     }
 
     [McpServerTool(Name = "memory_upsert", Destructive = false, Idempotent = false)]
@@ -43,9 +43,10 @@ public sealed class MemoryTools(IMediator mediator, IHttpContextAccessor http)
         [Description("'personal' (default, the user's own space) or a scope you were granted, e.g. 'company'.")] string scope = AgentGrant.CallerPersonal,
         CancellationToken ct = default)
     {
-        var caller = Caller();
+        var caller = AgentCaller();
         var target = scope == AgentGrant.CallerPersonal
-            ? caller.PersonalScope?.ToString() ?? throw new McpException("No user context: this call cannot write to 'personal'.")
+            ? caller.PersonalScope?.ToString() ?? throw new McpException(
+                "No user context: this call cannot write to 'personal' (the agent does not act for users, or X-User-Id is not a user id).")
             : scope;
 
         var outcome = await Run(() => mediator.Send(new UpsertCardCommand(caller, target, key, version, type, what, why), ct));
@@ -58,13 +59,7 @@ public sealed class MemoryTools(IMediator mediator, IHttpContextAccessor http)
         };
     }
 
-    private Caller Caller()
-    {
-        var caller = MemoryHeaders.Agent(http.HttpContext!);
-        return caller.IsAgent
-            ? caller
-            : throw new McpException($"{MemoryHeaders.AgentId} header is required on the memory MCP server.");
-    }
+    private MemoryCaller AgentCaller() => MemoryHeaders.Agent(http.HttpContext!);
 
     private static async Task<T> Run<T>(Func<Task<T>> send)
     {

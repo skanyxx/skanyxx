@@ -16,7 +16,7 @@ internal sealed class DecideGateEndpoint(IMediator mediator) : Endpoint<DecideGa
 
     public override async Task HandleAsync(DecideGateRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new DecideGateCommand(TicketsHeaders.User(HttpContext), req.Id, req.Decision, req.Note), ct);
+        var outcome = await mediator.Send(new DecideGateCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Id, req.Decision, req.Note), ct);
         await Send.ResultAsync(outcome.ToHttp(RunMapper.ToDto));
     }
 }

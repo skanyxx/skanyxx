@@ -4,4 +4,4 @@ using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Features.Cards;
 
-public sealed record SearchCardsQuery(Caller Caller, string Query) : IRequest<IReadOnlyList<CardHit>>;
+public sealed record SearchCardsQuery(MemoryCaller Caller, string Query) : IRequest<IReadOnlyList<CardHit>>;

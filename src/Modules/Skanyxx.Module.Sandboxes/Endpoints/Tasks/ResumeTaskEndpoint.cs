@@ -15,7 +15,7 @@ internal sealed class ResumeTaskEndpoint(IMediator mediator) : Endpoint<TaskRout
 
     public override async Task HandleAsync(TaskRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new SetTaskSuspendedCommand(SandboxesHeaders.User(HttpContext), req.Name, Suspend: false), ct);
+        var outcome = await mediator.Send(new SetTaskSuspendedCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Name, Suspend: false), ct);
         await Send.ResultAsync(outcome.ToHttp(task => task));
     }
 }

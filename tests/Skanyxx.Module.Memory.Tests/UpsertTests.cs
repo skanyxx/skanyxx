@@ -107,7 +107,7 @@ public sealed class UpsertTests(PostgresFixture postgres) : MemoryTestBase(postg
     public async Task Upsert_Company_OnlySupervisor()
     {
         var byEmployee = await App.Client("ana").PutCardAsync("company", "refund-window");
-        var bySupervisor = await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "refund-window");
+        var bySupervisor = await App.SupervisorClient().PutCardAsync("company", "refund-window");
 
         Assert.Equal(HttpStatusCode.Forbidden, byEmployee.StatusCode);
         Assert.Equal(HttpStatusCode.Created, bySupervisor.StatusCode);

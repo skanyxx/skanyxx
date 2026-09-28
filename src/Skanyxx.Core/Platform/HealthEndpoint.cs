@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -32,7 +33,8 @@ public static class HealthEndpoint
 
     public static IEndpointConventionBuilder MapSkanyxxHealth(this IEndpointRouteBuilder endpoints, string pattern) =>
         endpoints.MapHealthChecks(pattern, new HealthCheckOptions { ResponseWriter = WriteAsync })
-            .WithMetadata(new DisableCorsAttribute());
+            .WithMetadata(new DisableCorsAttribute())
+            .AllowAnonymous();
 
     private static Task WriteAsync(HttpContext context, HealthReport report)
     {

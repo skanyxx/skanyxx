@@ -17,7 +17,7 @@ internal sealed class LiftCardEndpoint(IMediator mediator) : Endpoint<LiftCardRe
     public override async Task HandleAsync(LiftCardRequest req, CancellationToken ct)
     {
         var outcome = await mediator.Send(
-            new LiftCardCommand(MemoryHeaders.Human(HttpContext), req.Scope, req.Key, req.TargetScope), ct);
+            new LiftCardCommand(HumanCaller.From(User), req.Scope, req.Key, req.TargetScope), ct);
         await Send.ResultAsync(outcome.ToHttp(CardMapper.ToDto));
     }
 }

@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
@@ -34,7 +36,6 @@ public sealed class MemoryModule : IModule, IEndpointModule
             .Bind(configuration.GetSection(MemoryOptions.Section))
             .Configure(o => o.ConnectionString = configuration.GetConnectionString("Memory") ?? "")
             .ValidateDataAnnotations()
-            .Validate(o => o.Supervisors.All(Identifier.IsValid), "Memory:Supervisors entries must be valid user ids (lowercase, e.g. 'ana').")
             .ValidateOnStart();
 
         services.AddDbContext<MemoryDbContext>((sp, o) => o
@@ -53,6 +54,8 @@ public sealed class MemoryModule : IModule, IEndpointModule
             name: "memory-postgres",
             tags: ["memory"]);
 
+        services.AddAuthentication()
+            .AddScheme<AuthenticationSchemeOptions, AgentSecretAuthentication>(AgentSecretAuthentication.SchemeName, null);
         services.AddHttpContextAccessor();
         services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
@@ -61,8 +64,24 @@ public sealed class MemoryModule : IModule, IEndpointModule
 
     public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;
 
-    // Same rules as MemoryGroup: CORS off (header identity must not be reachable from any web page) and the
-    // body size capped — MCP parses the JSON-RPC body before it can see that the agent header is missing.
-    public void MapEndpoints(IEndpointRouteBuilder endpoints) =>
-        endpoints.MapMcp(McpPath).WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MemoryGroup.MaxBodyBytes));
+    // kagent has no signed-in user, so the MCP route does not use the Host's user schemes: it requires an agent secret
+    // (D080) and nothing else, and the agent is whoever owns that secret. The 401 comes from authorization, before MCP
+    // parses anything. CORS stays off (no web page should drive it) and the body is capped.
+    public void MapEndpoints(IEndpointRouteBuilder endpoints)
+    {
+        var mcp = endpoints.MapGroup(McpPath)
+            .RequireAuthorization(p => p.AddAuthenticationSchemes(AgentSecretAuthentication.SchemeName).RequireAuthenticatedUser())
+            .WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MemoryGroup.MaxBodyBytes));
+        mcp.MapMcp();
+        // Stateless MCP maps POST only. Clients (kagent's go-sdk) still open the standalone SSE stream (GET) and end the
+        // session (DELETE); unmapped, any other verb falls to the framework's 405 endpoint, which has no authorization
+        // metadata, so the Host's user policy answered a valid secret with 401. MCP Streamable HTTP allows 405 here.
+        // Only while Stateless: a stateful MapMcp maps GET/DELETE itself and these would become ambiguous.
+        mcp.MapMethods("", [HttpMethods.Get, HttpMethods.Delete, HttpMethods.Head, HttpMethods.Put, HttpMethods.Patch, HttpMethods.Options],
+            (HttpContext context) =>
+            {
+                context.Response.Headers.Allow = HttpMethods.Post;
+                return Results.StatusCode(StatusCodes.Status405MethodNotAllowed);
+            });
+    }
 }

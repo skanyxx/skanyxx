@@ -24,21 +24,27 @@ public sealed class SandboxesModule : IModule
     {
         // Endpoint discovery cannot be skipped from here (the Host scans every loaded module), so SandboxesGroup
         // answers 404 on the same setting.
+        services.AddSingleton<KeyedLock>();
+        services.AddSingleton<WatchLimiter>();
+
+        // MediatR registers the handlers either way, and Development's ValidateOnBuild resolves them.
         if (!SandboxesOptions.IsEnabled(configuration))
+        {
+            services.AddTransient<AxGateway>(_ => throw new InvalidOperationException("Sandboxes are disabled (Sandboxes:Enabled)."));
             return;
+        }
 
         services.AddOptions<SandboxesOptions>()
             .Bind(configuration.GetSection(SandboxesOptions.Section))
             .ValidateDataAnnotations()
             .Validate(o => SandboxesOptions.IsHttpUrl(o.Address), "Sandboxes:Address must be an absolute http(s) URL.")
             .Validate(o => o.MemoryMcpUrl.Length == 0,
-                "Sandboxes:MemoryMcpUrl must be empty: a sandbox would choose its own X-Agent-Id/X-User-Id on /mcp/memory. "
+                "Sandboxes:MemoryMcpUrl must be empty: /mcp/memory needs an agent secret, and a sandbox has no per-task credential yet. "
                 + "It can be set once the sandbox listener with signed tokens exists (D076/D077, docs/design/ax-integration.md).")
             .Validate(o => o.AllowedImages.Length == 0 || o.NetworkIsolationConfirmed,
                 "Sandboxes:AllowedImages needs Sandboxes:NetworkIsolationConfirmed=true: apply deploy/sandboxes/ (or equivalent) "
                 + "first, so sandbox code cannot reach Skanyxx, ax-server or the cluster.")
             .Validate(o => o.AllowedImages.All(p => p.Length > 0), "Sandboxes:AllowedImages entries must not be empty.")
-            .Validate(o => o.Supervisors.All(Identifier.IsValid), "Sandboxes:Supervisors entries must be valid user ids (lowercase, e.g. 'ana').")
             .Validate(o => o.HasValidResources(),
                 "Sandboxes resource settings must be Kubernetes quantities with default request <= default limit <= max.")
             .ValidateOnStart();
@@ -48,8 +54,6 @@ public sealed class SandboxesModule : IModule
         services.AddGrpcClient<AxClient>((sp, o) =>
             o.Address = new Uri(sp.GetRequiredService<IOptions<SandboxesOptions>>().Value.Address));
         services.AddTransient<AxGateway>();
-        services.AddSingleton<KeyedLock>();
-        services.AddSingleton<WatchLimiter>();
     }
 
     public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;

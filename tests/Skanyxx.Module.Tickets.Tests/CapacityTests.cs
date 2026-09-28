@@ -13,7 +13,7 @@ public sealed class CapacityTests(PostgresFixture postgres) : TicketsTestBase(po
     private Task<HttpResponseMessage> StartAsAsync(TicketsApp app, string user) =>
         app.Client(user).PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" });
 
-    // CR M1: X-User-Id is a spoofable header, so a fresh id per request must still hit a global cap.
+    // CR M1: the per-user cap alone does not bound many users (or accounts), so a global cap must still hold.
     [Fact]
     public async Task ManyUserIds_ShareOneGlobalCap()
     {

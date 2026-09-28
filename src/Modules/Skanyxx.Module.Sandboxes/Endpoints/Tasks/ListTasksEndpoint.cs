@@ -15,7 +15,7 @@ internal sealed class ListTasksEndpoint(IMediator mediator) : Endpoint<ListTasks
 
     public override async Task HandleAsync(ListTasksRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new ListTasksQuery(SandboxesHeaders.User(HttpContext), req.Limit, req.Offset), ct);
+        var outcome = await mediator.Send(new ListTasksQuery(Caller.UserId(User), req.Limit, req.Offset), ct);
         await Send.ResultAsync(outcome.ToHttp(tasks => tasks));
     }
 }

@@ -10,7 +10,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [Fact]
     public async Task Search_ReturnsPublishedOnly_Top5_BestMatchFirst()
     {
-        var boss = App.Client(MemoryApp.Supervisor);
+        var boss = App.SupervisorClient();
         await boss.PutCardAsync("company", "refund-window", what: "Refund window is 14 days", why: "Finance policy");
         for (var i = 0; i < 6; i++)
             await boss.PutCardAsync("company", $"weak-{i}", what: $"Unrelated item {i}", why: "Mentions a refund once");
@@ -29,7 +29,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [Fact]
     public async Task Search_NaturalLanguageQuestion_Matches()
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "refund-window");
+        await App.SupervisorClient().PutCardAsync("company", "refund-window");
 
         var hits = await App.Client("ana").SearchAsync("How long do customers have to ask for a refund?");
 
@@ -42,7 +42,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [InlineData("windows")]
     public async Task Search_FindsACardByItsOwnKey_AsSlugOrWords(string query)
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "refund-window", what: "Fourteen days", why: "Policy");
+        await App.SupervisorClient().PutCardAsync("company", "refund-window", what: "Fourteen days", why: "Policy");
 
         var hits = await App.Client("ana").SearchAsync(query);
 
@@ -52,7 +52,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [Fact]
     public async Task Search_HyphenatedWord_MatchesTheSpacedForm()
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "customer-calls", what: "Always follow up within a day", why: "Retention");
+        await App.SupervisorClient().PutCardAsync("company", "customer-calls", what: "Always follow up within a day", why: "Retention");
 
         var hits = await App.Client("ana").SearchAsync("follow-up");
 
@@ -92,7 +92,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [Fact]
     public async Task Search_LongQuestion_UsesItsLastWordsToo()
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "warehouse-hours", what: "Closes at 16:00", why: "Carrier pickup");
+        await App.SupervisorClient().PutCardAsync("company", "warehouse-hours", what: "Closes at 16:00", why: "Carrier pickup");
         var filler = string.Join(' ', Enumerable.Range(0, 40).Select(i => $"filler{i}"));
 
         var hits = await App.Client("ana").SearchAsync($"{filler} warehouse");
@@ -103,7 +103,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [Fact]
     public async Task Search_MatchesStemmedKeyWords()
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "travel-policies", what: "Book economy", why: "Budget");
+        await App.SupervisorClient().PutCardAsync("company", "travel-policies", what: "Book economy", why: "Budget");
 
         var hits = await App.Client("ana").SearchAsync("policy");
 
@@ -115,7 +115,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [InlineData("AT&T refund | !( ) :* <-> 'quoted' \\ refund")]
     public async Task Search_HostileOrPunctuatedInput_StillMatches(string query)
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "refund-window");
+        await App.SupervisorClient().PutCardAsync("company", "refund-window");
 
         var hits = await App.Client("ana").SearchAsync(query);
 
@@ -125,7 +125,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [Fact]
     public async Task Search_OnlyStopWords_ReturnsNothing()
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "refund-window");
+        await App.SupervisorClient().PutCardAsync("company", "refund-window");
 
         Assert.Empty(await App.Client("ana").SearchAsync("the and of"));
     }
@@ -133,7 +133,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     [Fact]
     public async Task Search_Human_SeesCompanyAndOwnPersonal_Only()
     {
-        await App.Client(MemoryApp.Supervisor).PutCardAsync("company", "company-refund");
+        await App.SupervisorClient().PutCardAsync("company", "company-refund");
         await App.Client("ana").PutCardAsync("personal:ana", "ana-refund");
         await App.Client("bob").PutCardAsync("personal:bob", "bob-refund");
         await App.Client("ana").PutCardAsync("team:billing", "team-refund");

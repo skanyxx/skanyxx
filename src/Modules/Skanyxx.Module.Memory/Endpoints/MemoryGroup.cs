@@ -6,8 +6,9 @@ using Microsoft.AspNetCore.Mvc;
 namespace Skanyxx.Module.Memory.Endpoints;
 
 /// <summary>
-/// Shared settings for every memory endpoint. CORS is off: the Host's AllowAll policy would let any
-/// web page drive these endpoints from an employee's browser while identity is a plain header.
+/// Shared settings for every memory endpoint: a signed-in user is required (FastEndpoints' default, against the
+/// Host's authentication schemes), CORS stays off so no other origin can drive them with the user's cookie, and the
+/// body is capped.
 /// </summary>
 internal sealed class MemoryGroup : Group
 {
@@ -19,8 +20,5 @@ internal sealed class MemoryGroup : Group
 
     public MemoryGroup() =>
         Configure("api/memory", ep =>
-        {
-            ep.AllowAnonymous(); // TODO(identity-slice)
-            ep.Options(b => b.WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MaxBodyBytes)));
-        });
+            ep.Options(b => b.WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MaxBodyBytes))));
 }

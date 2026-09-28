@@ -9,7 +9,7 @@ internal static class UserRules
     public static IRuleBuilderOptions<T, string?> NoNul<T>(this IRuleBuilder<T, string?> rule) =>
         rule.Must(v => v is null || !v.Contains('\0')).WithMessage("Must not contain NUL characters.");
 
-    /// <summary>Every tickets request carries the caller's <c>X-User-Id</c>. TODO(identity-slice): claims.</summary>
+    /// <summary>Every tickets request carries the signed-in user's id, filled by the endpoint from the principal.</summary>
     public static IRuleBuilderOptions<T, string?> ValidUser<T>(this IRuleBuilder<T, string?> rule) =>
-        rule.Must(Identifier.IsValid).OverridePropertyName("identity").WithMessage("A valid X-User-Id header is required.");
+        rule.Must(Identifier.IsValid).OverridePropertyName("identity").WithMessage("A signed-in user with a valid id is required.");
 }
