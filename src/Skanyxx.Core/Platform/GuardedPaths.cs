@@ -16,9 +16,19 @@ public static class GuardedPaths
     private static readonly PathString[] CredentialPaths =
         ["/api/identity/sign-in", "/api/identity/bootstrap", "/api/identity/unlock", "/Login", "/Setup"];
 
+    private static readonly PathString[] InviteApiPaths = ["/api/identity/invites/lookup", "/api/identity/invites/accept"];
+
+    // The accept page looks its token up on GET as well.
+    private const string InvitePage = "/Invite";
+
     public static bool Contains(PathString path) => Prefixes.Any(path.StartsWithSegments);
 
     /// <summary>Counted in their own, stricter window (<see cref="SkanyxxOptions.SignInRateLimit"/>).</summary>
     public static bool IsCredentialPost(HttpRequest request) =>
         HttpMethods.IsPost(request.Method) && CredentialPaths.Any(request.Path.StartsWithSegments);
+
+    /// <summary>Anything that checks an invite token, in <see cref="SkanyxxOptions.InviteRateLimit"/>.</summary>
+    public static bool IsInviteRequest(HttpRequest request) =>
+        (HttpMethods.IsPost(request.Method) && InviteApiPaths.Any(request.Path.StartsWithSegments))
+        || request.Path.StartsWithSegments(InvitePage);
 }

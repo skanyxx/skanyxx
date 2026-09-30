@@ -16,8 +16,8 @@ internal sealed class GetAgentSecretHandler(MemoryDbContext db, AccessPolicy acc
 
         var status = await db.AgentSecrets.AsNoTracking()
             .Where(s => s.AgentId == query.AgentId)
-            .Select(s => new AgentSecretStatus(s.AgentId, true, s.CreatedAt, s.ActsForUsers))
+            .Select(s => new AgentSecretStatus(s.AgentId, true, s.CreatedAt, s.ActsForUsers, s.CreatedBy))
             .SingleOrDefaultAsync(ct);
-        return Outcome<AgentSecretStatus>.Ok(status ?? new AgentSecretStatus(query.AgentId, false, null, false));
+        return Outcome<AgentSecretStatus>.Ok(status ?? new AgentSecretStatus(query.AgentId, false, null, false, null));
     }
 }

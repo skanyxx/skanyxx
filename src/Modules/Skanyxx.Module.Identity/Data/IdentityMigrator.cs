@@ -16,7 +16,7 @@ internal sealed class IdentityMigrator(IServiceScopeFactory scopes) : IHostedLif
     // All advisory-lock keys are listed in one place: Skanyxx.Module.Memory's MemoryMigrator. Identity adds:
     //   0x49444E02  identity migrator (this)          pg_advisory_lock(bigint)
     //   0x49444E01  owner bootstrap (one at a time)   pg_advisory_xact_lock(bigint)
-    //   hashtextextended(normalized email, 0x49444E03)  password check / unlock, per account   pg_advisory_xact_lock(bigint)
+    //   hashtextextended(normalized email, 0x49444E03)  password check, unlock, invite create/accept, role change, disable; per account   pg_advisory_xact_lock(bigint)
     internal const long MigrateLockKey = 0x49444E02;
 
     public async Task StartingAsync(CancellationToken cancellationToken)

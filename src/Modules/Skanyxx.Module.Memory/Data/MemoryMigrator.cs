@@ -20,7 +20,7 @@ internal sealed class MemoryMigrator(IServiceScopeFactory scopes) : IHostedServi
     //   (0x544B5401, 0)                tickets run start (active-run caps)   pg_advisory_xact_lock(int, int)
     //   0x49444E02                     identity migrator                     pg_advisory_lock(bigint)
     //   0x49444E01                     identity owner bootstrap              pg_advisory_xact_lock(bigint)
-    //   hashtextextended(email, 0x49444E03)  identity password check, per account  pg_advisory_xact_lock(bigint)
+    //   hashtextextended(email, 0x49444E03)  identity password check and account writes, per account  pg_advisory_xact_lock(bigint)
     //     (64-bit so a colliding email is out of reach; shares the bigint space above, at ~2^-64 per key)
     internal const long MigrateLockKey = 0x4D454D02;
 

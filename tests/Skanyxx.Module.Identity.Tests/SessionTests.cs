@@ -1,12 +1,11 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 namespace Skanyxx.Module.Identity.Tests;
 
 /// <summary>
-/// SEC S3: sessions end server-side. Sign-out kills copied cookies (at the next stamp check), refresh tokens are
+/// SEC S3: sessions end server-side. Sign-out kills copied cookies (on their next request), refresh tokens are
 /// single-use with reuse revoking the chain, and cookie and refresh chain both stop at the absolute session cap.
 /// </summary>
 [Collection(PostgresCollection.Name)]
@@ -38,12 +37,23 @@ public sealed class SessionTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.Unauthorized, browser.StatusCode);
     }
 
+    /// <summary>SEC2 N1: one stamp check per cookie request, however close together; there is no interval to wait out.</summary>
     [Fact]
-    public async Task StampCheck_DefaultsToOneMinute()
+    public async Task Cookie_IsStampCheckedOnEveryRequest()
     {
-        await using var app = await StartAsync(stampSeconds: null);
+        var checks = new StampChecks();
+        await postgres.ResetAsync();
+        await using var app = await IdentityApp.StartAsync(postgres.ConnectionString, services: s => s
+            .AddSingleton(checks)
+            .AddScoped<SignInManager<IdentityUser>, CountingSignInManager>());
+        Assert.Equal(HttpStatusCode.Created, (await app.BootstrapAsync()).StatusCode);
+        var cookie = SetCookie.AuthHeader(await app.SignInAsync(useCookie: true));
+        var before = checks.Count;
 
-        Assert.Equal(TimeSpan.FromMinutes(1), app.Services.GetRequiredService<IOptions<SecurityStampValidatorOptions>>().Value.ValidationInterval);
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(HttpStatusCode.OK, (await app.Client(cookie: cookie).GetAsync("/api/identity/me")).StatusCode);
+
+        Assert.Equal(before + 3, checks.Count);
     }
 
     [Fact]
@@ -138,15 +148,10 @@ public sealed class SessionTests(PostgresFixture postgres)
         Assert.Equal([HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.OK, HttpStatusCode.Unauthorized], statuses);
     }
 
-    private async Task<IdentityApp> StartAsync(ManualClock? clock = null, int sessionDays = 7, int? stampSeconds = 0)
+    private async Task<IdentityApp> StartAsync(ManualClock? clock = null, int sessionDays = 7)
     {
         await postgres.ResetAsync();
-        var app = await IdentityApp.StartAsync(postgres.ConnectionString, s =>
-        {
-            s["Identity:SessionDays"] = sessionDays.ToString();
-            if (stampSeconds is not null)
-                s["Identity:SecurityStampValidationSeconds"] = stampSeconds.ToString();
-        }, services: s =>
+        var app = await IdentityApp.StartAsync(postgres.ConnectionString, s => s["Identity:SessionDays"] = sessionDays.ToString(), services: s =>
         {
             if (clock is not null)
                 s.AddSingleton<TimeProvider>(clock);

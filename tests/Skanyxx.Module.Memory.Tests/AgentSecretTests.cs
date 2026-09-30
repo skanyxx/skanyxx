@@ -43,6 +43,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         var status = await App.SupervisorClient().GetAsync(Path);
 
         Assert.False(before.GetProperty("hasSecret").GetBoolean());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, before.GetProperty("createdBy").ValueKind);
         Assert.Equal(HttpStatusCode.OK, status.StatusCode);
         var body = await status.Content.ReadAsStringAsync();
         var json = await status.JsonAsync();
@@ -50,6 +51,23 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         Assert.Equal(issued.GetProperty("createdAt").GetDateTime(), json.GetProperty("createdAt").GetDateTime());
         Assert.DoesNotContain(issued.GetProperty("secret").GetString()!, body);
         Assert.DoesNotContain("secret\"", body.Replace("hasSecret\"", ""));
+        // Who issued it, so an offboarding whose automatic revocation failed can be finished by hand (SEC2 N2).
+        Assert.Equal(MemoryApp.Supervisor, json.GetProperty("createdBy").GetString());
+    }
+
+    /// <summary>SEC2 N4: the one record carrying the plaintext secret never prints it, alone or inside an Outcome.</summary>
+    [Fact]
+    public void IssuedSecret_ToString_NeverPrintsTheSecret()
+    {
+        const string secret = "skx_mem_THE-SECRET-VALUE";
+        var issued = new Features.AgentSecrets.IssuedAgentSecret("seed", secret, DateTime.UnixEpoch, ActsForUsers: true);
+
+        Assert.All(new object[] { issued, Outcome<Features.AgentSecrets.IssuedAgentSecret>.Ok(issued) }, printed =>
+        {
+            Assert.DoesNotContain(secret, printed.ToString());
+            Assert.Contains("Secret = ***", printed.ToString());
+            Assert.Contains("seed", printed.ToString());
+        });
     }
 
     [Fact]

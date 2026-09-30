@@ -44,6 +44,12 @@ elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
     echo "Skanyxx: set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
     echo "  the first-run setup page asks for it to create the owner account."
 fi
+if [[ -f "$CONFIG" ]] && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
+    # An upgrade from a config written before invites existed: never edited, only pointed out. The app starts;
+    # inviting people waits for the setting.
+    echo "Skanyxx: to invite people, set Identity:PublicBaseUrl in $CONFIG to the address they use to reach"
+    echo "  Skanyxx, e.g. \"PublicBaseUrl\": \"http://localhost:5282\" on this Mac (https://... behind a proxy)."
+fi
 
 # ── launchd agent (auto-start on login) ──────────────────────────
 cat > "$LAUNCHD_PLIST" <<'PLIST'

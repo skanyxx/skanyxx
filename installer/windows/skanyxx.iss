@@ -81,7 +81,7 @@ Type: dirifempty; Name: "{app}"
 
 [Messages]
 WelcomeLabel2=This will install [name/ver] on your computer.%n%nSkanyxx is a modular SRE platform for Kubernetes management, agent orchestration, and monitoring. It runs as a local web application on http://localhost:{#AppPort}.%n%nClick Next to continue.
-FinishedLabel=Setup has finished installing [name] on your computer.%n%nBefore starting, open the file below and add your Anthropic API key:%n    {app}\appsettings.json%n%nAlso set Identity:BootstrapToken there (a random string of at least 32 characters, no leading or trailing spaces): the first-run setup page asks for it to create the owner account. Leave it empty and setup stays closed.%n%nThe application is now available from the Start Menu.
+FinishedLabel=Setup has finished installing [name] on your computer.%n%nBefore starting, open the file below and add your Anthropic API key:%n    {app}\appsettings.json%n%nAlso set Identity:BootstrapToken there (a random string of at least 32 characters, no leading or trailing spaces): the first-run setup page asks for it to create the owner account. Leave it empty and setup stays closed.%n%nTo invite people, Identity:PublicBaseUrl must be the address they use to reach Skanyxx (a new install has http://localhost:5282). If you upgraded, your existing appsettings.json may not have it: add "PublicBaseUrl": "http://localhost:5282" under Identity (https://... behind a proxy).%n%nThe application is now available from the Start Menu.
 
 [Code]
 // Warn user if they are upgrading over an existing installation

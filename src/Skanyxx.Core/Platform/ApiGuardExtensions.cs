@@ -6,7 +6,7 @@ using Microsoft.Extensions.Options;
 
 namespace Skanyxx.Core.Platform;
 
-/// <summary>Origin allow-list (guarded routes, and unsafe methods everywhere) and per-client rate limits on the guarded routes and credential posts.</summary>
+/// <summary>Origin allow-list (guarded routes, and unsafe methods everywhere) and per-client rate limits on the guarded routes, credential posts and invite links.</summary>
 public static class ApiGuardExtensions
 {
     public static IServiceCollection AddSkanyxxApiGuards(this IServiceCollection services, IConfiguration configuration)
@@ -18,6 +18,8 @@ public static class ApiGuardExtensions
                 "Skanyxx:RateLimit:PermitLimit and WindowSeconds must be positive.")
             .Validate(o => o.SignInRateLimit is { PermitLimit: > 0, WindowSeconds: > 0 },
                 "Skanyxx:SignInRateLimit:PermitLimit and WindowSeconds must be positive.")
+            .Validate(o => o.InviteRateLimit is { PermitLimit: > 0, WindowSeconds: > 0 },
+                "Skanyxx:InviteRateLimit:PermitLimit and WindowSeconds must be positive.")
             .ValidateOnStart();
 
         services.AddRateLimiter(o =>
@@ -27,6 +29,8 @@ public static class ApiGuardExtensions
             {
                 var options = context.RequestServices.GetRequiredService<IOptions<SkanyxxOptions>>().Value;
                 var ip = ClientPartition.Key(context.Connection.RemoteIpAddress);
+                if (GuardedPaths.IsInviteRequest(context.Request))
+                    return FixedWindow("invite:" + ip, options.InviteRateLimit);
                 if (GuardedPaths.IsCredentialPost(context.Request))
                     return FixedWindow("sign-in:" + ip, options.SignInRateLimit);
                 if (GuardedPaths.Contains(context.Request.Path))

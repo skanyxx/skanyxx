@@ -1,3 +1,4 @@
+using System.Text;
 using MediatR;
 
 namespace Skanyxx.Core.Platform.Identity;
@@ -9,4 +10,11 @@ namespace Skanyxx.Core.Platform.Identity;
 /// password is still checked, and a wrong one adds to the failed count that sign-ins without the token are held to.
 /// </summary>
 public sealed record SignInCommand(string Email, string Password, bool UseCookie, string? BootstrapToken = null)
-    : IRequest<Outcome<SignedIn>>;
+    : IRequest<Outcome<SignedIn>>
+{
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append($"Email = ***, Password = ***, UseCookie = {UseCookie}, BootstrapToken = {(BootstrapToken is null ? "null" : "***")}");
+        return true;
+    }
+}

@@ -162,6 +162,7 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | `Skanyxx:AllowedOrigins` | Browser origins allowed to send unsafe requests (POST/PUT/PATCH/DELETE) to **any** route on the Host, plus every request to `/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity` and `/mcp` (default `[]`). On routes outside those prefixes, the Host's own origin (Origin host:port equal to the Host header) is also allowed, so the app's own forms and fetches work without listing it. Any other `Origin` gets `403`; requests without `Origin` (non-browser clients) pass |
 | `Skanyxx:RateLimit` | Per client address (IPv6 grouped per /64), on the guarded prefixes only (`/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity`, `/mcp`); legacy controllers, pages and static files are not limited: `PermitLimit` (200) per `WindowSeconds` (10) → `429`. Behind a proxy the partition is the proxy's IP (ForwardedHeaders not configured) |
 | `Skanyxx:SignInRateLimit` | Stricter window, per client address (IPv6 per /64), over the credential posts only — sign-in, bootstrap, unlock, `/Login`, `/Setup`: `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Sign-out and refresh are outside it |
+| `Skanyxx:InviteRateLimit` | Its own window, per client address (IPv6 per /64), over everything that checks an invite token — `/Invite` (GET and POST), `POST /api/identity/invites/lookup` and `/accept`: `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Separate from the sign-in window, so link unfurlers and crawlers opening invite links cannot spend it |
 | `Skanyxx:HealthCheckTimeoutSeconds` | Per-check timeout for `/health` (5). `/health` is anonymous and lists each check's name and status; no exception text, no CORS |
 | `KAgent` | KAgent API connection (BaseUrl, Port, Protocol, Token) |
 | `Kubernetes` | Optional kubeconfig path |
@@ -169,7 +170,7 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | `Azure` | Azure config directory |
 | `Modules` | Plugin directory and enable/disable flags |
 | `ConnectionStrings:Identity` | Postgres for accounts, roles and the Data Protection key ring (required). **Use a separate database role (or database) from the other modules** — whoever can read the key ring can mint sessions |
-| `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `SecurityStampValidationSeconds` (60), `MaxPoolSize` (20). Validated at startup |
+| `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `MaxPoolSize` (20), `InviteDays` (7, 1–30), `PublicBaseUrl` (where people reach Skanyxx, e.g. `https://skanyxx.example.com`; invite links are built on it. Optional for startup: **unset outside Development, the app starts and logs a warning, and creating an invite is refused (`409`) until it is set**; Development without it uses the request's scheme and host. When set it must be written exactly — no leading or trailing spaces, backslashes, query, fragment or user info — and absolute `https://`, except a loopback host such as the desktop installs' `http://localhost:5282`, whose links never leave the machine; anything else stops startup. The template ships `http://localhost:5282`, so a server install must change it: a loopback value while Skanyxx listens on a non-loopback address is warned about at startup, and the People page shows the host each new link points at). Validated at startup. (`SecurityStampValidationSeconds` is gone: cookies are checked on every request, and the key is ignored.) |
 | `ConnectionStrings:Memory` | Postgres for the memory engine (required; startup fails without it) |
 | `Memory` | `SearchTopK` (5), `UpsertsPerMinute` (30, per caller), `UpsertsPerMinuteTotal` (300, all callers), `MaxPoolSize` (40). Supervisors (write/lift into `company`, set agent grants) are users with role `owner` or `supervisor` |
 | `ConnectionStrings:Tickets` | Postgres for ticket pipelines (required; may be the same database as memory) |
@@ -208,7 +209,7 @@ Every page and API requires a signed-in user (fallback authorization policy). Lo
 (ASP.NET Core Identity, `Skanyxx.Module.Identity`); there is no bundled IdP.
 
 **First run — the owner (D025).** Until an account exists, `/Login` sends you to `/Setup`, which creates the
-**owner** (role `owner`, also treated as supervisor until invites and roles land) and signs you in.
+**owner** (role `owner`, also treated as supervisor — D024) and signs you in.
 `POST /api/identity/bootstrap {email, password, displayName?}` does the same for scripts. It works only while no
 account exists (serialized under a Postgres advisory lock, so parallel calls create exactly one owner; afterwards
 `409`). Deleting every account at the database level reopens it. Who may call it:
@@ -223,7 +224,10 @@ account exists (serialized under a Postgres advisory lock, so parallel calls cre
   service runs as root) and `0640 root:admin` on macOS (the LaunchAgent runs as whoever logs in). If the token cannot
   be written the install fails rather than print a token the app does not have. An **upgrade** keeps the existing
   `appsettings.json` untouched: if it has no token, the installer says so and you set one yourself. The Windows
-  installer does not generate one: set one yourself before first use.
+  installer does not generate one: set one yourself before first use. An upgraded `appsettings.json` from before
+  invites also has no `Identity:PublicBaseUrl`: the app still starts (with a warning), but inviting people is refused
+  until you add it — `"PublicBaseUrl": "http://localhost:5282"` on a desktop install, your public `https://` address
+  behind a proxy. The Linux and macOS installers say so on upgrade, the Windows installer on its last page.
 - **Development only:** with no token set, a direct loopback connection may bootstrap: a loopback peer, no
   `X-Forwarded-For` / `Forwarded`, and a `Host` of `localhost` or a loopback IP. The last rule stops a DNS-rebound
   page in the developer's browser (loopback peer, attacker's host name) even when `AllowedHosts` is `*`.
@@ -254,8 +258,8 @@ always works" rule of `docs/design/identity.md` (D081, D082).
 **Sign-in.** `POST /api/identity/sign-in {email, password, useCookie}`:
 
 - `useCookie: true` (browser; also the `/Login` form) → session cookie `skanyxx.auth`: HttpOnly, SameSite=Lax,
-  Secure outside Development, 8 h sliding. The security stamp is re-checked every `Identity:SecurityStampValidationSeconds` (60 s; 0 = every request), and the
-  session ends `Identity:SessionDays` after sign-in no matter how active it is.
+  Secure outside Development, 8 h sliding. The security stamp is checked on every request (one primary-key read,
+  as for bearer tokens), and the session ends `Identity:SessionDays` after sign-in no matter how active it is.
 - `useCookie: false` (API, desktop — D059) → `{tokens: {accessToken, expiresIn, refreshToken}}`; send
   `Authorization: Bearer <accessToken>` (valid 1 h, never past the chain cap below; `expiresIn` says how long).
   `POST /api/identity/refresh {refreshToken}` returns a new pair.
@@ -280,19 +284,74 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   email (the failed-attempt write). Telling the two apart takes dozens of requests under the sign-in rate limit; it
   will be revisited when invites add users.
 - `POST /api/identity/sign-out` (cookie or bearer) rotates the user's security stamp and clears the cookie. That
-  ends **every** session of that user on every device: all refresh tokens at once, all browser cookies at their next
-  stamp check (≤ 60 s by default). Access tokens already issued run out on their own (≤ 1 h, and never after the session cap). If the
+  ends **every** session of that user on every device: all refresh tokens at once, all browser cookies from their next
+  request. Access tokens already issued are refused from their next request: the bearer
+  handler checks the security stamp too (D087; one primary-key read per bearer request). If the
   rotation cannot be saved, sign-out fails loudly (`500` ProblemDetails, never `204`) instead of reporting success — retry it.
 - `GET /api/identity/me` → `{id, email, displayName, roles}`. The nav shows the signed-in user and a Sign out button.
 - Rate limits: credential posts (sign-in, bootstrap, unlock, `/Login`, `/Setup`) have their own window
-  (`Skanyxx:SignInRateLimit`); sign-out and refresh do not count against it, so a client can always sign out. Both
-  windows are per client address, with IPv6 grouped per /64 (one host usually owns a whole /64).
+  (`Skanyxx:SignInRateLimit`); sign-out and refresh do not count against it, so a client can always sign out. Invite
+  lookup and accept and the `/Invite` page (GET too) have another (`Skanyxx:InviteRateLimit`), so crawlers opening
+  invite links cannot spend the sign-in window. All windows are per client address, with IPv6 grouped per /64 (one
+  host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window.
 - Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. Anonymous:
-  `/health`, static files, `/Login`, `/Setup`, `/Privacy`, `/Error`, `/Offline`, `GET /api/identity/status`, the
-  bootstrap/sign-in/refresh/unlock endpoints. `/mcp/memory` needs no sign-in but an agent secret (below).
+  `/health`, static files, `/Login`, `/Setup`, `/Invite`, `/Privacy`, `/Error`, `/Offline`, `GET /api/identity/status`, the
+  bootstrap/sign-in/refresh/unlock endpoints and `POST /api/identity/invites/{lookup,accept}`. `/mcp/memory` needs no sign-in but an agent secret (below).
 - CSRF: every POST/PUT/PATCH/DELETE on the Host (legacy controllers included) is refused with `403` when its `Origin`
   is not listed in `Skanyxx:AllowedOrigins` (the Host's own origin — Origin host:port equal to the Host header — is allowed implicitly off the guarded prefixes; `/api/{memory,tickets,sandboxes,identity}` and `/mcp` still need an allow-listed Origin for any browser caller); the cookie is SameSite=Lax; the Razor forms carry
   antiforgery tokens.
+
+**People, invites and roles (D026 as built: D086, D087).** Only the owner administers people: the **People** page
+(nav link shown to the owner only) or the API below; any other role gets `403`, anonymous `401`.
+
+- **Invite:** `POST /api/identity/invites {email, roles}` → `201 {inviteId, link, expiresAt}` (`409` naming
+  `Identity:PublicBaseUrl` outside Development while it is unset — nothing is written and no older invite is revoked). `roles` is one or more
+  of `supervisor`, `builder`, `employee` (`owner` is never grantable: `400`), and the email must use only the
+  characters an account name may (ASCII letters, digits, `-._@+`; `400` otherwise). The link —
+  `<Identity:PublicBaseUrl>/Invite?token=skx_inv_…`, never built from the request outside Development
+  (256 random bits) — is in this response and on the page that created it **only**: the database keeps its SHA-256,
+  the list never shows it, and it is not logged. Send it to the person yourself (no email yet). It is single-use and
+  expires after `Identity:InviteDays` (7). An email that already has an account gets `409`; inviting an email again
+  revokes its earlier open invite. `GET /api/identity/invites` lists pending invites (no tokens);
+  `DELETE /api/identity/invites/{id}` revokes one (`204`, or `404` if no longer pending).
+- **Accept:** the invitee opens the link (`/Invite`), sees the email and roles, sets a password (≥ 12 characters and
+  not containing the part of the email before the `@` when that part is 3+ characters — a rule for every password
+  Identity sets, the owner's at bootstrap too; there is no breached-password list, an accepted risk: D088) and an
+  optional display name (no control or invisible formatting characters such as bidi overrides), and is signed in. Scripts: `POST /api/identity/invites/lookup {token}` →
+  `{email, roles, expiresAt}` and `POST /api/identity/invites/accept {token, password, displayName?, useCookie}` →
+  `201` with the sign-in body (cookie or tokens). Unknown, used, revoked and expired tokens all get the same `404`.
+  Accepting spends the invite atomically (parallel accepts create exactly one account); a rejected password leaves
+  the link usable. The token travels in the query string or body, never a URL path, so request logs and traces do
+  not record it (a reverse proxy's access log may record query strings — the link is single-use and short-lived);
+  every answer of the page sends `Cache-Control: no-store` and `Referrer-Policy: no-referrer` (`404` invalid link,
+  `409` the email has an account by now, `400` a rejected password or display name). Only a pending invite takes the
+  email's account lock, so a spent link cannot make the person's sign-ins busy.
+- **People:** `GET /api/identity/people` → `[{id, email, displayName, roles, disabled}]`;
+  `PUT /api/identity/people/{id}/roles {roles}` replaces the grantable roles; the owner's roles are fixed (`403`: the
+  owner already has every permission a role grants, and the page shows no role boxes on the owner's row);
+  `POST /api/identity/people/{id}/disable` and `/enable`. Disabled accounts get the ordinary
+  `401 "Invalid email or password."` at sign-in. The owner account cannot be disabled or enabled (`403`).
+- **Immediate effect:** a role change (only when the roles actually change) or a disable rotates the person's
+  security stamp and drops their refresh chains: bearer access tokens, refresh tokens and browser cookies are all
+  refused from their next request (both carriers check the stamp on every request, D089). The person signs in again
+  and gets the new roles. A disable that lands while that person's sign-in is between its password check and issuing
+  the cookie hands out a cookie carrying the old stamp, which its first request refuses.
+- **Offboarding — agent secrets (D088, D089):** saving someone's roles without `supervisor`, or disabling them, also
+  deletes every memory agent secret they issued (`memory_agent_secrets.created_by`), after the change commits: those
+  agents get `401` on `/mcp/memory` until a supervisor issues new secrets (and the new secret goes into the agent's
+  k8s Secret). Each revoked agent is logged at Warning. Secrets the owner issued (including acts-for-users ones) are
+  the owner's and stay. Identity does not touch the memory database: it publishes `PrivilegesRevoked` and the memory
+  module revokes; the step runs to the end even if the owner's browser disconnects. If it fails, the change itself
+  is already saved, the call answers `500` and an Error is logged naming the person and the actor: **save the same
+  roles (or disable) again** — that re-runs the revocation, and it is harmless when there is nothing left to revoke.
+  By hand: `GET /api/memory/agents/{agentId}/secret` shows `createdBy`, and `DELETE` on the same path revokes. Enabling
+  someone again does not restore anything. Sandbox tasks and workspaces the person started are not stopped (open.md).
+- **Audit:** invite created/revoked/accepted, role change and disable/enable are logged at Warning with the actor
+  and target ids and the client address (the connection's, as for agent secrets: the proxy behind one), never a
+  token or password. Refused invite accepts and lookups are logged at Warning too (the invite id when one was found,
+  otherwise just "invalid"), and so is a signed-in person holding none of an owner-only route's roles (actor, method, route template —
+  not the path, which the caller writes). A failed revocation after a role change or disable is logged at Error.
+  Commands that carry a token or password print them as `***`.
 
 **Caller identity.** Memory, Tickets and Sandboxes take the caller from the signed-in principal; `X-User-Id` is
 ignored on `/api/*`. Supervisor = role `owner` or `supervisor`; the `*:Supervisors` lists are gone (leftover keys are
@@ -345,7 +404,8 @@ a `401` in the log always means a missing or wrong secret.
 - **An acts-for-users secret is the owner's:** rotating or revoking it is owner only. A supervisor gets `403` and the
   secret keeps working — checked inside the one SQL statement that writes or deletes the row, so a concurrent owner
   issue cannot slip past it. Secrets without the flag stay rotatable and revocable by any supervisor.
-- **Status:** `GET …/secret` → `{agentId, hasSecret, createdAt, actsForUsers}` (never the secret). **Revoke:** `DELETE …/secret` →
+- **Status:** `GET …/secret` → `{agentId, hasSecret, createdAt, actsForUsers, createdBy}` (never the secret;
+  `createdBy` is the issuing user's id, `null` when there is no secret). **Revoke:** `DELETE …/secret` →
   `204` (`404` if there is none, `403` for a supervisor when the secret acts for users); the agent is locked out until a new secret is issued.
 - **The user (`X-User-Id`, D084)** is honoured only when the agent's secret was issued with `actsForUsers: true`,
   and only when it is a user id (lowercase GUID). Otherwise it is ignored: the call has no user, so no personal

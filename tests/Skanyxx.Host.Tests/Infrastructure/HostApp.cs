@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Npgsql;
 
 namespace Skanyxx.Host.Tests.Infrastructure;
 
@@ -53,8 +54,11 @@ public sealed class HostApp : IAsyncDisposable
             ["ConnectionStrings:Tickets"] = connectionString,
             ["ConnectionStrings:Identity"] = connectionString,
             ["Identity:BootstrapToken"] = BootstrapToken,
-            // Tests sign in far more often than a person; SignInRateLimitTests sets its own window.
+            // Required outside Development: invite links are built on it.
+            ["Identity:PublicBaseUrl"] = AllowedOrigin,
+            // Tests sign in (and open invite pages) far more often than a person; SignInRateLimitTests sets its own windows.
             ["Skanyxx:SignInRateLimit:PermitLimit"] = "10000",
+            ["Skanyxx:InviteRateLimit:PermitLimit"] = "10000",
             ["Tickets:Source"] = "local",
             ["Tickets:LocalPath"] = Repo.Path("deploy", "tickets", "sample-tickets.json"),
             // Nothing listens on port 1: kagent and AX calls fail fast.
@@ -152,5 +156,7 @@ public sealed class HostApp : IAsyncDisposable
         _host.Services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
         await _run;
         Directory.Delete(_contentRoot, recursive: true);
+        // Each host is on its own database, so its module pools would otherwise hold idle connections until pruning.
+        NpgsqlConnection.ClearAllPools();
     }
 }

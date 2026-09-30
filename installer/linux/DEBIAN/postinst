@@ -33,6 +33,11 @@ elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
     # An upgrade from a config written before accounts existed: never edited, only pointed out.
     NEEDS_TOKEN=1
 fi
+NEEDS_PUBLIC_URL=""
+if [[ -f "$CONFIG" ]] && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
+    # An upgrade from a config written before invites existed: the app starts, invites wait for the setting.
+    NEEDS_PUBLIC_URL=1
+fi
 
 # Reload systemd if available
 if command -v systemctl >/dev/null 2>&1; then
@@ -62,4 +67,9 @@ if [[ -n "$NEEDS_TOKEN" ]]; then
     echo ""
     echo "  Set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
     echo "  the first-run setup page asks for it to create the owner account."
+fi
+if [[ -n "$NEEDS_PUBLIC_URL" ]]; then
+    echo ""
+    echo "  To invite people, set Identity:PublicBaseUrl in $CONFIG to the address they use to reach"
+    echo "  Skanyxx, e.g. \"PublicBaseUrl\": \"http://localhost:5282\" on this machine (https://... behind a proxy)."
 fi

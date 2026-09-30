@@ -10,8 +10,7 @@ namespace Skanyxx.Module.Identity.Features.SignIn;
 
 internal sealed class SignInHandler(
     AccountsDbContext db, UserManager<IdentityUser> users, SignInManager<IdentityUser> signIn, SignInFailure failure,
-    BearerTokens tokens, RefreshChains chains, AccountReader accounts, BootstrapGuard guard, TimeProvider time,
-    ILogger<SignInHandler> logger)
+    SessionIssuer sessions, BootstrapGuard guard, ILogger<SignInHandler> logger)
     : IRequestHandler<SignInCommand, Outcome<SignedIn>>
 {
     /// <summary>
@@ -27,19 +26,9 @@ internal sealed class SignInHandler(
         if (!string.IsNullOrEmpty(command.BootstrapToken))
             logger.LogWarning("Sign-in with a bootstrap token from {Client}: token {Token}, result {Result}.",
                 signIn.Context.Connection.RemoteIpAddress, breakGlass ? "valid" : "wrong", verified.Status);
-        if (verified.Value is not { } user)
-            return new Outcome<SignedIn>(verified.Status, Message: verified.Message);
-
-        var account = await accounts.ToDtoAsync(user);
-        var now = time.GetUtcNow();
-        if (command.UseCookie)
-        {
-            await signIn.SignInAsync(user, SessionStart.Stamp(now));
-            return Outcome<SignedIn>.Ok(new SignedIn(account, null));
-        }
-
-        var chain = await chains.StartAsync(user.Id, now, ct);
-        return Outcome<SignedIn>.Ok(new SignedIn(account, tokens.Issue(await signIn.CreateUserPrincipalAsync(user), chain)));
+        return verified.Value is { } user
+            ? Outcome<SignedIn>.Ok(await sessions.StartAsync(user, command.UseCookie, ct))
+            : new Outcome<SignedIn>(verified.Status, Message: verified.Message);
     }
 
     /// <summary>

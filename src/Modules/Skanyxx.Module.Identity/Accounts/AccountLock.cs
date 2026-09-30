@@ -4,9 +4,9 @@ using Skanyxx.Module.Identity.Data;
 namespace Skanyxx.Module.Identity.Accounts;
 
 /// <summary>
-/// Serializes everything that reads and writes one account's lockout state (password checks, unlock). Identity's
-/// failed-count update is read-modify-write under optimistic concurrency and drops the losing writes, so parallel
-/// wrong passwords would otherwise count as one failure. Keyed by normalized email, so the lock is taken before the
+/// Serializes everything that reads and writes one account (password checks, unlock, invite create/accept, role
+/// change, disable/enable). Identity's failed-count update is read-modify-write under optimistic concurrency and drops
+/// the losing writes, so parallel wrong passwords would otherwise count as one failure. Keyed by normalized email, so the lock is taken before the
 /// lookup and an unknown email behaves the same way. Must run inside a transaction.
 /// </summary>
 internal static class AccountLock
@@ -16,7 +16,10 @@ internal static class AccountLock
     // Listed with every other advisory-lock key in Skanyxx.Module.Memory's MemoryMigrator.
     private const long LockSeed = 0x49444E03;
 
-    /// <summary>Waits for the lock. Only for callers that proved the bootstrap token, so nobody can queue on it at will.</summary>
+    /// <summary>
+    /// Waits for the lock. Only for callers that proved something (the bootstrap token, an invite token, the owner
+    /// role), so nobody can queue on it at will.
+    /// </summary>
     public static Task AcquireAsync(AccountsDbContext db, string normalizedEmail, CancellationToken ct) =>
         db.Database.ExecuteSqlAsync($"SELECT pg_advisory_xact_lock(hashtextextended({normalizedEmail}, {LockSeed}))", ct);
 

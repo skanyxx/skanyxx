@@ -33,9 +33,17 @@ public sealed class IdentityModuleOptions
     [Range(1, 90)]
     public int SessionDays { get; set; } = 7;
 
-    /// <summary>How often a cookie is re-checked against the user's security stamp; 0 checks on every request.</summary>
-    [Range(0, 3600)]
-    public int SecurityStampValidationSeconds { get; set; } = 60;
+    /// <summary>
+    /// Where people reach Skanyxx (e.g. <c>https://skanyxx.example.com</c>), for the invite links. https, except for a
+    /// loopback host (the desktop installs) or in Development: behind a TLS-terminating proxy the request itself says
+    /// <c>http</c> and an internal host, which would put the token in cleartext or on a host nobody can reach. Unset: the
+    /// app starts, but outside Development invites are refused until it is set (Development uses the request's).
+    /// </summary>
+    public string? PublicBaseUrl { get; set; }
+
+    /// <summary>How long an invite link can be accepted.</summary>
+    [Range(1, 30)]
+    public int InviteDays { get; set; } = 7;
 
     /// <summary>PFX that encrypts the Data Protection key ring at rest. Unset: keys are stored in plain text (warned outside Development).</summary>
     public string? DataProtectionCertificatePath { get; set; }
@@ -44,6 +52,21 @@ public sealed class IdentityModuleOptions
 
     [Range(1, 1_000)]
     public int MaxPoolSize { get; set; } = 20;
+
+    /// <summary>The parsed <see cref="PublicBaseUrl"/>; null when unset. Links are built from this, not the raw string.</summary>
+    internal Uri? PublicBaseUri => string.IsNullOrEmpty(PublicBaseUrl) ? null : new Uri(PublicBaseUrl, UriKind.Absolute);
+
+    /// <summary>
+    /// Unset, or taken exactly as written: no whitespace, control characters or backslashes (<see cref="Uri"/> would
+    /// quietly trim or rewrite them); absolute http(s) with no query, fragment or user info; https unless
+    /// <paramref name="development"/> or a loopback host, whose links never cross a network.
+    /// </summary>
+    internal bool HasValidPublicBaseUrl(bool development) =>
+        string.IsNullOrEmpty(PublicBaseUrl)
+        || (!PublicBaseUrl.Any(c => char.IsWhiteSpace(c) || char.IsControl(c) || c == '\\')
+            && Uri.TryCreate(PublicBaseUrl, UriKind.Absolute, out var url)
+            && (url.Scheme == Uri.UriSchemeHttps || (url.Scheme == Uri.UriSchemeHttp && (development || url.IsLoopback)))
+            && url.Query.Length == 0 && url.Fragment.Length == 0 && url.UserInfo.Length == 0);
 
     /// <summary>The configured string with this module's own pool (see MemoryOptions for why the Application Name differs).</summary>
     internal NpgsqlConnectionStringBuilder ConnectionSettings()

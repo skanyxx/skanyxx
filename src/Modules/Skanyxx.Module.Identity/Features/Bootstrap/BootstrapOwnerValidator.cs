@@ -10,8 +10,7 @@ internal sealed class BootstrapOwnerValidator : AbstractValidator<BootstrapOwner
         RuleFor(c => c.Email).NotEmpty().MaximumLength(256).EmailAddress().NoControlCharacters();
         // Upper bound keeps one request from buying seconds of hashing.
         RuleFor(c => c.Password).NotEmpty().MaximumLength(128).NoControlCharacters();
-        RuleFor(c => c.DisplayName).MaximumLength(100).Must(n => n is null || !n.Any(char.IsControl))
-            .WithMessage("Display name must not contain control characters.");
+        RuleFor(c => c.DisplayName).DisplayName();
         RuleFor(c => c.BootstrapToken).MaximumLength(512);
     }
 }

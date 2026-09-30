@@ -60,7 +60,7 @@ public sealed class UnlockTests(PostgresFixture postgres) : IAsyncLifetime
         {
             var users = scope.ServiceProvider.GetRequiredService<UserManager<IdentityUser>>();
             var member = new IdentityUser { UserName = "member@skanyxx.example", Email = "member@skanyxx.example" };
-            Assert.True((await users.CreateAsync(member, "a member's long password")).Succeeded);
+            Assert.True((await users.CreateAsync(member, "a colleague's long password")).Succeeded);
             Assert.True((await users.SetLockoutEndDateAsync(member, DateTimeOffset.UtcNow.AddHours(1))).Succeeded);
         }
 

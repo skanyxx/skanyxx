@@ -48,7 +48,8 @@ public sealed class DataProtectionTests(PostgresFixture postgres) : IDisposable
         {
             ["ConnectionStrings:Identity"] = postgres.ConnectionString,
             ["Identity:DataProtectionCertificatePath"] = certificate is null ? null : _pfx,
-            ["Identity:DataProtectionCertificatePassword"] = Password
+            ["Identity:DataProtectionCertificatePassword"] = Password,
+            ["Identity:PublicBaseUrl"] = IdentityApp.PublicBaseUrl
         }, environment, s => s.AddSingleton<ILoggerProvider>(logs));
 
         await new IdentityModule().InitializeAsync(app.Services);

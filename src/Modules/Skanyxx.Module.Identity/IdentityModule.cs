@@ -1,7 +1,11 @@
+using System.Net;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -18,8 +22,8 @@ namespace Skanyxx.Module.Identity;
 
 /// <summary>
 /// Local accounts (ASP.NET Core Identity on Postgres): owner bootstrap, password sign-in (cookie or bearer), refresh,
-/// sign-out, break-glass unlock. The Host owns the authentication schemes and the fallback policy; this module owns
-/// the store and the session rules (D1, D025).
+/// sign-out, break-glass unlock, invites and role assignment. The Host owns the authentication schemes and the
+/// fallback policy; this module owns the store and the session rules (D1, D025, D026).
 /// </summary>
 public sealed class IdentityModule : IModule
 {
@@ -38,6 +42,9 @@ public sealed class IdentityModule : IModule
                     || (o.BootstrapToken.Trim() == o.BootstrapToken && o.BootstrapToken.Length >= IdentityModuleOptions.MinBootstrapTokenLength),
                 $"Identity:BootstrapToken must be at least {IdentityModuleOptions.MinBootstrapTokenLength} characters with no leading or " +
                 "trailing whitespace (or empty).")
+            .Validate<IHostEnvironment>((o, environment) => o.HasValidPublicBaseUrl(environment.IsDevelopment()),
+                "Identity:PublicBaseUrl must be empty or an absolute https:// URL written exactly (no spaces, backslashes, query, " +
+                "fragment or user info), e.g. https://skanyxx.example.com; http only for a loopback host such as http://localhost:5282.")
             .ValidateOnStart();
 
         services.AddDbContext<AccountsDbContext>((sp, o) => o.UseNpgsql(
@@ -49,6 +56,7 @@ public sealed class IdentityModule : IModule
         services.AddIdentityCore<IdentityUser>()
             .AddRoles<IdentityRole>()
             .AddEntityFrameworkStores<AccountsDbContext>()
+            .AddPasswordValidator<EmailPasswordValidator>()
             .AddSignInManager();
         services.AddOptions<IdentityOptions>().Configure<IOptions<IdentityModuleOptions>>((identity, module) =>
         {
@@ -72,6 +80,13 @@ public sealed class IdentityModule : IModule
         services.AddScoped<SignInFailure>();
         services.AddSingleton<BearerTokens>();
         services.AddScoped<RefreshChains>();
+        services.AddScoped<SessionIssuer>();
+        services.AddScoped<SessionRevocation>();
+        services.AddScoped<PrivilegeRevocation>();
+        services.AddScoped<InviteLinks>();
+        services.AddScoped<ClientAddress>();
+        services.AddHttpContextAccessor();
+        services.AddSingleton<IAuthorizationHandler, OwnerRouteRefusals>();
 
         services.AddHealthChecks().AddNpgSql(
             sp => sp.GetRequiredService<IOptions<IdentityModuleOptions>>().Value.ConnectionSettings().ConnectionString,
@@ -81,12 +96,36 @@ public sealed class IdentityModule : IModule
 
     public Task InitializeAsync(IServiceProvider serviceProvider)
     {
+        if (serviceProvider.GetRequiredService<IHostEnvironment>().IsDevelopment())
+            return Task.CompletedTask;
+
         var options = serviceProvider.GetRequiredService<IOptions<IdentityModuleOptions>>().Value;
-        if (string.IsNullOrEmpty(options.DataProtectionCertificatePath) && !serviceProvider.GetRequiredService<IHostEnvironment>().IsDevelopment())
-            serviceProvider.GetRequiredService<ILogger<IdentityModule>>().LogWarning(
+        var logger = serviceProvider.GetRequiredService<ILogger<IdentityModule>>();
+        if (string.IsNullOrEmpty(options.DataProtectionCertificatePath))
+            logger.LogWarning(
                 "The Data Protection key ring is stored unencrypted in the identity database; anyone who can read it can forge " +
                 "sessions. Set Identity:DataProtectionCertificatePath (and Password) to encrypt it.");
+        if (options.PublicBaseUri is not { } publicBase)
+            logger.LogWarning("Identity:PublicBaseUrl is not set; invites cannot be created until it is. {Example}", InviteLinks.Example);
+        else if (publicBase.IsLoopback && ListensBeyondLoopback(serviceProvider.GetRequiredService<IConfiguration>()))
+            logger.LogWarning(
+                "Identity:PublicBaseUrl is {PublicBaseUrl}, a loopback address, but Skanyxx listens beyond this machine: an invite link " +
+                "would send each invitee to their own machine. Set it to the address people use to reach Skanyxx.", publicBase);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Whether a configured listen address (<c>urls</c>, <c>http_ports</c>/<c>https_ports</c>, Kestrel endpoints) is
+    /// reachable from other machines. Nothing configured is Kestrel's default, localhost.
+    /// </summary>
+    private static bool ListensBeyondLoopback(IConfiguration configuration)
+    {
+        if (!string.IsNullOrEmpty(configuration["http_ports"]) || !string.IsNullOrEmpty(configuration["https_ports"]))
+            return true;
+        var urls = (configuration["urls"] ?? "").Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Concat(configuration.GetSection("Kestrel:Endpoints").GetChildren().Select(e => e["Url"]).OfType<string>());
+        return urls.Any(url => BindingAddress.Parse(url).Host is var host
+            && host != "localhost" && !(IPAddress.TryParse(host.Trim('[', ']'), out var ip) && IPAddress.IsLoopback(ip)));
     }
 
     /// <summary>
@@ -105,32 +144,52 @@ public sealed class IdentityModule : IModule
     }
 
     /// <summary>
-    /// The browser session: the cookie is re-checked against the security stamp every
-    /// <see cref="IdentityModuleOptions.SecurityStampValidationSeconds"/> (so a sign-out elsewhere ends it), and dies
-    /// <see cref="IdentityModuleOptions.SessionDays"/> after the password sign-in however actively it is used.
+    /// The browser session: the cookie is checked against the security stamp on every request (one primary-key read,
+    /// as bearer tokens are), so a sign-out elsewhere, a role change or disabling refuses it on the very next request,
+    /// and it dies <see cref="IdentityModuleOptions.SessionDays"/> after the password sign-in however actively it is used.
     /// </summary>
     private static void AddSessionRules(IServiceCollection services)
     {
-        services.AddOptions<SecurityStampValidatorOptions>().Configure<IOptions<IdentityModuleOptions>>((stamp, module) =>
-            stamp.ValidationInterval = TimeSpan.FromSeconds(module.Value.SecurityStampValidationSeconds));
-
-        // Post-configure: runs after the Host's AddIdentityCookies, which installs the stamp validator this wraps.
+        // Replaces Identity's interval stamp validator (installed by the Host's AddIdentityCookies): a stale cookie
+        // must not keep its old roles for any window. Post-configure: runs after the Host's cookie setup.
         services.AddOptions<CookieAuthenticationOptions>(IdentityConstants.ApplicationScheme)
             .PostConfigure<TimeProvider, IOptions<IdentityModuleOptions>>((cookie, time, module) =>
-            {
-                var validateStamp = cookie.Events.OnValidatePrincipal;
                 cookie.Events.OnValidatePrincipal = async context =>
                 {
-                    if (SessionStart.Read(context.Properties) is not { } start
-                        || time.GetUtcNow() >= start.AddDays(module.Value.SessionDays))
-                    {
-                        context.RejectPrincipal();
-                        await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+                    var signIn = context.HttpContext.RequestServices.GetRequiredService<SignInManager<IdentityUser>>();
+                    if (SessionStart.Read(context.Properties) is { } start
+                        && time.GetUtcNow() < start.AddDays(module.Value.SessionDays)
+                        && await signIn.ValidateSecurityStampAsync(context.Principal) is not null)
                         return;
-                    }
 
-                    await validateStamp(context);
-                };
-            });
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
+                });
+
+        // Identity's bearer handler checks only a token's signature and expiry. This makes it check the stamp as well, on
+        // every request (one primary-key read), so sign-out, a role change or disabling refuses access tokens at once
+        // instead of letting them run out their hour. Post-configure: the Host's AddBearerToken registers the scheme.
+        services.AddOptions<BearerTokenOptions>(IdentityConstants.BearerScheme).PostConfigure(bearer =>
+        {
+            var received = bearer.Events.OnMessageReceived;
+            bearer.Events.OnMessageReceived = async context =>
+            {
+                await received(context);
+                // The token the handler will authenticate: one set by an earlier event, else the header (same parsing).
+                var header = context.Request.Headers.Authorization.ToString();
+                var token = context.Token ?? (header.StartsWith(BearerPrefix, StringComparison.Ordinal) ? header[BearerPrefix.Length..] : null);
+                // Anything the handler would refuse anyway (unreadable, expired) is left to it, without a database read.
+                if (context.Result is not null || token is null
+                    || context.Options.BearerTokenProtector.Unprotect(token) is not { } ticket
+                    || ticket.Properties.ExpiresUtc is not { } expires || expires < (context.Options.TimeProvider ?? TimeProvider.System).GetUtcNow())
+                    return;
+
+                var signIn = context.HttpContext.RequestServices.GetRequiredService<SignInManager<IdentityUser>>();
+                if (await signIn.ValidateSecurityStampAsync(ticket.Principal) is null)
+                    context.Fail("The session has ended; sign in again.");
+            };
+        });
     }
+
+    private const string BearerPrefix = "Bearer ";
 }

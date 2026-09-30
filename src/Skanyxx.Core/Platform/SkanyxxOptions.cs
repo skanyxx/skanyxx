@@ -20,4 +20,10 @@ public sealed class SkanyxxOptions
 
     /// <summary>Per-client window over sign-in, bootstrap and unlock (API and Razor forms); account lockout sits behind it.</summary>
     public ApiRateLimitOptions SignInRateLimit { get; set; } = new() { PermitLimit = 10, WindowSeconds = 60 };
+
+    /// <summary>
+    /// Per-client window over the invite accept page (GET and POST) and the anonymous invite lookup/accept API. Its own
+    /// window, so link unfurlers and crawlers opening invite links cannot spend the one sign-in depends on.
+    /// </summary>
+    public ApiRateLimitOptions InviteRateLimit { get; set; } = new() { PermitLimit = 10, WindowSeconds = 60 };
 }

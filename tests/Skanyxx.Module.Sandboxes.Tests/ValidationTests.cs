@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Skanyxx.Module.Sandboxes.Tests.Infrastructure;
 
 namespace Skanyxx.Module.Sandboxes.Tests;
@@ -131,8 +132,15 @@ public sealed class ValidationTests : SandboxesTestBase
     public async Task OversizedBody_IsRejected()
     {
         var huge = new { image = "ghcr.io/acme/img", command = new[] { new string('a', 3 * 1024 * 1024) } };
+        // Expect: 100-continue with a Content-Length: Kestrel refuses on the headers and the client never uploads the body.
+        // Uploading it anyway races the 413, and under load the client then sees a connection reset instead.
+        var request = new HttpRequestMessage(HttpMethod.Put, "/api/sandboxes/tasks/fix-42")
+        {
+            Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(huge)) { Headers = { ContentType = new("application/json") } }
+        };
+        request.Headers.ExpectContinue = true;
 
-        var response = await RunAsync("fix-42", body: huge);
+        var response = await App.Client(SandboxesApp.User).SendAsync(request);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
     }

@@ -1,3 +1,4 @@
+using System.Text;
 using MediatR;
 
 namespace Skanyxx.Core.Platform.Identity;
@@ -8,4 +9,11 @@ namespace Skanyxx.Core.Platform.Identity;
 /// transport (a direct loopback connection with no forwarding headers).
 /// </summary>
 public sealed record BootstrapOwnerCommand(
-    string Email, string Password, string? DisplayName, string? BootstrapToken, bool FromLoopback) : IRequest<Outcome<AccountDto>>;
+    string Email, string Password, string? DisplayName, string? BootstrapToken, bool FromLoopback) : IRequest<Outcome<AccountDto>>
+{
+    private bool PrintMembers(StringBuilder builder)
+    {
+        builder.Append($"Email = ***, Password = ***, DisplayName = {DisplayName}, BootstrapToken = {(BootstrapToken is null ? "null" : "***")}, FromLoopback = {FromLoopback}");
+        return true;
+    }
+}

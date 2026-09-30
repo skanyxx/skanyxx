@@ -13,5 +13,11 @@ internal sealed class AccountReader(UserManager<IdentityUser> users)
         return new AccountDto(user.Id, user.Email!, claims.FirstOrDefault(c => c.Type == SkanyxxClaims.DisplayName)?.Value, [.. roles.Order()]);
     }
 
+    public async Task<PersonDto> ToPersonAsync(IdentityUser user)
+    {
+        var account = await ToDtoAsync(user);
+        return new PersonDto(account.Id, account.Email, account.DisplayName, account.Roles, AccountStatus.IsDisabled(user));
+    }
+
     public static Claim DisplayNameClaim(string displayName) => new(SkanyxxClaims.DisplayName, displayName);
 }

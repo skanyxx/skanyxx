@@ -14,7 +14,7 @@ public sealed class BreakGlassSignInTests(PostgresFixture postgres) : IAsyncLife
 {
     private const string Token = IdentityApp.BootstrapToken;
     private const string MemberEmail = "member@skanyxx.example";
-    private const string MemberPassword = "a member's long password";
+    private const string MemberPassword = "a colleague's long password";
     private readonly WarningLog _log = new();
     private IdentityApp _app = null!;
 

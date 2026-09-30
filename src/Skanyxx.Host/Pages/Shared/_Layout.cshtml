@@ -86,6 +86,13 @@
                         <span class="nav-icon">&#x2699;</span>
                         <span class="nav-label">Settings</span>
                     </a>
+                    @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner))
+                    {
+                        <a href="/People" class="nav-item @(currentPage == "/People" ? "active" : "")">
+                            <span class="nav-icon">&#x263A;</span>
+                            <span class="nav-label">People</span>
+                        </a>
+                    }
                 </div>
             </nav>
         </aside>

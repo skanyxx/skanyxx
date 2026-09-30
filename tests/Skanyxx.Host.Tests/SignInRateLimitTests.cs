@@ -28,4 +28,37 @@ public sealed class SignInRateLimitTests(PostgresFixture fixture)
         Assert.Equal(HttpStatusCode.TooManyRequests, setupForm.StatusCode);
         Assert.Equal(HttpStatusCode.OK, status.StatusCode);
     }
+
+    /// <summary>
+    /// SEC L8: the invite accept page (GET too) and the anonymous invite API share their own window, so link unfurlers
+    /// cannot spend the sign-in window, and a spent sign-in window leaves invites working.
+    /// </summary>
+    [Fact]
+    public async Task InvitePageAndApi_AreCountedInTheirOwnWindow()
+    {
+        await using var host = await HostApp.StartAsync(await fixture.NewDatabaseAsync(), s =>
+        {
+            s["Skanyxx:InviteRateLimit:PermitLimit"] = "3";
+            s["Skanyxx:InviteRateLimit:WindowSeconds"] = "600";
+            s["Skanyxx:SignInRateLimit:PermitLimit"] = "1";
+            s["Skanyxx:SignInRateLimit:WindowSeconds"] = "600";
+        });
+        var credentials = new { email = HostApp.OwnerEmail, password = "wrong password" };
+
+        var signIn = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials);
+        var signInLimited = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials);
+        var page = await host.Client().GetAsync("/Invite?token=skx_inv_guess");
+        var lookup = await host.Client().PostAsJsonAsync("/api/identity/invites/lookup", new { token = "skx_inv_guess" });
+        var accept = await host.Client().PostAsJsonAsync("/api/identity/invites/accept", new { token = "skx_inv_guess", password = "a long enough password" });
+        var fourth = await host.Client().GetAsync("/Invite?token=skx_inv_guess");
+        var status = await host.Client().GetAsync("/api/identity/status");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, signIn.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, signInLimited.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, page.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, lookup.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, accept.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, fourth.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, status.StatusCode);
+    }
 }
