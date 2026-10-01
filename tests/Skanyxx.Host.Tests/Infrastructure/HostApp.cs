@@ -35,7 +35,9 @@ public sealed class HostApp : IAsyncDisposable
 
     public Uri BaseAddress => new(_host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First());
 
-    public static async Task<HostApp> StartAsync(string connectionString, Action<Dictionary<string, string>>? configure = null)
+    /// <param name="services">Test services added after Program's own (fakes for Microsoft's endpoints, recorders).</param>
+    public static async Task<HostApp> StartAsync(
+        string connectionString, Action<Dictionary<string, string>>? configure = null, Action<IServiceCollection>? services = null)
     {
         var contentRoot = Directory.CreateTempSubdirectory("skanyxx-host-").FullName;
         var settings = new Dictionary<string, string>
@@ -71,7 +73,7 @@ public sealed class HostApp : IAsyncDisposable
         configure?.Invoke(settings);
         string[] args = [.. settings.Select(s => $"--{s.Key}={s.Value}")];
 
-        using var observer = new HostBuiltObserver();
+        using var observer = new HostBuiltObserver(services);
         var run = Task.Run(() => typeof(Program).Assembly.EntryPoint!.Invoke(null, [args]));
         try
         {

@@ -32,6 +32,8 @@ public sealed class RateLimitTests(PostgresFixture postgres) : MemoryTestBase(po
     public async Task Lift_CountsAgainstTheWriteLimit()
     {
         var ana = App.Client("ana");
+        for (var i = 0; i < 3; i++)
+            App.Org.Join("ana", $"t{i}", "ops");
         Assert.Equal(HttpStatusCode.Created, (await ana.PutCardAsync("personal:ana", "refund-window")).StatusCode);
         for (var i = 0; i < 2; i++)
             Assert.Equal(HttpStatusCode.Created, (await ana.LiftAsync("personal:ana", "refund-window", $"team:t{i}")).StatusCode);

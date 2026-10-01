@@ -25,11 +25,11 @@ public sealed class PostgresFixture : IAsyncLifetime
         new(new DbContextOptionsBuilder<AccountsDbContext>()
             .UseNpgsql(connectionString ?? ConnectionString, o => o.MigrationsHistoryTable(AccountsDbContext.MigrationsTable)).Options);
 
-    /// <summary>Back to "not bootstrapped": every account goes, the seeded roles and the key ring stay.</summary>
+    /// <summary>Back to "not bootstrapped": every account, the org tree and the Microsoft sign-in settings go, the seeded roles and the key ring stay.</summary>
     public async Task ResetAsync()
     {
         await using var db = CreateDbContext();
-        await db.Database.ExecuteSqlRawAsync("TRUNCATE identity_users, identity_invites CASCADE");
+        await db.Database.ExecuteSqlRawAsync("TRUNCATE identity_users, identity_invites, identity_org_departments, identity_entra_settings, identity_entra_groups CASCADE");
     }
 
     /// <summary>A new empty database in the same server, for tests that must not disturb the shared one.</summary>

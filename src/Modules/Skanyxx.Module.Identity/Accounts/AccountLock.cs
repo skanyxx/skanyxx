@@ -14,7 +14,7 @@ internal static class AccountLock
     // The seed of a 64-bit key. A 32-bit hashtext key let an attacker compute an unknown email that collides with the
     // victim's and keep the victim's lock busy without touching the account (SEC3 R3-1); 64 bits puts that at ~2^64.
     // Listed with every other advisory-lock key in Skanyxx.Module.Memory's MemoryMigrator.
-    private const long LockSeed = 0x49444E03;
+    internal const long LockSeed = 0x49444E03;
 
     /// <summary>
     /// Waits for the lock. Only for callers that proved something (the bootstrap token, an invite token, the owner

@@ -136,7 +136,8 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
         await App.SupervisorClient().PutCardAsync("company", "company-refund");
         await App.Client("ana").PutCardAsync("personal:ana", "ana-refund");
         await App.Client("bob").PutCardAsync("personal:bob", "bob-refund");
-        await App.Client("ana").PutCardAsync("team:billing", "team-refund");
+        App.Org.Join("carol", "billing", "finance");
+        Assert.Equal(HttpStatusCode.Created, (await App.Client("carol").PutCardAsync("team:billing", "team-refund")).StatusCode);
 
         var hits = await App.Client("ana").SearchAsync("refund");
 

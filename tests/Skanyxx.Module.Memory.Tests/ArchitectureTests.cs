@@ -39,6 +39,25 @@ public sealed class ArchitectureTests
     public void Module_DoesNotReferenceHost() =>
         Assert.DoesNotContain(Module.GetReferencedAssemblies(), a => a.Name == "Skanyxx.Host");
 
+    /// <summary>
+    /// Memory asks identity for team membership through Core's <c>IOrgMembership</c> only (D090): no reference to the
+    /// identity module (or any other module), so it can never read identity's tables or types.
+    /// </summary>
+    [Fact]
+    public void Module_ReferencesNoOtherModule() =>
+        Assert.DoesNotContain(Module.GetReferencedAssemblies(), a => a.Name!.StartsWith("Skanyxx.Module.", StringComparison.Ordinal));
+
+    [Fact]
+    public void Module_DoesNotDependOnTheIdentityModule() =>
+        Types().That().ResideInAssembly(Module)
+            .Should().NotDependOnAnyTypesThat().ResideInNamespaceMatching(@"^Skanyxx\.Module\.Identity(\..*)?$")
+            .Check(Architecture);
+
+    [Fact]
+    public void AccessPolicy_GetsMembershipFromTheCoreContract() =>
+        Assert.Contains(typeof(Access.AccessPolicy).GetConstructors().Single().GetParameters(),
+            p => p.ParameterType == typeof(Skanyxx.Core.Platform.Identity.IOrgMembership));
+
     // BindingProblem is the global FastEndpoints error builder and prints a fixed message, so a FastEndpoints
     // validator would return meaningless 400s. Validation belongs in FluentValidation validators run by MediatR.
     [Fact]

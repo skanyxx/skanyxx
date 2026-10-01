@@ -12,7 +12,7 @@ We design in small steps. This folder is the running record — not a product sp
 | [spine.md](spine.md) | Ordered walk from the start. Follow this. |
 | [three-planes.md](three-planes.md) | Step 1 deep dive: Skanyxx vs kagent vs memory. |
 | [first-hour.md](first-hour.md) | Step 2: setup → first chat message. |
-| [identity.md](identity.md) | Owner bootstrap, invite, optional Entra. |
+| [identity.md](identity.md) | Owner bootstrap, invite, teams and departments, optional Entra. |
 | [install-path.md](install-path.md) | License → one install → browser URL. |
 | [studio.md](studio.md) | Step 3: compose agent → PR. |
 | [memory-store.md](memory-store.md) | Volume + tokens: cards not chats. |

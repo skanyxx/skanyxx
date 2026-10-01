@@ -51,6 +51,7 @@ public sealed class McpTests(PostgresFixture postgres) : MemoryTestBase(postgres
         await App.SupervisorClient().PutCardAsync("company", "company-refund");
         await App.Client(Users.Bob).PutCardAsync($"personal:{Users.Bob}", "bob-refund");
         await App.Client(Users.Ana).PutCardAsync($"personal:{Users.Ana}", "ana-refund");
+        App.Org.Join(Users.Bob, "billing", "finance");
         await App.Client(Users.Bob).PutCardAsync("team:billing", "team-refund");
         await using var client = await App.McpAsync("seed", userId: Users.Bob);
 

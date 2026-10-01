@@ -268,6 +268,69 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                     b.ToTable("identity_user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.EntraGroupMap", b =>
+                {
+                    b.Property<string>("GroupId")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string[]>("Roles")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.Property<string[]>("Teams")
+                        .IsRequired()
+                        .HasColumnType("text[]");
+
+                    b.HasKey("GroupId");
+
+                    b.ToTable("identity_entra_groups", (string)null);
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.EntraSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ClientId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ProtectedClientSecret")
+                        .HasColumnType("text");
+
+                    b.Property<string>("TenantId")
+                        .IsRequired()
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("UpdatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Version")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("identity_entra_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_identity_entra_settings_single_row", "\"Id\" = 1");
+                        });
+                });
+
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.Invite", b =>
                 {
                     b.Property<string>("Id")
@@ -323,6 +386,105 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("identity_invites", (string)null);
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.OrgDepartment", b =>
+                {
+                    b.Property<string>("Slug")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Slug");
+
+                    b.ToTable("identity_org_departments", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_identity_org_departments_slug", "\"Slug\" ~ '^[a-z0-9][a-z0-9._@-]{0,127}$'");
+                        });
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.OrgTeam", b =>
+                {
+                    b.Property<string>("Slug")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DepartmentSlug")
+                        .IsRequired()
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.HasKey("Slug");
+
+                    b.HasIndex("DepartmentSlug");
+
+                    b.ToTable("identity_org_teams", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_identity_org_teams_slug", "\"Slug\" ~ '^[a-z0-9][a-z0-9._@-]{0,127}$'");
+                        });
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.OrgTeamMember", b =>
+                {
+                    b.Property<string>("TeamSlug")
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AddedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("AddedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("TeamSlug", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("identity_org_team_members", (string)null);
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.PendingRevocation", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("Generation")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("MarkedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("identity_pending_revocations", (string)null);
                 });
 
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.RefreshSession", b =>
@@ -393,6 +555,39 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityUserToken<string>", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.OrgTeam", b =>
+                {
+                    b.HasOne("Skanyxx.Module.Identity.Data.OrgDepartment", null)
+                        .WithMany()
+                        .HasForeignKey("DepartmentSlug")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.OrgTeamMember", b =>
+                {
+                    b.HasOne("Skanyxx.Module.Identity.Data.OrgTeam", null)
+                        .WithMany()
+                        .HasForeignKey("TeamSlug")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.PendingRevocation", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
                         .WithMany()

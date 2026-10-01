@@ -29,6 +29,28 @@ public sealed class SignInRateLimitTests(PostgresFixture fixture)
         Assert.Equal(HttpStatusCode.OK, status.StatusCode);
     }
 
+    /// <summary>SEC L2: starting "Sign in with Microsoft" checks nothing and spends no permit; only its callback does.</summary>
+    [Fact]
+    public async Task StartingAMicrosoftSignIn_IsNotCounted()
+    {
+        await using var host = await HostApp.StartAsync(await fixture.NewDatabaseAsync(), s =>
+        {
+            s["Skanyxx:SignInRateLimit:PermitLimit"] = "1";
+            s["Skanyxx:SignInRateLimit:WindowSeconds"] = "600";
+        });
+        var credentials = new { email = HostApp.OwnerEmail, password = "wrong password" };
+
+        var starts = new List<HttpResponseMessage>();
+        for (var i = 0; i < 3; i++)
+            starts.Add(await host.Client().PostAsync("/Login?handler=Microsoft", new FormUrlEncodedContent(new Dictionary<string, string>())));
+        var signIn = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials);
+        var callback = await host.Client().PostAsync("/signin-oidc", new FormUrlEncodedContent(new Dictionary<string, string>()));
+
+        Assert.All(starts, r => Assert.NotEqual(HttpStatusCode.TooManyRequests, r.StatusCode));
+        Assert.Equal(HttpStatusCode.Unauthorized, signIn.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, callback.StatusCode);
+    }
+
     /// <summary>
     /// SEC L8: the invite accept page (GET too) and the anonymous invite API share their own window, so link unfurlers
     /// cannot spend the sign-in window, and a spent sign-in window leaves invites working.

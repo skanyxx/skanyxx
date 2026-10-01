@@ -29,6 +29,18 @@ internal static class InputRules
         rule.Must(email => email is null || email.All(identity.Value.User.AllowedUserNameCharacters.Contains))
             .WithMessage($"'{{PropertyName}}' may contain only ASCII letters, digits and {string.Concat(identity.Value.User.AllowedUserNameCharacters.Where(c => !char.IsAsciiLetterOrDigit(c)))}.");
 
+    /// <summary>
+    /// A team or department slug: the id memory scopes key on (<c>team:&lt;slug&gt;</c>), so it has the scope id's shape
+    /// (<see cref="Identifier"/>, the memory CHECK constraint too).
+    /// </summary>
+    public static IRuleBuilderOptions<T, string> OrgSlug<T>(this IRuleBuilder<T, string> rule) =>
+        rule.Must(Identifier.IsValid)
+            .WithMessage("'{PropertyName}' must be 1–128 characters of a-z, 0-9, '.', '_', '@' or '-', starting with a letter or digit.");
+
+    /// <summary>A team or department name, shown to people: required, and held to the display-name rules.</summary>
+    public static IRuleBuilderOptions<T, string?> OrgName<T>(this IRuleBuilder<T, string?> rule) =>
+        rule.NotEmpty().DisplayName();
+
     /// <summary>Only <see cref="SkanyxxRoles.Grantable"/>: the owner role is never given by invite or role change.</summary>
     public static IRuleBuilderOptions<T, IReadOnlyList<string>> GrantableRoles<T>(this IRuleBuilder<T, IReadOnlyList<string>> rule) =>
         rule.Must(roles => roles.All(SkanyxxRoles.Grantable.Contains))

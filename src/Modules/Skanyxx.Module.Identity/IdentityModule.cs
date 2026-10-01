@@ -3,6 +3,7 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.BearerToken;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
@@ -16,14 +17,19 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Data;
+using Skanyxx.Module.Identity.Entra;
+using Skanyxx.Module.Identity.Org;
 
 namespace Skanyxx.Module.Identity;
 
 /// <summary>
 /// Local accounts (ASP.NET Core Identity on Postgres): owner bootstrap, password sign-in (cookie or bearer), refresh,
-/// sign-out, break-glass unlock, invites and role assignment. The Host owns the authentication schemes and the
-/// fallback policy; this module owns the store and the session rules (D1, D025, D026).
+/// sign-out, break-glass unlock, invites, role assignment, the org tree (departments, teams, members; D055), which
+/// other modules read through <see cref="IOrgMembership"/>, and the optional Microsoft Entra ID sign-in that maps
+/// groups onto roles and teams (D027). The Host owns the cookie and bearer schemes and the fallback policy; this module
+/// owns the store, the session rules (D1, D025, D026) and its own external scheme, <c>entra</c>.
 /// </summary>
 public sealed class IdentityModule : IModule
 {
@@ -87,6 +93,8 @@ public sealed class IdentityModule : IModule
         services.AddScoped<ClientAddress>();
         services.AddHttpContextAccessor();
         services.AddSingleton<IAuthorizationHandler, OwnerRouteRefusals>();
+        services.AddScoped<IOrgMembership, OrgMembershipReader>();
+        AddEntraSignIn(services);
 
         services.AddHealthChecks().AddNpgSql(
             sp => sp.GetRequiredService<IOptions<IdentityModuleOptions>>().Value.ConnectionSettings().ConnectionString,
@@ -189,6 +197,39 @@ public sealed class IdentityModule : IModule
                     context.Fail("The session has ended; sign in again.");
             };
         });
+    }
+
+    /// <summary>
+    /// Microsoft Entra ID as an external login (D027): an OIDC scheme whose options are built from the settings the owner
+    /// saves (<see cref="EntraOidcOptions"/>), so a change applies without a restart. The settings refresher is registered
+    /// after <see cref="IdentityMigrator"/>, so it first reads them once the tables exist.
+    /// </summary>
+    private static void AddEntraSignIn(IServiceCollection services)
+    {
+        services.AddSingleton<EntraEndpoints>();
+        services.AddSingleton<EntraRedirectUri>();
+        services.AddSingleton<EntraKeyRing>();
+        services.AddSingleton<EntraSettingsCache>();
+        services.AddHostedService<EntraSettingsRefresher>();
+        services.AddSingleton<IConfigureOptions<OpenIdConnectOptions>, EntraOidcOptions>();
+        services.AddAuthentication().AddOpenIdConnect(EntraScheme.Name, EntraScheme.DisplayName, _ => { });
+        services.AddHttpClient<IGraphMembership, GraphMembership>(http => http.Timeout = TimeSpan.FromSeconds(10));
+        // What the OIDC handler would give its own client: its timeout, a 10 MB cap and its user agent. The options cache
+        // keeps this client until the next settings save, maybe for months, so its connections are recycled by lifetime
+        // instead (CR m3): DNS changes at login.microsoftonline.com are picked up within five minutes.
+        services.AddHttpClient(EntraOidcOptions.Backchannel, http =>
+        {
+            http.Timeout = TimeSpan.FromMinutes(1);
+            http.MaxResponseContentBufferSize = 10 * 1024 * 1024;
+            http.DefaultRequestHeaders.UserAgent.ParseAdd("Microsoft ASP.NET Core OpenIdConnect handler");
+        }).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(5) })
+            // The options cache holds one client for months; the factory's rotation would only mark its handler expired (I5).
+            .SetHandlerLifetime(Timeout.InfiniteTimeSpan);
+        services.AddScoped<EntraMapper>();
+        services.AddScoped<EntraAccounts>();
+        services.AddScoped<EntraPasswordRule>();
+        services.AddScoped<PasswordStepUp>();
+        services.AddScoped<ExternalLogins>();
     }
 
     private const string BearerPrefix = "Bearer ";

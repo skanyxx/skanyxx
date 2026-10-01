@@ -1,5 +1,6 @@
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Endpoints;
+using Skanyxx.Module.Identity.Entra;
 using Skanyxx.Module.Identity.Features.Refresh;
 using Skanyxx.Module.Identity.Features.Unlock;
 
@@ -25,7 +26,11 @@ public sealed class SecretRecordTests
         new BootstrapOwnerCommand(Email, Secret, "Owner", Secret, FromLoopback: false),
         new RefreshCommand(Secret),
         new UnlockOwnerCommand(Email, Secret),
-        new InviteCreatedResponse("invite-1", "https://skanyxx.example/Invite?token=" + Secret, DateTimeOffset.UnixEpoch)
+        new InviteCreatedResponse("invite-1", "https://skanyxx.example/Invite?token=" + Secret, DateTimeOffset.UnixEpoch),
+        new SaveEntraSettingsCommand("actor", true, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", Secret, []),
+        new EntraChallengeQuery("/Account?handler=Linked", "user-1", Secret),
+        new EntraConfig(true, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", Secret,
+            new Dictionary<string, EntraGroupMapDto>(), 1)
     };
 
     [Theory]

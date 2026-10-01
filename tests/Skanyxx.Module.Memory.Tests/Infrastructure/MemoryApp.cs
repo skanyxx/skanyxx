@@ -9,6 +9,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using ModelContextProtocol.Client;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
 
 namespace Skanyxx.Module.Memory.Tests.Infrastructure;
 
@@ -31,6 +32,9 @@ public sealed class MemoryApp : IAsyncDisposable
     private MemoryApp(WebApplication app) => _app = app;
 
     public IServiceProvider Services => _app.Services;
+
+    /// <summary>Who is in which team (and so department); nobody is in anything until a test says so.</summary>
+    public FakeOrgMembership Org => _app.Services.GetRequiredService<FakeOrgMembership>();
 
     /// <summary>Every Error-level log line: an expected conflict must not be reported as a failure.</summary>
     public IReadOnlyList<string> Errors => _app.Services.GetRequiredService<ErrorLog>().Entries;
@@ -59,6 +63,9 @@ public sealed class MemoryApp : IAsyncDisposable
 
         var module = new MemoryModule();
         module.RegisterServices(builder.Services, builder.Configuration);
+        // The identity module implements IOrgMembership in the Host; memory is tested without it.
+        builder.Services.AddSingleton<FakeOrgMembership>();
+        builder.Services.AddSingleton<IOrgMembership>(sp => sp.GetRequiredService<FakeOrgMembership>());
         builder.Services.AddSkanyxxPlatform([typeof(MemoryModule).Assembly]);
         builder.Services.AddAuthentication(TestAuthHandler.SchemeName)
             .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);
@@ -111,11 +118,11 @@ public sealed class MemoryApp : IAsyncDisposable
 
     /// <summary>
     /// Issues (or rotates) the agent's secret and returns it: as the supervisor, or as the owner when the agent is to
-    /// act for users (D084).
+    /// act for users (D084) or <paramref name="byOwner"/> asks for it (a team-granted agent's secret is the owner's, D092).
     /// </summary>
-    public async Task<string> IssueSecretAsync(string agentId, bool actsForUsers = false)
+    public async Task<string> IssueSecretAsync(string agentId, bool actsForUsers = false, bool byOwner = false)
     {
-        var client = actsForUsers ? OwnerClient() : SupervisorClient();
+        var client = actsForUsers || byOwner ? OwnerClient() : SupervisorClient();
         var response = await client.PostAsJsonAsync($"/api/memory/agents/{agentId}/secret", new { actsForUsers });
         response.EnsureSuccessStatusCode();
         var secret = (await response.JsonAsync()).GetProperty("secret").GetString()!;

@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using Dapper;
 using Microsoft.EntityFrameworkCore;
 using Skanyxx.Module.Memory.Contracts;
+using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Data;
 
@@ -19,7 +20,8 @@ public sealed partial class CardSearch(MemoryDbContext db)
         SELECT c.scope AS Scope, c.key AS Key, c.version AS Version, c.type AS Type,
                c.what AS What, c.why AS Why, c.who AS Who, c.updated_at AS UpdatedAt
         FROM memory_cards c, q
-        WHERE c.status = 'published' AND c.scope = ANY(@Scopes) AND c.search @@ q.query
+        WHERE c.status = 'published' AND (c.scope = ANY(@Scopes) OR (@AllOrg AND c.scope ~ '^(team|department):'))
+          AND c.search @@ q.query
         ORDER BY ts_rank(c.search, q.query) DESC, c.updated_at DESC
         LIMIT @Limit
         """;
@@ -39,13 +41,13 @@ public sealed partial class CardSearch(MemoryDbContext db)
             .Take(MaxTerms)
             .ToArray();
 
-    public async Task<IReadOnlyList<CardHit>> SearchAsync(string query, IReadOnlyList<string> scopes, int limit, CancellationToken ct)
+    public async Task<IReadOnlyList<CardHit>> SearchAsync(string query, SearchScopes scopes, int limit, CancellationToken ct)
     {
         var terms = Terms(query);
-        if (scopes.Count == 0 || terms.Length == 0)
+        if ((scopes.Exact.Count == 0 && !scopes.AllTeamsAndDepartments) || terms.Length == 0)
             return [];
 
-        var parameters = new DynamicParameters(new { Scopes = scopes.ToArray(), Limit = limit });
+        var parameters = new DynamicParameters(new { Scopes = scopes.Exact.ToArray(), AllOrg = scopes.AllTeamsAndDepartments, Limit = limit });
         for (var i = 0; i < terms.Length; i++)
             parameters.Add($"t{i}", terms[i]);
         var tsquery = string.Join(" || ", terms.Select((_, i) => $"plainto_tsquery('english', @t{i})"));

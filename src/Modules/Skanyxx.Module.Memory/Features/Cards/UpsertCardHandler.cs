@@ -15,7 +15,7 @@ internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access,
     {
         var scope = Scope.Parse(command.Scope);
         if (!await access.CanUpsertAsync(command.Caller, scope, ct))
-            return Outcome<Card>.Forbidden($"No upsert grant on '{scope}'.");
+            return Outcome<Card>.Forbidden(AccessPolicy.UpsertRefusal(command.Caller, scope));
         if (!limiter.TryAcquire(command.Caller.RateLimitKey))
             return Outcome<Card>.RateLimited("Upsert rate limit reached; try again later.");
 
@@ -86,7 +86,7 @@ internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access,
     /// <summary>The current card is only returned to a caller who could read it anyway.</summary>
     private async Task<Outcome<Card>> ConflictAsync(UpsertCardCommand command, string message, CancellationToken ct)
     {
-        var visible = await access.CanSeeAsync(command.Caller, Scope.Parse(command.Scope), ct);
+        var visible = await access.CanReadAsync(command.Caller, Scope.Parse(command.Scope), ct);
         return Outcome<Card>.Conflict(visible ? await FindAsync(command, ct) : null, message);
     }
 

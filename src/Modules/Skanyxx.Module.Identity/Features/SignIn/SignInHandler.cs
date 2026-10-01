@@ -5,12 +5,13 @@ using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
 using Skanyxx.Module.Identity.Data;
+using Skanyxx.Module.Identity.Entra;
 
 namespace Skanyxx.Module.Identity.Features.SignIn;
 
 internal sealed class SignInHandler(
     AccountsDbContext db, UserManager<IdentityUser> users, SignInManager<IdentityUser> signIn, SignInFailure failure,
-    SessionIssuer sessions, BootstrapGuard guard, ILogger<SignInHandler> logger)
+    SessionIssuer sessions, BootstrapGuard guard, EntraPasswordRule entra, ILogger<SignInHandler> logger)
     : IRequestHandler<SignInCommand, Outcome<SignedIn>>
 {
     /// <summary>
@@ -34,7 +35,8 @@ internal sealed class SignInHandler(
     /// <summary>
     /// The password check, one attempt per account at a time (<see cref="AccountLock"/>), committed whatever the
     /// answer: a failed attempt's count must stick. An attempt that finds the account busy is refused unchecked and
-    /// uncounted (<see cref="BusyMessage"/>). The bootstrap token holder waits its turn instead.
+    /// uncounted (<see cref="BusyMessage"/>). The bootstrap token holder waits its turn instead. An account that signs in
+    /// with Microsoft (D8) gets the same answer as a wrong password, right password or not (SEC N3).
     /// </summary>
     private async Task<Outcome<IdentityUser>> VerifyAsync(SignInCommand command, bool breakGlass, CancellationToken ct)
     {
@@ -52,6 +54,8 @@ internal sealed class SignInHandler(
         // A locked-out account is refused before the password is hashed; hash anyway so it is not the fast answer.
         else if (user is null || await users.IsLockedOutAsync(user))
             verified = SpendHashTime(command.Password);
+        else if (await entra.RefusesAsync(user, ct))
+            verified = await RefuseManagedAsync(user, command.Password);
         else
             // Counts a failure toward lockout; the attempt that reaches the limit locks the account.
             verified = (await signIn.CheckPasswordSignInAsync(user, command.Password, lockoutOnFailure: true)).Succeeded;
@@ -66,10 +70,30 @@ internal sealed class SignInHandler(
         if (await users.CheckPasswordAsync(owner, password))
             return true;
 
-        var counted = await users.AccessFailedAsync(owner);
+        await CountFailureAsync(owner);
+        return false;
+    }
+
+    /// <summary>
+    /// SEC N3: an Entra-managed account's password never starts a session while Microsoft sign-in is enabled (D8), and
+    /// the answer is the one a wrong password gets, so it tells a guesser nothing. Every attempt counts toward the
+    /// lockout, right password or wrong, so both do the same database work and take the same time (QA-3 L1); a lockout
+    /// does not block Microsoft sign-in. A right password is logged for the owner.
+    /// </summary>
+    private async Task<bool> RefuseManagedAsync(IdentityUser user, string password)
+    {
+        if (await users.CheckPasswordAsync(user, password))
+            logger.LogWarning("Password sign-in of {UserId} from {Client} refused: the account signs in with Microsoft (D8)",
+                user.Id, signIn.Context.Connection.RemoteIpAddress);
+        await CountFailureAsync(user);
+        return false;
+    }
+
+    private async Task CountFailureAsync(IdentityUser user)
+    {
+        var counted = await users.AccessFailedAsync(user);
         if (!counted.Succeeded)
             throw new InvalidOperationException($"Counting a failed sign-in failed: {string.Join(", ", counted.Errors.Select(e => e.Code))}.");
-        return false;
     }
 
     private bool SpendHashTime(string password)

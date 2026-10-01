@@ -18,11 +18,11 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
     [Fact]
     public async Task SetGrants_ReplacesPreviousGrants()
     {
-        var boss = App.SupervisorClient();
-        await boss.SetGrantsAsync("seed", new { scope = "company", canSearch = true, canUpsert = true });
-        await boss.SetGrantsAsync("seed", new { scope = "team:billing", canSearch = true, canUpsert = false });
+        var owner = App.OwnerClient();
+        await owner.SetGrantsAsync("seed", new { scope = "company", canSearch = true, canUpsert = true });
+        await owner.SetGrantsAsync("seed", new { scope = "team:billing", canSearch = true, canUpsert = false });
 
-        var grants = await boss.GetFromJsonAsync<List<GrantEntry>>("/api/memory/grants/seed", CardApi.Json);
+        var grants = await owner.GetFromJsonAsync<List<GrantEntry>>("/api/memory/grants/seed", CardApi.Json);
 
         Assert.Equal([new GrantEntry("team:billing", true, false)], grants);
     }
@@ -52,7 +52,7 @@ public sealed class GrantTests(PostgresFixture postgres) : MemoryTestBase(postgr
             .Select(i => new[] { $"team:t{i}", i % 2 == 0 ? "company" : $"department:d{i}" })
             .ToList();
 
-        var responses = await Task.WhenAll(sets.Select(set => App.SupervisorClient().SetGrantsAsync("seed",
+        var responses = await Task.WhenAll(sets.Select(set => App.OwnerClient().SetGrantsAsync("seed",
             set.Select(s => (object)new { scope = s, canSearch = true, canUpsert = false }).ToArray())));
 
         Assert.All(responses, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));

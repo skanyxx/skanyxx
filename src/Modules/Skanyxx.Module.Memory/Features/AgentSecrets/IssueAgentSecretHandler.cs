@@ -4,6 +4,7 @@ using Skanyxx.Core.Platform;
 using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Domain;
+using Skanyxx.Module.Memory.Features.Grants;
 
 namespace Skanyxx.Module.Memory.Features.AgentSecrets;
 
@@ -18,6 +19,14 @@ internal sealed class IssueAgentSecretHandler(MemoryDbContext db, AccessPolicy a
         // D084: an agent that acts for users can read and write any user's personal memory by naming them.
         if (command.ActsForUsers && !isOwner)
             return Outcome<IssuedAgentSecret>.Forbidden("Only the owner may let an agent act for users.");
+
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        // D091: whoever holds the secret reads what the agent's grants read; a team or department grant is the owner's
+        // to give, so a supervisor must not get a secret for such an agent. Under the grants lock, so a team grant
+        // cannot land between this check and the issue.
+        await AgentGrantLock.AcquireAsync(db, command.AgentId, ct);
+        if (!isOwner && await AgentGrantLock.HoldsTeamOrDepartmentAsync(db, command.AgentId, ct))
+            return Outcome<IssuedAgentSecret>.Forbidden("Only the owner may issue the secret of an agent that holds a team or department grant.");
 
         var secret = AgentSecretToken.Generate();
         var now = DateTime.UtcNow;
@@ -35,6 +44,7 @@ internal sealed class IssueAgentSecretHandler(MemoryDbContext db, AccessPolicy a
             """, ct);
         if (written == 0)
             return Outcome<IssuedAgentSecret>.Forbidden("Only the owner may rotate the secret of an agent that acts for users.");
+        await tx.CommitAsync(ct);
 
         return Outcome<IssuedAgentSecret>.Ok(new IssuedAgentSecret(command.AgentId, secret, createdAt, command.ActsForUsers));
     }

@@ -11,7 +11,7 @@ namespace Skanyxx.Host.Pages;
 
 /// <summary>
 /// The owner's people admin (D026): invite (the link is shown on this response only), change roles, disable/enable,
-/// revoke pending invites. The same commands as <c>api/identity/invites</c> and <c>api/identity/people</c>.
+/// remove a Microsoft login (D10), revoke pending invites; shows each person's teams (managed on the Org page). The same commands as <c>api/identity/invites</c> and <c>api/identity/people</c>.
 /// </summary>
 [Authorize(Roles = SkanyxxRoles.Owner)]
 public sealed class PeopleModel(IMediator mediator) : PageModel
@@ -19,6 +19,10 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
     public IReadOnlyList<PersonDto> People { get; private set; } = [];
 
     public IReadOnlyList<PendingInvite> Invites { get; private set; } = [];
+
+    private ILookup<string, TeamDto> _teamsByMember = Array.Empty<TeamDto>().ToLookup(t => t.Slug);
+
+    public IEnumerable<TeamDto> TeamsOf(string userId) => _teamsByMember[userId];
 
     /// <summary>Set only on the response to a successful invite; never stored or shown again.</summary>
     public string? InviteLinkOnce { get; private set; }
@@ -40,7 +44,10 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
                 Message = $"Invite created for {email?.Trim()}. Copy the link now: it is not shown again.";
             }
             else
+            {
                 Error = outcome.Message;
+                Response.StatusCode = outcome.Status.HttpStatus();
+            }
         }, ct);
 
     public async Task<IActionResult> OnPostRolesAsync(string id, string[]? roles, CancellationToken ct) =>
@@ -52,6 +59,10 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
     public async Task<IActionResult> OnPostEnableAsync(string id, CancellationToken ct) =>
         await RunAsync(async () => Report(await mediator.Send(new SetDisabledCommand(Actor, id, Disabled: false), ct), "Account enabled."), ct);
 
+    public async Task<IActionResult> OnPostRemoveMicrosoftAsync(string id, CancellationToken ct) =>
+        await RunAsync(async () => Report(await mediator.Send(new RemoveEntraLoginCommand(Actor, id), ct),
+            "Microsoft login removed: the account is local-only and its sessions ended."), ct);
+
     public async Task<IActionResult> OnPostRevokeAsync(string id, CancellationToken ct) =>
         await RunAsync(async () => Report(await mediator.Send(new RevokeInviteCommand(Actor, id), ct), "Invite revoked."), ct);
 
@@ -62,7 +73,10 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
         if (outcome.Status == OutcomeStatus.Ok)
             Message = done;
         else
+        {
             Error = outcome.Message;
+            Response.StatusCode = outcome.Status.HttpStatus();
+        }
     }
 
     private async Task<IActionResult> RunAsync(Func<Task> action, CancellationToken ct)
@@ -84,5 +98,7 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
     {
         People = (await mediator.Send(new ListPeopleQuery(), ct)).Value!;
         Invites = (await mediator.Send(new ListInvitesQuery(), ct)).Value!;
+        var teams = (await mediator.Send(new ListTeamsQuery(), ct)).Value!;
+        _teamsByMember = teams.SelectMany(t => t.Members, (team, member) => (team, member)).ToLookup(x => x.member, x => x.team);
     }
 }

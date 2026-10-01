@@ -11,7 +11,7 @@ internal sealed class GetCardHandler(MemoryDbContext db, AccessPolicy access) : 
 {
     public async Task<Outcome<Card>> Handle(GetCardQuery query, CancellationToken ct)
     {
-        if (!access.CanRead(query.Caller, Scope.Parse(query.Scope)))
+        if (!await access.CanReadAsync(query.Caller, Scope.Parse(query.Scope), ct))
             return Outcome<Card>.Forbidden($"'{query.Scope}' is not readable by this caller.");
 
         var card = await db.Cards.AsNoTracking()

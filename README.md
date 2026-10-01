@@ -86,7 +86,7 @@ Edit `src/Skanyxx.Host/appsettings.json`:
     "Enabled": {
       "agents": true,
       "alerts": true,
-      "chat": false
+      "hooks": false
     }
   }
 }
@@ -94,6 +94,20 @@ Edit `src/Skanyxx.Host/appsettings.json`:
 
 Set any module to `false` and its API routes will not be registered. You can also simply remove the DLL from the `modules/` directory.
 `sandboxes` is the exception: it is **off unless enabled** here (see AX Tasks).
+
+**Disabling a module that another enabled module depends on stops startup** (`Module '<id>' needs module '<dep>'…`), and so
+does a dependency whose DLL is missing or fails to load: disable the dependents too. Current dependencies (each module's
+`Dependencies`; every listed one is a module whose MediatR requests or services it uses):
+
+| Module | Needs |
+|---|---|
+| `dashboard` | `agents`, `alerts`, `analytics`, `cloudtools` |
+| `debug` | `agents`, `alerts` |
+| `investigate` | `agents`, `chat` |
+| `memory` | `identity` (team membership through `IOrgMembership`) |
+
+Nothing depends on `dashboard`, `debug`, `investigate`, `memory`, `hooks`, `sessions`, `settings`, `tickets`,
+`toolservers` or `sandboxes`, so each of those can be disabled on its own.
 
 ## Adding a New Module
 
@@ -191,7 +205,7 @@ Each module exposes REST endpoints under `/api/`:
 | Dashboard | `/api/dashboard` |
 | Debug | `/api/debug` |
 | Hooks | `/api/hooks` |
-| Identity | `/api/identity/status`, `/bootstrap`, `/sign-in`, `/refresh`, `/sign-out`, `/me`, `/unlock` |
+| Identity | `/api/identity/status`, `/bootstrap`, `/sign-in`, `/refresh`, `/sign-out`, `/me`, `/unlock`, `/invites`, `/people`, `/org/departments`, `/org/teams` |
 | Investigate | `/api/investigate` |
 | Memory | `/api/memory/cards`, `/api/memory/grants`, `/api/memory/agents/{agentId}/secret` (+ MCP at `/mcp/memory`, agent secret) |
 | Tickets | `/api/tickets/issues`, `/api/tickets/pipelines`, `/api/tickets/runs` |
@@ -289,16 +303,18 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   handler checks the security stamp too (D087; one primary-key read per bearer request). If the
   rotation cannot be saved, sign-out fails loudly (`500` ProblemDetails, never `204`) instead of reporting success — retry it.
 - `GET /api/identity/me` → `{id, email, displayName, roles}`. The nav shows the signed-in user and a Sign out button.
-- Rate limits: credential posts (sign-in, bootstrap, unlock, `/Login`, `/Setup`) have their own window
-  (`Skanyxx:SignInRateLimit`); sign-out and refresh do not count against it, so a client can always sign out. Invite
+- Rate limits: credential posts (sign-in, bootstrap, unlock, `/Login`, `/Setup`, the Account page's Microsoft link
+  — its password check, `POST /Account?handler=LinkMicrosoft` only — and the Microsoft callback `/signin-oidc`) have their own window (`Skanyxx:SignInRateLimit`).
+  Starting "Sign in with Microsoft" (`POST /Login?handler=Microsoft`) checks nothing and is not counted, so one Microsoft
+  sign-in spends one permit, at its callback; sign-out and refresh do not count against it, so a client can always sign out. Invite
   lookup and accept and the `/Invite` page (GET too) have another (`Skanyxx:InviteRateLimit`), so crawlers opening
   invite links cannot spend the sign-in window. All windows are per client address, with IPv6 grouped per /64 (one
   host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window.
 - Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. Anonymous:
-  `/health`, static files, `/Login`, `/Setup`, `/Invite`, `/Privacy`, `/Error`, `/Offline`, `GET /api/identity/status`, the
+  `/health`, static files, `/Login` (the Microsoft sign-in too), `/signin-oidc`, `/Setup`, `/Invite`, `/Privacy`, `/Error`, `/Offline`, `GET /api/identity/status`, the
   bootstrap/sign-in/refresh/unlock endpoints and `POST /api/identity/invites/{lookup,accept}`. `/mcp/memory` needs no sign-in but an agent secret (below).
 - CSRF: every POST/PUT/PATCH/DELETE on the Host (legacy controllers included) is refused with `403` when its `Origin`
-  is not listed in `Skanyxx:AllowedOrigins` (the Host's own origin — Origin host:port equal to the Host header — is allowed implicitly off the guarded prefixes; `/api/{memory,tickets,sandboxes,identity}` and `/mcp` still need an allow-listed Origin for any browser caller); the cookie is SameSite=Lax; the Razor forms carry
+  is not listed in `Skanyxx:AllowedOrigins` — except the Microsoft sign-in callback `/signin-oidc`, which Entra posts from its own origin and the OIDC handler protects (below) — (the Host's own origin — Origin host:port equal to the Host header — is allowed implicitly off the guarded prefixes; `/api/{memory,tickets,sandboxes,identity}` and `/mcp` still need an allow-listed Origin for any browser caller); the cookie is SameSite=Lax; the Razor forms carry
   antiforgery tokens.
 
 **People, invites and roles (D026 as built: D086, D087).** Only the owner administers people: the **People** page
@@ -352,6 +368,174 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   otherwise just "invalid"), and so is a signed-in person holding none of an owner-only route's roles (actor, method, route template —
   not the path, which the caller writes). A failed revocation after a role change or disable is logged at Error.
   Commands that carry a token or password print them as `***`.
+
+**Teams and departments (D055 as built: D090).** The org tree is Skanyxx's: **departments** contain **teams**, and
+people are members of teams (none, one or several); a person is in a department through its teams. Only the owner
+manages it — the **Org** page (nav link for the owner) or the API below; any other role gets `403`, anonymous `401`.
+
+- **Departments:** `POST /api/identity/org/departments {slug, name}` → `201`; `GET /api/identity/org/departments` →
+  `[{slug, name}]`; `PUT /api/identity/org/departments/{slug} {name}` renames.
+- **Teams:** `POST /api/identity/org/teams {slug, name, department}` → `201`; `GET /api/identity/org/teams` →
+  `[{slug, name, department, members: [userId…]}]`; `PUT /api/identity/org/teams/{slug} {name, department}` renames
+  and/or moves the team to another department (its members' department membership moves with it at once).
+- **Members:** `PUT /api/identity/org/teams/{slug}/members/{userId}` adds an existing, **enabled** person (`409` when
+  disabled, `404` unknown person or team); `DELETE` on the same path removes. Both are idempotent and answer the team.
+  Disabling someone keeps their memberships (they cannot sign in; the Org page marks them *disabled*) and enabling them
+  restores those memberships — remove them first if that is not wanted.
+  `GET /api/identity/people/{id}/teams` lists a person's teams; the People page shows them.
+- **Slugs** are the memory scope ids (`team:<slug>`, `department:<slug>`): 1–128 characters of `a-z 0-9 . _ @ -`,
+  starting with a letter or digit (`400` otherwise; the table has the same CHECK). Unique per kind (a taken slug is
+  `409`; a team and a department may share one), **never changed** (a slug in a rename body is ignored — the route's
+  wins) and never reused (nothing is deleted in this slice). Names follow the display-name rules (≤ 100, no
+  control or invisible formatting characters).
+- **Audit:** department created/renamed, team created/renamed/moved and member added/removed are logged at Warning with
+  the actor, the target and the client address; refusals on these routes are owner-route refusals (above).
+
+**Memory follows the tree on every request.** The memory module asks identity through Core's `IOrgMembership`
+(in-process, once per request, never cached beyond it; nothing about teams is in cookies or tokens), so adding,
+removing or moving takes effect on the person's **next request**. Memory therefore needs the identity module: the Host
+refuses to start with `Modules:Enabled:identity=false` while memory is enabled. Rules for signed-in people:
+
+| Scope | Read / search | Write (upsert, or lift into) |
+|---|---|---|
+| `company` | everyone signed in | owner, supervisors |
+| `personal:<you>` | you | you |
+| `team:<slug>` | members; owner, supervisors | members only |
+| `department:<slug>` | members of its teams; owner, supervisors | members of its teams only |
+
+Owner and supervisors read and search every team and department (oversight) but write only where they are members —
+add yourself to the team to write there. A lift also needs to read its source. Cards in a `team:`/`department:` scope
+with **no matching org object** (written before the tree existed, or a typo) have no members, so only owner and
+supervisors read them until the owner creates that slug (then its members see them too). **Agents** stay on grants
+(`PUT /api/memory/grants/{agentId}`). An agent acting for a user gets the user's personal scope, never the user's teams;
+grant `team:<slug>` explicitly, and remember that everyone who talks to that agent then reaches that team's cards.
+**Team and department grants are the owner's** (search or upsert, D091): a supervisor's grant list containing one is
+`403` and nothing is written, and a supervisor may neither replace the grants of nor issue a secret for an agent that
+holds one (supervisors keep `company` and `personal` grants). The owner's own team or department grant is `409`
+("Rotate this agent's secret first…", nothing written) while the agent's secret was issued by someone else, who has
+seen it (D092): rotate the secret as the owner, then grant. A grant row with both flags off opens nothing and does not
+count as a team grant. A person refused a write is told who may write there
+("Only members of team:x may write there."); an agent still hears "No upsert grant".
+
+**Audit (D091).** Every grant change and refusal is logged at Warning with actor, agent, each scope with its flags and
+the client address. A supervisor may lift a team or department card they are not a member of into `company`
+(supervisors gate company); every such lift is logged at Warning with actor, source, target, key and client address.
+
+**Upgrading from before teams (D091, D092).** Nothing written before this release is re-checked: cards already in a
+`team:`/`department:` scope become readable by that team's members once the owner creates the slug, and team or
+department **grants** a supervisor set back then — and the secrets supervisors issued for those agents — keep working.
+Before creating teams on an upgraded install, the owner should list `team:`/`department:` scopes in `memory_cards`,
+review every agent's grants (`GET /api/memory/grants/{agentId}`) and rotate the secret of any agent with a team grant
+whose secret someone else issued. Only development data predates this release today.
+
+**Microsoft Entra ID sign-in (D027 as built: D093–D095).** Optional: people sign in with their Microsoft work account
+("Sign in with Microsoft" on `/Login`), and the groups they are in decide their roles and teams. Entra is only an
+external login: Skanyxx still issues its own cookie (same stamp checks, same session cap), and nothing needs Entra —
+invites and passwords keep working. Only the owner configures it, on the **Microsoft sign-in** page (owner nav) or
+`GET/PUT /api/identity/entra/settings`; a save applies to the next sign-in, no restart.
+
+Setup, once, in the Entra admin center:
+
+1. **App registration** → New: *Accounts in this organizational directory only* (single tenant); platform **Web**;
+   redirect URI **`<Identity:PublicBaseUrl>/signin-oidc`** exactly (the Microsoft sign-in page shows it). It is built
+   on `Identity:PublicBaseUrl`, never on the request, so the setting is required outside Development (turning sign-in
+   on without it is `409`). Leave implicit grant (ID tokens / access tokens) off.
+2. **Certificates & secrets** → a client secret; paste it on the page. It is write-only: stored encrypted with the
+   Data Protection key ring (below), never shown again, returned or logged (the page says only whether one is set;
+   leaving the field empty keeps it). Entra secrets expire — enter a new one before that. If the key that protected
+   it is deleted (the key-ring runbook below), sign-in turns itself off with an Error log until the owner enters the
+   secret again. Outside Development without `Identity:DataProtectionCertificatePath`, the keys sit unencrypted in the
+   same database as the protected secret, so a copy of that database yields the secret: the page and the API
+   (`secretKeysUnencrypted`) warn and the save logs a Warning — configure the certificate.
+3. **Token configuration** → *Add groups claim*: Security groups (or *Groups assigned to the application*, which needs
+   Entra ID P1 and counts direct members only), emitted as **Group ID** in the ID token. *Add optional claim* (ID
+   token): **`email`** and **`acct`** (and, if you like, `xms_edov`). **`acct` is required:** it is how Skanyxx tells a
+   guest (`acct = 1`) from a member (`0`), so a token without it is refused ("…the owner must add the optional claim
+   'acct'…", Error log) and nobody gets in until it is added. **Map only security groups** — ideally role-assignable
+   ones, whose membership only admins change — never Microsoft 365 groups people can join themselves, nor dynamic
+   groups built on attributes users can edit: whoever can change a mapped group's members decides Skanyxx roles,
+   `supervisor` included.
+4. **Enterprise applications** → this app → Properties → **Assignment required: Yes**, and assign the mapped groups:
+   people outside them are stopped by Entra before Skanyxx sees them.
+5. **Group overage** (someone in more than 200 groups): API permissions → Microsoft Graph → **Application**
+   permission **`GroupMember.Read.All`** → **Grant admin consent**. The token then says "too many groups" instead of
+   listing them, and Skanyxx asks Graph `POST /users/{oid}/checkMemberGroups` — app-only, with the same client id and
+   secret, about the **mapped** group ids only, at most 20 per call — and never follows the token's `_claim_sources`
+   link. Without the permission such a person gets `502` "could not read your groups" and nothing changes.
+6. On **Microsoft sign-in**: directory (tenant) id, application (client) id, the secret, and the **group map** — each
+   row a group's **object id** (GUID; the label is only for you) → roles among `supervisor`, `builder`, `employee`
+   (never `owner`) and/or teams (existing ones). Tick *Offer "Sign in with Microsoft"* and save. With it off, `/Login`
+   shows no button and starting a Microsoft sign-in or link is `404`.
+
+What a Microsoft sign-in does:
+
+- **Who gets in:** a member (not a guest) of the configured tenant (`tid` is checked as well as the issuer) who is in
+  **at least one mapped group**. A guest is `acct = 1`, or any token with an `idp` claim that is not exactly this
+  tenant's issuer (`https://sts.windows.net/<tid>/` or `https://login.microsoftonline.com/<tid>/v2.0`) — another
+  tenant, a personal Microsoft account, a federated partner — whatever `acct` says. Everyone else is refused ("…has no access to Skanyxx"), and no
+  account is made. A token without `acct` is refused and changes nothing (the person is not at fault).
+- **Which account:** the one whose Microsoft login is `tid|oid` — never matched by email. The first sign-in creates
+  it (email and display name from the token; no password) — unless `xms_edov` is present and false (the tenant does
+  not vouch for the email's domain): then no account is made (`403`), and the person asks for an invite and links. If
+  the email already belongs to an account, the sign-in is refused (`409`): that person signs in with the password and
+  links Microsoft on their **Account** page (header → their name), **re-entering their current password** (the same
+  lockout rules as a sign-in; a session cookie alone cannot link). A link is accepted only for the signed-in user who
+  started it and only with a mapped group; it ends the account's other sessions.
+- **Password sign-in stops for managed accounts:** while the owner has Microsoft sign-in turned on, an account with a
+  Microsoft login (other than the owner) gets no session from its password: the answer is the one a wrong password
+  gets (`401` "Invalid email or password."), right password or not, so it tells a guesser nothing; a wrong one still
+  counts toward the lockout and a right one resets nothing (it is logged at Warning). The Login page says, for
+  everyone, "If your organisation uses Microsoft sign-in, use the button below." Its refresh tokens are refused (`403`,
+  Warning with account and address). So a removal from the mapped groups reaches it at its next session. This follows
+  the owner's switch, not whether sign-in currently works: a stored secret that can no longer be decrypted turns
+  Microsoft sign-in off but keeps the passwords refused. **Turning Microsoft sign-in on** (off → on) ends every session
+  of every managed account except the owner's (stamps rotated, refresh chains dropped; one Warning with the count), so
+  a password session opened while it was off does not outlive the switch. Turn it off and the password (if the account
+  has one) and refresh tokens work again.
+- **Managed by Entra:** an account with a Microsoft login gets, at **every** Microsoft sign-in, exactly the roles and
+  teams its groups map to (the union over its mapped groups); changes made on People or Org last until then, and both
+  pages mark such accounts *managed by Entra*. A role change ends the account's other sessions. A sign-in or link that
+  takes `supervisor` away revokes the agent secrets the account issued (`PrivilegesRevoked`). The revocation is marked
+  as owed in the same transaction and cleared only once it has been published, so if revoking fails the sign-in is a
+  `500` with an Error log and the account's next Microsoft sign-in publishes it again. A sign-in that takes nothing
+  away, and owes nothing, does not touch the memory database at all. People role saves and disables mark it the same
+  way, so a revocation that failed there is also retried by the next Microsoft sign-in. A **refused** sign-in of an
+  existing managed account (no mapped group any more, or a guest now) takes all its roles and teams, ends every session
+  and revokes as above; the account stays. A disabled account is refused and left as it is, and so is an account
+  whose Microsoft login the owner removed while the sign-in was in flight.
+- **The owner stays local:** the owner cannot link a Microsoft account (the Account page says so; the challenge is
+  `403`), and a Microsoft login found on the owner anyway signs nobody in. The mapping never changes the owner.
+- **Removing a Microsoft login:** on People, *Remove Microsoft login* (owner only, after a confirmation; `DELETE
+  /api/identity/people/{id}/entra-login`) drops the login, ends every session and makes the account local-only: it
+  signs in with its password, and its roles and teams stay — review them, they came from the mapping. Audited at
+  Warning. It is refused (`409` "Microsoft is this account's only sign-in; disable it instead.") for an account without
+  a password, which is every account Microsoft sign-in created: removing its only sign-in could not be undone. People
+  shows no button for those; **Disable** stops such an account and can be reversed.
+- **Groups are read only when someone signs in with Microsoft.** Removing a person from a group in Entra takes effect
+  at their next Microsoft sign-in; until then their current session lives on (up to `Identity:SessionDays`). Disable
+  the account on People to cut someone off at once (open.md).
+- **Settings API:** `GET /api/identity/entra/settings` →
+  `{enabled, tenantId, clientId, clientSecretSet, active, groups: [{groupId, label, roles, teams}], redirectUri,
+  updatedBy, updatedAt, secretKeysUnencrypted}` (never the secret; `active` = on and usable on this instance); `PUT` takes `{enabled,
+  tenantId, clientId, clientSecret?, groups}` and replaces the whole map (`clientSecret` omitted or empty keeps the
+  stored one). Ids are GUIDs; turning it on needs a tenant, a client, a secret and at least one group; each group must
+  give a role or a team (`400`); an unknown team is `404`. Saves are serialized across replicas (an advisory lock),
+  each gets its own version, and other replicas pick a save up within 30 s.
+- **Behind a proxy:** Entra posts the result back to `/signin-oidc` from its own origin (`form_post`), a cross-site
+  POST, so the handler's correlation and nonce cookies are `SameSite=None; Secure` and the browser must reach Skanyxx
+  over **https** (plain http only on `localhost`). The handler marks them Secure whatever scheme the
+  request arrived on (checked by a test), and the redirect URI comes from `Identity:PublicBaseUrl`, so behind a
+  TLS-terminating proxy neither depends on forwarded headers; what the proxy must do is serve https to the browser and
+  pass `/signin-oidc` through (POST included). If you do configure `UseForwardedHeaders`, trust only your proxies
+  (`KnownProxies`/`KnownNetworks`): a spoofed `X-Forwarded-Proto`/`Host` would otherwise change what the app believes
+  about the request. The callback is exempt from the origin check
+  (the handler checks the state, the correlation cookie, the nonce and PKCE instead) and is the one place a Microsoft
+  sign-in counts in the sign-in rate-limit window. Replicas already share the Data Protection key ring, so a callback may land on any of them.
+- **Audit:** settings saves (actor, on/off, tenant, client, "secret replaced/kept", the map — never the secret),
+  turning sign-in on (with the number of managed accounts whose sessions ended), accounts created, re-mapped, linked and
+  refused sign-ins, refused password sign-ins and refreshes of managed accounts, link attempts with a wrong password
+  and removed Microsoft logins are logged at Warning with the Entra key (`tid|oid`), the
+  account and the client address; a refused callback (wrong tenant, cancelled, replayed) at Warning with its reason.
 
 **Caller identity.** Memory, Tickets and Sandboxes take the caller from the signed-in principal; `X-User-Id` is
 ignored on `/api/*`. Supervisor = role `owner` or `supervisor`; the `*:Supervisors` lists are gone (leftover keys are
@@ -443,17 +627,17 @@ a `401` in the log always means a missing or wrong secret.
   `/mcp`) and the credential posts are rate limited — legacy controllers and pages are not; `/health` lists check names and
   statuses anonymously (no exception text).
 - **Behind a proxy** both rate-limit windows see the proxy's address (ForwardedHeaders is not configured), so all
-  clients share one sign-in window. Configure forwarded headers with known proxies when real ingress lands.
+  clients share one sign-in window (the Microsoft callback `/signin-oidc` counts in it too). Configure forwarded headers with known proxies when real ingress lands.
 - **Passwords (D7):** at least 12 characters, no composition rules, no breached-password check (chosen during this
   slice; awaiting the user's confirmation).
 - **Key ring storage (D6):** Data Protection keys in the identity database, unencrypted unless
   `Identity:DataProtectionCertificatePath` is set (chosen during this slice; awaiting the user's confirmation).
 - Not verified against a real cluster or behind a real ingress yet.
 
-**Next slices:** invites + role assignment (D026; `supervisor`, `builder`, `employee` roles already exist), teams and
-departments (D055), the Entra ID mapper (group → role/team; unmapped users get no access, D027), a sandbox-facing
-memory credential (per-task, so AX sandboxes can attach memory). Per-agent secrets for MCP (D080) are built (D083).
-Design: `docs/design/identity.md`, D079–D084.
+**Next slices:** re-checking Entra groups between sign-ins, a sandbox-facing memory credential (per-task, so AX
+sandboxes can attach memory), the net10 upgrade (.NET 8 support ends in November 2026). Built: per-agent secrets for MCP
+(D080 → D083), invites and roles (D086–D089), teams and departments (D090–D092), Microsoft Entra ID sign-in (D093–D095).
+Design: `docs/design/identity.md`, D079–D093; leftovers: `open.md`.
 
 ## Memory engine
 
@@ -467,7 +651,8 @@ dotnet test tests/Skanyxx.Module.Memory.Tests   # needs Docker (Testcontainers)
 
 - A card is `scope` + `key` (`personal:ana/refund-window`), `type` (decision | fact | procedure | open), `what` ≤ 200, `why` ≤ 400; `body`/`source` are never sent to agents.
 - Write with `PUT /api/memory/cards/{scope}/{key}`: `version: 0` creates, otherwise pass the version you read. A stale version is a `409` with the current card — never last-write-wins.
-- `POST …/{scope}/{key}/lift` copies a card up (personal → team → department → company); the original stays. Into `company` needs a supervisor.
+- `POST …/{scope}/{key}/lift` copies a card up (personal → team → department → company); the original stays. Into `company` needs a supervisor; into a team or department, membership of it (the org tree, see "Teams and departments").
+- Team and department scopes follow the org tree: members read, search and write their teams and departments; owner and supervisors read all of them but write only where they are members. Only the owner grants an agent a team or department scope.
 - kagent reaches the bank over MCP at `/mcp/memory` (`memory_search`, `memory_upsert`) with a per-agent secret: `POST /api/memory/agents/{agentId}/secret` as a supervisor, then give the agent's `RemoteMCPServer` an `Authorization: Bearer <secret>` header from a Kubernetes Secret (`deploy/kagent/memory/`). Agents without grants search `company` + the calling user's personal scope and may upsert only that personal scope (needs `X-User-Id`, honoured only for an agent whose secret the owner issued with `actsForUsers: true`); `PUT /api/memory/grants/{agentId}` replaces the default with explicit search/upsert per scope (at least one entry; revoke an agent with a single grant that has `canSearch` and `canUpsert` false).
 - **Identity:** `/api/memory` acts as the signed-in user; on MCP the agent is the owner of the presented secret and the user is the `X-User-Id` the agent vouches for, if it may act for users (see Identity and security model).
 

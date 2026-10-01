@@ -46,6 +46,7 @@ public sealed class ConflictVisibilityTests(PostgresFixture postgres) : MemoryTe
     [Fact]
     public async Task LiftingAnUnpublishedCard_ConflictsWithoutACard()
     {
+        App.Org.Join("ana", "billing", "finance");
         await App.Client("ana").PutCardAsync("personal:ana", "draft");
         await using (var db = Postgres.CreateDbContext())
         {

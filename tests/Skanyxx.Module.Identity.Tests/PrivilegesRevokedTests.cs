@@ -80,6 +80,7 @@ public sealed class PrivilegesRevokedTests(PostgresFixture postgres) : IAsyncLif
 
         var failed = await ChangeAsync(memberId, change);
         var saved = await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/people");
+        var owedAfterFailure = await OwedAsync(memberId);
         _recorder.Throw = false;
         var retried = await ChangeAsync(memberId, change);
 
@@ -90,9 +91,38 @@ public sealed class PrivilegesRevokedTests(PostgresFixture postgres) : IAsyncLif
         var error = Assert.Single(_log.Errors, e => e.StartsWith("Revoking what"));
         Assert.Contains(memberId, error);
         Assert.Contains($"failed after {await OwnerIdAsync()}'s change was saved", error);
+        Assert.True(owedAfterFailure); // D13: marked in the change's own transaction
         Assert.Equal(HttpStatusCode.OK, retried.StatusCode);
+        Assert.False(await OwedAsync(memberId));
         Assert.Equal(2, _recorder.Received.Count);
         Assert.All(_recorder.Received, r => Assert.Equal(memberId, r.UserId));
+    }
+
+    /// <summary>
+    /// D13: a failed revocation stays owed and the next save without supervisor publishes it (the Theory above). D17: a
+    /// save that gives supervisor back drops the debt instead, unpublished — what the person issues from then on is
+    /// legitimately theirs, and a stale mark would later revoke it — and later saves publish nothing.
+    /// </summary>
+    [Fact]
+    public async Task AnOwedRevocation_IsDroppedBySavingSupervisorBack()
+    {
+        var (_, memberId) = await _app.AddMemberAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Supervisor);
+        _recorder.Throw = true;
+        Assert.Equal(HttpStatusCode.InternalServerError, (await ChangeAsync(memberId, "roles")).StatusCode);
+        _recorder.Throw = false;
+
+        await SetRolesAsync(memberId, SkanyxxRoles.Supervisor);
+        var owed = await OwedAsync(memberId);
+        await SetRolesAsync(memberId, SkanyxxRoles.Supervisor, SkanyxxRoles.Builder);
+
+        Assert.False(owed);
+        Assert.Equal([new PrivilegesRevoked(memberId, "roles saved without supervisor")], _recorder.Received);
+    }
+
+    private async Task<bool> OwedAsync(string userId)
+    {
+        await using var db = postgres.CreateDbContext();
+        return db.PendingRevocations.Any(p => p.UserId == userId);
     }
 
     private Task<HttpResponseMessage> ChangeAsync(string userId, string change) => change == "roles"

@@ -12,9 +12,11 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Endpoints;
+using Skanyxx.Module.Memory.Features;
 using Skanyxx.Module.Memory.Mcp;
 
 namespace Skanyxx.Module.Memory;
@@ -27,7 +29,8 @@ public sealed class MemoryModule : IModule, IEndpointModule
     public string ModuleId => "memory";
     public string DisplayName => "Memory";
     public string Version => "2.0.0";
-    public IReadOnlyList<string> Dependencies => [];
+    /// <summary>Identity implements <see cref="IOrgMembership"/>, which decides team and department scopes (D090).</summary>
+    public IReadOnlyList<string> Dependencies => ["identity"];
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
@@ -47,6 +50,7 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddHostedService<MemoryMigrator>();
         services.AddScoped<CardSearch>();
         services.AddScoped<AccessPolicy>();
+        services.AddScoped<ClientAddress>();
         services.AddSingleton<UpsertRateLimiter>();
 
         services.AddHealthChecks().AddNpgSql(
@@ -62,7 +66,11 @@ public sealed class MemoryModule : IModule, IEndpointModule
             .WithTools<MemoryTools>();
     }
 
-    public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;
+    /// <summary>Fails startup rather than every card request when nothing answers who is in which team.</summary>
+    public Task InitializeAsync(IServiceProvider serviceProvider) =>
+        serviceProvider.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IOrgMembership))
+            ? Task.CompletedTask
+            : throw new InvalidOperationException("The memory module needs IOrgMembership (the identity module) to decide team and department access; enable the identity module.");
 
     // kagent has no signed-in user, so the MCP route does not use the Host's user schemes: it requires an agent secret
     // (D080) and nothing else, and the agent is whoever owns that secret. The 401 comes from authorization, before MCP

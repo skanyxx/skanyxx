@@ -1,6 +1,7 @@
 using Skanyxx.Core.Platform;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Npgsql;
 using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Data;
@@ -8,16 +9,21 @@ using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Features.Cards;
 
-internal sealed class LiftCardHandler(MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter) : IRequestHandler<LiftCardCommand, Outcome<Card>>
+internal sealed class LiftCardHandler(
+    MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, ClientAddress client, ILogger<LiftCardHandler> logger)
+    : IRequestHandler<LiftCardCommand, Outcome<Card>>
 {
     public async Task<Outcome<Card>> Handle(LiftCardCommand command, CancellationToken ct)
     {
         var from = Scope.Parse(command.FromScope);
         var to = Scope.Parse(command.ToScope);
-        if (!access.CanRead(command.Caller, from))
+        if (!await access.CanReadAsync(command.Caller, from, ct))
             return Outcome<Card>.Forbidden($"'{from}' is not readable by this caller.");
         if (!await access.CanUpsertAsync(command.Caller, to, ct))
-            return Outcome<Card>.Forbidden($"Lifting into '{to}' needs write rights there (company: a supervisor).");
+            return Outcome<Card>.Forbidden($"Lifting into '{to}' needs write rights there (team or department: a member; company: a supervisor).");
+        // Decided before the write and the rate-limit slot, so a failing membership lookup neither turns a committed lift
+        // into a 500 nor spends a write slot.
+        var oversight = await IsOversightAsync(command.Caller, from, ct);
         if (!limiter.TryAcquire(command.Caller.RateLimitKey))
             return Outcome<Card>.RateLimited("Write rate limit reached; try again later.");
 
@@ -48,15 +54,26 @@ internal sealed class LiftCardHandler(MemoryDbContext db, AccessPolicy access, U
         try
         {
             await db.SaveChangesAsync(ct);
+            if (oversight)
+                logger.LogWarning("Card {Key} lifted from {SourceScope} to {TargetScope} by {ActorUserId} from {RemoteIp}, who is not a member of the source",
+                    command.Key, from, to, command.Caller.UserId, client.Current);
             return Outcome<Card>.Created(copy);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             db.ChangeTracker.Clear();
-            var existing = await access.CanSeeAsync(command.Caller, to, ct)
+            var existing = await access.CanReadAsync(command.Caller, to, ct)
                 ? await db.Cards.AsNoTracking().SingleAsync(c => c.Scope == copy.Scope && c.Key == copy.Key, ct)
                 : null;
             return Outcome<Card>.Conflict(existing, $"'{to}/{copy.Key}' already exists; update it instead.");
         }
     }
+
+    /// <summary>
+    /// A supervisor's oversight lets them publish a team's card beyond the team without anyone in it taking part (D091):
+    /// allowed, since supervisors gate company, but always on the record. Anyone else who could read a team or
+    /// department scope is a member of it, so only a supervisor is asked.
+    /// </summary>
+    private async Task<bool> IsOversightAsync(MemoryCaller caller, Scope from, CancellationToken ct) =>
+        access.IsSupervisor(caller) && from.Level is ScopeLevel.Team or ScopeLevel.Department && !await access.IsMemberAsync(caller, from, ct);
 }

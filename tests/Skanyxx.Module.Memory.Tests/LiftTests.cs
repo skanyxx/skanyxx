@@ -8,6 +8,7 @@ public sealed class LiftTests(PostgresFixture postgres) : MemoryTestBase(postgre
     [Fact]
     public async Task Lift_CopiesUp_AndKeepsOriginal()
     {
+        App.Org.Join("ana", "billing", "finance");
         var ana = App.Client("ana");
         await ana.PutCardAsync("personal:ana", "refund-window", body: "details", source: "chat://42");
 
@@ -30,6 +31,7 @@ public sealed class LiftTests(PostgresFixture postgres) : MemoryTestBase(postgre
     [Fact]
     public async Task Lift_ToExistingTarget_Conflicts()
     {
+        App.Org.Join("ana", "billing", "finance");
         var ana = App.Client("ana");
         await ana.PutCardAsync("personal:ana", "refund-window");
         await ana.LiftAsync("personal:ana", "refund-window", "team:billing");
@@ -74,8 +76,7 @@ public sealed class LiftTests(PostgresFixture postgres) : MemoryTestBase(postgre
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
     }
 
-    // Regression pin: lift and write share AccessPolicy.CanUpsertAsync. Today company is the only scope
-    // where the two rules could differ; the test starts to discriminate once team membership lands (D055).
+    // Regression pin: lift and write share AccessPolicy.CanUpsertAsync (team/department targets: OrgAccessTests).
     [Fact]
     public async Task Lift_IntoCompany_RequiresTheSameRightsAsWritingThere()
     {
@@ -92,6 +93,7 @@ public sealed class LiftTests(PostgresFixture postgres) : MemoryTestBase(postgre
     [Fact]
     public async Task Lift_SomeoneElsesPersonalCard_Forbidden()
     {
+        App.Org.Join("bob", "billing", "finance");
         await App.Client("ana").PutCardAsync("personal:ana", "refund-window");
 
         var response = await App.Client("bob").LiftAsync("personal:ana", "refund-window", "team:billing");

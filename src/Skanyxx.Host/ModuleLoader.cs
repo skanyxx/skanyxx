@@ -73,8 +73,19 @@ public class ModuleLoader
             }
         }
 
+        RequireDependencies();
         // Topological sort by dependencies
         SortByDependencies();
+    }
+
+    // A module whose dependency is missing or disabled would start "successfully" and fail at request time, like a module
+    // that cannot register its services (memory resolves identity's IOrgMembership on every card request).
+    private void RequireDependencies()
+    {
+        foreach (var module in _modules)
+            foreach (var dependency in module.Dependencies.Where(d => _modules.All(m => m.ModuleId != d)))
+                throw new InvalidOperationException(
+                    $"Module '{module.ModuleId}' needs module '{dependency}', which is not loaded. Enable '{dependency}' or set Modules:Enabled:{module.ModuleId}=false.");
     }
 
     private void SortByDependencies()

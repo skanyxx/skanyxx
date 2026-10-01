@@ -5,12 +5,12 @@
     Layout = "_AuthLayout";
 }
 @* Disabled after the first click: a second sign-in in flight for the same account is refused as busy. *@
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
 <form method="post" class="auth-form" onsubmit="this.querySelector('button[type=submit]').disabled = true">
     <input type="hidden" asp-for="ReturnUrl" />
-    @if (Model.Error is not null)
-    {
-        <p class="text-error" role="alert">@Model.Error</p>
-    }
     <label asp-for="Email">Email</label>
     <input asp-for="Email" type="email" autocomplete="username" required autofocus />
     <label asp-for="Password">Password</label>
@@ -22,3 +22,11 @@
     </details>
     <button type="submit" class="btn btn-primary">Sign in</button>
 </form>
+@if (Model.MicrosoftSignIn)
+{
+    @* Fixed, whoever signs in: a Microsoft-managed account's password gets the same "invalid" answer as a wrong one (SEC N3). *@
+    <p class="text-muted">@LoginModel.MicrosoftHint</p>
+    <form method="post" asp-page-handler="Microsoft" asp-route-returnUrl="@Model.ReturnUrl" class="auth-form" onsubmit="this.querySelector('button').disabled = true">
+        <button type="submit" class="btn btn-secondary">Sign in with Microsoft</button>
+    </form>
+}

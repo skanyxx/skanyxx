@@ -48,7 +48,7 @@ public sealed class ArchitectureTests
             .Select(i => i.GetGenericArguments()[0])
             .ToList();
 
-        Assert.Equal(15, requests.Count);
+        Assert.Equal(30, requests.Count);
         foreach (var request in requests)
             Assert.True(validated.Count(v => v == request) == 1, $"{request.Name} must have exactly one validator.");
     }

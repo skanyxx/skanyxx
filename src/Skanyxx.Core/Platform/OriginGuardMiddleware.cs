@@ -14,7 +14,8 @@ namespace Skanyxx.Core.Platform;
 /// origin passes, so the app's forms and fetches keep working; the host name itself is already held to
 /// <c>AllowedHosts</c>.</item>
 /// </list>
-/// Non-browser clients (kagent, curl, MCP SDKs) send no <c>Origin</c> and pass.
+/// Non-browser clients (kagent, curl, MCP SDKs) send no <c>Origin</c> and pass. The one exception is the Microsoft
+/// sign-in callback (<see cref="GuardedPaths.ExternalSignInCallback"/>), which the OIDC handler protects itself.
 /// </summary>
 public sealed class OriginGuardMiddleware(RequestDelegate next, IOptions<SkanyxxOptions> options)
 {
@@ -25,7 +26,7 @@ public sealed class OriginGuardMiddleware(RequestDelegate next, IOptions<Skanyxx
     {
         var request = context.Request;
         var origin = request.Headers[HeaderNames.Origin].ToString();
-        if (origin.Length == 0 || _allowed.Contains(origin))
+        if (origin.Length == 0 || _allowed.Contains(origin) || GuardedPaths.IsExternalSignInCallback(request.Path))
             return next(context);
         if (!GuardedPaths.Contains(request.Path) && (IsSafe(request.Method) || IsSameOrigin(origin, request)))
             return next(context);

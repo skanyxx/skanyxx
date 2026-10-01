@@ -35,6 +35,7 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     public async Task QueryString_CannotRetargetRouteOrBody()
     {
         var boss = App.SupervisorClient();
+        App.Org.Join("ana", "t", "ops");
         await boss.PutCardAsync("personal:boss", "secret", body: "BOSS-ONLY");
         await App.Client("ana").PutCardAsync("personal:ana", "note");
 

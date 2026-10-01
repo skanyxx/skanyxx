@@ -92,6 +92,14 @@
                             <span class="nav-icon">&#x263A;</span>
                             <span class="nav-label">People</span>
                         </a>
+                        <a href="/Org" class="nav-item @(currentPage == "/Org" ? "active" : "")">
+                            <span class="nav-icon">&#x2637;</span>
+                            <span class="nav-label">Org</span>
+                        </a>
+                        <a href="/Entra" class="nav-item @(currentPage == "/Entra" ? "active" : "")">
+                            <span class="nav-icon">&#x229E;</span>
+                            <span class="nav-label">Microsoft sign-in</span>
+                        </a>
                     }
                 </div>
             </nav>
@@ -104,7 +112,7 @@
                 <div class="header-actions">
                     @if (User.Identity?.IsAuthenticated == true)
                     {
-                        <span class="header-user" title="@User.Identity.Name">@(User.FindFirst(Skanyxx.Core.Platform.Identity.SkanyxxClaims.DisplayName)?.Value ?? User.Identity.Name)</span>
+                        <a href="/Account" class="header-user" title="@User.Identity.Name">@(User.FindFirst(Skanyxx.Core.Platform.Identity.SkanyxxClaims.DisplayName)?.Value ?? User.Identity.Name)</a>
                         <form method="post" asp-page="/Logout" class="header-signout">
                             <button type="submit" class="btn btn-ghost">Sign out</button>
                         </form>
