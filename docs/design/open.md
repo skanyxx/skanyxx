@@ -10,11 +10,18 @@ AX v0.3.1 does not match D064/D067/D068 as written: see `ax-integration.md` (pro
 
 ## Platform
 
-- **.NET 8 reaches end of support on 10 Nov 2026** (the month is certain for the Nov-2023 LTS; confirm the day on
-  Microsoft's support policy page). Every project targets `net8.0` with 8.0.x ASP.NET Core / EF Core / Npgsql
-  packages. Upgrade to **net10** (LTS): retarget, move the 8.0.x packages (Identity, OpenIdConnect, DataProtection,
-  EF Core, Npgsql, dotnet-ef) to 10.0.x, re-run every suite. The suites already run on the net10 runtime through
-  `DOTNET_ROLL_FORWARD=Major`, which proves nothing about the net10 packages.
+- ~~**.NET 8 reaches end of support on 10 Nov 2026**~~ — **done (D097):** every project targets `net10.0`;
+  ASP.NET Core / EF Core / Npgsql packages are on their 10.x lines; no `DOTNET_ROLL_FORWARD` needed. Left over:
+  `Polly.Extensions.Http` and `xunit` (v2) are marked legacy on NuGet (successors `Microsoft.Extensions.Http.Resilience`,
+  `xunit.v3`); not vulnerable, not needed for net10, a separate change.
+  The first-start `Failed executing DbCommand` Error is fixed: the migrators create the history table first (D098).
+- **Polly v7 -> `Microsoft.Extensions.Http.Resilience`** (Polly v8): `Microsoft.Extensions.Http.Polly` and
+  `Polly.Extensions.Http` resolve Polly 7.2.4 beside `Polly.Core` 8.6.5. Works, not vulnerable; move to the resilience
+  handlers and drop the v7 stack.
+- **Root `SkanyxxWeb.csproj`** is outside `Skanyxx.sln` and does not build (it globs `tests/**`); CI and the
+  vulnerability scan never see it. Remove it or add it to the solution: the user's decision.
+- **Root `bin/` and `obj/` are tracked in git** since 89131fb. Clean them up (and ignore them) in a separate change.
+- **The release workflow has no test step**: it builds and publishes installers without running a suite.
 
 ## Next identity slices (after slice 1, D079–D081)
 

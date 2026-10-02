@@ -39,6 +39,7 @@ public sealed class LiftTests(PostgresFixture postgres) : MemoryTestBase(postgre
         var again = await ana.LiftAsync("personal:ana", "refund-window", "team:billing");
 
         Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        Assert.Empty(App.Errors);
     }
 
     [Theory]

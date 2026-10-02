@@ -147,7 +147,12 @@ public sealed class IdentityModule : IModule
         if (string.IsNullOrEmpty(options?.DataProtectionCertificatePath))
             return;
 
-        var certificate = new X509Certificate2(options.DataProtectionCertificatePath, options.DataProtectionCertificatePassword);
+        var certificate = X509CertificateLoader.LoadPkcs12FromFile(options.DataProtectionCertificatePath, options.DataProtectionCertificatePassword);
+        // Without the RSA private key, keys encrypted now cannot be decrypted after a restart: every session, token,
+        // invite and the Entra secret would silently stop working.
+        using (var rsa = certificate.GetRSAPrivateKey())
+            if (rsa is null)
+                throw new InvalidOperationException("Identity:DataProtectionCertificatePath must be a PFX with an RSA private key.");
         dataProtection.ProtectKeysWithCertificate(certificate).UnprotectKeysWithAnyCertificate(certificate);
     }
 

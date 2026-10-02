@@ -105,6 +105,7 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
         Assert.Equal("microsoft-sign-in-is-off", disabled.ClientId);
         Assert.NotNull(disabled.Configuration);
         Assert.True(first.UsePkce);
+        Assert.Equal(PushedAuthorizationBehavior.Disable, first.PushedAuthorizationBehavior);
         Assert.False(first.MapInboundClaims);
         Assert.Equal("code", first.ResponseType);
         Assert.Equal(["openid", "profile", "email"], first.Scope);

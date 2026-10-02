@@ -39,6 +39,8 @@ WizardStyle=modern
 WizardResizable=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
+; Windows 10 1607, the oldest .NET 10 supports (dotnet/core release-notes/10.0/supported-os.md)
+MinVersion=10.0.14393
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\{#AppExeName}
 ChangesEnvironment=no

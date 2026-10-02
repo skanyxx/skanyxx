@@ -45,7 +45,10 @@ public sealed class IdentityModuleOptions
     [Range(1, 30)]
     public int InviteDays { get; set; } = 7;
 
-    /// <summary>PFX that encrypts the Data Protection key ring at rest. Unset: keys are stored in plain text (warned outside Development).</summary>
+    /// <summary>
+    /// PFX (PKCS#12), with its private key, that encrypts the Data Protection key ring at rest; any other format (PEM,
+    /// DER) stops startup, as does a PFX beyond <c>Pkcs12LoaderLimits.Defaults</c>. Unset: keys are stored in plain text (warned outside Development).
+    /// </summary>
     public string? DataProtectionCertificatePath { get; set; }
 
     public string? DataProtectionCertificatePassword { get; set; }

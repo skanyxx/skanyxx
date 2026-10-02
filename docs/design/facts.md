@@ -4,7 +4,7 @@ Sources we actually looked at. If a fact changes upstream, update it here.
 
 ## Skanyxx today (`skanyxx_v1` / maui)
 
-- .NET 8 ASP.NET Core host + plugin modules. UI is Razor; agents are **listed from a KAgent cluster**, not authored in Skanyxx.
+- .NET 10 ASP.NET Core host + plugin modules. UI is Razor; agents are **listed from a KAgent cluster**, not authored in Skanyxx.
 - Memory UI is **vector-provider admin** (Pinecone / Chroma / Weaviate), not a company knowledge bank.
 - Chat, sessions, tool servers already exist and can be reshaped; Dashboard / Alerts / Investigate / CloudTools are SRE leftovers.
 

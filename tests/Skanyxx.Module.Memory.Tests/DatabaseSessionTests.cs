@@ -34,4 +34,16 @@ public sealed class DatabaseSessionTests(PostgresFixture postgres) : MemoryTestB
         Assert.Equal(System.Net.HttpStatusCode.Conflict, stale.StatusCode);
         Assert.Empty(App.Errors);
     }
+
+    // CR L3: only the expected conflict is quiet; a real SQL failure is not lowered below Error.
+    [Fact]
+    public async Task AFailingCommand_LogsAnError()
+    {
+        await using var scope = App.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<MemoryDbContext>();
+
+        await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlRawAsync("SELECT * FROM no_such_table"));
+
+        Assert.Contains(App.Errors, e => e.Contains("no_such_table"));
+    }
 }

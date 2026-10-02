@@ -5,10 +5,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Core.Platform;
@@ -42,11 +40,7 @@ public sealed class MemoryModule : IModule, IEndpointModule
             .ValidateOnStart();
 
         services.AddDbContext<MemoryDbContext>((sp, o) => o
-            .UseNpgsql(sp.GetRequiredService<IOptions<MemoryOptions>>().Value.ConnectionSettings().ConnectionString)
-            // A duplicate key on a stale create is an expected 409, not an error; a real failure still surfaces as an exception.
-            .ConfigureWarnings(w => w.Log(
-                (CoreEventId.SaveChangesFailed, LogLevel.Information),
-                (RelationalEventId.CommandError, LogLevel.Information))));
+            .UseNpgsql(sp.GetRequiredService<IOptions<MemoryOptions>>().Value.ConnectionSettings().ConnectionString));
         services.AddHostedService<MemoryMigrator>();
         services.AddScoped<CardSearch>();
         services.AddScoped<AccessPolicy>();

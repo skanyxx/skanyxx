@@ -49,6 +49,10 @@ internal sealed class LiftCardHandler(
             Source = source.Source,
             LiftedFromId = source.Id
         };
+
+        // Checked first so the usual conflict is not a failed INSERT, which EF logs at Error; the catch is for a race.
+        if (await db.Cards.AnyAsync(c => c.Scope == copy.Scope && c.Key == copy.Key, ct))
+            return await ExistsAsync(command, to, copy.Key, ct);
         db.Cards.Add(copy);
 
         try
@@ -62,11 +66,17 @@ internal sealed class LiftCardHandler(
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             db.ChangeTracker.Clear();
-            var existing = await access.CanReadAsync(command.Caller, to, ct)
-                ? await db.Cards.AsNoTracking().SingleAsync(c => c.Scope == copy.Scope && c.Key == copy.Key, ct)
-                : null;
-            return Outcome<Card>.Conflict(existing, $"'{to}/{copy.Key}' already exists; update it instead.");
+            return await ExistsAsync(command, to, copy.Key, ct);
         }
+    }
+
+    private async Task<Outcome<Card>> ExistsAsync(LiftCardCommand command, Scope to, string key, CancellationToken ct)
+    {
+        var scope = to.ToString();
+        var existing = await access.CanReadAsync(command.Caller, to, ct)
+            ? await db.Cards.AsNoTracking().SingleAsync(c => c.Scope == scope && c.Key == key, ct)
+            : null;
+        return Outcome<Card>.Conflict(existing, $"'{to}/{key}' already exists; update it instead.");
     }
 
     /// <summary>

@@ -1,5 +1,7 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -28,6 +30,10 @@ internal sealed class IdentityMigrator(IServiceScopeFactory scopes) : IHostedLif
         try
         {
             await db.Database.ExecuteSqlAsync($"SELECT pg_advisory_lock({MigrateLockKey})", cancellationToken);
+            // Kept although EF 9+ locks the history table itself: Tickets seeds under it, and one pattern for all three.
+            // Never wrap MigrateAsync in a user transaction: EF's own migration lock refuses to run inside one.
+            // Create the history table first, so EF never reads a missing one (logged as an Error on a fresh database).
+            await db.GetService<IHistoryRepository>().CreateIfNotExistsAsync(cancellationToken);
             await db.Database.MigrateAsync(cancellationToken);
         }
         finally

@@ -26,6 +26,10 @@ internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access,
 
     private async Task<Outcome<Card>> CreateAsync(UpsertCardCommand command, CancellationToken ct)
     {
+        // Checked first so the usual conflict is not a failed INSERT, which EF logs at Error; the catch is for a race.
+        if (await db.Cards.AnyAsync(c => c.Scope == command.Scope && c.Key == command.Key, ct))
+            return await ConflictAsync(command, "Card already exists; read it and update its version.", ct);
+
         var card = new Card
         {
             Scope = command.Scope,

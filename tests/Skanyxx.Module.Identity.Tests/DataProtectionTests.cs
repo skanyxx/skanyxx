@@ -57,13 +57,32 @@ public sealed class DataProtectionTests(PostgresFixture postgres) : IDisposable
         Assert.Equal(warned, logs.Warnings.Any(w => w.Contains("Identity:DataProtectionCertificatePath")));
     }
 
+    // A PFX without the private key encrypts new keys and then cannot decrypt them after a restart: every session,
+    // token, invite and the Entra secret would silently die, so startup refuses it.
+    [Fact]
+    public void ACertificateWithoutItsPrivateKey_StopsStartup()
+    {
+        WriteCertificate(withPrivateKey: false);
+
+        var error = Assert.Throws<InvalidOperationException>(() => IdentityApp.Build(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Identity"] = postgres.ConnectionString,
+            ["Identity:DataProtectionCertificatePath"] = _pfx,
+            ["Identity:DataProtectionCertificatePassword"] = Password,
+            ["Identity:PublicBaseUrl"] = IdentityApp.PublicBaseUrl
+        }, "Production"));
+
+        Assert.Contains("Identity:DataProtectionCertificatePath", error.Message);
+    }
+
     public void Dispose() => File.Delete(_pfx);
 
-    private void WriteCertificate()
+    private void WriteCertificate(bool withPrivateKey = true)
     {
         using var rsa = RSA.Create(2048);
         var request = new CertificateRequest("CN=skanyxx-data-protection-test", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
-        File.WriteAllBytes(_pfx, certificate.Export(X509ContentType.Pfx, Password));
+        using var exported = withPrivateKey ? certificate : X509CertificateLoader.LoadCertificate(certificate.Export(X509ContentType.Cert));
+        File.WriteAllBytes(_pfx, exported.Export(X509ContentType.Pfx, Password));
     }
 }

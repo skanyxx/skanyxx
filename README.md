@@ -4,7 +4,7 @@ SRE Platform for Kubernetes management, agent orchestration, and monitoring. Bui
 
 ## Prerequisites
 
-- [.NET 8.0 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0) (`global.json` pins 10.0.100 or a later 10.0 feature band, no previews; every project targets `net10.0`)
 - KAgent running locally (default: `http://localhost:8083`) or remote
 
 ## Quick Start
@@ -120,7 +120,7 @@ Nothing depends on `dashboard`, `debug`, `investigate`, `memory`, `hooks`, `sess
    ```xml
    <Project Sdk="Microsoft.NET.Sdk">
      <PropertyGroup>
-       <TargetFramework>net8.0</TargetFramework>
+       <TargetFramework>net10.0</TargetFramework>
      </PropertyGroup>
      <ItemGroup>
        <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -553,8 +553,11 @@ owner session. So:
 - give `ConnectionStrings:Identity` its **own database role (or database)**; the template's shared connection string
   is for development only, and a SQL-injection or credential leak in any module on a shared role reaches the keys;
 - set `Identity:DataProtectionCertificatePath` (+ `DataProtectionCertificatePassword`) to encrypt the key ring at rest
-  with that certificate (e.g. mounted from a Kubernetes Secret). Without it the keys are stored unencrypted, and the
-  Host logs a warning at startup outside Development.
+  with that certificate (e.g. mounted from a Kubernetes Secret). It must be a PFX (PKCS#12) file that includes the
+  RSA private key; without it the ring could not be read back after a restart, so startup refuses such a file. Any
+  other format (PEM, DER) also stops startup, and so does a PFX beyond the .NET loader's limits (`Pkcs12LoaderLimits.Defaults`, e.g. over 300,000 KDF
+  iterations; OpenSSL and Windows exports are far below). Without it the keys are stored unencrypted, and the Host
+  logs a warning at startup outside Development.
 - **Turning the certificate on later:** the keys already in the table stay unencrypted, and the newest of them keeps
   protecting new cookies and tokens until it nears expiry (default key lifetime 90 days). Anyone who read the table
   or a backup before the switch can still mint sessions until then. So, after the first start with the certificate:
@@ -635,8 +638,9 @@ a `401` in the log always means a missing or wrong secret.
 - Not verified against a real cluster or behind a real ingress yet.
 
 **Next slices:** re-checking Entra groups between sign-ins, a sandbox-facing memory credential (per-task, so AX
-sandboxes can attach memory), the net10 upgrade (.NET 8 support ends in November 2026). Built: per-agent secrets for MCP
-(D080 → D083), invites and roles (D086–D089), teams and departments (D090–D092), Microsoft Entra ID sign-in (D093–D095).
+sandboxes can attach memory). Built: per-agent secrets for MCP
+(D080 → D083), invites and roles (D086–D089), teams and departments (D090–D092), Microsoft Entra ID sign-in (D093–D095),
+the .NET 10 upgrade (D097).
 Design: `docs/design/identity.md`, D079–D093; leftovers: `open.md`.
 
 ## Memory engine
@@ -837,5 +841,3 @@ NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-ser
   MCP endpoints under the task owner's `SKANYXX_USER_ID` memory identity.
 - Caller identity is the signed-in user (cookie or bearer); supervisors are users with role `owner` or `supervisor`.
   Until invites exist the owner is the only user, so every task belongs to the owner.
-
-On a machine with only the .NET 10 runtime, prefix `dotnet run` / `dotnet test` with `DOTNET_ROLL_FORWARD=Major`.

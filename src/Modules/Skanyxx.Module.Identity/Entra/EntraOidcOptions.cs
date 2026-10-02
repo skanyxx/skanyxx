@@ -35,6 +35,8 @@ internal sealed class EntraOidcOptions(
         options.CallbackPath = GuardedPaths.ExternalSignInCallback;
         options.ResponseType = OpenIdConnectResponseType.Code;
         options.UsePkce = true;
+        // Explicit: the .NET 9+ default (UseIfAvailable) would switch to PAR silently if Entra ever advertised it.
+        options.PushedAuthorizationBehavior = PushedAuthorizationBehavior.Disable;
         options.MapInboundClaims = false;
         options.GetClaimsFromUserInfoEndpoint = false;
         options.SaveTokens = false;
