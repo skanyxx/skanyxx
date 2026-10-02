@@ -1,0 +1,25 @@
+# D077: sandbox egress is default-deny; only DNS is allowed. Sandboxes reach no Skanyxx port, no ax-server,
+# no kagent and no cluster service. UNVERIFIED: whether a NetworkPolicy applies to Substrate sandboxes
+# (gVisor/microVM) at all depends on the runtime and CNI - prove it on your cluster before relying on it.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-default-deny-egress
+  namespace: ax-sandboxes # SET: the namespace Substrate creates sandbox pods in
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

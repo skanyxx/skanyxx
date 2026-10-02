@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────
+# Skanyxx macOS Installer — postinstall script
+# Runs automatically after the .pkg places files on disk.
+# ─────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+INSTALL_DIR="/usr/local/share/skanyxx"
+BIN_LINK="/usr/local/bin/skanyxx"
+LAUNCHD_PLIST="/Library/LaunchAgents/com.skanyxx.app.plist"
+CONFIG="$INSTALL_DIR/appsettings.json"
+TEMPLATE="$INSTALL_DIR/appsettings.template.json"
+
+# ── Permissions ───────────────────────────────────────────────────
+chmod +x "$INSTALL_DIR/Skanyxx.Host" 2>/dev/null || true
+find "$INSTALL_DIR/modules" -name "*.dll" -exec chmod 644 {} \; 2>/dev/null || true
+
+# ── Symlink CLI launcher ──────────────────────────────────────────
+ln -sf "$INSTALL_DIR/Skanyxx.Host" "$BIN_LINK" 2>/dev/null || true
+
+# ── Config file (created once, never overwritten) ─────────────────
+# IRREVERSIBLE: once created, appsettings.json holds the user's API keys.
+# The installer never overwrites it on upgrades.
+# The app runs as Production, where the owner account can only be created with Identity:BootstrapToken, so a
+# fresh config gets a random 48-character one. It is NOT printed: install.log is world-readable. The conclusion
+# page tells the user where it is.
+# Mode 0640 root:admin: the LaunchAgent runs as whichever user logs in, so no single owner fits; admin accounts
+# (who run a tool like this) can read it, standard and guest accounts on a shared Mac cannot.
+if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
+    (umask 077 && cp "$TEMPLATE" "$CONFIG")
+    BOOTSTRAP_TOKEN="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    sed -i '' "s/\"BootstrapToken\": \"\"/\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"/" "$CONFIG"
+    if [[ ${#BOOTSTRAP_TOKEN} -ne 48 ]] || ! grep -q "\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"" "$CONFIG"; then
+        rm -f "$CONFIG"  # so reinstalling generates it again
+        echo "Skanyxx: could not write Identity:BootstrapToken into $CONFIG; the template no longer has" >&2
+        echo "  \"BootstrapToken\": \"\"." >&2
+        exit 1
+    fi
+    chgrp admin "$CONFIG"
+    chmod 640 "$CONFIG"
+elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
+    # An upgrade from a config written before accounts existed: never edited, only pointed out (also on the
+    # conclusion page).
+    echo "Skanyxx: set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
+    echo "  the first-run setup page asks for it to create the owner account."
+fi
+if [[ -f "$CONFIG" ]] && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
+    # An upgrade from a config written before invites existed: never edited, only pointed out. The app starts;
+    # inviting people waits for the setting.
+    echo "Skanyxx: to invite people, set Identity:PublicBaseUrl in $CONFIG to the address they use to reach"
+    echo "  Skanyxx, e.g. \"PublicBaseUrl\": \"http://localhost:5282\" on this Mac (https://... behind a proxy)."
+fi
+
+# ── launchd agent (auto-start on login) ──────────────────────────
+cat > "$LAUNCHD_PLIST" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>          <string>com.skanyxx.app</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/share/skanyxx/Skanyxx.Host</string>
+        <string>--urls</string>
+        <string>http://localhost:5282</string>
+    </array>
+    <key>WorkingDirectory</key>  <string>/usr/local/share/skanyxx</string>
+    <key>RunAtLoad</key>         <false/>
+    <key>KeepAlive</key>         <false/>
+    <key>StandardOutPath</key>   <string>/tmp/skanyxx.log</string>
+    <key>StandardErrorPath</key> <string>/tmp/skanyxx-error.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>ASPNETCORE_ENVIRONMENT</key><string>Production</string>
+    </dict>
+</dict>
+</plist>
+PLIST
+
+chmod 644 "$LAUNCHD_PLIST"
+
+exit 0

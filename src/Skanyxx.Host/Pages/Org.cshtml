@@ -1,0 +1,115 @@
+@page
+@model OrgModel
+@{
+    ViewData["Title"] = "Org";
+}
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
+@if (Model.Message is not null)
+{
+    <p class="text-success" role="status">@Model.Message</p>
+}
+<p class="text-muted">
+    Departments contain teams; people belong to teams, and to a team's department through it. Memory's
+    <code>team:&lt;slug&gt;</code> and <code>department:&lt;slug&gt;</code> scopes are these. A slug never changes.
+    A disabled person stays in their teams but cannot sign in; enabling them restores their team access.
+</p>
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">New department</h3></div>
+    <form method="post" asp-page-handler="CreateDepartment" class="flex gap-2 items-center">
+        <input name="slug" placeholder="slug, e.g. finance" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@-]{0,127}" autocomplete="off" />
+        <input name="name" placeholder="Name" required maxlength="100" autocomplete="off" />
+        <button type="submit" class="btn btn-primary">Create department</button>
+    </form>
+</div>
+
+@if (Model.Departments.Count > 0)
+{
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">New team</h3></div>
+        <form method="post" asp-page-handler="CreateTeam" class="flex gap-2 items-center">
+            <input name="slug" placeholder="slug, e.g. billing" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@-]{0,127}" autocomplete="off" />
+            <input name="name" placeholder="Name" required maxlength="100" autocomplete="off" />
+            <select name="department" required>
+                @foreach (var department in Model.Departments)
+                {
+                    <option value="@department.Slug">@department.Name (@department.Slug)</option>
+                }
+            </select>
+            <button type="submit" class="btn btn-primary">Create team</button>
+        </form>
+    </div>
+}
+
+@foreach (var department in Model.Departments)
+{
+    <div class="table-container card mb-3">
+        <div class="card-header">
+            <h3 class="card-title">@department.Name <span class="text-muted">department:@department.Slug</span></h3>
+            <form method="post" asp-page-handler="RenameDepartment" asp-route-slug="@department.Slug" class="flex gap-2 items-center">
+                <input name="name" value="@department.Name" required maxlength="100" aria-label="Department name" />
+                <button type="submit" class="btn btn-secondary">Rename</button>
+            </form>
+        </div>
+        <table>
+            <thead>
+                <tr><th>Team</th><th>Members</th><th>Add a member</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var team in Model.Teams.Where(t => t.Department == department.Slug))
+                {
+                    <tr>
+                        <td>
+                            <span class="text-muted">team:@team.Slug</span>
+                            <form method="post" asp-page-handler="UpdateTeam" asp-route-slug="@team.Slug" class="flex gap-2 items-center">
+                                <input name="name" value="@team.Name" required maxlength="100" aria-label="Team name" />
+                                <select name="department" aria-label="Department">
+                                    @foreach (var d in Model.Departments)
+                                    {
+                                        <option value="@d.Slug" selected="@(d.Slug == team.Department)">@d.Name</option>
+                                    }
+                                </select>
+                                <button type="submit" class="btn btn-secondary">Save</button>
+                            </form>
+                        </td>
+                        <td>
+                            @foreach (var member in team.Members)
+                            {
+                                <form method="post" asp-page-handler="RemoveMember" asp-route-slug="@team.Slug" asp-route-userId="@member" class="flex gap-2 items-center">
+                                    <span>@Model.NameOf(member)</span>
+                                    @if (Model.IsEntraManaged(member))
+                                    {
+                                        <span class="badge badge-info" title="Teams are rewritten from the Entra group mapping at each Microsoft sign-in">managed by Entra</span>
+                                    }
+                                    @if (Model.IsDisabled(member))
+                                    {
+                                        <span class="badge badge-warning" title="Keeps the membership; it counts again once the account is enabled">disabled</span>
+                                    }
+                                    <button type="submit" class="btn btn-ghost">Remove</button>
+                                </form>
+                            }
+                        </td>
+                        <td>
+                            @{ var members = team.Members.ToHashSet(); var candidates = Model.People.Where(p => !p.Disabled && !members.Contains(p.Id)).ToList(); }
+                            @if (candidates.Count > 0)
+                            {
+                                <form method="post" asp-page-handler="AddMember" asp-route-slug="@team.Slug" class="flex gap-2 items-center">
+                                    <select name="userId" aria-label="Person">
+                                        @foreach (var person in candidates)
+                                        {
+                                            <option value="@person.Id">@(person.DisplayName ?? person.Email)</option>
+                                        }
+                                    </select>
+                                    <button type="submit" class="btn btn-secondary">Add</button>
+                                </form>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}

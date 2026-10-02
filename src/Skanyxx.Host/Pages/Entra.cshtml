@@ -1,0 +1,78 @@
+@page
+@model EntraModel
+@using Skanyxx.Core.Platform
+@using Skanyxx.Core.Platform.Identity
+@{
+    ViewData["Title"] = "Microsoft sign-in";
+}
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
+@if (Model.Message is not null)
+{
+    <p class="text-success" role="status">@Model.Message</p>
+}
+@if (Model.Settings.SecretKeysUnencrypted)
+{
+    <p class="text-warning" role="alert">@EntraSettingsDto.SecretKeysWarning</p>
+}
+<p class="text-muted">
+    Optional: people sign in with their Microsoft Entra ID work account. Only members of a mapped group get in, with the
+    roles and teams their groups map to, rewritten at each Microsoft sign-in (their People and Org entries show
+    <em>managed by Entra</em>). Mapping never makes anyone an owner. An existing password account is never matched by
+    email: its person links Microsoft from their Account page (with their password), and from then on signs in with
+    Microsoft only while this is on. The owner always signs in with a password. Map only security groups (ideally
+    role-assignable ones) whose membership you control: never Microsoft 365 groups people can join themselves, nor dynamic
+    groups built on attributes users can edit. Add the optional ID-token claim <code>acct</code>: without it nobody gets in.
+</p>
+<p>
+    Status: <strong>@(Model.Settings.Active ? "on" : "off")</strong>.
+    Redirect URI to register (Web platform): <code>@(Model.Settings.RedirectUri ?? "<this site's address>/signin-oidc")</code>
+</p>
+
+<form method="post" class="card mb-3">
+    <div class="card-header"><h3 class="card-title">App registration</h3></div>
+    <label><input type="checkbox" asp-for="Enabled" /> Offer "Sign in with Microsoft"</label>
+    <label asp-for="TenantId">Directory (tenant) ID</label>
+    <input asp-for="TenantId" placeholder="00000000-0000-0000-0000-000000000000" maxlength="36" autocomplete="off" />
+    <label asp-for="ClientId">Application (client) ID</label>
+    <input asp-for="ClientId" placeholder="00000000-0000-0000-0000-000000000000" maxlength="36" autocomplete="off" />
+    <label asp-for="ClientSecret">Client secret</label>
+    @* Never rendered back: value is always empty; leaving it empty keeps the stored secret. *@
+    <input name="ClientSecret" id="ClientSecret" type="password" value="" maxlength="1024" autocomplete="new-password"
+           placeholder="@(Model.Settings.ClientSecretSet ? "set — leave empty to keep it" : "not set")" />
+
+    <h3 class="card-title">Groups</h3>
+    <p class="text-muted">The group's object ID (a GUID) from Entra; the label is only for you. Clear a group ID to remove that row.</p>
+    <table>
+        <thead>
+            <tr><th>Group object ID</th><th>Label</th><th>Roles</th><th>Teams</th></tr>
+        </thead>
+        <tbody>
+            @for (var i = 0; i < Model.Groups.Count; i++)
+            {
+                var row = Model.Groups[i];
+                <tr>
+                    <td><input name="Groups[@i].GroupId" value="@row.GroupId" maxlength="36" aria-label="Group object ID" autocomplete="off" /></td>
+                    <td><input name="Groups[@i].Label" value="@row.Label" maxlength="100" aria-label="Label" autocomplete="off" /></td>
+                    <td>
+                        @foreach (var role in SkanyxxRoles.Grantable)
+                        {
+                            <label><input type="checkbox" name="Groups[@i].Roles" value="@role" checked="@row.Roles.Contains(role)" /> @role</label>
+                        }
+                    </td>
+                    <td>
+                        <select name="Groups[@i].Teams" multiple aria-label="Teams">
+                            @foreach (var team in Model.Teams)
+                            {
+                                <option value="@team.Slug" selected="@row.Teams.Contains(team.Slug)">@team.Name (@team.Slug)</option>
+                            }
+                        </select>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    <button type="submit" class="btn btn-primary">Save</button>
+</form>

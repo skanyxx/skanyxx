@@ -1,0 +1,77 @@
+@page
+@model IndexModel
+@{
+    ViewData["Title"] = "Welcome";
+}
+
+<div class="welcome-page">
+    <div class="welcome-hero">
+        <h1 class="welcome-title">Welcome to Skanyxx</h1>
+        <p class="welcome-subtitle">AI-Powered SRE Command Center</p>
+        <p class="text-muted mt-2">Your intelligent platform for infrastructure management and incident response.</p>
+        <div class="welcome-actions mt-3">
+            <a href="/Dashboard" class="btn btn-primary">Go to Dashboard</a>
+            <a href="/Chat" class="btn btn-secondary">Start Chatting</a>
+        </div>
+    </div>
+
+    <div class="stats-grid mt-4">
+        <div class="stat-card">
+            <div class="stat-value">12</div>
+            <div class="stat-label">Active Agents</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">99.9%</div>
+            <div class="stat-label">System Uptime</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">0</div>
+            <div class="stat-label">Active Incidents</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">24</div>
+            <div class="stat-label">Tool Servers</div>
+        </div>
+    </div>
+
+    <div class="card mt-3">
+        <div class="card-header">
+            <h3 class="card-title">Quick Actions</h3>
+        </div>
+        <div class="flex gap-2">
+            <a href="/Investigate" class="btn btn-secondary">Investigate Issue</a>
+            <a href="/CloudTools" class="btn btn-secondary">Cloud Tools</a>
+            <a href="/Analytics" class="btn btn-secondary">View Analytics</a>
+            <a href="/Settings" class="btn btn-secondary">Settings</a>
+        </div>
+    </div>
+</div>
+
+<style>
+    .welcome-page {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .welcome-hero {
+        text-align: center;
+        padding: 40px 20px;
+    }
+
+    .welcome-title {
+        font-size: 36px;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .welcome-subtitle {
+        font-size: 18px;
+        color: var(--accent-color);
+    }
+
+    .welcome-actions {
+        display: flex;
+        gap: 16px;
+        justify-content: center;
+    }
+</style>

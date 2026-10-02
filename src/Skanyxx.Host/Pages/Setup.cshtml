@@ -1,0 +1,22 @@
+@page
+@model SetupModel
+@{
+    ViewData["Title"] = "Create the owner account";
+    Layout = "_AuthLayout";
+}
+<p class="text-muted">First run: this account owns the installation. It can only be created once.</p>
+<form method="post" class="auth-form">
+    @if (Model.Error is not null)
+    {
+        <p class="text-error" role="alert">@Model.Error</p>
+    }
+    <label asp-for="Email">Email</label>
+    <input asp-for="Email" type="email" autocomplete="username" required autofocus />
+    <label asp-for="DisplayName">Display name (optional)</label>
+    <input asp-for="DisplayName" autocomplete="name" />
+    <label asp-for="Password">Password (at least 12 characters)</label>
+    <input asp-for="Password" type="password" autocomplete="new-password" required minlength="12" />
+    <label asp-for="BootstrapToken">Bootstrap token (<code>Identity:BootstrapToken</code>; required outside Development)</label>
+    <input asp-for="BootstrapToken" type="password" autocomplete="off" />
+    <button type="submit" class="btn btn-primary">Create owner and sign in</button>
+</form>

@@ -1,0 +1,116 @@
+@page
+@model PeopleModel
+@using Skanyxx.Core.Platform
+@{
+    ViewData["Title"] = "People";
+}
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
+@if (Model.Message is not null)
+{
+    <p class="text-success" role="status">@Model.Message</p>
+}
+@if (Model.InviteLinkOnce is not null)
+{
+    <div class="card mb-3">
+        <label for="inviteLink">Invite link (single use; send it to the person yourself)</label>
+        <input id="inviteLink" readonly value="@Model.InviteLinkOnce" onclick="this.select()" style="width: 100%" />
+        <p class="text-muted">The link points at <strong>@(new Uri(Model.InviteLinkOnce).Authority)</strong>: the person must be able to reach that address (Identity:PublicBaseUrl).</p>
+    </div>
+}
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Invite someone</h3></div>
+    <form method="post" asp-page-handler="Invite" class="flex gap-2 items-center">
+        <input name="email" type="email" placeholder="email@company.example" required maxlength="256" autocomplete="off" />
+        @foreach (var role in SkanyxxRoles.Grantable)
+        {
+            <label><input type="checkbox" name="roles" value="@role" /> @role</label>
+        }
+        <button type="submit" class="btn btn-primary">Create invite link</button>
+    </form>
+</div>
+
+<div class="table-container card mb-3">
+    <table>
+        <thead>
+            <tr><th>Person</th><th>Roles</th><th>Teams</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var person in Model.People)
+            {
+                var isOwner = person.Roles.Contains(SkanyxxRoles.Owner);
+                <tr>
+                    <td>
+                        @(person.DisplayName ?? person.Email)<br /><span class="text-muted">@person.Email</span>
+                        @if (person.EntraManaged)
+                        {
+                            <br /><span class="badge badge-info" title="Roles and teams are rewritten from the Entra group mapping at each Microsoft sign-in">managed by Entra</span>
+                            @* D16: without a password, Microsoft is the account's only sign-in; Disable is the reversible way to stop it. *@
+                            @if (person.HasPassword)
+                            {
+                                <form method="post" asp-page-handler="RemoveMicrosoft" asp-route-id="@person.Id"
+                                      onsubmit="return confirm('Remove the Microsoft login? The account then signs in with its password only, every session ends, and its roles and teams stay as they are: review them.')">
+                                    <button type="submit" class="btn btn-ghost" title="The account becomes local-only and every session ends">Remove Microsoft login</button>
+                                </form>
+                            }
+                        }
+                    </td>
+                    <td>
+                        @if (isOwner)
+                        {
+                            @* The owner's roles are fixed: the owner already has every permission a role grants. *@
+                            <span class="badge badge-info">owner</span>
+                        }
+                        else
+                        {
+                            <form method="post" asp-page-handler="Roles" asp-route-id="@person.Id" class="flex gap-2 items-center">
+                                @foreach (var role in SkanyxxRoles.Grantable)
+                                {
+                                    <label><input type="checkbox" name="roles" value="@role" checked="@person.Roles.Contains(role)" /> @role</label>
+                                }
+                                <button type="submit" class="btn btn-secondary">Save roles</button>
+                            </form>
+                        }
+                    </td>
+                    <td>@string.Join(", ", Model.TeamsOf(person.Id).Select(t => t.Name))</td>
+                    <td>@(person.Disabled ? "Disabled" : "Active")</td>
+                    <td>
+                        @if (!isOwner)
+                        {
+                            <form method="post" asp-page-handler="@(person.Disabled ? "Enable" : "Disable")" asp-route-id="@person.Id">
+                                <button type="submit" class="btn btn-ghost">@(person.Disabled ? "Enable" : "Disable")</button>
+                            </form>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div class="table-container card">
+    <div class="card-header"><h3 class="card-title">Pending invites</h3></div>
+    <table>
+        <thead>
+            <tr><th>Email</th><th>Roles</th><th>Expires (UTC)</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var invite in Model.Invites)
+            {
+                <tr>
+                    <td>@invite.Email</td>
+                    <td>@string.Join(", ", invite.Roles)</td>
+                    <td>@invite.ExpiresAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
+                    <td>
+                        <form method="post" asp-page-handler="Revoke" asp-route-id="@invite.Id">
+                            <button type="submit" class="btn btn-ghost">Revoke</button>
+                        </form>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>

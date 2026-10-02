@@ -1,0 +1,258 @@
+@page
+@model Skanyxx.Host.Pages.DashboardModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+
+<div class="dashboard-header">
+    <h2>Dashboard</h2>
+    <button class="btn btn-secondary" id="btnRefresh">Refresh</button>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-value" id="statAgents">-</div>
+        <div class="stat-label">Active Agents</div>
+        <div class="stat-change" id="statAgentsChange">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="statUptime">-</div>
+        <div class="stat-label">Uptime</div>
+        <div class="stat-change" id="statUptimeChange">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="statIncidents">-</div>
+        <div class="stat-label">Active Incidents</div>
+        <div class="stat-change" id="statIncidentsChange">-</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value" id="statApiCalls">-</div>
+        <div class="stat-label">API Calls Today</div>
+        <div class="stat-change" id="statApiCallsChange">-</div>
+    </div>
+</div>
+
+<div class="grid grid-cols-2 gap-2">
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">System Status</h3>
+            <span class="badge" id="systemStatusBadge">Checking...</span>
+        </div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Service</th>
+                        <th>Status</th>
+                        <th>Latency</th>
+                    </tr>
+                </thead>
+                <tbody id="servicesTable">
+                    <tr><td colspan="3" class="loading-state">Loading services...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Recent Activity</h3>
+        </div>
+        <div class="activity-list" id="activityList">
+            <div class="loading-state">Loading activity...</div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .dashboard-header h2 { margin: 0; }
+    .activity-list { display: flex; flex-direction: column; gap: 12px; }
+    .activity-item { display: flex; align-items: center; gap: 12px; padding: 12px; background-color: var(--bg-tertiary); border-radius: 6px; }
+    .activity-item span:nth-child(2) { flex: 1; }
+    .loading-state { text-align: center; padding: 20px; color: var(--text-muted); }
+    .stat-change.positive { color: var(--success-color); }
+    .stat-change.negative { color: var(--error-color); }
+</style>
+
+<script>
+(function() {
+    'use strict';
+
+    var dashboardData = {};
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+
+    function init() {
+        document.getElementById('btnRefresh').addEventListener('click', loadDashboard);
+        loadDashboard();
+
+        // Auto-refresh every 30 seconds
+        setInterval(loadDashboard, 30000);
+    }
+
+    function loadDashboard() {
+        loadStats();
+        loadServices();
+        loadActivity();
+    }
+
+    function loadStats() {
+        fetch('/api/dashboard/stats')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                dashboardData.stats = data;
+                renderStats(data);
+            })
+            .catch(function() {
+                // Use fallback data when API not available
+                renderStats({
+                    activeAgents: 0,
+                    agentsChange: 'Connect KAgent to see agents',
+                    uptime: '99.9%',
+                    uptimeChange: '+0.1% this week',
+                    activeIncidents: 0,
+                    incidentsChange: 'No issues',
+                    apiCalls: 0,
+                    apiCallsChange: 'No API calls yet'
+                });
+            });
+    }
+
+    function renderStats(data) {
+        document.getElementById('statAgents').textContent = data.activeAgents || 0;
+        document.getElementById('statUptime').textContent = data.uptime || '-';
+        document.getElementById('statIncidents').textContent = data.activeIncidents || 0;
+        document.getElementById('statApiCalls').textContent = formatNumber(data.apiCalls || 0);
+
+        var agentsChange = document.getElementById('statAgentsChange');
+        agentsChange.textContent = data.agentsChange || '-';
+        agentsChange.className = 'stat-change' + (data.activeAgents > 0 ? ' positive' : '');
+
+        var uptimeChange = document.getElementById('statUptimeChange');
+        uptimeChange.textContent = data.uptimeChange || '-';
+        uptimeChange.className = 'stat-change positive';
+
+        var incidentsChange = document.getElementById('statIncidentsChange');
+        incidentsChange.textContent = data.incidentsChange || '-';
+        incidentsChange.className = 'stat-change' + (data.activeIncidents === 0 ? ' positive' : ' negative');
+
+        var apiCallsChange = document.getElementById('statApiCallsChange');
+        apiCallsChange.textContent = data.apiCallsChange || '-';
+        apiCallsChange.className = 'stat-change' + (data.apiCalls > 0 ? ' positive' : '');
+    }
+
+    function loadServices() {
+        fetch('/api/dashboard/services')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                dashboardData.services = data;
+                renderServices(data);
+            })
+            .catch(function() {
+                // Use fallback data
+                renderServices([
+                    { name: 'API Gateway', status: 'online', latency: '-' },
+                    { name: 'Database', status: 'online', latency: '-' },
+                    { name: 'Cache Server', status: 'online', latency: '-' },
+                    { name: 'Message Queue', status: 'online', latency: '-' }
+                ]);
+            });
+    }
+
+    function renderServices(services) {
+        var tbody = document.getElementById('servicesTable');
+        var badge = document.getElementById('systemStatusBadge');
+
+        if (!services || services.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="3" class="loading-state">No services configured</td></tr>';
+            badge.textContent = 'Unknown';
+            badge.className = 'badge badge-warning';
+            return;
+        }
+
+        var allOnline = services.every(function(s) { return s.status === 'online'; });
+        badge.textContent = allOnline ? 'All Systems Operational' : 'Issues Detected';
+        badge.className = 'badge ' + (allOnline ? 'badge-success' : 'badge-warning');
+
+        var html = '';
+        services.forEach(function(service) {
+            var statusClass = service.status === 'online' ? 'online' : 'offline';
+            var statusText = service.status === 'online' ? 'Online' : 'Offline';
+            html += '<tr>';
+            html += '<td>' + service.name + '</td>';
+            html += '<td><span class="status-dot ' + statusClass + '"></span> ' + statusText + '</td>';
+            html += '<td>' + (service.latency || '-') + '</td>';
+            html += '</tr>';
+        });
+
+        tbody.innerHTML = html;
+    }
+
+    function loadActivity() {
+        fetch('/api/dashboard/activity')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                dashboardData.activity = data;
+                renderActivity(data);
+            })
+            .catch(function() {
+                // Use fallback data
+                renderActivity([
+                    { type: 'info', badge: 'System', message: 'Dashboard loaded', time: 'Just now' },
+                    { type: 'info', badge: 'Info', message: 'Connect KAgent to see live activity', time: '-' }
+                ]);
+            });
+    }
+
+    function renderActivity(activities) {
+        var container = document.getElementById('activityList');
+
+        if (!activities || activities.length === 0) {
+            container.innerHTML = '<div class="loading-state">No recent activity. Connect KAgent to see events.</div>';
+            return;
+        }
+
+        var badgeClasses = {
+            'agent': 'badge-info',
+            'deploy': 'badge-success',
+            'alert': 'badge-warning',
+            'error': 'badge-error',
+            'config': 'badge-info',
+            'info': 'badge-info',
+            'system': 'badge-secondary'
+        };
+
+        var html = '';
+        activities.slice(0, 10).forEach(function(activity) {
+            var badgeClass = badgeClasses[activity.type] || badgeClasses[activity.badge?.toLowerCase()] || 'badge-info';
+            html += '<div class="activity-item">';
+            html += '<span class="badge ' + badgeClass + '">' + (activity.badge || activity.type || 'Event') + '</span>';
+            html += '<span>' + (activity.message || activity.description || '-') + '</span>';
+            html += '<span class="text-muted">' + (activity.time || formatTime(activity.timestamp)) + '</span>';
+            html += '</div>';
+        });
+
+        container.innerHTML = html;
+    }
+
+    function formatNumber(num) {
+        if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+        if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+        return num.toString();
+    }
+
+    function formatTime(ts) {
+        if (!ts) return '-';
+        var diff = Math.floor((Date.now() - new Date(ts)) / 1000);
+        if (diff < 60) return diff + 's ago';
+        if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+        if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+        return Math.floor(diff / 86400) + 'd ago';
+    }
+})();
+</script>

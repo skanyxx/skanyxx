@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Skanyxx
+Comment=SRE Platform for Kubernetes management and agent orchestration
+Exec=bash -c "/usr/share/skanyxx/Skanyxx.Host --urls http://localhost:5282 & sleep 2 && xdg-open http://localhost:5282"
+Icon=skanyxx
+Terminal=false
+Type=Application
+Categories=Development;System;Network;
+Keywords=kubernetes;sre;monitoring;agents;
+StartupNotify=true
