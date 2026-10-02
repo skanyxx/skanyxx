@@ -423,26 +423,6 @@ public class KAgentApiClient
         });
     }
 
-    public async Task<List<MemoryItem>> GetMemoriesAsync()
-    {
-        return await RequestAsync<List<MemoryItem>>("/api/memories", HttpMethod.Get);
-    }
-
-    public async Task<MemoryItem> CreateMemoryAsync(CreateMemoryRequest request)
-    {
-        return await RequestAsync<MemoryItem>("/api/memories", HttpMethod.Post, request);
-    }
-
-    public async Task<List<MemoryItem>> SearchMemoryAsync(string query)
-    {
-        return await RequestAsync<List<MemoryItem>>("/api/memories/search", HttpMethod.Post, new { query });
-    }
-
-    public async Task DeleteMemoryAsync(string ns, string name)
-    {
-        await RequestAsync<object>($"/api/memories/{ns}/{name}", HttpMethod.Delete);
-    }
-
     public async Task<List<Hook>> GetHooksAsync()
     {
         try

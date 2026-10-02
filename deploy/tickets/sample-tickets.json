@@ -1,0 +1,38 @@
+[
+  {
+    "key": "DEMO-1",
+    "title": "Search returns nothing for hyphenated words",
+    "description": "Searching the memory library for 'follow-up' returns no cards, although a card titled 'Always follow up within a day' exists. Expected: the card is found.",
+    "type": "Bug",
+    "status": "To Do",
+    "priority": "High",
+    "labels": ["memory", "search"],
+    "assignee": "Dana Levi",
+    "url": "",
+    "updatedAt": "2026-09-20T09:00:00Z"
+  },
+  {
+    "key": "DEMO-2",
+    "title": "Show when a card was last lifted",
+    "description": "In the library, a card lifted into company should show who lifted it and when.",
+    "type": "Story",
+    "status": "To Do",
+    "priority": "Medium",
+    "labels": ["memory", "ui"],
+    "assignee": null,
+    "url": "",
+    "updatedAt": "2026-09-21T09:00:00Z"
+  },
+  {
+    "key": "DEMO-3",
+    "title": "Rate-limit lifts per user",
+    "description": "",
+    "type": "Task",
+    "status": "In Progress",
+    "priority": "Low",
+    "labels": [],
+    "assignee": "Dana Levi",
+    "url": "",
+    "updatedAt": "2026-09-22T09:00:00Z"
+  }
+]

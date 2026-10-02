@@ -1,0 +1,28 @@
+# The seed agent using its memory server. `allowedHeaders: [x-user-id]` forwards the end user kagent puts on the A2A
+# request. Skanyxx honours it only if the owner issued this agent's secret with actsForUsers: true (D084); otherwise
+# every call is agent-only (no personal scope) and the header is harmless. With the flag on, X-User-Id is only as
+# trustworthy as kagent's own authentication: run kagent with auth.mode secure (the Helm default, unsecure, lets any
+# caller choose it). See README.md "Acting for users".
+apiVersion: kagent.dev/v1alpha2
+kind: Agent
+metadata:
+  name: seed
+  namespace: kagent
+  labels:
+    app.kubernetes.io/part-of: skanyxx-memory
+spec:
+  type: Declarative
+  description: Answers questions about how the company works, from Skanyxx company memory.
+  declarative:
+    modelConfig: default-model-config
+    systemMessage: |-
+      You answer questions about how the company works. Call memory_search before answering; cite the cards you used.
+      Save a locked decision, fact or procedure with memory_upsert only when the user states it; never save chat logs.
+    tools:
+      - type: McpServer
+        mcpServer:
+          name: skanyxx-memory-seed
+          kind: RemoteMCPServer
+          apiGroup: kagent.dev
+          toolNames: [memory_search, memory_upsert]
+          allowedHeaders: [x-user-id]

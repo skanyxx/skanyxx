@@ -14,8 +14,29 @@ chmod +x "$INSTALL_DIR/Skanyxx.Host" 2>/dev/null || true
 
 # Create config from template (once — never overwrites)
 # IRREVERSIBLE: once created this file holds the user's API keys
+# The service runs as Production, where the owner account can only be created with Identity:BootstrapToken,
+# so a fresh config gets a random 48-character one. It is shown once below and stays in the config file.
+# Mode 0600 root: the only reader is the systemd service, which runs as root (skanyxx.service has no User=).
+BOOTSTRAP_TOKEN=""
+NEEDS_TOKEN=""
 if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
-    cp "$TEMPLATE" "$CONFIG"
+    (umask 077 && cp "$TEMPLATE" "$CONFIG")
+    BOOTSTRAP_TOKEN="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+    sed -i "s/\"BootstrapToken\": \"\"/\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"/" "$CONFIG"
+    if [[ ${#BOOTSTRAP_TOKEN} -ne 48 ]] || ! grep -q "\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"" "$CONFIG"; then
+        rm -f "$CONFIG"  # so a retry (dpkg --configure) generates it again
+        echo "Skanyxx: could not write Identity:BootstrapToken into $CONFIG; the template no longer has" >&2
+        echo "  \"BootstrapToken\": \"\"." >&2
+        exit 1
+    fi
+elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
+    # An upgrade from a config written before accounts existed: never edited, only pointed out.
+    NEEDS_TOKEN=1
+fi
+NEEDS_PUBLIC_URL=""
+if [[ -f "$CONFIG" ]] && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
+    # An upgrade from a config written before invites existed: the app starts, invites wait for the setting.
+    NEEDS_PUBLIC_URL=1
 fi
 
 # Reload systemd if available
@@ -36,3 +57,19 @@ echo "    sudo systemctl enable skanyxx"
 echo "    sudo systemctl start skanyxx"
 echo ""
 echo "  Open in browser: http://localhost:5282"
+if [[ -n "$BOOTSTRAP_TOKEN" ]]; then
+    echo ""
+    echo "  First run: /Setup asks for this bootstrap token to create the owner account"
+    echo "  (also the owner's break-glass token; kept in $CONFIG as Identity:BootstrapToken):"
+    echo "    $BOOTSTRAP_TOKEN"
+fi
+if [[ -n "$NEEDS_TOKEN" ]]; then
+    echo ""
+    echo "  Set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
+    echo "  the first-run setup page asks for it to create the owner account."
+fi
+if [[ -n "$NEEDS_PUBLIC_URL" ]]; then
+    echo ""
+    echo "  To invite people, set Identity:PublicBaseUrl in $CONFIG to the address they use to reach"
+    echo "  Skanyxx, e.g. \"PublicBaseUrl\": \"http://localhost:5282\" on this machine (https://... behind a proxy)."
+fi

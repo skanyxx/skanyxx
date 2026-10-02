@@ -67,10 +67,6 @@
                         <span class="nav-icon">&#x25E7;</span>
                         <span class="nav-label">Analytics</span>
                     </a>
-                    <a href="/Memory" class="nav-item @(currentPage == "/Memory" ? "active" : "")">
-                        <span class="nav-icon">&#x25C9;</span>
-                        <span class="nav-label">Memory</span>
-                    </a>
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">System</div>
@@ -90,6 +86,21 @@
                         <span class="nav-icon">&#x2699;</span>
                         <span class="nav-label">Settings</span>
                     </a>
+                    @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner))
+                    {
+                        <a href="/People" class="nav-item @(currentPage == "/People" ? "active" : "")">
+                            <span class="nav-icon">&#x263A;</span>
+                            <span class="nav-label">People</span>
+                        </a>
+                        <a href="/Org" class="nav-item @(currentPage == "/Org" ? "active" : "")">
+                            <span class="nav-icon">&#x2637;</span>
+                            <span class="nav-label">Org</span>
+                        </a>
+                        <a href="/Entra" class="nav-item @(currentPage == "/Entra" ? "active" : "")">
+                            <span class="nav-icon">&#x229E;</span>
+                            <span class="nav-label">Microsoft sign-in</span>
+                        </a>
+                    }
                 </div>
             </nav>
         </aside>
@@ -99,6 +110,17 @@
             <header class="top-header">
                 <h1 class="header-title">@ViewData["Title"]</h1>
                 <div class="header-actions">
+                    @if (User.Identity?.IsAuthenticated == true)
+                    {
+                        <a href="/Account" class="header-user" title="@User.Identity.Name">@(User.FindFirst(Skanyxx.Core.Platform.Identity.SkanyxxClaims.DisplayName)?.Value ?? User.Identity.Name)</a>
+                        <form method="post" asp-page="/Logout" class="header-signout">
+                            <button type="submit" class="btn btn-ghost">Sign out</button>
+                        </form>
+                    }
+                    else
+                    {
+                        <a href="/Login" class="btn btn-ghost">Sign in</a>
+                    }
                     <button class="pwa-install-btn" id="installBtn" style="display: none;">
                         <span>&#x2B07;</span>
                         <span>Install App</span>

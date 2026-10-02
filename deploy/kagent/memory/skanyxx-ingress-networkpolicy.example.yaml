@@ -1,0 +1,26 @@
+# EXAMPLE — adjust labels, namespaces and the port to your install. Apply it in Skanyxx's namespace.
+# /mcp/memory carries agent secrets and memory content, so only the kagent namespace (and your ingress controller, for
+# the UI and /api) may reach Skanyxx's pod port. A NetworkPolicy works on ports, not paths: keeping /mcp off the PUBLIC
+# ingress is a separate requirement, met by the ingress's own path rules (README.md next to this file, "Transport and network").
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: skanyxx-from-kagent-and-ingress
+  namespace: skanyxx
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: skanyxx
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kagent
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080

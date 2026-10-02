@@ -9,7 +9,6 @@ const urlsToCache = [
     '/CloudTools',
     '/ToolServers',
     '/Analytics',
-    '/Memory',
     '/Alerts',
     '/Hooks',
     '/Debug',

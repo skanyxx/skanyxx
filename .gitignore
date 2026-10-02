@@ -61,3 +61,9 @@ scripts/kagent_setup.sh
 *.db
 *.db-shm
 *.db-wal
+
+# Test run output (hang dumps can be GBs)
+TestResults/
+
+# Plugin module binaries: build output, produced by `dotnet build` (CopyToModules)
+src/Skanyxx.Host/modules/

@@ -17,6 +17,7 @@ company      ← what most agents search (D040)
 ```
 
 Org tree (teams/depts) is **created in Skanyxx**. Entra is optional sync, not the source (D055).
+**As built (D090):** the owner builds it on the Org page; memory checks membership live on every request.
 
 A card’s identity is **`scope` + `key`** (was collection+key). Same slug can exist at personal and at company; company is what the fleet reads.
 
@@ -44,5 +45,9 @@ Otherwise 100 agents “helpfully” publish everything to the company brain.
 ## Library
 
 - Personal: only you (and your chats).
-- Team/dept: members of that scope.
+- Team/dept: members of that scope (department members = members of its teams). Owner and supervisors read every
+  team/dept scope too, but write only where they are members. A `team:`/`department:` slug with no org object behind it
+  has no members, so only owner/supervisor read those cards. Agents: only by grant, and a team/department grant is
+  the owner's to set (D091); an agent acting for a member still reads no team without one. A supervisor's lift out of
+  a team they are not in is allowed (they gate company) and logged at Warning, as is every grant change.
 - `company` published: logged-in users (D048), still.

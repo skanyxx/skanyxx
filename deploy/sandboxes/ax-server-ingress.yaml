@@ -1,0 +1,24 @@
+# D072: ax-server has no auth (AX issue #376), so only the Skanyxx API may reach it.
+# Adjust the labels and namespaces to your install; the values below are placeholders.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ax-server-only-from-skanyxx
+  namespace: ax-system
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ax-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: skanyxx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: skanyxx
+      ports:
+        - protocol: TCP
+          port: 8080

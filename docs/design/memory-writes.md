@@ -6,6 +6,8 @@
 
 Default: **search only** on `company` (D040). Upsert is a supervisor/builder grant, like giving deploy keys.
 
+> As built: refined by **D078** — no grants = search `company` + the caller's personal scope, upsert only that personal scope (D052).
+
 If 95 agents only search, they cannot race. They also cannot burn write-amp.
 
 ## 2. Writers still need a lock — on the **key**, not the fleet

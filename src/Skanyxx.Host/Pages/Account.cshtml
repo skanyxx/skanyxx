@@ -1,0 +1,50 @@
+@page
+@model AccountModel
+@using System.Security.Claims
+@using Skanyxx.Core.Platform
+@using Skanyxx.Core.Platform.Identity
+@{
+    ViewData["Title"] = "Account";
+}
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
+@if (Model.Message is not null)
+{
+    <p class="text-success" role="status">@Model.Message</p>
+}
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">@(User.FindFirst(SkanyxxClaims.DisplayName)?.Value ?? User.Identity?.Name)</h3></div>
+    <p class="text-muted">@User.Identity?.Name</p>
+    <p>Roles: @string.Join(", ", User.FindAll(ClaimTypes.Role).Select(c => c.Value).Order())</p>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header"><h3 class="card-title">Microsoft account</h3></div>
+    @if (Model.Microsoft.Linked)
+    {
+        <p><span class="badge badge-info">managed by Entra</span> Linked. You sign in with Microsoft; your roles and teams come from your Microsoft groups at each Microsoft sign-in.</p>
+    }
+    else if (!Model.Microsoft.Enabled)
+    {
+        <p class="text-muted">Microsoft sign-in is not enabled on this Skanyxx.</p>
+    }
+    else if (User.IsInRole(SkanyxxRoles.Owner))
+    {
+        <p class="text-muted">The owner signs in with a password only, so a Microsoft account cannot be linked to it.</p>
+    }
+    else
+    {
+        <p class="text-muted">
+            Link your Microsoft work account to sign in with it. From then on you sign in with Microsoft only (your password
+            stops working while Microsoft sign-in is on), your roles and teams come from your Microsoft groups, and a
+            Microsoft sign-in without a mapped group ends your sessions.
+        </p>
+        <form method="post" asp-page-handler="LinkMicrosoft" class="flex gap-2 items-center">
+            <label for="linkPassword">Current password</label>
+            <input id="linkPassword" name="Password" type="password" required maxlength="1024" autocomplete="current-password" value="" />
+            <button type="submit" class="btn btn-secondary">Link Microsoft account</button>
+        </form>
+    }
+</div>
