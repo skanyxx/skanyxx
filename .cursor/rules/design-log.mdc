@@ -1,0 +1,15 @@
+---
+description: Design log is append-only. Do not rewrite locked decisions.
+globs: docs/design/**/*.md
+alwaysApply: false
+---
+
+# Design log
+
+`docs/design/` is the running record, not a wiki to silently rewrite.
+
+- Locked **why** lives in `decisions.md`. Reverse = **new D-row** (new id, date, why). Never edit an old row’s meaning in place.
+- One idea per bullet. No essays (`docs/design/README.md`).
+- `todo.md` is the build order. `open.md` is undecided leftovers — do not treat leftovers as the current slice.
+- Proposed AX D069–D077 are in `ax-integration.md` only until copied into `decisions.md`.
+- Community (step 5) is paused (D054).

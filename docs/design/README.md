@@ -4,6 +4,7 @@ We design in small steps. This folder is the running record — not a product sp
 
 | File | Purpose |
 |---|---|
+| [todo.md](todo.md) | Build order for people and AI agents. Do not skip slices. |
 | [decisions.md](decisions.md) | Locked choices and **why**. If we reverse one, add a new row; do not silently edit history. |
 | [facts.md](facts.md) | Constraints from Skanyxx today, [kagent](https://kagent.dev/docs/kagent/), [AX](https://github.com/google/ax), [Joicy](https://github.com/DmarshalTU/Joicy). |
 | [ax-tasks.md](ax-tasks.md) | kagent = Agents; AX = Tasks. v1 flags. |

@@ -52,7 +52,8 @@ Skanyxx.sln
 │       └── Skanyxx.Module.ToolServers/
 ├── tests/                         # Host, Identity, Memory, Tickets, Sandboxes test projects
 ├── deploy/                        # kagent ticket agents, sample tickets, sandbox NetworkPolicies
-├── docs/design/                   # Design log (decisions, open questions)
+├── docs/design/                   # Design log; build order is docs/design/todo.md
+├── AGENTS.md                      # Remarks for AI agents working in this repo
 └── SkanyxxWeb.csproj              # Legacy monolith (deprecated)
 ```
 

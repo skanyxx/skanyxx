@@ -1,0 +1,21 @@
+---
+description: Skanyxx is a company agent workspace, not SRE. Follow the design todo.
+alwaysApply: true
+---
+
+# Product
+
+Skanyxx is a licensed **agent-management workspace** (D001). kagent is the runtime (D002). Memory is a **card** engine in Postgres, exposed as MCP. AX is experimental **sandboxes**, not chat.
+
+Before implementing, read `AGENTS.md` and `docs/design/todo.md`. Work **in that order**. Do not skip to Helm, studio, or AX while first-hour seed chat is unfinished.
+
+Do not:
+
+- Revive SRE/NOC features or grow Dashboard / Investigate / Alerts / Hooks / Cloud Tools
+- Add an in-process LLM chat that bypasses kagent
+- Store company knowledge in Redis, Dragonfly, Joicy, SQLite, or kagent TTL memory
+- Name sandbox routes `task` (clash with kagent A2A and Tickets)
+- Hand a memory agent secret to an AX sandbox
+- Build the community catalog (paused, D054)
+
+If the user asks to test or run only, **do not change product code**.
