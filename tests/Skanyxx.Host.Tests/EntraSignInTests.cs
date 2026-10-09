@@ -33,8 +33,8 @@ public sealed class EntraSignInTests(PostgresFixture fixture, MockIdentityProvid
         Assert.Equal("Bea Entra", person.GetProperty("displayName").GetString());
         Assert.Equal(["billing"], await TeamsOfAsync(me.Id!));
         Assert.Equal([("entra", $"{Tenant}|{Oid(1)}")], await LoginsAsync(me.Id!)); // keyed by tid|oid, never sub or email
-        Assert.Contains("managed by Entra", await (await OwnerBrowser.GetAsync("/People")).Content.ReadAsStringAsync());
-        Assert.Contains("managed by Entra", await (await OwnerBrowser.GetAsync("/Org")).Content.ReadAsStringAsync());
+        Assert.Contains("managed by Entra", await (await OwnerBrowser.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("managed by Entra", await (await OwnerBrowser.GetAsync("/Org")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -55,7 +55,7 @@ public sealed class EntraSignInTests(PostgresFixture fixture, MockIdentityProvid
         var refused = await Flow.SignInAsync(new Browser(Host), claims);
 
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
-        Assert.Contains("has no access to Skanyxx", await refused.Content.ReadAsStringAsync());
+        Assert.Contains("has no access to Skanyxx", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(before, await PeopleCountAsync());
     }
 
@@ -75,7 +75,7 @@ public sealed class EntraSignInTests(PostgresFixture fixture, MockIdentityProvid
         var refused = await Flow.SignInAsync(browser, EntraFlow.Claims(OtherTenant, Oid(1), [Supervisors]));
 
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
-        Assert.Contains("Microsoft sign-in did not complete", await refused.Content.ReadAsStringAsync());
+        Assert.Contains("Microsoft sign-in did not complete", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(before, await PeopleCountAsync());
         Assert.Equal(HttpStatusCode.Unauthorized, (await MeAsync(browser)).Status);
     }
@@ -88,7 +88,7 @@ public sealed class EntraSignInTests(PostgresFixture fixture, MockIdentityProvid
         var first = new Browser(Host);
         await Flow.SignInAsync(first, EntraFlow.Claims(Tenant, Oid(1), [Supervisors, Billing]));
         var id = (await MeAsync(first)).Id!;
-        Assert.Equal(HttpStatusCode.OK, (await Owner.PutAsJsonAsync($"/api/identity/people/{id}/roles", new { roles = new[] { "builder" } })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Owner.PutAsJsonAsync($"/api/identity/people/{id}/roles", new { roles = new[] { "builder" } }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
         await SaveSettingsAsync([Map(Supervisors, ["builder"], ["platform"]), Map(Billing, ["employee"], ["billing"])]);
 
         var second = new Browser(Host);
@@ -187,7 +187,7 @@ public sealed class EntraSignInTests(PostgresFixture fixture, MockIdentityProvid
         var failed = await Flow.SignInAsync(new Browser(Host), claims);
 
         Assert.Equal(HttpStatusCode.BadGateway, failed.StatusCode);
-        Assert.Contains("could not read your groups", await failed.Content.ReadAsStringAsync());
+        Assert.Contains("could not read your groups", await failed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(before, await PeopleCountAsync());
     }
 
@@ -201,7 +201,7 @@ public sealed class EntraSignInTests(PostgresFixture fixture, MockIdentityProvid
         var refused = await Flow.SignInAsync(new Browser(Host), EntraFlow.Claims(Tenant, Oid(1), [Supervisors], email: Email.ToUpperInvariant()));
 
         Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
-        Assert.Contains("Sign in with your password, then link your Microsoft account", await refused.Content.ReadAsStringAsync());
+        Assert.Contains("Sign in with your password, then link your Microsoft account", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Empty(await LoginsAsync(memberId));
         Assert.Equal(["builder"], (await PersonAsync(Email)).GetProperty("roles").EnumerateArray().Select(r => r.GetString()));
     }
@@ -213,7 +213,7 @@ public sealed class EntraSignInTests(PostgresFixture fixture, MockIdentityProvid
         var browser = new Browser(Host);
         await Flow.SignInAsync(browser, EntraFlow.Claims(Tenant, Oid(1), [Billing]));
         var id = (await MeAsync(browser)).Id!;
-        Assert.Equal(HttpStatusCode.OK, (await Owner.PostAsync($"/api/identity/people/{id}/disable", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Owner.PostAsync($"/api/identity/people/{id}/disable", null, TestContext.Current.CancellationToken)).StatusCode);
 
         var refused = await Flow.SignInAsync(new Browser(Host), EntraFlow.Claims(Tenant, Oid(1), [Billing]));
 
@@ -260,18 +260,18 @@ public sealed class EntraSignInTests(PostgresFixture fixture, MockIdentityProvid
         await SaveSettingsAsync();
         var ownerId = (await MeAsync(OwnerBrowser)).Id!;
 
-        var page = await (await OwnerBrowser.GetAsync("/Account")).Content.ReadAsStringAsync();
+        var page = await (await OwnerBrowser.GetAsync("/Account")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var link = await StartLinkAsync(OwnerBrowser, HostApp.OwnerPassword);
         await InsertLoginAsync(ownerId, $"{Tenant}|{Oid(7)}");
         var granted = await Flow.SignInAsync(new Browser(Host), EntraFlow.Claims(Tenant, Oid(7), [Supervisors, Billing]));
         var refused = await Flow.SignInAsync(new Browser(Host), EntraFlow.Claims(Tenant, Oid(7), [Unmapped]));
-        var password = await Host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = HostApp.OwnerEmail, password = HostApp.OwnerPassword });
+        var password = await Host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = HostApp.OwnerEmail, password = HostApp.OwnerPassword }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains("The owner signs in with a password only", page);
         Assert.Equal(HttpStatusCode.OK, password.StatusCode); // D8 never applies to the owner, Microsoft login or not
         Assert.DoesNotContain("Link Microsoft account", page);
         Assert.Equal(HttpStatusCode.Forbidden, link.StatusCode);
-        Assert.Contains("The owner signs in with a password only", await link.Content.ReadAsStringAsync());
+        Assert.Contains("The owner signs in with a password only", await link.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Forbidden, granted.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
         Assert.Equal(["owner"], (await MeAsync(OwnerBrowser)).Roles); // this session survived both

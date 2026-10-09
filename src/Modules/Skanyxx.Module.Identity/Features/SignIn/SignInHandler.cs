@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Data;
 using Skanyxx.Module.Identity.Entra;
 
@@ -11,7 +12,7 @@ namespace Skanyxx.Module.Identity.Features.SignIn;
 
 internal sealed class SignInHandler(
     AccountsDbContext db, UserManager<IdentityUser> users, SignInManager<IdentityUser> signIn, SignInFailure failure,
-    SessionIssuer sessions, BootstrapGuard guard, EntraPasswordRule entra, ILogger<SignInHandler> logger)
+    SessionIssuer sessions, BootstrapGuard guard, EntraPasswordRule entra, IdentityAudit audit, ILogger<SignInHandler> logger)
     : IRequestHandler<SignInCommand, Outcome<SignedIn>>
 {
     /// <summary>
@@ -25,8 +26,13 @@ internal sealed class SignInHandler(
         var breakGlass = guard.Matches(command.BootstrapToken);
         var verified = await VerifyAsync(command, breakGlass, ct);
         if (!string.IsNullOrEmpty(command.BootstrapToken))
+        {
             logger.LogWarning("Sign-in with a bootstrap token from {Client}: token {Token}, result {Result}.",
                 signIn.Context.Connection.RemoteIpAddress, breakGlass ? "valid" : "wrong", verified.Status);
+            // After the attempt's own transaction: whatever it was, the row stays (never the token, never the email).
+            await audit.WriteAsync(AuditActions.BootstrapTokenSignIn, verified.Value?.Id, verified.Value?.Id,
+                new { token = breakGlass ? "valid" : "wrong", result = verified.Status.ToString() }, ct);
+        }
         return verified.Value is { } user
             ? Outcome<SignedIn>.Ok(await sessions.StartAsync(user, command.UseCookie, ct))
             : new Outcome<SignedIn>(verified.Status, Message: verified.Message);
@@ -55,7 +61,7 @@ internal sealed class SignInHandler(
         else if (user is null || await users.IsLockedOutAsync(user))
             verified = SpendHashTime(command.Password);
         else if (await entra.RefusesAsync(user, ct))
-            verified = await RefuseManagedAsync(user, command.Password);
+            verified = await RefuseManagedAsync(user, command.Password, ct);
         else
             // Counts a failure toward lockout; the attempt that reaches the limit locks the account.
             verified = (await signIn.CheckPasswordSignInAsync(user, command.Password, lockoutOnFailure: true)).Succeeded;
@@ -77,15 +83,19 @@ internal sealed class SignInHandler(
     /// <summary>
     /// SEC N3: an Entra-managed account's password never starts a session while Microsoft sign-in is enabled (D8), and
     /// the answer is the one a wrong password gets, so it tells a guesser nothing. Every attempt counts toward the
-    /// lockout, right password or wrong, so both do the same database work and take the same time (QA-3 L1); a lockout
-    /// does not block Microsoft sign-in. A right password is logged for the owner.
+    /// lockout and writes the same audit row, right password or wrong, so both do the same database work and take the
+    /// same time (QA-3 L1, D166); a lockout does not block Microsoft sign-in. Both log the same Warning; only a Debug line
+    /// says the password was right (QA-2 L1).
     /// </summary>
-    private async Task<bool> RefuseManagedAsync(IdentityUser user, string password)
+    private async Task<bool> RefuseManagedAsync(IdentityUser user, string password, CancellationToken ct)
     {
-        if (await users.CheckPasswordAsync(user, password))
-            logger.LogWarning("Password sign-in of {UserId} from {Client} refused: the account signs in with Microsoft (D8)",
-                user.Id, signIn.Context.Connection.RemoteIpAddress);
+        var right = await users.CheckPasswordAsync(user, password);
+        await audit.WriteAsync(AuditActions.ManagedPasswordRefused, null, user.Id, null, ct);
         await CountFailureAsync(user);
+        logger.LogWarning("Password sign-in of {UserId} from {Client} refused: the account signs in with Microsoft (D8)",
+            user.Id, signIn.Context.Connection.RemoteIpAddress);
+        if (right)
+            logger.LogDebug("The refused password sign-in of {UserId} had the right password", user.Id);
         return false;
     }
 

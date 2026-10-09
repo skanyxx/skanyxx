@@ -27,9 +27,9 @@ public sealed class BearerStampTests(PostgresFixture postgres)
         var tokens = await app.SignInBearerAsync();
         var path = $"{IdentityApp.ProbePath}?access_token={Uri.EscapeDataString(tokens.AccessToken)}";
 
-        var before = await QueryClient(app).GetAsync(path);
-        Assert.Equal(HttpStatusCode.NoContent, (await app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null)).StatusCode);
-        var after = await QueryClient(app).GetAsync(path);
+        var before = await QueryClient(app).GetAsync(path, TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.NoContent, (await app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken)).StatusCode);
+        var after = await QueryClient(app).GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
@@ -55,10 +55,10 @@ public sealed class BearerStampTests(PostgresFixture postgres)
         Assert.Equal(HttpStatusCode.Created, (await app.BootstrapAsync()).StatusCode);
         var tokens = await app.SignInBearerAsync();
 
-        var live = await app.Client(bearer: tokens.AccessToken).GetAsync(IdentityApp.ProbePath);
+        var live = await app.Client(bearer: tokens.AccessToken).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
         var checksWhileLive = checks.Count;
         clock.Advance(TimeSpan.FromSeconds(tokens.ExpiresIn + 1));
-        var expired = await app.Client(bearer: tokens.AccessToken).GetAsync(IdentityApp.ProbePath);
+        var expired = await app.Client(bearer: tokens.AccessToken).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, live.StatusCode);
         Assert.Equal(1, checksWhileLive);

@@ -20,7 +20,7 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
     private IdentityApp _app = null!;
     private string _owner = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString, s => s["Identity:InviteDays"] = "2",
@@ -29,15 +29,15 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
         _owner = (await _app.SignInBearerAsync()).AccessToken;
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     [Fact]
     public async Task Create_Returns201_WithTheLinkOnce_AndTheListHasNoToken()
     {
         var created = await _app.CreateInviteAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Builder, SkanyxxRoles.Employee);
-        var body = await created.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await created.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var token = IdentityApp.TokenOf(body.GetProperty("link").GetString()!);
-        var list = await _app.Client(bearer: _owner).GetStringAsync("/api/identity/invites");
+        var list = await _app.Client(bearer: _owner).GetStringAsync("/api/identity/invites", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.Equal("no-store", created.Headers.CacheControl?.ToString());
@@ -63,8 +63,8 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
         {
             Content = JsonContent.Create(new { email = IdentityApp.MemberEmail, roles = new[] { SkanyxxRoles.Builder } }),
             Headers = { Host = "internal-service:8080" }
-        });
-        var link = (await created.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("link").GetString()!;
+        }, TestContext.Current.CancellationToken);
+        var link = (await created.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("link").GetString()!;
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.Matches("^https://people\\.skanyxx\\.example/base/Invite\\?token=skx_inv_[A-Za-z0-9_-]{43}$", link);
@@ -77,7 +77,7 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
 
         var found = await _app.LookupInviteAsync(token);
         var unknown = await _app.LookupInviteAsync("skx_inv_" + new string('A', 43));
-        var details = await found.Content.ReadFromJsonAsync<JsonElement>();
+        var details = await found.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, found.StatusCode);
         Assert.Equal(IdentityApp.MemberEmail, details.GetProperty("email").GetString());
@@ -91,9 +91,9 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
         var token = await _app.InviteAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Builder);
 
         var accepted = await _app.AcceptAsync(token);
-        var body = await accepted.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await accepted.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var access = body.GetProperty("tokens").GetProperty("accessToken").GetString();
-        var probe = await _app.Client(bearer: access).GetFromJsonAsync<JsonElement>(IdentityApp.ProbePath);
+        var probe = await _app.Client(bearer: access).GetFromJsonAsync<JsonElement>(IdentityApp.ProbePath, cancellationToken: TestContext.Current.CancellationToken);
         var again = await _app.AcceptAsync(token, "a different passphrase");
         var lookup = await _app.LookupInviteAsync(token);
         var signIn = await _app.SignInAsync(IdentityApp.MemberEmail, IdentityApp.MemberPassword);
@@ -113,7 +113,7 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
     public async Task Accept_WithCookie_SetsTheSessionCookie()
     {
         var accepted = await _app.AcceptAsync(await _app.InviteAsync(_owner), useCookie: true);
-        var me = await _app.Client(cookie: SetCookie.AuthHeader(accepted)).GetFromJsonAsync<JsonElement>("/api/identity/me");
+        var me = await _app.Client(cookie: SetCookie.AuthHeader(accepted)).GetFromJsonAsync<JsonElement>("/api/identity/me", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
         Assert.Equal(IdentityApp.MemberEmail, me.GetProperty("email").GetString());
@@ -152,7 +152,7 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
         _clock.Advance(TimeSpan.FromDays(2) + TimeSpan.FromSeconds(1));
         var lookup = await _app.LookupInviteAsync(token);
         var accept = await _app.AcceptAsync(token);
-        var list = await _app.Client(bearer: (await _app.SignInBearerAsync()).AccessToken).GetFromJsonAsync<JsonElement>("/api/identity/invites");
+        var list = await _app.Client(bearer: (await _app.SignInBearerAsync()).AccessToken).GetFromJsonAsync<JsonElement>("/api/identity/invites", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, lookup.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, accept.StatusCode);
@@ -163,11 +163,11 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
     [Fact]
     public async Task RevokedInvite_CannotBeAccepted_AndRevokingAgainIs404()
     {
-        var created = await (await _app.CreateInviteAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Builder)).Content.ReadFromJsonAsync<JsonElement>();
+        var created = await (await _app.CreateInviteAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Builder)).Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         var id = created.GetProperty("inviteId").GetString();
 
-        var revoke = await _app.Client(bearer: _owner).DeleteAsync($"/api/identity/invites/{id}");
-        var again = await _app.Client(bearer: _owner).DeleteAsync($"/api/identity/invites/{id}");
+        var revoke = await _app.Client(bearer: _owner).DeleteAsync($"/api/identity/invites/{id}", TestContext.Current.CancellationToken);
+        var again = await _app.Client(bearer: _owner).DeleteAsync($"/api/identity/invites/{id}", TestContext.Current.CancellationToken);
         var accept = await _app.AcceptAsync(IdentityApp.TokenOf(created.GetProperty("link").GetString()!));
 
         Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
@@ -182,7 +182,7 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
         var second = await _app.InviteAsync(_owner, "Builder@Skanyxx.Example", SkanyxxRoles.Builder);
 
         var old = await _app.AcceptAsync(first);
-        var list = await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/invites");
+        var list = await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/invites", cancellationToken: TestContext.Current.CancellationToken);
         var current = await _app.AcceptAsync(second);
 
         Assert.Equal(HttpStatusCode.NotFound, old.StatusCode);
@@ -222,8 +222,8 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
         var token = await _app.InviteAsync(_owner);
 
         await using var db = postgres.CreateDbContext();
-        var row = await db.Database.SqlQuery<string>($"SELECT row_to_json(i)::text AS \"Value\" FROM identity_invites i").SingleAsync();
-        var invite = await db.Invites.SingleAsync();
+        var row = await db.Database.SqlQuery<string>($"SELECT row_to_json(i)::text AS \"Value\" FROM identity_invites i").SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
+        var invite = await db.Invites.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(SHA256.HashData(Encoding.UTF8.GetBytes(token)), invite.TokenHash);
         Assert.DoesNotContain(token[8..], row);
@@ -236,12 +236,12 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
     {
         var ownerId = (await postgres.OwnerAsync()).Id;
         var revokedToken = await _app.InviteAsync(_owner, "someone@skanyxx.example");
-        var invites = await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/invites");
-        await _app.Client(bearer: _owner).DeleteAsync($"/api/identity/invites/{invites[0].GetProperty("id").GetString()}");
+        var invites = await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/invites", cancellationToken: TestContext.Current.CancellationToken);
+        await _app.Client(bearer: _owner).DeleteAsync($"/api/identity/invites/{invites[0].GetProperty("id").GetString()}", TestContext.Current.CancellationToken);
         var token = await _app.InviteAsync(_owner);
         var (member, memberId) = await AcceptedAsync(token);
-        await _app.Client(bearer: _owner).PutAsJsonAsync($"/api/identity/people/{memberId}/roles", new { roles = new[] { "employee" } });
-        await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null);
+        await _app.Client(bearer: _owner).PutAsJsonAsync($"/api/identity/people/{memberId}/roles", new { roles = new[] { "employee" } }, cancellationToken: TestContext.Current.CancellationToken);
+        await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null, TestContext.Current.CancellationToken);
 
         var warnings = _log.Warnings;
         Assert.Contains(warnings, w => w.Contains($"created by {ownerId} from 127.0.0.1"));
@@ -296,10 +296,10 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
     {
         var (member, memberId) = await AcceptedAsync(await _app.InviteAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Supervisor));
 
-        var shared = await _app.Client(bearer: member.AccessToken).GetAsync(IdentityApp.SupervisorProbePath);
-        var refused = await _app.Client(bearer: member.AccessToken).GetAsync("/api/identity/people");
-        var forged = await _app.Client(bearer: member.AccessToken).PutAsJsonAsync("/api/identity/people/x%0D%0Afake-line/roles", new { roles = Array.Empty<string>() });
-        var allowed = await _app.Client(bearer: _owner).GetAsync("/api/identity/people");
+        var shared = await _app.Client(bearer: member.AccessToken).GetAsync(IdentityApp.SupervisorProbePath, TestContext.Current.CancellationToken);
+        var refused = await _app.Client(bearer: member.AccessToken).GetAsync("/api/identity/people", TestContext.Current.CancellationToken);
+        var forged = await _app.Client(bearer: member.AccessToken).PutAsJsonAsync("/api/identity/people/x%0D%0Afake-line/roles", new { roles = Array.Empty<string>() }, cancellationToken: TestContext.Current.CancellationToken);
+        var allowed = await _app.Client(bearer: _owner).GetAsync("/api/identity/people", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, shared.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
@@ -318,15 +318,15 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
         var spent = await _app.InviteAsync(_owner);
         Assert.Equal(HttpStatusCode.Created, (await _app.AcceptAsync(spent)).StatusCode);
         var revoked = await _app.InviteAsync(_owner, "other@skanyxx.example");
-        await _app.Client(bearer: _owner).DeleteAsync($"/api/identity/invites/{(await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/invites"))[0].GetProperty("id").GetString()}");
+        await _app.Client(bearer: _owner).DeleteAsync($"/api/identity/invites/{(await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/invites", cancellationToken: TestContext.Current.CancellationToken))[0].GetProperty("id").GetString()}", TestContext.Current.CancellationToken);
 
         await using var db = postgres.CreateDbContext();
-        await using var transaction = await db.Database.BeginTransactionAsync();
+        await using var transaction = await db.Database.BeginTransactionAsync(TestContext.Current.CancellationToken);
         Assert.True(await AccountLock.TryAcquireAsync(db, IdentityApp.MemberEmail.ToUpperInvariant(), CancellationToken.None));
         Assert.True(await AccountLock.TryAcquireAsync(db, "OTHER@SKANYXX.EXAMPLE", CancellationToken.None));
 
-        var spentAgain = await _app.AcceptAsync(spent).WaitAsync(TimeSpan.FromSeconds(5));
-        var revokedAccept = await _app.AcceptAsync(revoked).WaitAsync(TimeSpan.FromSeconds(5));
+        var spentAgain = await _app.AcceptAsync(spent).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        var revokedAccept = await _app.AcceptAsync(revoked).WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, spentAgain.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, revokedAccept.StatusCode);
@@ -342,11 +342,11 @@ public sealed class InviteTests(PostgresFixture postgres) : IAsyncLifetime
         var token = await _app.InviteAsync(_owner);
 
         var response = await _app.Client().PostAsJsonAsync("/api/identity/invites/accept",
-            new { token, password = IdentityApp.MemberPassword, displayName });
+            new { token, password = IdentityApp.MemberPassword, displayName }, cancellationToken: TestContext.Current.CancellationToken);
         var stillOpen = await _app.LookupInviteAsync(token);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("Display name", await response.Content.ReadAsStringAsync());
+        Assert.Contains("Display name", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.OK, stillOpen.StatusCode);
     }
 

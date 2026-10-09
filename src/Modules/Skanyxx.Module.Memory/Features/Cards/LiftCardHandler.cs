@@ -3,7 +3,9 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Npgsql;
+using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Access;
+using Skanyxx.Module.Memory.Contracts;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Domain;
 
@@ -11,20 +13,23 @@ namespace Skanyxx.Module.Memory.Features.Cards;
 
 internal sealed class LiftCardHandler(
     MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, ClientAddress client, ILogger<LiftCardHandler> logger)
-    : IRequestHandler<LiftCardCommand, Outcome<Card>>
+    : IRequestHandler<LiftCardCommand, Outcome<CardDto>>
 {
-    public async Task<Outcome<Card>> Handle(LiftCardCommand command, CancellationToken ct)
+    public async Task<Outcome<CardDto>> Handle(LiftCardCommand command, CancellationToken ct) =>
+        (await LiftAsync(MemoryCaller.For(command.User), command, ct)).Map(CardMapper.ToDto);
+
+    private async Task<Outcome<Card>> LiftAsync(MemoryCaller caller, LiftCardCommand command, CancellationToken ct)
     {
         var from = Scope.Parse(command.FromScope);
         var to = Scope.Parse(command.ToScope);
-        if (!await access.CanReadAsync(command.Caller, from, ct))
+        if (!await access.CanReadAsync(caller, from, ct))
             return Outcome<Card>.Forbidden($"'{from}' is not readable by this caller.");
-        if (!await access.CanUpsertAsync(command.Caller, to, ct))
+        if (!await access.CanUpsertAsync(caller, to, ct))
             return Outcome<Card>.Forbidden($"Lifting into '{to}' needs write rights there (team or department: a member; company: a supervisor).");
         // Decided before the write and the rate-limit slot, so a failing membership lookup neither turns a committed lift
         // into a 500 nor spends a write slot.
-        var oversight = await IsOversightAsync(command.Caller, from, ct);
-        if (!limiter.TryAcquire(command.Caller.RateLimitKey))
+        var oversight = await IsOversightAsync(caller, from, ct);
+        if (!limiter.TryAcquire(caller.RateLimitKey))
             return Outcome<Card>.RateLimited("Write rate limit reached; try again later.");
 
         var source = await db.Cards.AsNoTracking()
@@ -42,7 +47,7 @@ internal sealed class LiftCardHandler(
             Type = source.Type,
             What = source.What,
             Why = source.Why,
-            Who = command.Caller.Who,
+            Who = caller.Who,
             UpdatedAt = DateTime.UtcNow,
             Status = CardStatus.Published,
             Body = source.Body,
@@ -52,7 +57,7 @@ internal sealed class LiftCardHandler(
 
         // Checked first so the usual conflict is not a failed INSERT, which EF logs at Error; the catch is for a race.
         if (await db.Cards.AnyAsync(c => c.Scope == copy.Scope && c.Key == copy.Key, ct))
-            return await ExistsAsync(command, to, copy.Key, ct);
+            return await ExistsAsync(caller, to, copy.Key, ct);
         db.Cards.Add(copy);
 
         try
@@ -60,20 +65,20 @@ internal sealed class LiftCardHandler(
             await db.SaveChangesAsync(ct);
             if (oversight)
                 logger.LogWarning("Card {Key} lifted from {SourceScope} to {TargetScope} by {ActorUserId} from {RemoteIp}, who is not a member of the source",
-                    command.Key, from, to, command.Caller.UserId, client.Current);
+                    command.Key, from, to, caller.UserId, client.Current);
             return Outcome<Card>.Created(copy);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
             db.ChangeTracker.Clear();
-            return await ExistsAsync(command, to, copy.Key, ct);
+            return await ExistsAsync(caller, to, copy.Key, ct);
         }
     }
 
-    private async Task<Outcome<Card>> ExistsAsync(LiftCardCommand command, Scope to, string key, CancellationToken ct)
+    private async Task<Outcome<Card>> ExistsAsync(MemoryCaller caller, Scope to, string key, CancellationToken ct)
     {
         var scope = to.ToString();
-        var existing = await access.CanReadAsync(command.Caller, to, ct)
+        var existing = await access.CanReadAsync(caller, to, ct)
             ? await db.Cards.AsNoTracking().SingleAsync(c => c.Scope == scope && c.Key == key, ct)
             : null;
         return Outcome<Card>.Conflict(existing, $"'{to}/{key}' already exists; update it instead.");

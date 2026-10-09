@@ -28,7 +28,7 @@ public sealed class EnabledTests : SandboxesTestBase
         });
 
         var response = await app.Client(SandboxesApp.Supervisor)
-            .SendAsync(new HttpRequestMessage(new HttpMethod(method), path) { Content = JsonContent.Create(RunBody()) });
+            .SendAsync(new HttpRequestMessage(new HttpMethod(method), path) { Content = JsonContent.Create(RunBody()) }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         Assert.Empty(Ax.Atespaces);
@@ -36,5 +36,5 @@ public sealed class EnabledTests : SandboxesTestBase
 
     [Fact]
     public async Task Enabled_ServesTheRoutes() =>
-        Assert.Equal(HttpStatusCode.OK, (await App.Client().GetAsync("/api/sandboxes/tasks")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await App.Client().GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken)).StatusCode);
 }

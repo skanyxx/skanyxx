@@ -21,7 +21,7 @@ public sealed class WorkspaceTests : SandboxesTestBase
         });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var saved = (await response.Content.ReadFromJsonAsync<SandboxWorkspace>(SandboxesApp.Json))!;
+        var saved = (await response.Content.ReadFromJsonAsync<SandboxWorkspace>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken))!;
         Assert.False(saved.MemoryAttached);
 
         var sent = Assert.Single(Ax.WorkspaceUpdates).Workspace;
@@ -51,7 +51,7 @@ public sealed class WorkspaceTests : SandboxesTestBase
     {
         await SaveAsync("plain", new { git = Array.Empty<object>() });
 
-        var listed = await App.Client().GetFromJsonAsync<List<SandboxWorkspace>>("/api/sandboxes/workspaces", SandboxesApp.Json);
+        var listed = await App.Client().GetFromJsonAsync<List<SandboxWorkspace>>("/api/sandboxes/workspaces", SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(Assert.Single(listed!).MemoryAttached);
         Assert.Empty(Assert.Single(Ax.WorkspaceUpdates).Workspace.Spec.Mcp.Servers);

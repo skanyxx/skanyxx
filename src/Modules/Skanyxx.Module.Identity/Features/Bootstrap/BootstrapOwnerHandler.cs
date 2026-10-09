@@ -15,7 +15,7 @@ namespace Skanyxx.Module.Identity.Features.Bootstrap;
 /// sees the first owner and gets a conflict. Replicas share the lock through the database.
 /// </summary>
 internal sealed class BootstrapOwnerHandler(
-    AccountsDbContext db, UserManager<IdentityUser> users, BootstrapGuard guard, AccountReader accounts)
+    AccountsDbContext db, UserManager<IdentityUser> users, BootstrapGuard guard, AccountReader accounts, IPublisher publisher)
     : IRequestHandler<BootstrapOwnerCommand, Outcome<AccountDto>>
 {
     private const long BootstrapLockKey = 0x49444E01;
@@ -39,6 +39,8 @@ internal sealed class BootstrapOwnerHandler(
             Require(await users.AddClaimAsync(user, AccountReader.DisplayNameClaim(command.DisplayName.Trim())));
         await transaction.CommitAsync(ct);
 
+        // After the commit: setup is done whatever its followers do (they never throw, OwnerBootstrapped).
+        await publisher.Publish(new OwnerBootstrapped(user.Id), CancellationToken.None);
         return Outcome<AccountDto>.Created(await accounts.ToDtoAsync(user));
     }
 

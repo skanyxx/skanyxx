@@ -1,20 +1,25 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.Routing.Matching;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Endpoints;
 using Skanyxx.Module.Memory.Features;
+using Skanyxx.Module.Memory.Features.Studio;
 using Skanyxx.Module.Memory.Mcp;
 
 namespace Skanyxx.Module.Memory;
@@ -46,6 +51,7 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddScoped<AccessPolicy>();
         services.AddScoped<ClientAddress>();
         services.AddSingleton<UpsertRateLimiter>();
+        services.AddSingleton<IStudioReconcileLock, StudioReconcileLock>();
 
         services.AddHealthChecks().AddNpgSql(
             sp => sp.GetRequiredService<IOptions<MemoryOptions>>().Value.ConnectionSettings().ConnectionString,
@@ -58,6 +64,9 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
             .WithTools<MemoryTools>();
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<MatcherPolicy, McpPortMatcherPolicy>());
+        services.AddTransient<IStartupFilter, McpPortOnlyFilter>();
+        services.AddHostedService<McpPortListenerCheck>();
     }
 
     /// <summary>Fails startup rather than every card request when nothing answers who is in which team.</summary>
@@ -68,12 +77,19 @@ public sealed class MemoryModule : IModule, IEndpointModule
 
     // kagent has no signed-in user, so the MCP route does not use the Host's user schemes: it requires an agent secret
     // (D080) and nothing else, and the agent is whoever owns that secret. The 401 comes from authorization, before MCP
-    // parses anything. CORS stays off (no web page should drive it) and the body is capped.
+    // parses anything. CORS stays off (no web page should drive it) and the body is capped. With Memory:McpPort set, the
+    // route exists on that port only, so whatever publishes the main port (an ingress) cannot publish /mcp with it, and
+    // the port serves nothing else (McpPortOnlyFilter).
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
         var mcp = endpoints.MapGroup(McpPath)
             .RequireAuthorization(p => p.AddAuthenticationSchemes(AgentSecretAuthentication.SchemeName).RequireAuthenticatedUser())
             .WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MemoryGroup.MaxBodyBytes));
+        // Read raw: resolving IOptions here would validate MemoryOptions while mapping, before ValidateOnStart reports it.
+        var port = endpoints.ServiceProvider.GetRequiredService<IConfiguration>()
+            .GetValue<int?>($"{MemoryOptions.Section}:{nameof(MemoryOptions.McpPort)}");
+        if (port is not null)
+            mcp.WithMetadata(new McpPortMetadata(port.Value));
         mcp.MapMcp();
         // Stateless MCP maps POST only. Clients (kagent's go-sdk) still open the standalone SSE stream (GET) and end the
         // session (DELETE); unmapped, any other verb falls to the framework's 405 endpoint, which has no authorization

@@ -1,15 +1,29 @@
+using System.Net;
+using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Skanyxx.Core.Models;
 
 namespace Skanyxx.Core.Services;
 
+/// <summary>
+/// kagent's controller API. Every call has its own deadline (the HttpClient has none): control calls
+/// <see cref="KAgentConfig.ControlTimeoutSeconds"/>, a chat turn <see cref="KAgentConfig.ChatTimeoutSeconds"/>; a missed
+/// deadline is a <see cref="TimeoutException"/>. kagent refusing or answering garbage is an
+/// <see cref="HttpRequestException"/> with a fixed message (and the status, when there is one); kagent's own text goes to
+/// the log only. No call is ever retried (see <c>AddKAgentHttpClient</c>).
+/// </summary>
 public class KAgentApiClient
 {
+    public const string HttpClientName = "kagent";
+
     private readonly HttpClient _httpClient;
     private readonly KAgentConfig _config;
     private readonly ILogger<KAgentApiClient> _logger;
     private readonly string _userId;
+    private readonly TimeSpan _controlTimeout;
+    private readonly TimeSpan _chatTimeout;
 
     public KAgentApiClient(HttpClient httpClient, IConfiguration configuration, ILogger<KAgentApiClient> logger)
     {
@@ -19,9 +33,10 @@ public class KAgentApiClient
 
         _config = new KAgentConfig();
         configuration.GetSection("KAgent").Bind(_config);
+        _controlTimeout = TimeSpan.FromSeconds(_config.ControlTimeoutSeconds);
+        _chatTimeout = TimeSpan.FromSeconds(_config.ChatTimeoutSeconds);
 
         _httpClient.BaseAddress = new Uri(_config.GetFullUrl());
-        _httpClient.Timeout = TimeSpan.FromMilliseconds(_config.Timeout);
 
         if (!string.IsNullOrEmpty(_config.Token))
         {
@@ -30,12 +45,33 @@ public class KAgentApiClient
         }
     }
 
-    private async Task<T> RequestAsync<T>(string endpoint, HttpMethod method, object? body = null)
-    {
-        var url = $"{endpoint}?user_id={_userId}";
+    /// <summary>The ModelConfig the model step edits, <c>namespace/name</c> (<c>KAgent:ModelConfig</c>).</summary>
+    public string ModelConfigRef => _config.ModelConfig;
 
-        var request = new HttpRequestMessage(method, url);
-        request.Headers.Add("X-User-ID", _userId);
+    // kagent (auth mode unsecure) takes the user from ?user_id=, else X-User-Id. Without a userId, every call is this
+    // process's own anonymous user (the legacy console pages); Chat passes the signed-in person (D5).
+    private string WithUser(string endpoint, string? userId) =>
+        $"{endpoint}{(endpoint.Contains('?') ? '&' : '?')}user_id={Uri.EscapeDataString(userId ?? _userId)}";
+
+    /// <summary>Sends with a deadline of its own; the body is buffered before the deadline ends.</summary>
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, TimeSpan timeout, CancellationToken ct)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(timeout);
+        try
+        {
+            return await _httpClient.SendAsync(request, deadline.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"kagent did not answer within {timeout.TotalSeconds:0} s.");
+        }
+    }
+
+    private async Task<T> RequestAsync<T>(string endpoint, HttpMethod method, object? body = null, string? userId = null, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(method, WithUser(endpoint, userId));
+        request.Headers.Add("X-User-ID", userId ?? _userId);
 
         if (body != null)
         {
@@ -46,33 +82,30 @@ public class KAgentApiClient
             );
         }
 
+        using var response = await SendAsync(request, _controlTimeout, ct);
+        var content = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            // Warning, not Error: a 404 is routine (another person's conversation is "not found" to this one).
+            _logger.LogWarning("kagent {Method} {Endpoint} answered {StatusCode}: {Content}", method, endpoint, (int)response.StatusCode, Cut(content));
+            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
+        }
+
+        var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
         try
         {
-            var response = await _httpClient.SendAsync(request);
-            var content = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("KAgent API error: {StatusCode} - {Content}", response.StatusCode, content);
-                throw new HttpRequestException($"KAgent API error: {response.StatusCode}");
-            }
-
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
             // KAgent wraps responses in {"error": false, "data": [...], "message": "..."}
-            // Try to parse as wrapped response first
             try
             {
                 var wrappedResponse = JsonSerializer.Deserialize<KAgentResponse<T>>(content, options);
                 if (wrappedResponse != null && !wrappedResponse.Error && wrappedResponse.Data != null)
-                {
                     return wrappedResponse.Data;
-                }
 
-                // If wrapped but error=true, throw
                 if (wrappedResponse?.Error == true)
                 {
-                    throw new HttpRequestException($"KAgent API error: {wrappedResponse.Message}");
+                    _logger.LogWarning("kagent {Method} {Endpoint} refused: {Message}", method, endpoint, Cut(wrappedResponse.Message ?? ""));
+                    throw new HttpRequestException("kagent refused the request", null, response.StatusCode);
                 }
             }
             catch (JsonException)
@@ -80,53 +113,55 @@ public class KAgentApiClient
                 // Not a wrapped response, try direct deserialization
             }
 
-            // Fallback to direct deserialization for non-wrapped responses
             return JsonSerializer.Deserialize<T>(content, options)!;
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
-            _logger.LogError(ex, "Failed to call KAgent API: {Endpoint}", endpoint);
-            throw;
+            _logger.LogWarning(ex, "kagent {Method} {Endpoint} answered in an unexpected shape", method, endpoint);
+            throw new HttpRequestException("kagent answered in an unexpected shape", ex, HttpStatusCode.BadGateway);
         }
     }
 
-    public async Task<List<Agent>> GetAgentsAsync()
+    /// <summary>Every agent kagent lists. kagent failing (non-2xx, garbage) throws; it is never "no agents".</summary>
+    public async Task<List<Agent>> GetAgentsAsync(CancellationToken ct = default)
     {
+        using var request = new HttpRequestMessage(HttpMethod.Get, WithUser("/api/agents", null));
+        using var response = await SendAsync(request, _controlTimeout, ct);
+        var content = await response.Content.ReadAsStringAsync(ct);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("kagent GET /api/agents answered {StatusCode}: {Content}", (int)response.StatusCode, Cut(content));
+            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
+        }
+
+        JsonDocument doc;
         try
         {
-            var url = $"/api/agents?user_id={_userId}";
-            var response = await _httpClient.GetAsync(url);
-            var content = await response.Content.ReadAsStringAsync();
+            doc = JsonDocument.Parse(content);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "kagent GET /api/agents answered invalid JSON");
+            throw new HttpRequestException("kagent answered in an unexpected shape", ex, HttpStatusCode.BadGateway);
+        }
 
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogError("Failed to get agents: {StatusCode} - {Content}", response.StatusCode, content);
-                return new List<Agent>();
-            }
-
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-
-            // KAgent API returns nested structure: { data: [{ agent: { metadata, spec, status }, deploymentReady }] }
-            using var doc = JsonDocument.Parse(content);
+        using (doc)
+        {
             var root = doc.RootElement;
 
+            // KAgent API returns nested structure: { data: [{ agent: { metadata, spec, status }, deploymentReady }] }
             List<JsonElement> agentsArray = new();
-
-            // Handle different response formats
-            if (root.TryGetProperty("data", out var dataElement) && dataElement.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in dataElement.EnumerateArray())
-                    agentsArray.Add(item);
-            }
-            else if (root.TryGetProperty("items", out var itemsElement) && itemsElement.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var item in itemsElement.EnumerateArray())
-                    agentsArray.Add(item);
-            }
+            if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("data", out var dataElement) && dataElement.ValueKind == JsonValueKind.Array)
+                agentsArray.AddRange(dataElement.EnumerateArray());
+            else if (root.ValueKind == JsonValueKind.Object && root.TryGetProperty("items", out var itemsElement) && itemsElement.ValueKind == JsonValueKind.Array)
+                agentsArray.AddRange(itemsElement.EnumerateArray());
             else if (root.ValueKind == JsonValueKind.Array)
+                agentsArray.AddRange(root.EnumerateArray());
+            else
             {
-                foreach (var item in root.EnumerateArray())
-                    agentsArray.Add(item);
+                _logger.LogWarning("kagent GET /api/agents answered without an agent list");
+                throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
             }
 
             var agents = new List<Agent>();
@@ -134,75 +169,61 @@ public class KAgentApiClient
             {
                 try
                 {
-                    // KAgent nests agent data in "agent" property
-                    var agentData = item.TryGetProperty("agent", out var agentProp) ? agentProp : item;
-                    var metadata = agentData.TryGetProperty("metadata", out var metaProp) ? metaProp : agentData;
-                    var spec = agentData.TryGetProperty("spec", out var specProp) ? specProp : agentData;
-                    var status = agentData.TryGetProperty("status", out var statusProp) ? statusProp : agentData;
-
-                    var name = GetStringProperty(metadata, "name") ?? GetStringProperty(agentData, "name") ?? "unknown";
-                    var ns = GetStringProperty(metadata, "namespace") ?? "kagent";
-
-                    // Check deployment ready status
-                    var isReady = item.TryGetProperty("deploymentReady", out var readyProp) && readyProp.GetBoolean();
-
-                    // Also check status conditions
-                    if (!isReady && status.TryGetProperty("conditions", out var conditions))
-                    {
-                        foreach (var cond in conditions.EnumerateArray())
-                        {
-                            if (GetStringProperty(cond, "type") == "Ready" && GetStringProperty(cond, "status") == "True")
-                            {
-                                isReady = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    // Check accepted status from conditions
-                    var isAccepted = false;
-                    if (status.TryGetProperty("conditions", out var acceptConds))
-                    {
-                        foreach (var cond in acceptConds.EnumerateArray())
-                        {
-                            if (GetStringProperty(cond, "type") == "Accepted" && GetStringProperty(cond, "status") == "True")
-                            {
-                                isAccepted = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    agents.Add(new Agent
-                    {
-                        Id = GetStringProperty(agentData, "id") ?? name,
-                        Name = name,
-                        Namespace = ns,
-                        Type = GetStringProperty(spec, "type") ?? "Declarative",
-                        Description = GetStringProperty(spec, "description") ?? "",
-                        Status = isReady ? "Active" : "Inactive",
-                        Ready = isReady,
-                        Accepted = isAccepted
-                    });
+                    agents.Add(ParseAgent(item));
                 }
-                catch (Exception ex)
+                catch (InvalidOperationException ex)
                 {
                     _logger.LogWarning(ex, "Failed to parse agent");
                 }
             }
-
             return agents;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get agents from KAgent API");
-            throw;
         }
     }
 
+    private static Agent ParseAgent(JsonElement item)
+    {
+        // KAgent nests agent data in "agent" property
+        var agentData = item.TryGetProperty("agent", out var agentProp) ? agentProp : item;
+        var metadata = agentData.TryGetProperty("metadata", out var metaProp) ? metaProp : agentData;
+        var spec = agentData.TryGetProperty("spec", out var specProp) ? specProp : agentData;
+        var status = agentData.TryGetProperty("status", out var statusProp) ? statusProp : agentData;
+
+        var name = GetStringProperty(metadata, "name") ?? GetStringProperty(agentData, "name") ?? "unknown";
+        var ns = GetStringProperty(metadata, "namespace") ?? "kagent";
+
+        var isReady = item.TryGetProperty("deploymentReady", out var readyProp) && readyProp.ValueKind == JsonValueKind.True
+            || HasCondition(status, "Ready");
+        var isAccepted = HasCondition(status, "Accepted");
+
+        var labels = new Dictionary<string, string>();
+        if (metadata.TryGetProperty("labels", out var labelsProp) && labelsProp.ValueKind == JsonValueKind.Object)
+            foreach (var label in labelsProp.EnumerateObject())
+                if (label.Value.ValueKind == JsonValueKind.String)
+                    labels[label.Name] = label.Value.GetString()!;
+
+        return new Agent
+        {
+            Id = GetStringProperty(agentData, "id") ?? name,
+            Name = name,
+            Namespace = ns,
+            Type = GetStringProperty(spec, "type") ?? "Declarative",
+            Description = GetStringProperty(spec, "description") ?? "",
+            Status = isReady ? "Active" : "Inactive",
+            Ready = isReady,
+            Accepted = isAccepted,
+            Labels = labels
+        };
+    }
+
+    private static bool HasCondition(JsonElement status, string type) =>
+        status.ValueKind == JsonValueKind.Object
+        && status.TryGetProperty("conditions", out var conditions)
+        && conditions.ValueKind == JsonValueKind.Array
+        && conditions.EnumerateArray().Any(c => GetStringProperty(c, "type") == type && GetStringProperty(c, "status") == "True");
+
     private static string? GetStringProperty(JsonElement element, string propertyName)
     {
-        if (element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String)
+        if (element.ValueKind == JsonValueKind.Object && element.TryGetProperty(propertyName, out var prop) && prop.ValueKind == JsonValueKind.String)
             return prop.GetString();
         return null;
     }
@@ -212,178 +233,286 @@ public class KAgentApiClient
         return await RequestAsync<Agent?>($"/api/agents/{agentId}", HttpMethod.Get);
     }
 
-    public async Task<KAgentSession> CreateSessionAsync(string agentName)
+    public async Task<KAgentSession> CreateSessionAsync(string agentName, string? userId = null, CancellationToken ct = default)
     {
         // KAgent expects agent_ref in format "namespace/agent-name"
         var agentRef = agentName.Contains("/") ? agentName : $"kagent/{agentName}";
         return await RequestAsync<KAgentSession>("/api/sessions", HttpMethod.Post, new
         {
-            user_id = _userId,
+            user_id = userId ?? _userId,
             agent_ref = agentRef
-        });
+        }, userId, ct);
     }
 
-    public async Task<List<KAgentSession>> GetSessionsAsync()
+    /// <summary><paramref name="userId"/>'s sessions (kagent lists per user); null = this process's own user.</summary>
+    public async Task<List<KAgentSession>> GetSessionsAsync(string? userId = null)
     {
-        return await RequestAsync<List<KAgentSession>>("/api/sessions", HttpMethod.Get);
+        return await RequestAsync<List<KAgentSession>>("/api/sessions", HttpMethod.Get, null, userId);
     }
 
-    public async Task<KAgentSession?> GetSessionAsync(string sessionId)
-    {
-        return await RequestAsync<KAgentSession?>($"/api/sessions/{sessionId}", HttpMethod.Get);
-    }
-
-    public async Task DeleteSessionAsync(string sessionId)
-    {
-        await RequestAsync<object>($"/api/sessions/{sessionId}", HttpMethod.Delete);
-    }
-
-    public async Task<ChatResponse> SendMessageAsync(string sessionId, string message)
+    /// <summary>The session if it belongs to <paramref name="userId"/> (kagent looks it up by id and user), else null.</summary>
+    public async Task<KAgentSession?> GetSessionAsync(string sessionId, string? userId = null, CancellationToken ct = default)
     {
         try
         {
-            // First get the session to find agent info
-            var session = await GetSessionAsync(sessionId);
-            if (session == null)
-            {
-                throw new HttpRequestException("Session not found");
-            }
+            var response = await RequestAsync<SessionWithEventsResponse>($"/api/sessions/{Uri.EscapeDataString(sessionId)}", HttpMethod.Get, null, userId, ct);
+            return response.Session;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
 
-            // Extract agent namespace and name from agent_id
-            var agentNamespace = "kagent";
-            var agentName = "k8s-agent";
+    public async Task DeleteSessionAsync(string sessionId, string? userId = null, CancellationToken ct = default)
+    {
+        await RequestAsync<object>($"/api/sessions/{Uri.EscapeDataString(sessionId)}", HttpMethod.Delete, null, userId, ct);
+    }
 
-            if (!string.IsNullOrEmpty(session.AgentId))
-            {
-                var parts = session.AgentId.Split("__NS__");
-                if (parts.Length == 2)
-                {
-                    agentNamespace = parts[0];
-                    agentName = parts[1].Replace("_", "-");
-                }
-                else
-                {
-                    agentName = session.AgentId.Replace("_", "-");
-                }
-            }
-
-            // Use A2A protocol
-            var a2aUrl = $"{_config.GetFullUrl()}/api/a2a/{agentNamespace}/{agentName}/";
-
-            var a2aRequest = new
+    /// <summary>
+    /// One blocking A2A <c>message/send</c> to <c>{kagent}/api/a2a/{ns}/{name}/</c> in the session
+    /// <paramref name="sessionId"/> (its <c>contextId</c>), as <paramref name="userId"/>: kagent forwards that user to the
+    /// agent as <c>X-User-Id</c>, which the seed passes on to the memory MCP (D084). The answer is the completed task's
+    /// last artifact (reasoning parts skipped). Bounded by <see cref="KAgentConfig.ChatTimeoutSeconds"/>.
+    /// </summary>
+    public async Task<ChatResponse> SendMessageAsync(
+        string agentNamespace, string agentName, string sessionId, string message, string userId, CancellationToken ct = default)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            WithUser($"/api/a2a/{Uri.EscapeDataString(agentNamespace)}/{Uri.EscapeDataString(agentName)}/", userId))
+        {
+            Content = new StringContent(JsonSerializer.Serialize(new
             {
                 jsonrpc = "2.0",
-                method = "message/stream",
+                id = Guid.NewGuid().ToString(),
+                method = "message/send",
                 @params = new
                 {
                     message = new
                     {
                         kind = "message",
-                        messageId = $"msg-{DateTime.UtcNow.Ticks}",
+                        messageId = Guid.NewGuid().ToString(),
                         role = "user",
                         parts = new[] { new { kind = "text", text = message } },
                         contextId = sessionId
-                    }
-                },
-                id = $"req-{DateTime.UtcNow.Ticks}"
-            };
-
-            var requestContent = new StringContent(
-                JsonSerializer.Serialize(a2aRequest),
-                Encoding.UTF8,
-                "application/json"
-            );
-
-            var request = new HttpRequestMessage(HttpMethod.Post, a2aUrl);
-            request.Content = requestContent;
-            request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("text/event-stream"));
-
-            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                throw new HttpRequestException($"A2A request failed: {response.StatusCode} - {errorContent}");
-            }
-
-            // Read SSE stream
-            var responseContent = await response.Content.ReadAsStringAsync();
-            var lastMessage = "";
-
-            // Parse SSE events
-            var lines = responseContent.Split('\n');
-            foreach (var line in lines)
-            {
-                if (line.StartsWith("data: "))
-                {
-                    var dataString = line.Substring(6);
-                    if (dataString == "[DONE]") break;
-
-                    try
-                    {
-                        using var doc = JsonDocument.Parse(dataString);
-                        var root = doc.RootElement;
-
-                        // Look for result.status.message
-                        if (root.TryGetProperty("result", out var result) &&
-                            result.TryGetProperty("status", out var status) &&
-                            status.TryGetProperty("message", out var msg))
-                        {
-                            if (msg.TryGetProperty("role", out var role) && role.GetString() == "agent" &&
-                                msg.TryGetProperty("parts", out var parts) && parts.GetArrayLength() > 0)
-                            {
-                                if (parts[0].TryGetProperty("text", out var textProp))
-                                {
-                                    lastMessage = textProp.GetString() ?? "";
-                                }
-                            }
-                        }
-                    }
-                    catch (JsonException)
-                    {
-                        // Skip invalid JSON
-                    }
+                    },
+                    configuration = new { blocking = true }
                 }
-            }
+            }), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("A2A-Version", "0.3");
+        request.Headers.Add("X-User-Id", userId);
 
-            if (!string.IsNullOrEmpty(lastMessage))
-            {
-                return new ChatResponse
-                {
-                    ConversationId = sessionId,
-                    Message = new ChatMessage
-                    {
-                        Content = lastMessage,
-                        Role = "assistant",
-                        Timestamp = DateTime.UtcNow
-                    }
-                };
-            }
-
-            throw new HttpRequestException("No response from agent");
-        }
-        catch (Exception ex)
+        using var response = await SendAsync(request, _chatTimeout, ct);
+        if (!response.IsSuccessStatusCode)
         {
-            _logger.LogError(ex, "A2A message failed for session {SessionId}", sessionId);
-            throw;
+            _logger.LogWarning("kagent A2A {Namespace}/{Agent} answered {StatusCode}: {Content}",
+                agentNamespace, agentName, (int)response.StatusCode, Cut(await response.Content.ReadAsStringAsync(ct)));
+            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
+        }
+
+        string answer;
+        try
+        {
+            answer = Answer(await response.Content.ReadFromJsonAsync<JsonNode>(ct));
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+        {
+            // Invalid JSON, or JSON of another shape (an indexer or GetValue on the wrong node kind).
+            _logger.LogWarning(ex, "kagent A2A {Namespace}/{Agent} answered in an unexpected shape", agentNamespace, agentName);
+            throw new HttpRequestException("kagent answered in an unexpected shape", ex, HttpStatusCode.BadGateway);
+        }
+
+        return new ChatResponse
+        {
+            ConversationId = sessionId,
+            Message = new ChatMessage { Content = answer, Role = "assistant", SessionId = sessionId, Timestamp = DateTime.UtcNow }
+        };
+    }
+
+    private string Answer(JsonNode? body)
+    {
+        if (body?["error"] is { } error)
+        {
+            _logger.LogWarning("kagent JSON-RPC error: {Error}", Cut(error.ToJsonString()));
+            throw new HttpRequestException("kagent refused the message");
+        }
+        var result = body?["result"] ?? throw new HttpRequestException("kagent answered without a result");
+        string answer;
+        if (result["kind"]?.GetValue<string>() == "message")
+            answer = Text(result["parts"]);
+        else
+        {
+            var state = result["status"]?["state"]?.GetValue<string>();
+            if (state != "completed")
+            {
+                _logger.LogWarning("kagent task ended {State}: {Detail}", Cut(state ?? "?"), Cut(Text(result["status"]?["message"]?["parts"])));
+                throw new HttpRequestException("the agent did not complete the answer");
+            }
+            var artifacts = result["artifacts"]?.AsArray();
+            answer = artifacts is { Count: > 0 } ? Text(artifacts[^1]!["parts"]) : "";
+            if (answer.Length == 0)
+                answer = Text(result["status"]?["message"]?["parts"]);
+        }
+        if (answer.Trim().Length == 0)
+            throw new HttpRequestException("the agent answered with no text");
+        return answer;
+    }
+
+    // kagent's Go runtime marks reasoning parts adk_thought, its Python runtime kagent_thought.
+    private static string Text(JsonNode? parts) =>
+        parts is not JsonArray array
+            ? ""
+            : string.Concat(array
+                .Where(p => p?["kind"]?.GetValue<string>() == "text"
+                    && !(p["metadata"] is JsonObject m && (m["adk_thought"]?.GetValue<bool>() == true || m["kagent_thought"]?.GetValue<bool>() == true)))
+                .Select(p => p!["text"]?.GetValue<string>() ?? ""));
+
+    private static string Cut(string text) => text.Length <= 1_000 ? text : text[..1_000];
+
+    /// <summary>The ModelConfig <see cref="ModelConfigRef"/> as kagent returns it (<c>{ref, spec, status}</c>), or null when absent.</summary>
+    public async Task<JsonObject?> GetModelConfigAsync(CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, WithUser($"/api/modelconfigs/{_config.ModelConfig}", null));
+        using var response = await SendAsync(request, _controlTimeout, ct);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        return await ModelConfigDataAsync(response, ct);
+    }
+
+    /// <summary>
+    /// Creates (<paramref name="create"/>) or replaces the spec of <see cref="ModelConfigRef"/>. A non-empty
+    /// <paramref name="apiKey"/> goes inline: kagent writes it into a Secret named like the ModelConfig and points the spec
+    /// at it (only when the spec names no secret). The key is never logged and never comes back.
+    /// </summary>
+    public async Task<JsonObject> SaveModelConfigAsync(bool create, JsonObject spec, string? apiKey, CancellationToken ct)
+    {
+        var body = new JsonObject { ["spec"] = spec.DeepClone() };
+        if (create)
+            body["ref"] = _config.ModelConfig;
+        if (!string.IsNullOrEmpty(apiKey))
+            body["apiKey"] = apiKey;
+        using var request = new HttpRequestMessage(create ? HttpMethod.Post : HttpMethod.Put,
+            WithUser(create ? "/api/modelconfigs" : $"/api/modelconfigs/{_config.ModelConfig}", null))
+        {
+            Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json")
+        };
+        using var response = await SendAsync(request, _controlTimeout, ct);
+        return await ModelConfigDataAsync(response, ct);
+    }
+
+    private static async Task<JsonObject> ModelConfigDataAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        JsonNode? body = null;
+        try
+        {
+            body = await response.Content.ReadFromJsonAsync<JsonNode>(ct);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+        }
+        var envelope = body as JsonObject;
+        if (!response.IsSuccessStatusCode)
+        {
+            // kagent's message names what failed (never the key: the request's key goes into a Secret, not the spec).
+            // Owner-only path, so the text is shown to the owner.
+            var detail = envelope?["message"] is JsonValue m && m.TryGetValue<string>(out var text) ? $": {Cut(text)}" : "";
+            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}{detail}", null, response.StatusCode);
+        }
+        return envelope?["data"] as JsonObject
+            ?? throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
+    }
+
+    /// <summary>The Agent CR <c>{apiVersion, kind, metadata, spec, status}</c>, or null when kagent has none by that name.</summary>
+    public async Task<JsonObject?> GetAgentObjectAsync(string ns, string name, CancellationToken ct)
+    {
+        var data = await ControlAsync(HttpMethod.Get, $"/api/agents/{Uri.EscapeDataString(ns)}/{Uri.EscapeDataString(name)}", null, ct, notFoundIsNull: true);
+        return data is null ? null : data["agent"] as JsonObject
+            ?? throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
+    }
+
+    /// <summary>Creates the Agent CR as given, labels included (kagent keeps them; an update never changes them).</summary>
+    public Task CreateAgentAsync(JsonObject agent, CancellationToken ct) => ControlAsync(HttpMethod.Post, "/api/agents", agent, ct);
+
+    /// <summary>Replaces the Agent's spec; kagent ignores the body's metadata except its name and namespace.</summary>
+    public Task UpdateAgentAsync(JsonObject agent, CancellationToken ct) => ControlAsync(HttpMethod.Put, "/api/agents", agent, ct);
+
+    /// <returns>False when kagent had no such agent.</returns>
+    public async Task<bool> DeleteAgentAsync(string ns, string name, CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Delete, $"/api/agents/{Uri.EscapeDataString(ns)}/{Uri.EscapeDataString(name)}", null, ct, notFoundIsNull: true) is not null;
+
+    /// <summary>kagent's tool servers: <c>[{ref: "ns/name", groupKind, discoveredTools: [{name, description}]}]</c>.</summary>
+    public async Task<JsonArray> GetToolServerListAsync(CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Get, "/api/toolservers", null, ct) as JsonArray
+        ?? throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
+
+    /// <summary>
+    /// Creates a RemoteMCPServer and, owned by it, one Opaque Secret per entry of <paramref name="secrets"/> (kagent's
+    /// companion Secrets: garbage-collected with the server). The values are never logged.
+    /// </summary>
+    public Task CreateRemoteMcpServerAsync(JsonObject server, IReadOnlyList<(string Name, string Key, string Value)> secrets, CancellationToken ct) =>
+        ControlAsync(HttpMethod.Post, "/api/toolservers", new JsonObject
+        {
+            ["type"] = "RemoteMCPServer",
+            ["remoteMCPServer"] = server.DeepClone(),
+            ["secrets"] = new JsonArray([.. secrets.Select(s => (JsonNode)new JsonObject { ["name"] = s.Name, ["key"] = s.Key, ["value"] = s.Value })])
+        }, ct);
+
+    /// <returns>False when kagent had no such tool server (kagent looks it up in its database, so one it never reconciled is absent too).</returns>
+    public async Task<bool> DeleteRemoteMcpServerAsync(string ns, string name, CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Delete, $"/api/toolservers/{Uri.EscapeDataString(ns)}/{Uri.EscapeDataString(name)}", null, ct, notFoundIsNull: true) is not null;
+
+    /// <summary>The refs (<c>namespace/name</c>) of every ModelConfig kagent has.</summary>
+    public async Task<IReadOnlyList<string>> GetModelConfigRefsAsync(CancellationToken ct) =>
+        (await ControlAsync(HttpMethod.Get, "/api/modelconfigs", null, ct) as JsonArray ?? [])
+        .Select(m => m?["ref"] is JsonValue r && r.TryGetValue<string>(out var s) ? s : null)
+        .OfType<string>().ToList();
+
+    /// <summary>
+    /// A control call as this process (no person): the envelope's <c>data</c> (an empty object when there is none), or
+    /// null for a 404 when <paramref name="notFoundIsNull"/>. Bodies may carry secrets (a tool server's companion Secret):
+    /// kagent's answer is logged, the request never.
+    /// </summary>
+    private async Task<JsonNode?> ControlAsync(HttpMethod method, string endpoint, JsonObject? body, CancellationToken ct, bool notFoundIsNull = false)
+    {
+        using var request = new HttpRequestMessage(method, WithUser(endpoint, null));
+        if (body is not null)
+            request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+        using var response = await SendAsync(request, _controlTimeout, ct);
+        var content = await response.Content.ReadAsStringAsync(ct);
+        if (notFoundIsNull && response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("kagent {Method} {Endpoint} answered {StatusCode}: {Content}", method, endpoint, (int)response.StatusCode, Cut(content));
+            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
+        }
+        try
+        {
+            return JsonNode.Parse(content) is JsonObject envelope ? envelope["data"]?.DeepClone() ?? new JsonObject() : new JsonObject();
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "kagent {Method} {Endpoint} answered invalid JSON", method, endpoint);
+            throw new HttpRequestException("kagent answered in an unexpected shape", ex, HttpStatusCode.BadGateway);
         }
     }
 
-    public async Task<List<ChatMessage>> GetSessionMessagesAsync(string sessionId)
+    public async Task<List<ChatMessage>> GetSessionMessagesAsync(string sessionId, string? userId = null)
     {
-        return await RequestAsync<List<ChatMessage>>($"/api/sessions/{sessionId}/messages", HttpMethod.Get);
+        return await RequestAsync<List<ChatMessage>>($"/api/sessions/{Uri.EscapeDataString(sessionId)}/messages", HttpMethod.Get, null, userId);
     }
 
-    public async Task<List<KAgentEvent>> GetSessionEventsAsync(string sessionId, int? limit = null)
+    public async Task<List<KAgentEvent>> GetSessionEventsAsync(string sessionId, int? limit = null, string? userId = null)
     {
         try
         {
-            var url = $"/api/sessions/{sessionId}";
+            var url = $"/api/sessions/{Uri.EscapeDataString(sessionId)}";
             if (limit.HasValue)
             {
                 url += $"?limit={limit}";
             }
-            var response = await RequestAsync<SessionWithEventsResponse>(url, HttpMethod.Get);
+            var response = await RequestAsync<SessionWithEventsResponse>(url, HttpMethod.Get, null, userId);
             return response?.Events ?? new List<KAgentEvent>();
         }
         catch (Exception ex)

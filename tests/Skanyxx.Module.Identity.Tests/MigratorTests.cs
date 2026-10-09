@@ -15,16 +15,16 @@ public sealed class MigratorTests(PostgresFixture postgres)
     public async Task Startup_WaitsWhileAnotherReplicaHoldsTheMigrationLock()
     {
         await using var replica = new NpgsqlConnection(postgres.ConnectionString);
-        await replica.OpenAsync();
+        await replica.OpenAsync(TestContext.Current.CancellationToken);
         await ExecuteAsync(replica, $"SELECT pg_advisory_lock({IdentityMigrator.MigrateLockKey})");
         await using var app = IdentityApp.Build(new Dictionary<string, string?> { ["ConnectionStrings:Identity"] = postgres.ConnectionString });
 
-        var start = app.StartAsync();
-        await Task.Delay(TimeSpan.FromSeconds(1.5));
+        var start = app.StartAsync(TestContext.Current.CancellationToken);
+        await Task.Delay(TimeSpan.FromSeconds(1.5), TestContext.Current.CancellationToken);
         var waited = !start.IsCompleted;
         await ExecuteAsync(replica, $"SELECT pg_advisory_unlock({IdentityMigrator.MigrateLockKey})");
-        await start.WaitAsync(TimeSpan.FromSeconds(30));
-        await app.StopAsync();
+        await start.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        await app.StopAsync(TestContext.Current.CancellationToken);
 
         Assert.True(waited);
     }
@@ -39,17 +39,17 @@ public sealed class MigratorTests(PostgresFixture postgres)
         var connectionString = await postgres.NewDatabaseAsync();
         var database = new NpgsqlConnectionStringBuilder(connectionString).Database!;
         await using var admin = new NpgsqlConnection(postgres.ConnectionString);
-        await admin.OpenAsync();
+        await admin.OpenAsync(TestContext.Current.CancellationToken);
         await using var replica = new NpgsqlConnection(connectionString);
-        await replica.OpenAsync();
+        await replica.OpenAsync(TestContext.Current.CancellationToken);
         await ExecuteAsync(replica, $"SELECT pg_advisory_lock({IdentityMigrator.MigrateLockKey})");
         await using var app = IdentityApp.Build(new Dictionary<string, string?> { ["ConnectionStrings:Identity"] = connectionString });
 
-        var start = app.StartAsync();
+        var start = app.StartAsync(TestContext.Current.CancellationToken);
         var waiting = await WaitForLockWaiterAsync(admin, database);
         await ExecuteAsync(admin, $"ALTER DATABASE {database} ALLOW_CONNECTIONS false");
         await ExecuteAsync(admin, $"SELECT pg_terminate_backend({waiting})");
-        var error = await Record.ExceptionAsync(() => start.WaitAsync(TimeSpan.FromSeconds(30)));
+        var error = await Record.ExceptionAsync(() => start.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken));
         await ExecuteAsync(admin, $"ALTER DATABASE {database} ALLOW_CONNECTIONS true");
 
         Assert.Equal(PostgresErrorCodes.AdminShutdown, Assert.IsType<PostgresException>(error).SqlState);
@@ -60,7 +60,7 @@ public sealed class MigratorTests(PostgresFixture postgres)
     {
         await using var db = postgres.CreateDbContext();
 
-        var roles = await db.Roles.Select(r => r.Name).OrderBy(n => n).ToListAsync();
+        var roles = await db.Roles.Select(r => r.Name).OrderBy(n => n).ToListAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(new[] { SkanyxxRoles.Builder, SkanyxxRoles.Employee, SkanyxxRoles.Owner, SkanyxxRoles.Supervisor }, roles);
     }
@@ -69,12 +69,12 @@ public sealed class MigratorTests(PostgresFixture postgres)
     public async Task OwnHistoryTable_AndPrefixedTables()
     {
         await using var connection = new NpgsqlConnection(postgres.ConnectionString);
-        await connection.OpenAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
         await using var command = new NpgsqlCommand(
             "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name", connection);
         var tables = new List<string>();
-        await using (var reader = await command.ExecuteReaderAsync())
-            while (await reader.ReadAsync())
+        await using (var reader = await command.ExecuteReaderAsync(TestContext.Current.CancellationToken))
+            while (await reader.ReadAsync(TestContext.Current.CancellationToken))
                 tables.Add(reader.GetString(0));
 
         Assert.Contains(AccountsDbContext.MigrationsTable, tables);

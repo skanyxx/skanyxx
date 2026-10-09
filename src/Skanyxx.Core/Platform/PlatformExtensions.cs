@@ -16,9 +16,11 @@ public static class PlatformExtensions
             cfg.RegisterServicesFromAssemblies([.. moduleAssemblies]);
             cfg.AddOpenBehavior(typeof(LoggingBehavior<,>));
             cfg.AddOpenBehavior(typeof(ValidationBehavior<,>));
+            cfg.NotificationPublisherType = typeof(AllHandlersPublisher);
         });
         services.AddValidatorsFromAssemblies(moduleAssemblies, includeInternalTypes: true);
         services.AddProblemDetails();
+        services.AddExceptionHandler<RevocationFailedProblem>();
         services.AddFastEndpoints(o =>
         {
             o.Assemblies = moduleAssemblies;

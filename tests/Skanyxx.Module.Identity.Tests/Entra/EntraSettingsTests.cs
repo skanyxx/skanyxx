@@ -28,7 +28,7 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
     private IdentityApp _app = null!;
     private string _owner = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString, services: s => s.AddSingleton<ILoggerProvider>(_log));
@@ -37,22 +37,22 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
         await CreateTeamAsync("billing");
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     [Fact]
     public async Task TheOwner_SavesAndReads_TheSecretIsNeverReturned_NorLogged()
     {
         var saved = await PutAsync(Settings(groups: [Map(Group.ToUpperInvariant(), "Finance", ["supervisor", "employee"], ["billing"])]));
-        var read = await Owner().GetAsync("/api/identity/entra/settings");
+        var read = await Owner().GetAsync("/api/identity/entra/settings", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
         Assert.Equal(HttpStatusCode.OK, read.StatusCode);
-        foreach (var body in new[] { await saved.Content.ReadAsStringAsync(), await read.Content.ReadAsStringAsync() })
+        foreach (var body in new[] { await saved.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), await read.Content.ReadAsStringAsync(TestContext.Current.CancellationToken) })
         {
             Assert.DoesNotContain(Secret, body);
             Assert.DoesNotContain("clientSecret\"", body);
         }
-        var json = await read.Content.ReadFromJsonAsync<JsonElement>();
+        var json = await read.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(json.GetProperty("enabled").GetBoolean());
         Assert.True(json.GetProperty("clientSecretSet").GetBoolean());
         Assert.True(json.GetProperty("active").GetBoolean());
@@ -75,7 +75,7 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
         var kept = await PutAsync(Settings(secret: null, client: "33333333-3333-3333-3333-333333333333"));
 
         await using var db = postgres.CreateDbContext();
-        var stored = (await db.EntraSettings.SingleAsync()).ProtectedClientSecret!;
+        var stored = (await db.EntraSettings.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).ProtectedClientSecret!;
         Assert.DoesNotContain(Secret, stored);
         Assert.Equal(Secret, _app.Services.GetRequiredService<IDataProtectionProvider>().CreateProtector("Skanyxx.Identity.Entra.ClientSecret").Unprotect(stored));
         Assert.Equal(HttpStatusCode.OK, kept.StatusCode);
@@ -146,9 +146,9 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
         var response = await PutAsync(settings);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains(mentions, await response.Content.ReadAsStringAsync());
+        Assert.Contains(mentions, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         await using var db = postgres.CreateDbContext();
-        Assert.False(await db.EntraSettings.AnyAsync());
+        Assert.False(await db.EntraSettings.AnyAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
         var response = await PutAsync(Settings(secret: null));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        Assert.Contains("Enter the client secret", await response.Content.ReadAsStringAsync());
+        Assert.Contains("Enter the client secret", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -166,7 +166,7 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
         var response = await PutAsync(Settings(groups: [Map(Group, null, [], ["nope"])]));
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Contains("No team 'nope'", await response.Content.ReadAsStringAsync());
+        Assert.Contains("No team 'nope'", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -174,16 +174,16 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
     {
         var (member, _) = await _app.AddMemberAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Supervisor);
 
-        var get = await _app.Client(bearer: member.AccessToken).GetAsync("/api/identity/entra/settings");
-        var put = await _app.Client(bearer: member.AccessToken).PutAsJsonAsync("/api/identity/entra/settings", Settings());
-        var anonymous = await _app.Client().GetAsync("/api/identity/entra/settings");
+        var get = await _app.Client(bearer: member.AccessToken).GetAsync("/api/identity/entra/settings", TestContext.Current.CancellationToken);
+        var put = await _app.Client(bearer: member.AccessToken).PutAsJsonAsync("/api/identity/entra/settings", Settings(), cancellationToken: TestContext.Current.CancellationToken);
+        var anonymous = await _app.Client().GetAsync("/api/identity/entra/settings", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, get.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, put.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Contains(_log.Lines, l => l.StartsWith("Warning: Owner-only route PUT api/identity/entra/settings refused"));
         await using var db = postgres.CreateDbContext();
-        Assert.False(await db.EntraSettings.AnyAsync());
+        Assert.False(await db.EntraSettings.AnyAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     /// <summary>Outside Development the redirect URI is built on Identity:PublicBaseUrl only; turning sign-in on without it is 409.</summary>
@@ -197,11 +197,11 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
         }, environment: "Production");
         var owner = (await production.SignInBearerAsync()).AccessToken;
 
-        var on = await production.Client(bearer: owner).PutAsJsonAsync("/api/identity/entra/settings", Settings());
-        var off = await production.Client(bearer: owner).PutAsJsonAsync("/api/identity/entra/settings", Settings(enabled: false));
+        var on = await production.Client(bearer: owner).PutAsJsonAsync("/api/identity/entra/settings", Settings(), cancellationToken: TestContext.Current.CancellationToken);
+        var off = await production.Client(bearer: owner).PutAsJsonAsync("/api/identity/entra/settings", Settings(enabled: false), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, on.StatusCode);
-        Assert.Contains("Identity:PublicBaseUrl", await on.Content.ReadAsStringAsync());
+        Assert.Contains("Identity:PublicBaseUrl", await on.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.OK, off.StatusCode);
     }
 
@@ -220,9 +220,9 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
 
         Assert.All(saves, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
         await using var db = postgres.CreateDbContext();
-        var stored = await db.EntraSettings.SingleAsync();
+        var stored = await db.EntraSettings.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(clients.Count, stored.Version);
-        Assert.Single(await db.EntraGroups.ToListAsync());
+        Assert.Single(await db.EntraGroups.ToListAsync(cancellationToken: TestContext.Current.CancellationToken));
         foreach (var app in new[] { _app, replica })
         {
             var current = app.Services.GetRequiredService<EntraSettingsCache>().Current;
@@ -256,11 +256,11 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
             environment: "Production", services: s => s.AddSingleton<ILoggerProvider>(log));
         var owner = (await production.SignInBearerAsync()).AccessToken;
 
-        var saved = await production.Client(bearer: owner).PutAsJsonAsync("/api/identity/entra/settings", Settings());
-        var development = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/entra/settings");
+        var saved = await production.Client(bearer: owner).PutAsJsonAsync("/api/identity/entra/settings", Settings(), cancellationToken: TestContext.Current.CancellationToken);
+        var development = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/entra/settings", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
-        Assert.True((await saved.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secretKeysUnencrypted").GetBoolean());
+        Assert.True((await saved.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("secretKeysUnencrypted").GetBoolean());
         Assert.StartsWith("Warning:", Assert.Single(log.Lines, l => l.Contains("client secret stored by") && l.Contains("unencrypted")));
         Assert.All(log.Lines, line => Assert.DoesNotContain(Secret, line));
         Assert.False(development.GetProperty("secretKeysUnencrypted").GetBoolean()); // Development: no warning

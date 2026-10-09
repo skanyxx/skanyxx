@@ -1,0 +1,389 @@
+# Skanyxx umbrella (D060). One customer = one install = one namespace (D056), and with the bundled kagent
+# (kagent.enabled) ONE INSTALL PER CLUSTER: kagent's CRDs and a few of its ClusterRoles are cluster-wide with fixed names
+# (D136). Several names below are fixed too (kagent-*, dragonfly, kagent-postgres-url, dragonfly-auth) so the sub-charts
+# can find them. With kagent.enabled=false (BYO kagent) several installs may share a cluster, one per namespace.
+# Every bundled piece has `enabled`; turning it off means pointing Skanyxx at the customer's own (D061).
+# values.schema.json rejects unknown keys and wrong types. README "Install with Helm" walks through a first install.
+#
+# GitOps (Argo CD, Flux, anything that runs `helm template`): `lookup` sees no cluster there, so every generated
+# credential would be re-drawn on each sync. Set every existingSecret below instead (D139).
+
+skanyxx:
+  image:
+    repository: skanyxx
+    # Empty: the chart's appVersion. `dev` is the local build (scripts/helm/build-image.sh, loaded into kind).
+    tag: ""
+    # sha256:… — wins over the tag's content (repository:tag@digest). Set it for any registry build.
+    digest: ""
+    # IfNotPresent suits kind (`kind load`; Always would try a registry that does not have the image). A node that
+    # already holds a MUTABLE tag (dev, latest) never sees a rebuild: use a new tag, a digest, or Always (D140).
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  replicas: 1
+
+  # Identity:PublicBaseUrl — where people reach Skanyxx; invite links are built on it and its origin may call the API
+  # (D108). Must be https://, except a loopback URL (http://localhost:8080 for a port-forward install).
+  # Empty: https://<first ingress host> when the ingress is on, otherwise unset (invites are refused until it is set).
+  publicUrl: ""
+  # Skanyxx:AllowedOrigins: extra browser origins (the publicUrl's origin is already allowed).
+  allowedOrigins: []
+  # AllowedHosts besides the ingress hosts, this release's Service names and localhost (probes, port-forward).
+  extraAllowedHosts: []
+
+  # Identity:BootstrapToken (needed outside Development to create the owner on /Setup). Empty existingSecret: the
+  # chart generates 48 characters once and keeps them across upgrades (Secret <release>-skanyxx, key bootstrap-token).
+  bootstrapToken:
+    existingSecret: ""
+    key: bootstrap-token
+
+  # Postgres connection strings. With postgresql.enabled the chart writes them (Secret <release>-skanyxx-db).
+  # BYO (postgresql.enabled=false): a Secret with the keys ConnectionStrings__Identity, ConnectionStrings__Memory and
+  # ConnectionStrings__Tickets. Give Identity its own role/database (it holds the Data Protection key ring).
+  database:
+    existingSecret: ""
+
+  # Optional: a PFX that encrypts the Data Protection key ring at rest (Identity:DataProtectionCertificatePath).
+  # Secret keys: certificate.pfx and password.
+  dataProtection:
+    certificateSecret: ""
+
+  kagent:
+    # BYO kagent (kagent.enabled=false): the controller URL Skanyxx calls, e.g. http://kagent-controller.kagent.svc:8083.
+    # Keep it cluster-private: kagent 0.10.2 has no authenticated mode (D101).
+    url: ""
+    # Optional Secret with key `token` → KAgent:Token.
+    tokenSecret: ""
+    # KAgent:ModelConfig, the ModelConfig the owner's /Model edits. Default: <release namespace>/default-model-config.
+    modelConfig: ""
+    chatTimeoutSeconds: 300
+
+  tickets:
+    # jira | local. Jira settings and the token go in through env / extraEnvFrom (README "Configuration").
+    source: jira
+
+  # Modules:Enabled:<id> — e.g. { dashboard: false }. Empty: the Host's defaults (all on, sandboxes off).
+  modules: {}
+
+  # Extra env (list of EnvVar) and envFrom (list of EnvFromSource), for settings this chart does not name.
+  extraEnv: []
+  extraEnvFrom: []
+
+  service:
+    port: 8080
+    # The MCP-only port (Memory:McpPort, D138): /mcp/memory answers here and nowhere else, and every other path 404s
+    # here. kagent and its agent pods call it, the Ingress never targets it, the NetworkPolicy admits only them (and
+    # networkPolicy.mcpFrom). Must differ from `port`.
+    mcpPort: 8081
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 192Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 1654
+    runAsGroup: 1654
+    fsGroup: 1654
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+  # Size caps of the writable emptyDirs (/data: the leftover SQLite file; /tmp).
+  dataSizeLimit: 256Mi
+  tmpSizeLimit: 256Mi
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# The public surface. Off by default (port-forward). It targets Skanyxx's http port only; /mcp/memory is not served
+# there at all (skanyxx.service.mcpPort, D138). On top of that the paths are an ALLOW-list (fails closed: a page added
+# later is unreachable until listed) and the chart refuses (D138): `/`, any path that would cover /mcp in any case,
+# anything but plain path segments (no regex, no %-escapes), and the nginx regex/rewrite/snippet annotations.
+# TLS ends at the ingress: set HSTS there (the app sees http and does not trust X-Forwarded-* headers, D143).
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts: []          # e.g. [skanyxx.example.com]
+  tls: []            # e.g. [{secretName: skanyxx-tls, hosts: [skanyxx.example.com]}]
+  exactPaths: ["/"]
+  # Mind the case: ingress Prefix matching is case-sensitive, ASP.NET routing is not. These are the casings the
+  # pages link to. The leftover SRE pages (Dashboard, Investigate, Alerts, Hooks, CloudTools, Analytics, Debug, Agents,
+  # ToolServers, Settings) are not published.
+  prefixPaths:
+    - /api
+    - /_content
+    - /css
+    - /js
+    - /lib
+    - /icons
+    - /favicon.ico
+    - /manifest.json
+    - /signin-oidc
+    - /Login
+    - /Logout
+    - /Setup
+    - /Invite
+    - /Account
+    - /Chat
+    - /Library
+    - /Model
+    - /People
+    - /Org
+    - /Entra
+
+# The namespace is default-deny (D137): every pod refuses traffic it is not explicitly allowed, and may only send DNS
+# unless allowed more. Allowed: Skanyxx's http port ← this namespace + the ingress controller; its mcp port ← kagent's
+# controller and agent pods; kagent's controller ← this namespace; agent pods ← kagent's controller; each store ←
+# Skanyxx (+ kagent → Postgres, AX → Dragonfly). Egress: Skanyxx and kagent's controller anywhere (Jira, Entra, BYO
+# stores, the Kubernetes API); agent pods → this namespace + the model provider (modelEgress); stores → DNS only.
+networkPolicy:
+  enabled: true
+  # The ingress controller's namespace(s), admitted to Skanyxx's http port only while ingress.enabled.
+  ingressNamespaces: [ingress-nginx]
+  # Who else may call /mcp/memory on the mcp port (NetworkPolicy peers, D147). The bundled kagent is admitted by
+  # itself; with BYO kagent (kagent.enabled=false) nothing is until you name it here, e.g.
+  #   mcpFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kagent}}}]
+  mcpFrom: []
+  # Every address range inside the cluster or on private networks (pods, Services, nodes, LAN, cloud metadata). The
+  # agents' model egress excludes all of them, so an LLM-driven agent reaches the internet, never in-cluster services
+  # (D149). Add your pod/Service ranges when they are public or IPv6 GUA (EKS IPv6, GKE dual-stack: README).
+  clusterCidrs:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+    - 100.64.0.0/10
+    - 169.254.0.0/16
+    - 127.0.0.0/8
+    - "fc00::/7"
+    - "fe80::/10"
+    - "::1/128"
+  # Where kagent's agent pods may call the LLM: `cidrs` minus clusterCidrs, on `ports` (at least one: an empty list
+  # would mean every port). Each cidr must contain the clusterCidrs of its family, so only 0.0.0.0/0 and ::/0 are
+  # accepted; a narrower destination (one provider's range) or a local model (Ollama in the cluster or on the LAN)
+  # goes in `extra` (extra NetworkPolicy egress rules for the agents), e.g.
+  #   extra: [{to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: ollama}}}], ports: [{port: 11434}]}]
+  modelEgress:
+    ports: [443]
+    cidrs: ["0.0.0.0/0", "::/0"]
+    extra: []
+
+# AX Tasks (experimental, D063/D064). D069 (locked 2026-10-08) keeps AX + Substrate off in the appliance and on-by-flag
+# for BYO clusters that meet Substrate's prerequisites. This chart does NOT install AX or Substrate (no upstream chart):
+# `enabled` turns Skanyxx's sandboxes module on and points it at an AX you run (BYO). Default off.
+ax:
+  enabled: false
+  address: ""                      # Sandboxes:Address, e.g. http://ax-server.ax-system.svc:8080
+  atespace: default
+  allowedImages: []                # Sandboxes:AllowedImages (empty = nothing runs)
+  networkIsolationConfirmed: false # Sandboxes:NetworkIsolationConfirmed — only after deploy/sandboxes/ is verified
+  namespace: ax-system             # may reach the bundled Dragonfly (AX's Redis, D068)
+
+# Bundled Postgres (D053): one StatefulSet, separate roles/databases for identity (skanyxx_identity), memory+tickets
+# (skanyxx) and kagent (kagent). Off = BYO: set skanyxx.database.existingSecret and kagent's database (see below).
+postgresql:
+  enabled: true
+  image:
+    repository: postgres
+    tag: 17-alpine
+    digest: sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24
+    pullPolicy: IfNotPresent
+  # BYO credentials for the BUNDLED Postgres (GitOps): a Secret with postgres-password, skanyxx-password,
+  # identity-password and kagent-password. The derived connection strings are then yours too:
+  # skanyxx.database.existingSecret, and (kagent on) a Secret `kagent-postgres-url` with key `url`.
+  # The passwords are applied by initdb ONCE; changing them later needs ALTER ROLE, not a Secret edit.
+  existingSecret: ""
+  # storage / storageClassName are StatefulSet volumeClaimTemplates, which Kubernetes never lets an upgrade change
+  # (the upgrade fails: "updates to statefulset spec ... are forbidden"). To grow the volume: edit the PVC (if its
+  # StorageClass allows expansion), then `kubectl delete sts <name> --cascade=orphan` and upgrade with the new size.
+  storage: 2Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+
+# Bundled S3 (D053). MinIO's own images are gone (Docker Hub repo removed, quay 401, GitHub archived); the default is
+# the community fork pgsty/minio (same binary and S3 API). Nothing in Skanyxx reads S3 yet (slice 2, box 3).
+minio:
+  enabled: true
+  image:
+    repository: pgsty/minio
+    tag: RELEASE.2026-08-04T00-00-00Z
+    # A third-party fork with a mutable tag: pinned by digest (D140).
+    digest: sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
+    pullPolicy: IfNotPresent
+  # BYO credentials (GitOps): a Secret with access-key and secret-key.
+  existingSecret: ""
+  # Immutable after install (StatefulSet volumeClaimTemplates): see postgresql.storage.
+  storage: 2Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      memory: 512Mi
+
+# Bundled git (D023: Gitea). SQLite on its own volume, registration off, sign-in required; the admin credential is a
+# generated Secret (<release>-gitea). Repos (skanyxx-agents) are the studio slice's job.
+gitea:
+  enabled: true
+  image:
+    repository: gitea/gitea
+    tag: 1.27.0-rootless
+    digest: sha256:414ba5b2b1163480e9ed4213a989cd798579cfa88582a2359303273009b2b852
+    pullPolicy: IfNotPresent
+  # BYO credentials (GitOps): a Secret with admin-username, admin-password, secret-key and internal-token. secret-key
+  # encrypts what Gitea stores: it must never change after the first start.
+  existingSecret: ""
+  adminUsername: skanyxx-admin
+  adminEmail: skanyxx-admin@localhost
+  # Gitea's ROOT_URL. Default: http://<release>-gitea.<namespace>.svc:3000/
+  rootUrl: ""
+  # Immutable after install (StatefulSet volumeClaimTemplates): see postgresql.storage.
+  storage: 2Gi
+  storageClassName: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      memory: 384Mi
+
+# Where each store lives when its bundled copy is off (D061). Nothing in Skanyxx reads S3, git or Redis yet: these
+# land in the ConfigMap <release>-stores, next to the bundled ones, for the slices that will.
+external:
+  objectStore:
+    endpoint: ""        # https://s3.eu-west-1.amazonaws.com, an Azure Blob / GCS S3 endpoint, ...
+    bucket: ""
+    existingSecret: ""  # keys: access-key, secret-key
+  git:
+    url: ""             # https://github.com/acme (GitHub / GitLab / an existing server)
+    existingSecret: ""  # key: token
+  redis:
+    address: ""         # host:port of their Redis/Dragonfly
+    existingSecret: ""  # key: password
+
+# One Dragonfly (D068): AX's Redis when AX is on, memory's cache/locks later. Cards stay in Postgres (D042).
+# Official chart; not in cache mode, so nothing is evicted (AX needs noeviction, README "AX Tasks").
+dragonfly:
+  enabled: true
+  fullnameOverride: dragonfly
+  # Digest pin: tag "v2.0.0@sha256:…" (the sub-chart has no digest value; its default tag is the chart's appVersion).
+  image:
+    tag: ""
+  # The chart's own ServiceAccount cannot turn the token mount off; the umbrella's `dragonfly` one has it off.
+  serviceAccount:
+    create: false
+    name: dragonfly
+  # The umbrella generates `dragonfly-auth` (key password). BYO / GitOps: name your own Secret here instead (key
+  # `password`); the umbrella then generates nothing.
+  passwordFromSecret:
+    enable: true
+    existingSecret:
+      name: dragonfly-auth
+      key: password
+  # In memory only: no snapshots (the root filesystem is read-only and there is no volume). To keep data across
+  # restarts (AX's queue, later), set storage.enabled=true and drop --dbfilename.
+  extraArgs:
+    - --proactor_threads=1
+    - --maxmemory=256mb
+    - --dbfilename=
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 384Mi
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 999
+    runAsGroup: 999
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+
+# kagent 0.10.2 (oci://ghcr.io/kagent-dev/kagent/helm). Values pass straight through to its chart.
+kagent:
+  enabled: true
+  # Turning kagent off on an UPGRADE deletes its CRDs and with them every Agent and ModelConfig in the cluster; the
+  # chart refuses that unless this is true (D141).
+  confirmCrdRemoval: false
+  fullnameOverride: kagent
+  # D136: kagent's RBAC as Role + RoleBinding in these namespaces only, and the controller watches only them. Must
+  # include the release namespace (the chart fails otherwise): values cannot name it, so the default is `skanyxx` and
+  # another namespace needs `--set 'kagent.rbac.namespaces={<ns>}'`. Empty would give kagent cluster-wide
+  # read/write on every Secret.
+  rbac:
+    namespaces: [skanyxx]
+  # D099/D106: Helm must never own default-model-config, or an upgrade puts the chart's spec back over the model the
+  # owner saved in /Model. kagent's chart renders the ModelConfig (and its key Secret) only `if .Values.providers`, so
+  # `false` turns both off; Skanyxx's /Model creates it through kagent's API on the first save. (`null` does not work:
+  # Helm 4 still merges the sub-chart's default providers back in.) The chart refuses any other value (D142).
+  providers: false
+  # kagent's own dashboard is not the talk surface (D017); Chat is Skanyxx's. No ui.enabled exists, so 0 replicas.
+  ui:
+    replicas: 0
+  controller:
+    resources:
+      requests:
+        cpu: 50m
+        memory: 96Mi
+      limits:
+        memory: 512Mi
+    # The database URL comes from a Secret file (kagent-postgres-url, key url), never a plain env value. With
+    # postgresql.enabled the umbrella writes it; with BYO Postgres create that Secret yourself (or turn kagent's
+    # bundled database back on: database.postgres.bundled.enabled=true, urlFile="" and drop these volumes).
+    volumes:
+      - name: database-url
+        secret:
+          secretName: kagent-postgres-url
+    volumeMounts:
+      - name: database-url
+        mountPath: /etc/kagent-db
+        readOnly: true
+  database:
+    postgres:
+      urlFile: /etc/kagent-db/url
+      bundled:
+        enabled: false
+  # Start clean (D019): no bundled agents or tool servers; the only agent is the seed (scripts/helm/seed-agent.sh).
+  kmcp:
+    enabled: false
+  kagent-tools:
+    enabled: false
+  grafana-mcp:
+    enabled: false
+  k8s-agent:
+    enabled: false
+  kgateway-agent:
+    enabled: false
+  istio-agent:
+    enabled: false
+  promql-agent:
+    enabled: false
+  observability-agent:
+    enabled: false
+  argo-rollouts-agent:
+    enabled: false
+  helm-agent:
+    enabled: false
+  cilium-policy-agent:
+    enabled: false
+  cilium-manager-agent:
+    enabled: false
+  cilium-debug-agent:
+    enabled: false

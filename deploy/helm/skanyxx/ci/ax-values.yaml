@@ -1,0 +1,8 @@
+# AX on (experimental; default off per D069, locked 2026-10-08). The chart does not install AX:
+# it turns the sandboxes module on and points it at an AX the operator runs. Rendered by scripts/helm/validate.sh.
+skanyxx:
+  publicUrl: https://skanyxx.example.com
+ax:
+  enabled: true
+  address: http://ax-server.ax-system.svc:8080
+  allowedImages: [ghcr.io/acme/]

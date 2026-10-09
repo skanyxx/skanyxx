@@ -33,7 +33,7 @@ public static class ApiGuardExtensions
                     return FixedWindow("invite:" + ip, options.InviteRateLimit);
                 if (GuardedPaths.IsCredentialPost(context.Request))
                     return FixedWindow("sign-in:" + ip, options.SignInRateLimit);
-                if (GuardedPaths.Contains(context.Request.Path))
+                if (GuardedPaths.Contains(context.Request.Path) || GuardedPaths.IsGuardedPagePost(context.Request))
                     return FixedWindow("api:" + ip, options.RateLimit);
                 return RateLimitPartition.GetNoLimiter("");
             });

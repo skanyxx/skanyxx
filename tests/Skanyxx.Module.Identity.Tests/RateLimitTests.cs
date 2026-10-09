@@ -19,9 +19,9 @@ public sealed class RateLimitTests(PostgresFixture postgres)
         var tokens = await app.SignInBearerAsync();
         // Neither refresh nor sign-out counts: a burst of sign-ins must not stop anyone refreshing or signing out.
         var refresh = await app.RefreshAsync(tokens.RefreshToken);
-        var signOut = await app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null);
+        var signOut = await app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
         var fourth = await app.SignInAsync();
-        var status = await app.Client().GetAsync("/api/identity/status");
+        var status = await app.Client().GetAsync("/api/identity/status", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, bootstrap.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, first.StatusCode);

@@ -1,0 +1,39 @@
+# kagent 0.10.2 for the local three-plane run (scripts/dev/first-hour.sh). Start clean (D019): every bundled agent and
+# tool server is off; the only agent comes from deploy/kagent/memory/. The model is the host's Ollama; the owner can
+# switch it in Skanyxx's model step (/Model), which edits default-model-config through kagent's API (D3). The script
+# overrides the Ollama model, host and num_ctx from OLLAMA_MODEL / OLLAMA_HOST / OLLAMA_NUM_CTX.
+providers:
+  default: ollama
+  ollama:
+    provider: Ollama
+    model: qwen3-coder:30b
+    config:
+      host: http://host.docker.internal:11434
+      options:
+        num_ctx: "32768"
+kmcp:
+  enabled: false
+kagent-tools:
+  enabled: false
+grafana-mcp:
+  enabled: false
+k8s-agent:
+  enabled: false
+kgateway-agent:
+  enabled: false
+istio-agent:
+  enabled: false
+promql-agent:
+  enabled: false
+observability-agent:
+  enabled: false
+argo-rollouts-agent:
+  enabled: false
+helm-agent:
+  enabled: false
+cilium-policy-agent:
+  enabled: false
+cilium-manager-agent:
+  enabled: false
+cilium-debug-agent:
+  enabled: false

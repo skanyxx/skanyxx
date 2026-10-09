@@ -28,6 +28,14 @@ public sealed class MemoryOptions
     public int MaxPoolSize { get; set; } = 40;
 
     /// <summary>
+    /// A second Kestrel port that serves <c>/mcp/memory</c> and nothing else (the Helm chart: 8081, never behind the
+    /// ingress): MCP answers 404 on every other port, every other path 404 on this one. Unset: <c>/mcp/memory</c> is on
+    /// every port the Host listens on (local dev).
+    /// </summary>
+    [Range(1, 65_535)]
+    public int? McpPort { get; set; }
+
+    /// <summary>
     /// The configured string with this module's pool settings. Npgsql keys pools by connection string, so the
     /// module-suffixed Application Name keeps memory and tickets from sharing (and exhausting) one pool, even when both
     /// connection strings are identical. A configured name (e.g. per replica) is kept as the prefix.

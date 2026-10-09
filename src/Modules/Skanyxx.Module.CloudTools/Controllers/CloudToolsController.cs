@@ -1,3 +1,5 @@
+using Skanyxx.Core.Platform;
+using Microsoft.AspNetCore.Authorization;
 using Skanyxx.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Skanyxx.Core.Models;
@@ -6,6 +8,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Skanyxx.Module.CloudTools.Controllers;
 
+// D116: what changes kagent, the cluster or runs a process on the Host is the owner's alone, like D109.
 [ApiController]
 [Route("api/cloud")]
 public class CloudToolsController : ControllerBase
@@ -32,6 +35,7 @@ public class CloudToolsController : ControllerBase
         return provider;
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("providers/{id}/connect")]
     public async Task<ActionResult> Connect(string id, [FromBody] object credentials)
     {
@@ -39,6 +43,7 @@ public class CloudToolsController : ControllerBase
         catch (NotImplementedException ex) { return StatusCode(501, new { message = ex.Message }); }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("providers/{id}/disconnect")]
     public async Task<ActionResult> Disconnect(string id)
     {
@@ -46,6 +51,7 @@ public class CloudToolsController : ControllerBase
         catch (NotImplementedException ex) { return StatusCode(501, new { message = ex.Message }); }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("scale-up")]
     public async Task<ActionResult> ScaleUp([FromBody] ScaleRequest request)
     {
@@ -53,6 +59,7 @@ public class CloudToolsController : ControllerBase
         catch (NotImplementedException ex) { return StatusCode(501, new { message = ex.Message }); }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("scale-down")]
     public async Task<ActionResult> ScaleDown([FromBody] ScaleRequest request)
     {
@@ -61,6 +68,7 @@ public class CloudToolsController : ControllerBase
     }
 }
 
+[Authorize(Roles = SkanyxxRoles.Owner)]
 [ApiController]
 [Route("api/cloudtools")]
 public class CloudToolsApiController : ControllerBase

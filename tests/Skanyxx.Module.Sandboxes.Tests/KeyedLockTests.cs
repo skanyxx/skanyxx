@@ -65,7 +65,7 @@ public sealed class KeyedLockTests
         hold.SetException(new InvalidOperationException("boom"));
 
         await Assert.ThrowsAsync<InvalidOperationException>(() => thrower);
-        Assert.Equal(2, (await waiter.WaitAsync(TimeSpan.FromSeconds(5))).Value);
+        Assert.Equal(2, (await waiter.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken)).Value);
         Assert.Equal(0, locks.Count);
     }
 }

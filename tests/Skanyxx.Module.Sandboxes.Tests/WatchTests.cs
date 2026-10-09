@@ -42,7 +42,7 @@ public sealed class WatchTests : SandboxesTestBase
         Ax.WatchHangs = true;
 
         var watch = WatchAsync("fix-42");
-        await Ax.WatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await Ax.WatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Ax.Remove("fix-42");
         var (_, frames) = await watch;
 
@@ -72,8 +72,8 @@ public sealed class WatchTests : SandboxesTestBase
         Ax.Seed("fix-42", "ana", phase: "Pending");
         Ax.WatchFailsWith = status;
 
-        var response = await App.Client().GetAsync("/api/sandboxes/tasks/fix-42/watch");
-        var body = await response.Content.ReadAsStringAsync();
+        var response = await App.Client().GetAsync("/api/sandboxes/tasks/fix-42/watch", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.StartsWith("event: initial", body);
@@ -94,12 +94,12 @@ public sealed class WatchTests : SandboxesTestBase
 
         using (var client = app.Client())
         {
-            using var response = await client.GetAsync(Url, HttpCompletionOption.ResponseHeadersRead);
-            await using var stream = await response.Content.ReadAsStreamAsync();
-            Assert.True(await stream.ReadAsync(new byte[4096]) > 0);
+            using var response = await client.GetAsync(Url, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+            await using var stream = await response.Content.ReadAsStreamAsync(TestContext.Current.CancellationToken);
+            Assert.True(await stream.ReadAsync(new byte[4096], TestContext.Current.CancellationToken) > 0);
         }
 
-        await Ax.WatchCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await Ax.WatchCancelled.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         await app.Logs.WaitForRequestFinishedAsync(Url);
         Assert.Empty(app.Logs.Warnings);
     }
@@ -137,7 +137,7 @@ public sealed class WatchTests : SandboxesTestBase
             using var again = await Open(ana);
             reopened = again.StatusCode;
             if (reopened != HttpStatusCode.OK)
-                await Task.Delay(50);
+                await Task.Delay(50, TestContext.Current.CancellationToken);
         }
         Assert.Equal(HttpStatusCode.OK, reopened);
     }
@@ -155,10 +155,10 @@ public sealed class WatchTests : SandboxesTestBase
         Ax.WatchHangs = true;
         using var ana = app.Client();
 
-        using var open = await ana.GetAsync(Url, HttpCompletionOption.ResponseHeadersRead);
-        await Ax.WatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        using var open = await ana.GetAsync(Url, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
+        await Ax.WatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         var callsBefore = Ax.Atespaces.Count;
-        using var refused = await ana.GetAsync(Url, HttpCompletionOption.ResponseHeadersRead);
+        using var refused = await ana.GetAsync(Url, HttpCompletionOption.ResponseHeadersRead, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, open.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, refused.StatusCode);
@@ -176,8 +176,8 @@ public sealed class WatchTests : SandboxesTestBase
 
         try
         {
-            using var broken = await ana.GetAsync(Url);
-            await broken.Content.ReadAsStringAsync();
+            using var broken = await ana.GetAsync(Url, TestContext.Current.CancellationToken);
+            await broken.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         }
         catch (HttpRequestException)
         {
@@ -189,10 +189,10 @@ public sealed class WatchTests : SandboxesTestBase
         var reopened = HttpStatusCode.TooManyRequests;
         for (var i = 0; i < 100 && reopened != HttpStatusCode.OK; i++)
         {
-            using var again = await ana.GetAsync(Url);
+            using var again = await ana.GetAsync(Url, TestContext.Current.CancellationToken);
             reopened = again.StatusCode;
             if (reopened != HttpStatusCode.OK)
-                await Task.Delay(50);
+                await Task.Delay(50, TestContext.Current.CancellationToken);
         }
         Assert.Equal(HttpStatusCode.OK, reopened);
     }
@@ -208,8 +208,8 @@ public sealed class WatchTests : SandboxesTestBase
         Ax.Seed("fix-42", "ana", phase: "Pending");
         Ax.WatchHangs = true;
 
-        var response = await app.Client().GetAsync(Url);
-        var body = await response.Content.ReadAsStringAsync();
+        var response = await app.Client().GetAsync(Url, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("no", Assert.Single(response.Headers.GetValues("X-Accel-Buffering")));
         Assert.Contains("\n\n: keepalive\n\n", body);
@@ -224,8 +224,8 @@ public sealed class WatchTests : SandboxesTestBase
         Ax.Seed("fix-42", "ana", phase: "Pending");
         Ax.ModifiedAction = "PWNED\ndata: {\"kind\":\"pwned\"}\n\nevent: pwned";
 
-        var response = await App.Client().GetAsync(Url);
-        var body = await response.Content.ReadAsStringAsync();
+        var response = await App.Client().GetAsync(Url, TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain("pwned", body, StringComparison.OrdinalIgnoreCase);
         var events = body.Split("\n\n", StringSplitOptions.RemoveEmptyEntries).Select(b => b.Split('\n')[0]).ToList();

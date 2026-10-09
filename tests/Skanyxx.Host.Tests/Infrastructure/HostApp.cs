@@ -1,7 +1,5 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
@@ -14,8 +12,8 @@ namespace Skanyxx.Host.Tests.Infrastructure;
 /// <summary>
 /// The real Program.cs on real Kestrel (random loopback port), with every module from the Host's built
 /// <c>modules/</c> folder. Settings go in as command-line arguments because Program reads configuration before
-/// <c>Build()</c>. The content root is an empty temp directory, so the developer's local appsettings.json and
-/// skanyxx.db are neither read nor written.
+/// <c>Build()</c>. The content root is an empty temp directory of its own (<see cref="TempContentRoot"/>), so the
+/// developer's local appsettings.json and skanyxx.db are neither read nor written, and no two hosts share a database file.
 /// </summary>
 public sealed class HostApp : IAsyncDisposable
 {
@@ -31,7 +29,18 @@ public sealed class HostApp : IAsyncDisposable
     private readonly string _contentRoot;
     private string? _ownerToken;
 
+    /// <summary>
+    /// For tests that disable people: with sandboxes on, a disable stops the person's AX tasks (D154), and the default
+    /// test AX is unreachable, so the disable would answer 500 (<c>DisableTests</c> shows that path).
+    /// </summary>
+    public static void WithoutSandboxes(Dictionary<string, string> settings) => settings.Remove("Sandboxes:Enabled");
+
     private HostApp(IHost host, Task run, string contentRoot) => (_host, _run, _contentRoot) = (host, run, contentRoot);
+
+    /// <summary>The running host's services, for tests that drive a background component directly (the studio reconciler).</summary>
+    public IServiceProvider Services => _host.Services;
+
+    public string ContentRoot => _contentRoot;
 
     public Uri BaseAddress => new(_host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First());
 
@@ -39,7 +48,28 @@ public sealed class HostApp : IAsyncDisposable
     public static async Task<HostApp> StartAsync(
         string connectionString, Action<Dictionary<string, string>>? configure = null, Action<IServiceCollection>? services = null)
     {
-        var contentRoot = Directory.CreateTempSubdirectory("skanyxx-host-").FullName;
+        var contentRoot = TempContentRoot.Create();
+        var args = Arguments(connectionString, contentRoot, configure);
+
+        using var observer = new HostBuiltObserver(services);
+        // Program.RunAsync, not the entry point: the entry point turns a failure into exit code 1 (ExitCodeTests), and
+        // the tests here want the exception itself.
+        var run = Task.Run(() => Program.RunAsync(args));
+        try
+        {
+            var host = await Ready(observer.Built, run);
+            return new HostApp(host, run, contentRoot);
+        }
+        catch
+        {
+            TempContentRoot.Delete(contentRoot);
+            throw;
+        }
+    }
+
+    /// <summary>Program's command line: the default test settings, then <paramref name="configure"/>'s changes.</summary>
+    public static string[] Arguments(string connectionString, string contentRoot, Action<Dictionary<string, string>>? configure = null)
+    {
         var settings = new Dictionary<string, string>
         {
             ["environment"] = "Production",
@@ -71,23 +101,10 @@ public sealed class HostApp : IAsyncDisposable
             ["Sandboxes:TimeoutSeconds"] = "2"
         };
         configure?.Invoke(settings);
-        string[] args = [.. settings.Select(s => $"--{s.Key}={s.Value}")];
-
-        using var observer = new HostBuiltObserver(services);
-        var run = Task.Run(() => typeof(Program).Assembly.EntryPoint!.Invoke(null, [args]));
-        try
-        {
-            var host = await Ready(observer.Built, run);
-            return new HostApp(host, run, contentRoot);
-        }
-        catch
-        {
-            Directory.Delete(contentRoot, recursive: true);
-            throw;
-        }
+        return [.. settings.Select(s => $"--{s.Key}={s.Value}")];
     }
 
-    // Program.cs either reaches ApplicationStarted or its entry point throws (before or after Build()).
+    // Program.cs either reaches ApplicationStarted or RunAsync throws (before or after Build()).
     private static async Task<IHost> Ready(Task<IHost> built, Task run)
     {
         if (await Task.WhenAny(built, run) == run)
@@ -102,14 +119,7 @@ public sealed class HostApp : IAsyncDisposable
 
     private static async Task RethrowAsync(Task run)
     {
-        try
-        {
-            await run;
-        }
-        catch (TargetInvocationException ex) when (ex.InnerException is not null)
-        {
-            ExceptionDispatchInfo.Throw(ex.InnerException);
-        }
+        await run;
         throw new InvalidOperationException("Program.cs exited before the host started.");
     }
 
@@ -157,7 +167,7 @@ public sealed class HostApp : IAsyncDisposable
         // app.Run() returns once the host stops, and disposes it.
         _host.Services.GetRequiredService<IHostApplicationLifetime>().StopApplication();
         await _run;
-        Directory.Delete(_contentRoot, recursive: true);
+        TempContentRoot.Delete(_contentRoot);
         // Each host is on its own database, so its module pools would otherwise hold idle connections until pruning.
         NpgsqlConnection.ClearAllPools();
     }

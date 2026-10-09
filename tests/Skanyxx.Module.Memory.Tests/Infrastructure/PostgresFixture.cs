@@ -10,14 +10,14 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
         await using var db = CreateDbContext();
         await db.Database.MigrateAsync();
     }
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync() => _container.DisposeAsync();
 
     public MemoryDbContext CreateDbContext() =>
         new(new DbContextOptionsBuilder<MemoryDbContext>().UseNpgsql(ConnectionString).Options);

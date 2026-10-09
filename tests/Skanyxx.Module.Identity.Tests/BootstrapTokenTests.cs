@@ -7,13 +7,13 @@ public sealed class BootstrapTokenTests(PostgresFixture postgres) : IAsyncLifeti
     private const string Token = IdentityApp.BootstrapToken;
     private IdentityApp _app = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString, s => s["Identity:BootstrapToken"] = Token);
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     [Theory]
     [InlineData(null)]

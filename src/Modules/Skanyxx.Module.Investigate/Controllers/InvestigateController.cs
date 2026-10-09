@@ -1,7 +1,5 @@
-using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Skanyxx.Core.Models;
-using Skanyxx.Core.MediatR.Requests;
 using Microsoft.Extensions.Logging;
 
 namespace Skanyxx.Module.Investigate.Controllers;
@@ -12,7 +10,6 @@ namespace Skanyxx.Module.Investigate.Controllers;
 public class InvestigateController : ControllerBase
 {
     private readonly ILogger<InvestigateController> _logger;
-    private readonly IMediator _mediator;
     private static readonly List<Investigation> _investigations = new();
     private static readonly List<InvestigationTemplate> _templates = new()
     {
@@ -24,10 +21,9 @@ public class InvestigateController : ControllerBase
         new() { Id = "capacity-planning", Name = "Capacity Planning", Description = "Resource utilization analysis and scaling", Urgency = "P3", Color = "green", Agents = new() { "promql-agent", "observability-agent", "k8s-agent" } }
     };
 
-    public InvestigateController(ILogger<InvestigateController> logger, IMediator mediator)
+    public InvestigateController(ILogger<InvestigateController> logger)
     {
         _logger = logger;
-        _mediator = mediator;
     }
 
     [HttpGet]
@@ -49,74 +45,31 @@ public class InvestigateController : ControllerBase
     }
 
     [HttpPost]
-    public async Task<ActionResult<InvestigationResult>> Create([FromBody] InvestigateRequest request)
+    public ActionResult<InvestigationResult> Create([FromBody] InvestigateRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Query)) return BadRequest(new { message = "Query is required" });
         _logger.LogInformation("Starting investigation: {Query}", request.Query);
 
-        try
+        // No agent call: talking to an agent is Chat's alone (D002, D017), as the signed-in person and only with merged
+        // agents (D4). This leftover list is shared by every signed-in user, so it must never hold an agent's answer
+        // (which could come from that person's personal memory, D084). It records the question and points to Chat.
+        var investigation = new Investigation
         {
-            var investigation = new Investigation { Title = request.Query.Length > 50 ? request.Query[..50] + "..." : request.Query, Query = request.Query, Status = "in_progress" };
-            var agents = await _mediator.Send(new GetAllAgentsQuery());
-            var agent = agents.FirstOrDefault(a => a.Status == "Active") ?? agents.FirstOrDefault();
+            Title = request.Query.Length > 50 ? request.Query[..50] + "..." : request.Query,
+            Query = request.Query,
+            Status = "completed",
+            Summary = $"Investigation recorded for: {request.Query}",
+            Findings = ["AI analysis runs in Chat with a company agent"],
+            Recommendations = ["Ask the question in Chat"]
+        };
+        _investigations.Insert(0, investigation);
+        if (_investigations.Count > 50) _investigations.RemoveAt(_investigations.Count - 1);
 
-            if (agent != null)
-            {
-                investigation.Agents.Add(agent.Name);
-                var investigationPrompt = $@"You are an SRE assistant investigating an infrastructure issue. Analyze the following query and provide:
-1. A brief summary of the issue
-2. Key findings or observations
-3. Recommended actions to resolve or investigate further
-
-Issue/Query: {request.Query}
-
-Please structure your response clearly with Summary, Findings, and Recommendations sections.";
-
-                try
-                {
-                    var response = await _mediator.Send(new SendChatMessageCommand(investigationPrompt, agent.Name, null));
-                    var aiResponse = response.Message?.Content ?? "";
-                    investigation.Summary = ExtractSection(aiResponse, "Summary") ?? "Investigation completed";
-                    investigation.Findings = ExtractListSection(aiResponse, "Findings");
-                    investigation.Recommendations = ExtractListSection(aiResponse, "Recommendations");
-                    if (investigation.Findings.Count == 0 && !string.IsNullOrEmpty(aiResponse))
-                    {
-                        investigation.Summary = aiResponse.Length > 200 ? aiResponse[..200] + "..." : aiResponse;
-                        investigation.Findings.Add("AI analysis completed. See summary for details.");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to get AI analysis");
-                    investigation.Summary = $"Investigation started for: {request.Query}";
-                    investigation.Findings.Add("AI analysis unavailable - KAgent may be offline");
-                    investigation.Findings.Add("Manual investigation recommended");
-                    investigation.Recommendations.Add("Check KAgent connectivity");
-                    investigation.Recommendations.Add("Review system logs manually");
-                }
-            }
-            else
-            {
-                investigation.Summary = $"Investigation started for: {request.Query}";
-                investigation.Findings.Add("No agents available for automated analysis");
-                investigation.Recommendations.Add("Configure at least one KAgent to enable AI-powered investigation");
-            }
-
-            investigation.Status = "completed";
-            _investigations.Insert(0, investigation);
-            if (_investigations.Count > 50) _investigations.RemoveAt(_investigations.Count - 1);
-
-            return Ok(new InvestigationResult { Id = investigation.Id, Summary = investigation.Summary, Findings = investigation.Findings, Recommendations = investigation.Recommendations, Status = investigation.Status });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Investigation failed");
-            return StatusCode(500, new { message = $"Investigation failed: {ex.Message}" });
-        }
+        return Ok(new InvestigationResult { Id = investigation.Id, Summary = investigation.Summary, Findings = investigation.Findings, Recommendations = investigation.Recommendations, Status = investigation.Status });
     }
 
     [HttpPost("template/{templateId}")]
-    public async Task<ActionResult<InvestigationResult>> CreateFromTemplate(string templateId, [FromBody] InvestigateRequest? request)
+    public ActionResult<InvestigationResult> CreateFromTemplate(string templateId, [FromBody] InvestigateRequest? request)
     {
         var template = _templates.FirstOrDefault(t => t.Id == templateId);
         if (template == null) return NotFound(new { message = "Template not found" });
@@ -149,42 +102,6 @@ Please structure your response clearly with Summary, Findings, and Recommendatio
         if (investigation == null) return NotFound(new { message = "Investigation not found" });
         _investigations.Remove(investigation);
         return NoContent();
-    }
-
-    private static string? ExtractSection(string text, string sectionName)
-    {
-        var patterns = new[] { $"{sectionName}:", $"**{sectionName}**:", $"## {sectionName}" };
-        foreach (var pattern in patterns)
-        {
-            var idx = text.IndexOf(pattern, StringComparison.OrdinalIgnoreCase);
-            if (idx >= 0)
-            {
-                var start = idx + pattern.Length;
-                var end = text.IndexOf('\n', start + 1);
-                if (end == -1) end = text.Length;
-                foreach (var nextPattern in new[] { "Findings:", "Recommendations:", "**", "##" })
-                {
-                    var nextIdx = text.IndexOf(nextPattern, start, StringComparison.OrdinalIgnoreCase);
-                    if (nextIdx > start && nextIdx < end) end = nextIdx;
-                }
-                return text[start..end].Trim();
-            }
-        }
-        return null;
-    }
-
-    private static List<string> ExtractListSection(string text, string sectionName)
-    {
-        var result = new List<string>();
-        var section = ExtractSection(text, sectionName);
-        if (string.IsNullOrEmpty(section)) return result;
-        var lines = section.Split('\n');
-        foreach (var line in lines)
-        {
-            var trimmed = line.Trim().TrimStart('-', '*', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', ' ');
-            if (!string.IsNullOrWhiteSpace(trimmed)) result.Add(trimmed);
-        }
-        return result;
     }
 }
 

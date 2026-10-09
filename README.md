@@ -25,6 +25,206 @@ generate one for you. See Identity and security model.
 
 Swagger UI is available at http://localhost:5282/swagger in Development mode.
 
+## First hour (local three-plane run)
+
+The first hour (`docs/design/first-hour.md`): `/Setup` creates the owner → the owner sets the model (`/Model`) → Chat
+with the **seed** agent, whose answers search company memory. Three planes run locally: **Postgres**
+(`docker compose`), **kagent 0.10.2** on any Kubernetes, and the **Host** (`dotnet run`).
+`scripts/dev/first-hour.sh` does each step and is safe to re-run.
+
+Needs: Docker, `kubectl`, `helm`, `jq`, `lsof`, `pgrep`, a Kubernetes context (kind is one option: a `kind-<name>` context gets its kind
+cluster created when missing; any other context must exist), and a model — by default the machine's Ollama serving
+`qwen3-coder:30b` (`ollama pull qwen3-coder:30b`; another provider can be chosen in `/Model`).
+
+```bash
+export KUBE_CONTEXT=kind-skanyxx            # default: the current context
+scripts/dev/first-hour.sh up                # Postgres; kagent (sample agents off, D019); deploy/kagent/memory/; port-forward :8083
+scripts/dev/first-hour.sh host              # the Host on http://localhost:5287 (foreground)
+# browser: http://localhost:5287/Setup → owner → /Model (save) → /Chat
+OWNER_EMAIL=… OWNER_PASSWORD=… scripts/dev/first-hour.sh seed-secret   # once per database; again to rotate
+scripts/dev/first-hour.sh git               # bundled git for the studio (Gitea on :3300); then restart `host`
+scripts/dev/first-hour.sh status
+```
+
+- **`up`** applies **only** `deploy/kagent/memory/` (seed Agent + its RemoteMCPServer), with the in-cluster Skanyxx
+  URL replaced by `http://$HOST_FROM_PODS:$PORT/mcp/memory`. `HOST_FROM_PODS` (default `host.docker.internal`) is how
+  pods reach this machine. kagent is installed once from `scripts/dev/kagent-values.yaml`; an existing release is left
+  alone, because a `helm upgrade` would overwrite the model the owner saved (D099). Ollama settings:
+  `OLLAMA_MODEL`, `OLLAMA_HOST` (as pods see it), `OLLAMA_NUM_CTX`.
+- **`host`** creates database `$DB` (default `skanyxx`) if missing and runs the Host with env config only:
+  Development, `$HOST_BIND:$PORT` (`127.0.0.1:5287`), `AllowedHosts` including `$HOST_FROM_PODS`,
+  `Identity:PublicBaseUrl` (whose origin Chat's fetch is allowed from, D108; `http://localhost:$PORT` for a loopback bind,
+  else the bind address) plus the bind address in `Skanyxx:AllowedOrigins`, `KAgent` at `localhost:8083` with a
+  300 s chat turn (a local model with tool calls is slow), Tickets from the sample file. On Docker Desktop and OrbStack
+  the pods' `host.docker.internal` reaches this machine's loopback, so `127.0.0.1` is enough; on plain Linux Docker
+  bind the docker bridge address (`HOST_BIND=172.17.0.1`), never `0.0.0.0` (a Development Host exposes Swagger and
+  `/Setup`). `up` keeps the kagent port-forward alive in a restart loop (`status` shows it) and stops with a clear
+  message when the kagent Helm release exists but is not `deployed`. Every process listening on `:8083` (IPv4 and IPv6)
+  must run under that loop for `$KUBE_CONTEXT`: the script's loops for another context, and duplicates, are stopped with
+  everything under them (a loop is recognised by its exact command line: nothing that is not such a loop or under one
+  is ever signalled), anything else listening (an old hand-made port-forward, another cluster) stops `up`
+  with exit 1, and so does a forward that never answers `/health` — instead of silently sending `/Model` and Chat to
+  the wrong kagent (D176). `status` names who holds `:8083`.
+- **`seed-secret`** signs in as the owner, issues the seed's memory secret with `actsForUsers: true` (D084; owner only),
+  writes it into the Secret the seed's RemoteMCPServer reads and bumps the Agent's label so kagent re-renders it
+  (the rotation runbook, `deploy/kagent/memory/README.md`). The secret never touches a file, argv or the log, and
+  the Secret is written with server-side apply, so no `last-applied-configuration` annotation holds a copy of it.
+  Until it runs, the seed's memory calls answer `401`.
+
+**Model (owner only):** `/Model` or `GET`/`PUT /api/model` `{provider, model, apiKey?, baseUrl?}` — providers `OpenAI`,
+`Anthropic`, `Ollama`. It edits kagent's ModelConfig `KAgent:ModelConfig` (default `kagent/default-model-config`)
+through kagent's API; a pasted key goes to kagent, which keeps it in a Secret it owns. Skanyxx never stores, shows or
+logs it, and needs no Kubernetes credentials. An empty key keeps the current one (same provider and same base URL —
+a new base URL needs the key pasted again, `409`, so a stored key is never sent to a new host); switching provider
+starts a clean ModelConfig and needs that provider's key, and the old provider's key is removed from kagent's Secret
+(saved once without a key, which makes kagent delete the Secret, then with the new one; D099, D106). Ollama needs its
+host (`baseUrl`); the owner may point it at any URL the agent pods reach — trusted, but an SSRF reach from the agent
+pod all the same. kagent 0.10.2's update takes no version, so concurrent saves are last-writer-wins. `/` sends the
+owner here until kagent has accepted a model with its credentials; everyone else lands on Chat.
+
+**Chat:** lists only **merged** agents — Agents labelled `skanyxx.dev/merged: "true"` (the seed today; D100) — via
+`GET /api/chat/agents`; `POST /api/chat {agentNamespace, agentName, message, conversationId?}` talks to kagent as the
+signed-in person (kagent's `user_id`/`X-User-Id`), so the seed searches company memory and that person's personal
+memory (D101). An agent is `namespace/name`. A failing turn answers `502` with a fixed text (kagent's own text stays in
+the log) and deletes the conversation it had just started. Chat is the only place that talks to an agent: the leftover
+Investigate page no longer does (D002, D017).
+kagent's API is unauthenticated in this setup (`auth.mode: unsecure`): keep it on localhost / inside the cluster.
+
+## Local stack on OrbStack
+
+The dev stack runs on [OrbStack](https://orbstack.dev) — its Docker for compose and Testcontainers, its Kubernetes for
+kagent (D177). Same script, no kind:
+
+```bash
+open -a OrbStack                                  # first run: finish its setup in the window (choose Docker;
+                                                  # "Migrate from Docker Desktop" is not needed for Skanyxx)
+orb config set k8s.enable true                    # only if `orb config show` says k8s.enable: false; context `orbstack`
+export KUBE_CONTEXT=orbstack DOCKER_CONTEXT=orbstack
+scripts/dev/first-hour.sh up                      # Postgres :55432 + kagent 0.10.2 + seed + port-forward :8083
+scripts/dev/first-hour.sh git                     # Gitea on 127.0.0.1:3300 and its token
+scripts/dev/first-hour.sh host                    # then /Setup → /Model → seed-secret → /Chat as above
+```
+
+- Pods reach this machine's loopback through `host.docker.internal` (Ollama on `127.0.0.1:11434`, the Host's
+  `/mcp/memory` on `127.0.0.1:5287`), so the defaults (`HOST_FROM_PODS`, `HOST_BIND=127.0.0.1`) work unchanged.
+- OrbStack's setup makes `orbstack` the current Docker context and, when it was given admin access, points
+  `/var/run/docker.sock` at its own socket, so `dotnet test` (Testcontainers) uses it without settings. Otherwise, or
+  with Docker Desktop still the current context, run the suites with `DOCKER_HOST=unix://$HOME/.orbstack/run/docker.sock`.
+- `DOCKER_CONTEXT=orbstack` keeps the script's `docker compose` on OrbStack whatever the current context is. Docker
+  Desktop and OrbStack each publish their own containers on this machine's ports, so the compose project `skanyxx`
+  (55432, 3300) must run on one of them only.
+- The OrbStack VM's memory cap (`orb config show`, `memory_mib`) needs room for kagent and its agents; the model runs in
+  Ollama on the Mac, outside it.
+- Back to Docker Desktop + kind: `docker --context orbstack compose -p skanyxx down` (volumes kept), then
+  `DOCKER_CONTEXT=desktop-linux KUBE_CONTEXT=kind-skanyxx scripts/dev/first-hour.sh up` (compose and the missing kind
+  cluster both follow `DOCKER_CONTEXT`, so set it even when OrbStack is the current context). Each runtime keeps its
+  own volumes: the databases do not follow.
+
+## Install with Helm
+
+The product is one chart, `deploy/helm/skanyxx` (D060): the Skanyxx API/UI, **kagent 0.10.2**, and the bundled data
+plane — **Postgres**, **MinIO**, **Gitea** (git) and **one Dragonfly** (D061, D068). Here Skanyxx runs **in the
+cluster** and is the source of truth for people, org and cards; a desktop or `dotnet run` Host is a console that
+points at it (D059). One install per customer, in one namespace (some names are fixed: `kagent-*`, `dragonfly`) —
+and with the bundled kagent **one install per cluster**: kagent's CRDs are cluster-wide and owned by the release
+(D136). With `kagent.enabled=false` (your own kagent) several installs can share a cluster. Installing into a
+namespace other than `skanyxx` needs `--set 'kagent.rbac.namespaces={<ns>}'` (the chart refuses otherwise).
+
+```bash
+scripts/helm/build-image.sh                        # Dockerfile → skanyxx:dev (KIND_CLUSTER=<name> also loads it into kind)
+helm dependency build deploy/helm/skanyxx          # kagent, kagent-crds, dragonfly (pinned in Chart.lock)
+helm install skanyxx deploy/helm/skanyxx -n skanyxx --create-namespace \
+  --set skanyxx.publicUrl=http://localhost:8080    # or ingress.enabled + ingress.hosts (publicUrl defaults to https://<host>)
+kubectl -n skanyxx port-forward svc/skanyxx 8080:8080       # UI/API only; /mcp/memory is on 8081 (in-cluster)
+kubectl -n skanyxx get secret skanyxx -o jsonpath='{.data.bootstrap-token}' | base64 -d   # for /Setup
+# browser: http://localhost:8080/Setup → owner → /Model (save) → /Chat
+OWNER_EMAIL=… OWNER_PASSWORD=… scripts/helm/seed-agent.sh   # the seed agent + its memory secret; again to rotate
+scripts/helm/validate.sh                           # helm lint + kubeconform -strict: default, BYO, AX + 18 refusals
+```
+
+- **Image** (`Dockerfile`): .NET 10, multi-stage; the Host plus all 16 module DLLs in `/app/modules`; runs as the
+  non-root `app` user (1654) with a read-only root filesystem; no configuration or secrets inside — the chart sets
+  everything through env (`ASPNETCORE_ENVIRONMENT=Production`, `AllowedHosts`, `Identity__*`, `KAgent__*`,
+  `ConnectionStrings__*` from a Secret). The leftover SQLite file lives on an emptyDir (`/data`).
+- **Secrets** are generated once and kept across `helm upgrade` (`lookup`): the bootstrap token (48 characters),
+  Postgres role passwords, MinIO keys, Gitea admin + SECRET_KEY, the Dragonfly password. They are also **kept on
+  `helm uninstall`** (`helm.sh/resource-policy: keep`), like the PVCs: a reinstall under the same release name reads
+  them back, so the kept Postgres roles and Gitea's SECRET_KEY still match. To start over, delete those Secrets with
+  the PVCs. Or name your own: `skanyxx.bootstrapToken.existingSecret`, `skanyxx.database.existingSecret`,
+  `postgresql.existingSecret`, `minio.existingSecret`, `gitea.existingSecret`,
+  `dragonfly.passwordFromSecret.existingSecret.name`. **GitOps (Argo CD, Flux) must set them all:** `helm template`
+  sees no cluster, so `lookup` would draw new passwords on every sync (D139). Postgres applies its role passwords once
+  (initdb): rotating one is `ALTER ROLE` plus the Secret, never the Secret alone. A chart-generated Secret
+  never changes by itself; a changed BYO Secret (`skanyxx.*` existingSecret, token, certificate) rolls the Skanyxx
+  pod on the next `helm upgrade` (checksum annotation via `lookup`), otherwise `kubectl rollout restart deploy/skanyxx`.
+  The bootstrap token stays after `/Setup`: it also guards `unlock` and the owner's break-glass sign-in. Postgres gets **separate roles and
+  databases**: `skanyxx_identity` (the Data Protection key ring), `skanyxx` (memory + tickets), `kagent`.
+  `skanyxx.dataProtection.certificateSecret` mounts a PFX that encrypts the key ring.
+- **The model stays the owner's:** the chart renders **no** `default-model-config` (`kagent.providers: false`); `/Model`
+  creates it through kagent's API, so an upgrade never puts a chart spec back over the owner's (D099, D131).
+- **kagent** starts clean (D019: every sample agent and tool server off, its UI at 0 replicas — Chat is Skanyxx's) and
+  uses the umbrella's Postgres. The seed is not part of the release (its Agent kind only exists once the release's CRDs
+  are in, and its secret needs an owner): `scripts/helm/seed-agent.sh` (env `RELEASE`, `NAMESPACE`, `BASE`) checks
+  its kubectl rights first, issues the secret (`actsForUsers: true`, D084; this revokes the previous one), stores it,
+  applies `deploy/kagent/memory/` into the namespace pointed at the release's own Service and mcp port
+  (`http://skanyxx.<ns>.svc:8081/mcp/memory`), and bumps the Agent's label. It refuses a clear-text `BASE` that is not
+  loopback (`--insecure` to override). kagent's RBAC is **Role + RoleBinding in the release namespace** and it watches
+  only that namespace (`kagent.rbac.namespaces`, D136) — not cluster-wide Secret access. **`helm uninstall` deletes
+  kagent's CRDs and with them every Agent and ModelConfig in the cluster** (they are chart templates of kagent-crds);
+  `kagent.enabled=false` on an upgrade would do the same, so the chart refuses it unless `kagent.confirmCrdRemoval=true`
+  (D141). `kagent.providers` must stay `false` (the chart refuses a value: Helm would own the owner's model, D142).
+- **`/mcp/memory` has its own port** (8081, `skanyxx.service.mcpPort` → `Memory:McpPort`): the Host serves it there
+  only (by the connection's local port, not the Host header) and not at all on the UI/API port 8080, which is the only
+  one the Ingress targets (D138); and that port serves nothing else — the UI, the API, `/health` and static files
+  answer 404 there. The Host logs a warning at startup when `Memory:McpPort` is none of the ports it listens on. The **Ingress is also an allow-list** of path prefixes (`ingress.prefixPaths`, the
+  product pages only — not the leftover SRE pages): the chart refuses `/`, any path under `/mcp` in any case, anything
+  but plain path segments, and the nginx `use-regex` / `rewrite-target` / `*-snippet` annotations. Prefix matching is
+  case-sensitive, so a new page must be listed with the casing it links to. TLS ends at the ingress: set **HSTS there**;
+  the app does not trust `X-Forwarded-*` headers (D143). kagent's controller has no Ingress.
+- **One-time links in proxy access logs:** invite and password-reset links carry their token in the query string
+  (`/Invite?token=skx_inv_…`, `/ResetPassword?token=skx_rst_…`). Skanyxx never logs it, but a reverse proxy's or
+  ingress controller's **access log records query strings by default** (ingress-nginx's `$request`, Traefik, an ALB's
+  access logs). Anyone who can read those logs holds a live invite or reset link until it is used or expires (7 days /
+  60 min). Either drop the query from the access-log format for `/Invite` and `/ResetPassword` (ingress-nginx:
+  `log-format-upstream` with `$uri` instead of `$request`), or treat the access logs as secret as the database.
+- **Network:** the namespace is **default-deny** (`networkPolicy.enabled`, D137): a pod no policy names gets nothing in
+  and only DNS out. Skanyxx's UI/API port answers its namespace and, with the ingress on,
+  `networkPolicy.ingressNamespaces` (`ingress-nginx`); its mcp port only kagent's controller and agent pods (plus
+  `networkPolicy.mcpFrom`); kagent's controller its namespace; agent pods only the controller (A2A); Postgres, MinIO, Gitea and Dragonfly only Skanyxx
+  (+ kagent → Postgres, + `ax.namespace` → Dragonfly when AX is on). Egress: Skanyxx and kagent's controller anywhere
+  (Jira, Entra, the Kubernetes API); agent pods only kagent's controller, Skanyxx's mcp port (never its UI/API) and
+  `networkPolicy.modelEgress` (the internet on 443 minus `networkPolicy.clusterCidrs`; a local model such as Ollama or
+  a tool server you add needs a rule in `modelEgress.extra`) (D148); the stores DNS only. `clusterCidrs` defaults to
+  the private ranges (RFC 1918, CGNAT, link-local incl. cloud metadata, loopback, IPv6 ULA/link-local): on **IPv6 or
+  dual-stack clusters with global (GUA) pod/Service ranges** (EKS IPv6, GKE dual-stack) or clusters on **public IPv4
+  pod/Service CIDRs**, add those ranges to `networkPolicy.clusterCidrs`, or agents can reach in-cluster services on 443
+  (D149).
+  In-cluster traffic is plain http (`sslmode=disable`, `/mcp/memory`): encryption (a mesh with mTLS) is the operator's
+  (D133).
+- **Upgrades:** `postgresql|minio|gitea.storage` and `.storageClassName` are StatefulSet volume templates, which no
+  upgrade may change — resize by editing the PVC (if the StorageClass allows expansion), then
+  `kubectl delete sts <name> --cascade=orphan` and upgrade. `values.schema.json` rejects unknown keys and wrong types
+  (a typo such as `postgres.enabled` fails instead of being ignored). Images: MinIO, Postgres and Gitea are pinned by
+  digest (`*.image.digest`); `skanyxx.image.digest` pins yours. `skanyxx:dev` with `IfNotPresent` suits kind; a node
+  never re-pulls a mutable tag, so ship a new tag or a digest (D140).
+- **Bring your own (D061):** `postgresql.enabled=false` + `skanyxx.database.existingSecret` (keys
+  `ConnectionStrings__Identity`, `__Memory`, `__Tickets`); `kagent.enabled=false` + `skanyxx.kagent.url`;
+  `minio.enabled` / `gitea.enabled` / `dragonfly.enabled=false` + `external.objectStore|git|redis`. Skanyxx reads no S3,
+  git or Redis yet: where each store is lands in the ConfigMap `<release>-stores` for the slices that will.
+  With BYO Postgres (or `postgresql.existingSecret`) and the bundled kagent, create the Secret `kagent-postgres-url`
+  (key `url`) yourself; NOTES warns when it is missing. **With BYO kagent, admit it to the mcp port:** the namespace is
+  default-deny and only the bundled kagent is admitted by itself, so set `networkPolicy.mcpFrom` to your kagent's
+  peers, e.g. `[{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kagent}}}]` (its controller discovers
+  the tools, its agent pods call them; D147), and point its RemoteMCPServer at
+  `http://<release>.<ns>.svc:8081/mcp/memory` — port 8081, not 8080. NOTES warns when nothing is admitted.
+  Example: `deploy/helm/skanyxx/ci/byo-values.yaml`.
+- **AX** (`ax.enabled`, default **false**): D069 (locked 2026-10-08) keeps it off in the appliance and on-by-flag for BYO clusters that meet Substrate's prerequisites.
+  The chart does not install AX; `ax.enabled` turns the sandboxes module on and points it at your AX (`ax.address`).
+- **MinIO image:** MinIO's own images are gone (Docker Hub repo removed, quay `401`, GitHub archived); the default is
+  the community fork `pgsty/minio` (D132). `minio.image.*` takes another.
+- **Not built:** the appliance (hidden k3s + this chart, D057) — D069 is locked (2026-10-08), so it is no longer blocked on that. Shown on kind (evidence:
+  task `2026-10-06_0900_skanyxx-helm`, evidence/e2e.md and e2e-qa1.md); no real ingress or cloud cluster yet.
+
 ## Project Structure
 
 ```
@@ -51,13 +251,24 @@ Skanyxx.sln
 │       ├── Skanyxx.Module.Tickets/    # Ticket pipelines over kagent
 │       └── Skanyxx.Module.ToolServers/
 ├── tests/                         # Host, Identity, Memory, Tickets, Sandboxes test projects
-├── deploy/                        # kagent ticket agents, sample tickets, sandbox NetworkPolicies
+├── deploy/                        # Helm umbrella (helm/skanyxx), kagent seed + ticket agents, sample tickets, sandbox NetworkPolicies
 ├── docs/design/                   # Design log; build order is docs/design/todo.md
-├── AGENTS.md                      # Remarks for AI agents working in this repo
-└── SkanyxxWeb.csproj              # Legacy monolith (deprecated)
+└── AGENTS.md                      # Remarks for AI agents working in this repo
 ```
 
 **Dependency rule:** Modules reference only `Skanyxx.Core`. Modules never reference Host or each other. Cross-module communication uses MediatR.
+
+The old root monolith (`SkanyxxWeb.csproj` and its `Controllers/`, `Pages/`, `wwwroot/`, … at the repo root) is gone
+(D171): `Skanyxx.sln` is the whole product. Build output (`bin/`, `obj/`) is never tracked.
+
+**Tests and releases.** Run each suite on its own (`dotnet test tests/Skanyxx.Host.Tests`, and the four module
+suites); Host, Identity, Memory and Tickets start Postgres through Testcontainers, so they need Docker. The release
+workflow (`.github/workflows/release.yml`) builds the solution and runs all five suites on Ubuntu first: no installer
+is built unless they pass (D173).
+
+**Outbound HTTP.** No HTTP client in the solution has a retry handler: kagent (A2A `message/send`, ModelConfig
+writes), Gitea merges, Jira, Graph and AX are sent once at the transport level, under their own timeouts. The
+unused Polly retry client was removed (D170); nothing in the solution references Polly.
 
 ## Modular Architecture
 
@@ -174,20 +385,20 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | Section | Description |
 |---|---|
 | `AllowedHosts` | Explicit host list (`skanyxx.example.com;localhost`). The Host refuses to start with `*` outside Development (DNS-rebinding guard) |
-| `Skanyxx:AllowedOrigins` | Browser origins allowed to send unsafe requests (POST/PUT/PATCH/DELETE) to **any** route on the Host, plus every request to `/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity` and `/mcp` (default `[]`). On routes outside those prefixes, the Host's own origin (Origin host:port equal to the Host header) is also allowed, so the app's own forms and fetches work without listing it. Any other `Origin` gets `403`; requests without `Origin` (non-browser clients) pass |
-| `Skanyxx:RateLimit` | Per client address (IPv6 grouped per /64), on the guarded prefixes only (`/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity`, `/mcp`); legacy controllers, pages and static files are not limited: `PermitLimit` (200) per `WindowSeconds` (10) → `429`. Behind a proxy the partition is the proxy's IP (ForwardedHeaders not configured) |
-| `Skanyxx:SignInRateLimit` | Stricter window, per client address (IPv6 per /64), over the credential posts only — sign-in, bootstrap, unlock, `/Login`, `/Setup`: `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Sign-out and refresh are outside it |
-| `Skanyxx:InviteRateLimit` | Its own window, per client address (IPv6 per /64), over everything that checks an invite token — `/Invite` (GET and POST), `POST /api/identity/invites/lookup` and `/accept`: `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Separate from the sign-in window, so link unfurlers and crawlers opening invite links cannot spend it |
+| `Skanyxx:AllowedOrigins` | Browser origins allowed to send unsafe requests (POST/PUT/PATCH/DELETE) to **any** route on the Host, plus every request to `/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity`, `/api/chat`, `/api/model` and `/mcp` (default `[]`). The origin of `Identity:PublicBaseUrl` is allowed too (D108), so the Chat page's `POST /api/chat` works from the public address without listing it; any other address the page is opened under must be listed (`first-hour.sh host` lists the bind address). Outside Development, neither set logs a startup warning (Chat would get `403`). On routes outside those prefixes, the Host's own origin (Origin host:port equal to the Host header) is also allowed, so the app's own forms and fetches work without listing it. Any other `Origin` gets `403`; requests without `Origin` (non-browser clients) pass |
+| `Skanyxx:RateLimit` | Per client address (IPv6 grouped per /64), on the guarded prefixes only (`/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity`, `/api/chat`, `/api/model`, `/mcp`); legacy controllers, pages and static files are not limited: `PermitLimit` (200) per `WindowSeconds` (10) → `429`. Behind a proxy the partition is the proxy's IP (ForwardedHeaders not configured) |
+| `Skanyxx:SignInRateLimit` | Stricter window, per client address (IPv6 per /64), over the credential posts only — sign-in, bootstrap, unlock, `/Login`, `/Setup`, "forgot your password?" (`POST /api/identity/password/forgot`, `/ForgotPassword`): `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Sign-out and refresh are outside it |
+| `Skanyxx:InviteRateLimit` | Its own window, per client address (IPv6 per /64), over everything that checks a one-time link — `/Invite` and `/ResetPassword` (GET and POST), `POST /api/identity/invites/lookup` and `/accept`, `POST /api/identity/password/lookup` and `/reset`: `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Separate from the sign-in window, so link unfurlers and crawlers opening emailed links cannot spend it |
 | `Skanyxx:HealthCheckTimeoutSeconds` | Per-check timeout for `/health` (5). `/health` is anonymous and lists each check's name and status; no exception text, no CORS |
-| `KAgent` | KAgent API connection (BaseUrl, Port, Protocol, Token) |
+| `KAgent` | KAgent API connection (BaseUrl, Port, Protocol, Token), `ControlTimeoutSeconds` (10; every agents/sessions/ModelConfig call, including the owner's `/` probe), `ChatTimeoutSeconds` (300; one blocking chat turn waits for the whole answer), `ModelConfig` (`kagent/default-model-config`; the one the owner's model step edits). No kagent call is ever retried: a chat turn and a model save are not idempotent |
 | `Kubernetes` | Optional kubeconfig path |
 | `AWS` | AWS profile and region for cloud tools |
 | `Azure` | Azure config directory |
 | `Modules` | Plugin directory and enable/disable flags |
 | `ConnectionStrings:Identity` | Postgres for accounts, roles and the Data Protection key ring (required). **Use a separate database role (or database) from the other modules** — whoever can read the key ring can mint sessions |
-| `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `MaxPoolSize` (20), `InviteDays` (7, 1–30), `PublicBaseUrl` (where people reach Skanyxx, e.g. `https://skanyxx.example.com`; invite links are built on it. Optional for startup: **unset outside Development, the app starts and logs a warning, and creating an invite is refused (`409`) until it is set**; Development without it uses the request's scheme and host. When set it must be written exactly — no leading or trailing spaces, backslashes, query, fragment or user info — and absolute `https://`, except a loopback host such as the desktop installs' `http://localhost:5282`, whose links never leave the machine; anything else stops startup. The template ships `http://localhost:5282`, so a server install must change it: a loopback value while Skanyxx listens on a non-loopback address is warned about at startup, and the People page shows the host each new link points at). Validated at startup. (`SecurityStampValidationSeconds` is gone: cookies are checked on every request, and the key is ignored.) |
+| `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `MaxPoolSize` (20), `InviteDays` (7, 1–30), `PublicBaseUrl` (where people reach Skanyxx, e.g. `https://skanyxx.example.com`; invite links are built on it. Optional for startup: **unset outside Development, the app starts and logs a warning, and creating an invite is refused (`409`) until it is set**; Development without it uses the request's scheme and host. When set it must be written exactly — no leading or trailing spaces, backslashes, query, fragment or user info — and absolute `https://`, except a loopback host such as the desktop installs' `http://localhost:5282`, whose links never leave the machine; anything else stops startup. The template ships `http://localhost:5282`, so a server install must change it: a loopback value while Skanyxx listens on a non-loopback address is warned about at startup, and the People page shows the host each new link points at). Validated at startup. (`SecurityStampValidationSeconds` is gone: cookies are checked on every request, and the key is ignored.) `PasswordResetMinutes` (60, 5–1440; how long a reset link works), `AuditRetentionDays` (365, 1–3650; audit rows and finished invites older than this are deleted), `EntraRecheckMinutes` (60, 5–1440; the Graph re-check interval while Microsoft sign-in is on), `Smtp` (outgoing email; `Host` empty = off — see "Email" below) |
 | `ConnectionStrings:Memory` | Postgres for the memory engine (required; startup fails without it) |
-| `Memory` | `SearchTopK` (5), `UpsertsPerMinute` (30, per caller), `UpsertsPerMinuteTotal` (300, all callers), `MaxPoolSize` (40). Supervisors (write/lift into `company`, set agent grants) are users with role `owner` or `supervisor` |
+| `Memory` | `SearchTopK` (5), `UpsertsPerMinute` (30, per caller), `UpsertsPerMinuteTotal` (300, all callers), `MaxPoolSize` (40), `McpPort` (unset; set: `/mcp/memory` is served on that Kestrel port only and is absent from every other, and every other path answers 404 on it, as the Helm chart does with 8081 — the Host must also listen there, e.g. `ASPNETCORE_HTTP_PORTS=8080;8081`). Supervisors (write/lift into `company`, set agent grants) are users with role `owner` or `supervisor` |
 | `ConnectionStrings:Tickets` | Postgres for ticket pipelines (required; may be the same database as memory) |
 | `Tickets` | `Source` (`jira` \| `local`), `LocalPath` (JSON file, required when `local`), `Jira` (`Site` — https only, `Email`, `ApiToken`, `Project` or `Jql` (overrides `Project`), `TimeoutSeconds` (20)), `KAgentUserId` (`skanyxx-tickets`; the kagent user that owns every stage session), `StageTimeoutSeconds` (600), `PollSeconds` (5), `MaxTicketChars` (20000), `MaxPromptChars` (96000), `MaxAnswerChars` (100000), `MaxStageAttemptsPerRun` (30), `MaxActiveRunsPerUser` (5), `MaxActiveRuns` (20, all users), `MaxPoolSize` (40), `AllowedAgents` (`namespace/name`; empty = the five ticket agents; a list replaces that default). Editing and deleting pipelines needs role `owner` or `supervisor` |
 | `Sandboxes` | `Address` (AX gRPC, h2c; `http://ax-server.ax-system.svc:8080`), `Atespace` (`default`), `AllowedImages` (`[]`; registry/repo prefixes, empty = nothing runs, a configured list replaces the default), `RequireDigest` (`false`; on = image must be `@sha256:`), `MaxCpu` (`4`), `MaxMemory` (`8Gi`), `DefaultCpuRequest` (`250m`), `DefaultMemoryRequest` (`256Mi`), `DefaultCpuLimit` (`1`), `DefaultMemoryLimit` (`1Gi`), `MaxActiveTasksPerUser` (`3`), `MaxActiveTasks` (`50`, whole atespace), `CountBudgetSeconds` (`30`), `NetworkIsolationConfirmed` (`false`; must be `true` for a non-empty `AllowedImages`), `MemoryMcpUrl` (`""`; a non-empty value is **refused at startup** until a sandbox-facing listener exists, see AX Tasks), `TimeoutSeconds` (`15`), `WatchSeconds` (`120`), `KeepAliveSeconds` (`15`), `MaxWatchesPerUser` (`2`), `MaxWatches` (`50`) |
@@ -201,7 +412,7 @@ Each module exposes REST endpoints under `/api/`:
 | Agents | `/api/agents` |
 | Alerts | `/api/alerts` |
 | Analytics | `/api/analytics` |
-| Chat | `/api/chat` |
+| Chat | `/api/chat`, `/api/chat/agents` (merged agents only) |
 | CloudTools | `/api/cloud`, `/api/cloudtools` |
 | Dashboard | `/api/dashboard` |
 | Debug | `/api/debug` |
@@ -212,7 +423,7 @@ Each module exposes REST endpoints under `/api/`:
 | Tickets | `/api/tickets/issues`, `/api/tickets/pipelines`, `/api/tickets/runs` |
 | Sandboxes (experimental) | `/api/sandboxes/tasks`, `/api/sandboxes/workspaces`, `/api/sandboxes/models` |
 | Sessions | `/api/sessions` |
-| Settings | `/api/settings` |
+| Settings | `/api/settings` (owner only, except `GET /api/settings/theme`; connection tokens are write-only), `/api/model` (owner: kagent ModelConfig) |
 | ToolServers | `/api/toolservers` |
 
 Health check: `GET /health` (anonymous; overall status plus each check's name and status, e.g.
@@ -305,17 +516,18 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   rotation cannot be saved, sign-out fails loudly (`500` ProblemDetails, never `204`) instead of reporting success — retry it.
 - `GET /api/identity/me` → `{id, email, displayName, roles}`. The nav shows the signed-in user and a Sign out button.
 - Rate limits: credential posts (sign-in, bootstrap, unlock, `/Login`, `/Setup`, the Account page's Microsoft link
-  — its password check, `POST /Account?handler=LinkMicrosoft` only — and the Microsoft callback `/signin-oidc`) have their own window (`Skanyxx:SignInRateLimit`).
+  — its password check, `POST /Account?handler=LinkMicrosoft` only —, the Microsoft callback `/signin-oidc`, and "forgot your
+  password?") have their own window (`Skanyxx:SignInRateLimit`).
   Starting "Sign in with Microsoft" (`POST /Login?handler=Microsoft`) checks nothing and is not counted, so one Microsoft
   sign-in spends one permit, at its callback; sign-out and refresh do not count against it, so a client can always sign out. Invite
-  lookup and accept and the `/Invite` page (GET too) have another (`Skanyxx:InviteRateLimit`), so crawlers opening
-  invite links cannot spend the sign-in window. All windows are per client address, with IPv6 grouped per /64 (one
+  and password-reset lookup and accept, and the `/Invite` and `/ResetPassword` pages (GET too), have another
+  (`Skanyxx:InviteRateLimit`), so crawlers opening emailed links cannot spend the sign-in window. All windows are per client address, with IPv6 grouped per /64 (one
   host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window.
 - Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. Anonymous:
-  `/health`, static files, `/Login` (the Microsoft sign-in too), `/signin-oidc`, `/Setup`, `/Invite`, `/Privacy`, `/Error`, `/Offline`, `GET /api/identity/status`, the
-  bootstrap/sign-in/refresh/unlock endpoints and `POST /api/identity/invites/{lookup,accept}`. `/mcp/memory` needs no sign-in but an agent secret (below).
+  `/health`, static files, `/Login` (the Microsoft sign-in too), `/signin-oidc`, `/Setup`, `/Invite`, `/ForgotPassword`, `/ResetPassword`, `/Privacy`, `/Error`, `/Offline`, `GET /api/identity/status`, the
+  bootstrap/sign-in/refresh/unlock endpoints, `POST /api/identity/invites/{lookup,accept}` and `POST /api/identity/password/{forgot,lookup,reset}`. `/mcp/memory` needs no sign-in but an agent secret (below).
 - CSRF: every POST/PUT/PATCH/DELETE on the Host (legacy controllers included) is refused with `403` when its `Origin`
-  is not listed in `Skanyxx:AllowedOrigins` — except the Microsoft sign-in callback `/signin-oidc`, which Entra posts from its own origin and the OIDC handler protects (below) — (the Host's own origin — Origin host:port equal to the Host header — is allowed implicitly off the guarded prefixes; `/api/{memory,tickets,sandboxes,identity}` and `/mcp` still need an allow-listed Origin for any browser caller); the cookie is SameSite=Lax; the Razor forms carry
+  is not listed in `Skanyxx:AllowedOrigins` (or is the origin of `Identity:PublicBaseUrl`) — except the Microsoft sign-in callback `/signin-oidc`, which Entra posts from its own origin and the OIDC handler protects (below) — (the Host's own origin — Origin host:port equal to the Host header — is allowed implicitly off the guarded prefixes; `/api/{memory,tickets,sandboxes,identity,chat,model}` and `/mcp` still need an allow-listed Origin for any browser caller); the cookie is SameSite=Lax; the Razor forms carry
   antiforgery tokens.
 
 **People, invites and roles (D026 as built: D086, D087).** Only the owner administers people: the **People** page
@@ -327,7 +539,9 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   characters an account name may (ASCII letters, digits, `-._@+`; `400` otherwise). The link —
   `<Identity:PublicBaseUrl>/Invite?token=skx_inv_…`, never built from the request outside Development
   (256 random bits) — is in this response and on the page that created it **only**: the database keeps its SHA-256,
-  the list never shows it, and it is not logged. Send it to the person yourself (no email yet). It is single-use and
+  the list never shows it, and it is not logged. **With SMTP configured (Email, below) the link is emailed to the person
+  and not returned** (`link: null, emailed: true`, D151); without it — or if sending fails — you get it once
+  (`emailed: false`) and send it yourself. It is single-use and
   expires after `Identity:InviteDays` (7). An email that already has an account gets `409`; inviting an email again
   revokes its earlier open invite. `GET /api/identity/invites` lists pending invites (no tokens);
   `DELETE /api/identity/invites/{id}` revokes one (`204`, or `404` if no longer pending).
@@ -362,13 +576,77 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   is already saved, the call answers `500` and an Error is logged naming the person and the actor: **save the same
   roles (or disable) again** — that re-runs the revocation, and it is harmless when there is nothing left to revoke.
   By hand: `GET /api/memory/agents/{agentId}/secret` shows `createdBy`, and `DELETE` on the same path revokes. Enabling
-  someone again does not restore anything. Sandbox tasks and workspaces the person started are not stopped (open.md).
+  someone again does not restore anything. **Disabling also stops the person's active sandbox tasks** (D154; with
+  sandboxes on): their Pending, Running and Suspended AX tasks are deleted, each logged at Warning; workspaces stay, and
+  losing `supervisor` alone stops nothing. If AX cannot be reached or a task will not stop, the disable is saved, the
+  call answers `500` with `detail` "Account disabled. Its sandbox tasks could not be stopped (AX unavailable) — disable
+  again to retry." (the People page shows the same line, D162; Error log) and disabling again retries. A task someone
+  else deleted meanwhile counts as stopped (D163). Every handler of the announcement runs even when another fails
+  (D153), and memory's revocation runs first (D160), so an AX outage never keeps memory from revoking the secrets. A
+  disable also revokes the person's open password-reset links (D165).
 - **Audit:** invite created/revoked/accepted, role change and disable/enable are logged at Warning with the actor
   and target ids and the client address (the connection's, as for agent secrets: the proxy behind one), never a
   token or password. Refused invite accepts and lookups are logged at Warning too (the invite id when one was found,
   otherwise just "invalid"), and so is a signed-in person holding none of an owner-only route's roles (actor, method, route template —
   not the path, which the caller writes). A failed revocation after a role change or disable is logged at Error.
-  Commands that carry a token or password print them as `***`.
+  Commands that carry a token or password print them as `***`. Each of these lines also writes a durable audit row
+  (below).
+
+**Audit trail (D152, D155).** Every identity change and refusal that is logged at Warning — invites, roles,
+disable/enable, removed Microsoft logins, the org tree, Microsoft sign-in settings and the accounts Entra creates,
+re-maps, links or refuses, refused managed passwords and refreshes, bootstrap-token sign-ins, owner-route refusals,
+password resets, the Graph re-check — is also a row in `identity_audit`: when, action, actor, target, client address and
+JSON details, **never a token, password or secret** (invited email addresses do appear). The row is written in the same
+transaction as the change, so a change that fails leaves no row; a refusal changes nothing and its row stands alone.
+Refusals anyone can cause without an account — unknown "forgot" emails, invalid link lookups and accepts, failed
+Microsoft callbacks, owner-route refusals (per route and person) — are written **at most once a minute per kind on each replica**, the row's
+`skippedBefore` counting the ones left out since the previous row (the Warning line is still written for every one,
+D167). Rows cannot be updated or truncated (database triggers refuse both, D169; only the database owner can switch them
+off). The Audit page's address column is the **direct peer** of the connection: behind an ingress it is the proxy. Only the owner reads them: the **Audit** page (owner nav; filter
+by action or person, "Older" pages) or `GET /api/identity/audit?before=<id>&limit=<1–200, 50>&action=<action>&userId=<id>`
+→ `[{id, at, action, actorId, targetId, remoteIp, details}]`, newest first (`userId` matches actor or target; others
+`403`, anonymous `401`). **Retention:** a job (one minute after start, then every 6 h, on each replica) deletes rows older
+than `Identity:AuditRetentionDays` (365), invites that stopped being pending (accepted, revoked or expired) before then,
+and reset links a day after they expired, in batches of 5,000 (D169), and writes an `audit.retention_purged` row with the
+counts.
+
+**Email (D150).** Optional. Set `Identity:Smtp` and Skanyxx emails invite links (above) and password-reset links
+(below); leave `Host` empty and nothing changes (no email, no "Forgot your password?"). Settings: `Host`, `Port` (587),
+`Security` — `StartTls` (default, STARTTLS must succeed), `SslOnConnect` (port 465), or `None` (**only for a loopback
+host**, such as a local relay or mailpit: anything else would send one-time links in clear text, and startup refuses
+it) —, `UserName` + `Password` (both or neither; put the password in the environment, `Identity__Smtp__Password`, or a
+Secret, never in a committed file), `From` (the sender address, required), `FromName` (`Skanyxx`), `TimeoutSeconds`
+(15). Unusable settings stop startup with the reason (never the password). Mail needs `Identity:PublicBaseUrl` for its
+links (a warning at startup otherwise). Messages are plain text and say what the link is for, the link, when it expires
+and that it works once. A send is capped at twice `TimeoutSeconds` in all and stops when the owner's request goes away
+(D168). A failed send is one Warning (server, port, error type — never recipient, body or credentials): the owner's
+flows then show the link instead, with an audit row saying so (`invite.link_shown` / `password.reset_link_shown`); a
+self-service reset just sends nothing. Office 365 / Gmail: STARTTLS on
+587 with an app password or a relay connector. Implemented with MailKit (`System.Net.Mail.SmtpClient` is not
+recommended for new code).
+
+**Password reset (D156, D157).** Two ways, both ending on `/ResetPassword?token=skx_rst_…` (256 random bits, stored as
+SHA-256 only, single use, valid `Identity:PasswordResetMinutes` (60); a newer link for the account revokes the older):
+
+- **"Forgot your password?"** on `/Login` (shown only with SMTP) → `/ForgotPassword`, or
+  `POST /api/identity/password/forgot {email}` → always `202` with the same body, whatever the email: nothing is looked
+  up before the answer. A background worker then emails a link only to an account that may reset and has not been sent
+  one in the last two minutes; everything else gets nothing (and an audit row). Without SMTP it is `404` "Password reset
+  by email is not available here. Ask the owner for a reset link." Counted in the sign-in window.
+- **The owner's link:** People → "Password reset link", or `POST /api/identity/people/{id}/password-reset` (owner only)
+  → `201 {link, expiresAt, emailed}`: emailed to the person with SMTP (`link: null`), otherwise shown once
+  (`Cache-Control: no-store`) for you to pass on. Issuing changes nothing else; the old password works until the link is used.
+- **Using the link:** the page shows the account's email and takes the new password (the usual rules); scripts:
+  `POST /api/identity/password/lookup {token}` → `{email, expiresAt}` and `POST /api/identity/password/reset {token,
+  password}` → `204`. The password is replaced, the lockout and failed count cleared, every other open link revoked and
+  **every session ended** (cookies, bearer and refresh tokens); no session is started — sign in with the new password.
+  Unknown, used, revoked and expired links are one `404`; a rejected password leaves the link usable (`400`). Both the
+  page and the API answer `no-store`, the page also `no-referrer`; both count in the one-time-link window.
+- **Who cannot reset:** the **owner** (`403`; break-glass is still the bootstrap token), a **disabled** account (`409`;
+  enable it first — a disable revokes every open link, and a link refused at use is revoked too, so enabling the
+  account never brings an old link back, D165), and an account that **signs in with Microsoft
+  while Microsoft sign-in is on** (`409`). With Microsoft sign-in off, such an account can reset — which is how an
+  account Entra created gets a password.
 
 **Teams and departments (D055 as built: D090).** The org tree is Skanyxx's: **departments** contain **teams**, and
 people are members of teams (none, one or several); a person is in a department through its teams. Only the owner
@@ -512,9 +790,21 @@ What a Microsoft sign-in does:
   Warning. It is refused (`409` "Microsoft is this account's only sign-in; disable it instead.") for an account without
   a password, which is every account Microsoft sign-in created: removing its only sign-in could not be undone. People
   shows no button for those; **Disable** stops such an account and can be reversed.
-- **Groups are read only when someone signs in with Microsoft.** Removing a person from a group in Entra takes effect
-  at their next Microsoft sign-in; until then their current session lives on (up to `Identity:SessionDays`). Disable
-  the account on People to cut someone off at once (open.md).
+- **Groups are re-checked between sign-ins (D158).** Every `Identity:EntraRecheckMinutes` (60) while Microsoft sign-in
+  is on, one replica asks Graph `checkMemberGroups` (the same app-only permission as group overage,
+  `GroupMember.Read.All`, the mapped ids only) about every managed account except the owner and disabled ones, and
+  applies the answer like a sign-in: re-mapped (a role change ends its sessions), or — **no mapped group left, or the
+  user deleted from the tenant — refused**: roles and teams removed, the account kept, a lost `supervisor` revoked, and —
+  the first time, even when there was no role or team to remove — every session ended and the person's **sandbox tasks
+  stopped** (D161; a failed stop is retried by the next sweep). Back in a mapped group, the refusal is cleared; so is every
+  refusal when Microsoft sign-in is turned off (or left with no mapped group) or the tenant changes, and a refusal only
+  counts while sign-in is usable — with it off the person signs in with a password again. Graph
+  unreachable: nothing changes (a Warning); Graph answering `403` (consent for `GroupMember.Read.All` missing) or `400`
+  (a mapped group id Graph rejects — malformed or stale) is an Error naming that cause, every sweep, until fixed. Replicas share one
+  schedule (`identity_job_runs`, D164): a sweep runs once per interval across all of them, and a restart does not
+  postpone an overdue one. So a removal in Entra reaches a signed-in person
+  within the interval; to cut someone off at once, disable the account on People. Guests are not re-checked (that
+  needs a token), and accounts whose Microsoft login is from another tenant are skipped (a Warning with the count).
 - **Settings API:** `GET /api/identity/entra/settings` →
   `{enabled, tenantId, clientId, clientSecretSet, active, groups: [{groupId, label, roles, teams}], redirectUri,
   updatedBy, updatedAt, secretKeysUnencrypted}` (never the secret; `active` = on and usable on this instance); `PUT` takes `{enabled,
@@ -601,8 +891,9 @@ a `401` in the log always means a missing or wrong secret.
   agent that acts for users can read and write any user's personal memory just by naming that user's id**; the
   secret is the whole credential and Skanyxx cannot check that the user asked. That is why only the owner can turn
   it on. With it on, the header is exactly as trustworthy as kagent's own authentication — with kagent's Helm default
-  `auth.mode: unsecure`, whoever can talk to kagent chooses it. **Run kagent with `auth.mode: secure`**, forward the
-  header with `allowedHeaders: [x-user-id]`, and don't give such an agent shell or Kubernetes tools.
+  `auth.mode: unsecure`, whoever can talk to kagent chooses it, and 0.10.2 has no `secure` mode (`trusted-proxy` takes
+  the user from a JWT it does not verify, trusting the proxy in front; D101). **Keep kagent's API cluster-private**
+  (or behind an authenticating proxy), forward the header with `allowedHeaders: [x-user-id]`, and don't give such an agent shell or Kubernetes tools.
 - **kagent wiring:** one `RemoteMCPServer` per agent carrying that agent's secret from a Kubernetes Secret (the value
   is the whole header, `Bearer <secret>` — kagent adds nothing), so the controller's own `tools/list` discovery
   authenticates too. Example: `deploy/kagent/memory/`.
@@ -627,7 +918,7 @@ a `401` in the log always means a missing or wrong secret.
 - **Jira text in kagent.** Stage sessions sit in kagent under the single user `Tickets:KAgentUserId`; whoever can act
   as that user in kagent can read them.
 - **Host guards.** `AllowedHosts` must be an explicit list (the Host refuses `*` outside Development); browser clients
-  must be listed in `Skanyxx:AllowedOrigins`; only the guarded prefixes (`/api/memory|tickets|sandboxes|identity`,
+  must be listed in `Skanyxx:AllowedOrigins` (the origin of `Identity:PublicBaseUrl` is implied); only the guarded prefixes (`/api/memory|tickets|sandboxes|identity|chat|model`,
   `/mcp`) and the credential posts are rate limited — legacy controllers and pages are not; `/health` lists check names and
   statuses anonymously (no exception text).
 - **Behind a proxy** both rate-limit windows see the proxy's address (ForwardedHeaders is not configured), so all
@@ -638,10 +929,10 @@ a `401` in the log always means a missing or wrong secret.
   `Identity:DataProtectionCertificatePath` is set (chosen during this slice; awaiting the user's confirmation).
 - Not verified against a real cluster or behind a real ingress yet.
 
-**Next slices:** re-checking Entra groups between sign-ins, a sandbox-facing memory credential (per-task, so AX
-sandboxes can attach memory). Built: per-agent secrets for MCP
-(D080 → D083), invites and roles (D086–D089), teams and departments (D090–D092), Microsoft Entra ID sign-in (D093–D095),
-the .NET 10 upgrade (D097).
+**Next slices:** a sandbox-facing memory credential (per-task, so AX sandboxes can attach memory). Built: per-agent
+secrets for MCP (D080 → D083), invites and roles (D086–D089), teams and departments (D090–D092), Microsoft Entra ID
+sign-in (D093–D095), the .NET 10 upgrade (D097), email, the audit trail, password reset, the Entra re-check and sandbox
+stop on disable (D150–D159).
 Design: `docs/design/identity.md`, D079–D093; leftovers: `open.md`.
 
 ## Memory engine
@@ -661,7 +952,95 @@ dotnet test tests/Skanyxx.Module.Memory.Tests   # needs Docker (Testcontainers)
 - kagent reaches the bank over MCP at `/mcp/memory` (`memory_search`, `memory_upsert`) with a per-agent secret: `POST /api/memory/agents/{agentId}/secret` as a supervisor, then give the agent's `RemoteMCPServer` an `Authorization: Bearer <secret>` header from a Kubernetes Secret (`deploy/kagent/memory/`). Agents without grants search `company` + the calling user's personal scope and may upsert only that personal scope (needs `X-User-Id`, honoured only for an agent whose secret the owner issued with `actsForUsers: true`); `PUT /api/memory/grants/{agentId}` replaces the default with explicit search/upsert per scope (at least one entry; revoke an agent with a single grant that has `canSearch` and `canUpsert` false).
 - **Identity:** `/api/memory` acts as the signed-in user; on MCP the agent is the owner of the presented secret and the user is the `X-User-Id` the agent vouches for, if it may act for users (see Identity and security model).
 
+- `POST …/{scope}/{key}/rename {newKey, version}` renames a key (D038), for people only (MCP has no rename): allowed where you may write the scope; a stale version or a key already taken in the scope is a `409` with the current card and `reason` `stale` or `taken`; copies lifted from it keep their link (it is by id). Logged at Warning with the actor. Counts against the write rate limit only when it writes (D104).
+
 The host refuses to start if the memory database is unreachable. If a local database has an older migration history, reset it with `docker compose down -v`.
+
+### Library
+
+The **Library** page (`/Library`, in everyone's nav) is how people see the bank (D009, D048). It is UI over the memory
+module: every rule is memory's `AccessPolicy`, reached through the same commands as `/api/memory/cards`
+(`Skanyxx.Core.Platform.Memory`), so the page cannot allow what the API refuses.
+
+- **Search and filter:** any word matches (the same full-text index as agents use); the scope filter offers what you may
+  read: `company`, your personal scope, your teams and departments (owner/supervisors: every team/department scope
+  that holds cards). Without text it lists the newest cards. At most 50 rows.
+- **What is listed:** `company` shows **published** cards only; personal, team and department scopes show every status,
+  with a badge on `candidate`/`stale`. No folder tree.
+- **Open a card:** what, why, who, version, status, body and source (shown as text; nothing is fetched). A lifted copy
+  names its source only if you may open it. An unpublished `company` card opens only for supervisors and its author;
+  anyone else gets the missing-card `404`, here and on `GET /api/memory/cards/company/{key}` (D103).
+- **Lift:** one button per higher scope you may write (your teams and departments; `company` for supervisors), only on a
+  published card. A refused or forged lift is the API's `403`.
+- **Rename key:** shown only where you may write the card's scope; posts the version you saw.
+- A successful lift or rename redirects to the card (a refresh re-sends nothing).
+- Forms carry antiforgery tokens and the origin guard applies, like the other pages.
+- Not built: MinIO/S3 pointers for large bodies (the `source` field is the pointer; the bank stores no blobs), display
+  names for `who` (user ids are shown, "you" for yourself).
+
+## Studio (agents as pull requests)
+
+Todo slice 3 (`docs/design/studio.md`, D020–D024, D028–D033, D045, D109–D123). Builders compose agents; a pull request
+in the agent repo `skanyxx-agents` carries them; only a supervisor's merge makes one live in kagent.
+
+- **Repo (D023).** Setup creates org `skanyxx` and repo `skanyxx-agents` (private, `main`, protected: no direct writes,
+  only Skanyxx's account merges) in the bundled git — locally Gitea — from the reconciler, which setup wakes (setup
+  never waits on git); it retries while git is down. The repo's git id is then recorded (D119): it is **never
+  re-created**, and a gone or different repo, a public one or an unprotected `main` stops the studio (Error, nothing
+  changed) until it is restored or the owner confirms (`POST api/studio/confirm`). With no git configured the Studio
+  page says which settings are missing. One folder per agent:
+  `agents/<name>/agent.yaml` (a kagent `v1alpha2` Agent exactly as it is applied) and `agents/<name>/grants.yaml` (its
+  Skanyxx memory grants) — always in the same pull request.
+- **`/Studio`** (builders, supervisors, the owner; never employees): the form (name, description, model from kagent's
+  ModelConfigs, instructions, skills as `@sha256:`-pinned OCI refs from `Studio:SkillRegistries` (empty = skills off,
+  D122), tools of allow-listed MCP servers `Studio:McpServers`, search/upsert
+  grants per `company`/`team:`/`department:` scope, optional kagent TTL memory). **Propose** = one branch, one commit in
+  the builder's name, one PR; nothing touches kagent. Names start with a letter (≤ 33 characters). One open proposal per
+  agent, at most `Studio:MaxOpenProposalsPerBuilder` (10) per builder; a name memory holds for someone else (an agent
+  the owner made by hand) is refused (D117); changing an agent is a new PR
+  ("Propose a change" on an agent in main). The memory MCP server is not picked: an agent with a grant gets its own
+  `skanyxx-memory-<name>` with `memory_search` for a search grant and `memory_upsert` for an upsert grant.
+- **Factory** (builders and the owner): describe the agent in words; the factory agent (`skanyxx-factory`, not merged,
+  no tools) drafts the form. It opens no PR.
+- **Review and merge** (supervisors and the owner): the page shows the YAML at the PR's head and any problem. The files
+  are checked again at merge — exactly one agent folder, only those two files, exactly the shape the form renders
+  (any other kind or field — BYO image, deployment, service account, labels, another namespace — is refused), allow-listed
+  servers only, no name kagent already runs outside the studio (`seed`, ticket stages) — and the merge is pinned to that
+  head commit (a later push is a `409`). A grant that opens or closes a **team or department** needs the **owner's**
+  merge (D091). Builders get `403`.
+- **Reconciler (D045).** On merge, and every `Studio:ReconcileSeconds` (60), it makes kagent match main through kagent's
+  HTTP API (no kubectl, no Kubernetes credentials): grants into memory, a studio-issued memory secret (never acting for
+  users, `created_by = studio`) handed to kagent as the Secret of the agent's own RemoteMCPServer
+  (`Studio:MemoryMcpUrl` is `/mcp/memory` as pods reach it), and the Agent labelled `skanyxx.dev/merged: "true"` — so
+  it appears in Chat. Unchanged agents are not written; an agent removed from main is removed, but never more than
+  `Studio:MaxRemovalsPerPass` (2) or half of them in one pass, and none when main has no `agents/` (the owner confirms
+  a bigger removal with `POST api/studio/confirm`); an invalid or hostile folder in main (anchors/aliases, deep nesting,
+  over 64 KB) is logged at Error and skipped (the running agent stays). The memory secret's fingerprint names kagent's
+  Secret, and memory records which one kagent holds, so a failure half way is repaired by the next pass (D118). One
+  pass at a time across replicas (a Postgres advisory lock in memory's database, D120); a pass that fails is logged
+  and the loop goes on.
+- **Preview (D030, D032).** "Start preview" deploys `preview-<pr>-<name>`: not labelled merged (never in Chat), memory
+  **search on `company` only, never upsert**, no TTL memory, no skills, never acting for users. Builders and supervisors chat with
+  it on the proposal; it is removed when the PR merges or closes.
+- **API:** `GET api/studio`, `GET api/studio/options`, `GET api/studio/agents/{name}/draft`, `POST api/studio/proposals`,
+  `GET api/studio/proposals/{n}`, `POST api/studio/proposals/{n}/merge|close|preview|chat`, `POST api/studio/factory`
+  (rate limited and origin guarded like `/api/chat`; so are the `/Studio` form posts). Owner only:
+  `POST api/studio/agents/{name}/suspend|resume` — the emergency stop (D121: memory access revoked at once, out of
+  kagent, kept out by every pass until resumed) — and `POST api/studio/confirm` (D119).
+- **Config:** `Studio:Git:BaseUrl`, `Studio:Git:Token` (the one git account's token; never logged or returned),
+  `Studio:Git:User` (`skanyxx-bot`), `Studio:Git:Owner`/`Repo`/`Branch`, `Studio:Namespace` (`kagent`),
+  `Studio:MemoryMcpUrl`, `Studio:McpServers`, `Studio:ReconcileSeconds`, `Studio:FactoryModelConfig`,
+  `Studio:SkillRegistries`, `Studio:MaxRemovalsPerPass`, `Studio:MaxOpenProposalsPerBuilder`, `Studio:LockWaitSeconds`.
+- The legacy `/api/agents` writes (kubectl apply/scale/delete) are the owner's only (D109), and so is every other
+  leftover route that changes kagent or the cluster or runs a process: tool servers, cloud tools, hooks, alerts,
+  sessions (D116).
+
+**Local Gitea.** `scripts/dev/first-hour.sh git` starts the compose service `gitea` (project `skanyxx`,
+`127.0.0.1:3300`, registration off, sign-in required), creates the account `skanyxx-bot` (not a site admin; it owns the
+org) with a random password nobody keeps, revokes its earlier `skanyxx-*` tokens and writes a new one scoped
+`write:organization,write:repository` to `$GIT_TOKEN_FILE` (default `~/.config/skanyxx/gitea-token`, mode 0600); `host` then
+sets `Studio:Git:*` and `Studio:MemoryMcpUrl`. Remove it with
+`docker compose -p skanyxx rm -sf gitea && docker volume rm skanyxx_skanyxx-gitea` (and delete the token file).
 
 ## Ticket pipelines
 
@@ -731,12 +1110,45 @@ dotnet test tests/Skanyxx.Module.Tickets.Tests     # needs Docker; kagent is fak
 
 Runs container tasks in [Google AX](https://github.com/google/ax) sandboxes (Agent Substrate). Pinned to AX
 **v0.3.1** — the client is generated from its vendored `ax.proto` (`src/Modules/Skanyxx.Module.Sandboxes/Protos/`);
-AX is pre-1.0 and rewrote its API in v0.3.0, so re-vendor deliberately. **Not verified on a real Substrate/AX
-cluster** — only against an in-process fake AX gRPC server.
+AX is pre-1.0 and rewrote its API in v0.3.0, so re-vendor deliberately. Shown on a **real** AX v0.3.1 on Agent Substrate (local kind cluster, arm64, gVisor) on 2026-10-08: list, run
+(Pending → Running), watch (SSE `initial` / `modified` / `final`), get, stop and suspend all worked through
+`/api/sandboxes` as the owner on the owner's own tasks; **resume failed** for both tasks Skanyxx started — see
+"Local AX on kind" below.
 
 ```bash
 dotnet test tests/Skanyxx.Module.Sandboxes.Tests   # no Docker needed; AX is faked
 ```
+
+### Local AX on kind (dev only)
+
+Recipe from the 2026-10-08 spike (task `2026-10-08_0830_skanyxx-ax-real-spike`, `evidence/spike.md` has every command):
+Substrate's own kind quickstart pinned to the commit AX v0.3.1 builds against (`agent-substrate/substrate@672533541dbf`,
+`KIND_CLUSTER_NAME=ate hack/create-kind-cluster.sh` + `hack/install-ate-kind.sh --deploy-ate-system
+--credential-provider='{"name":"k8s.io"}'`), then `google/ax@v0.3.1` `make deploy AX_IMAGE_REPO=localhost:5001`
+(with a kubeconfig that holds only `kind-ate`: the Makefile uses the current context). Three things AX's deploy does not
+do, all needed:
+- a **WorkerPool** (Substrate's sandbox demo, `--deploy-demo-sandbox`, labels `workload: sandbox`) and AX's base
+  ActorTemplate **`ax-system/default-template`** selecting it (`kubectl-ate create actor-template`); without them every
+  task fails with `no free workers available`. One task holds one worker.
+- `AX_SNAPSHOTS_BUCKET` on `ax-controller` points at a developer's personal GCS bucket upstream; set it to the local
+  store (`gs://ate-snapshots/ax/`).
+- a task image: AX's example image is private. A local image of the v0.3.1 `ax-task-runner` (built from source for the
+  host arch) on alpine runs plain `spec.command` with no Antigravity.
+
+Then the Host with `Sandboxes__Enabled=true Sandboxes__Address=http://127.0.0.1:<port>` (a `kubectl port-forward
+--address 127.0.0.1` to `ax-server`: AX has no auth, never bind it wider), `Sandboxes__AllowedImages__0=<that image>`
+and `Sandboxes__NetworkIsolationConfirmed=true` only after the egress test in `deploy/sandboxes/README.md` passed.
+
+**Resume failed** for both tasks Skanyxx started in the spike: AX v0.3.1 gives a task that names its own image a per-task ActorTemplate,
+and resuming it asks Substrate for that template's golden snapshot, which does not exist (`FailedPrecondition … a
+Golden data resume requires the ActorTemplate golden snapshot`). A task on the default template suspends and resumes
+fine. Skanyxx always sends `image`, so suspend works and resume leaves the task `Failed` — an upstream limit, not
+fixed here.
+
+**Page:** `/Sandboxes` (owner and supervisor; in their nav, labelled Experimental) — run a task (name, an allowed image,
+command), watch it start (live, the same SSE stream), list, suspend / resume / stop. The page holds no rule: its script
+calls `/api/sandboxes` with the person's cookie, so the module's checks are the only ones, and an API refusal is shown as
+its text. While the module is off the page says how to turn it on and calls nothing.
 
 **Off unless enabled.** Turn it on with `Sandboxes:Enabled: true`; while off the module registers nothing and every
 `/api/sandboxes` route answers `404`. Startup refuses a non-empty `AllowedImages` unless `Sandboxes:NetworkIsolationConfirmed=true` (set it only
@@ -795,15 +1207,15 @@ after the NetworkPolicies below are applied and verified), and refuses any non-e
 **Deployment prerequisites (security).** AX has no authentication (google/ax#376); these are not optional.
 NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-server-ingress.yaml`,
 `sandbox-egress-deny.yaml`, optional `sandbox-egress-internet.yaml`): `kubectl apply -k deploy/sandboxes/`
-(unverified on Substrate sandboxes — see its README).
+(verified on kind + gVisor, applied to the WorkerPool's namespace — D178; re-test on GKE / micro-VM, see its README).
 
 - NetworkPolicy on `ax-system`: only Skanyxx's pods reach `ax-server:8080` (keep `ax-controller` ↔ Redis open).
 - Default-deny **egress** for sandbox pods, then explicit allows: DNS, and internet only as `0.0.0.0/0` **except**
   the cluster pod/service CIDRs, RFC1918 (`10/8`, `172.16/12`, `192.168/16`) and link-local `169.254.0.0/16`.
   Must block: kube-apiserver, cloud metadata `169.254.169.254`, AX Redis/Dragonfly, the Substrate API,
-  `atenet-router` (its metadata path serves other tasks' env) and every Skanyxx port. **Unverified:** whether a
-  Kubernetes NetworkPolicy applies to Substrate sandboxes at all (they run under gVisor/microVM) — confirm on the
-  target cluster before relying on it.
+  `atenet-router` (its metadata path serves other tasks' env) and every Skanyxx port. A Kubernetes NetworkPolicy
+  does apply to gVisor sandboxes on kind when it targets the Substrate WorkerPool's namespace (D178); micro-VM and GKE
+  are unverified — confirm on the target cluster before relying on it.
 - **Sandboxes must not reach Skanyxx at all; `MemoryMcpUrl` stays empty (enforced at startup).** A separate memory port is **not
   implemented**: `/mcp/memory` is mapped on the main pipeline, so any extra Kestrel port/Service serves the whole
   API (`/api/sandboxes/*`, `/api/memory/*`, Tickets, kagent proxies) — and `/mcp/memory` believes whatever `X-User-Id`

@@ -1,0 +1,70 @@
+{{- if .Values.ingress.enabled }}
+{{- $name := include "skanyxx.fullname" . }}
+{{- $port := .Values.skanyxx.service.port }}
+{{- if not .Values.ingress.hosts }}
+{{- fail "ingress.enabled=true needs ingress.hosts" }}
+{{- end }}
+{{- /*
+Defence in depth (D138): /mcp/memory is not served on the http port this Ingress targets at all; these refusals keep
+the path list from ever trying. Plain segments only (no regex metacharacters, no %-escapes), never `/` as a prefix
+(it would route everything), never a path under /mcp in any case, and none of the nginx annotations that turn paths
+into regexes or inject configuration.
+*/}}
+{{- range $kind, $paths := dict "exact" .Values.ingress.exactPaths "prefix" .Values.ingress.prefixPaths }}
+{{- range $paths }}
+{{- if or (not (or (regexMatch "^(/[A-Za-z0-9._~-]+)+$" .) (and (eq $kind "exact") (eq . "/")))) (regexMatch "/\\.+(/|$)" .) }}
+{{- fail (printf "ingress %s path %q: only plain path segments are allowed (no dot segments; `/` only as an exact path)" $kind .) }}
+{{- end }}
+{{- if hasPrefix "/mcp" (lower .) }}
+{{- fail (printf "ingress path %s would publish /mcp: agents reach /mcp/memory in-cluster only (README, Identity and security model)" .) }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- range $key, $_ := .Values.ingress.annotations }}
+{{- if regexMatch "(use-regex|rewrite-target|snippet)$" $key }}
+{{- fail (printf "ingress annotation %s is refused: it turns the path allow-list into regexes or injects configuration" $key) }}
+{{- end }}
+{{- end }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range $host := .Values.ingress.hosts }}
+    - host: {{ $host | quote }}
+      http:
+        paths:
+          {{- range $.Values.ingress.exactPaths }}
+          - path: {{ . }}
+            pathType: Exact
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  number: {{ $port }}
+          {{- end }}
+          {{- range $.Values.ingress.prefixPaths }}
+          - path: {{ . }}
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $name }}
+                port:
+                  number: {{ $port }}
+          {{- end }}
+    {{- end }}
+{{- end }}

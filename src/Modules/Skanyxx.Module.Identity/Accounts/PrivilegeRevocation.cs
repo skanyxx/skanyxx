@@ -3,17 +3,19 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Data;
+using Skanyxx.Module.Identity.Entra;
 
 namespace Skanyxx.Module.Identity.Accounts;
 
 /// <summary>
 /// Publishes <see cref="PrivilegesRevoked"/> once the change is committed. Not cancellable: the change is saved, so
 /// its follow-up must not depend on the owner's browser staying connected. A failing handler is logged at Error and
-/// rethrown (the caller gets a 500); the log says what publishes again. A change that owes a revocation marks it in its
+/// rethrown as a <see cref="RevocationFailedException"/> (the caller gets a 500 saying what did not happen); the log says what publishes again. A change that owes a revocation marks it in its
 /// own transaction (<see cref="MarkAsync"/>, D13); <see cref="SettleAsync"/> publishes after the commit and clears the
 /// mark only once the publish succeeded, so the next save or Microsoft sign-in of the account retries a failed one.
 /// </summary>
-internal sealed class PrivilegeRevocation(AccountsDbContext db, IPublisher publisher, TimeProvider time, ILogger<PrivilegeRevocation> logger)
+internal sealed class PrivilegeRevocation(
+    AccountsDbContext db, IPublisher publisher, EntraSettingsCache entra, TimeProvider time, ILogger<PrivilegeRevocation> logger)
 {
     /// <summary>The reason when only an earlier, failed revocation is published again.</summary>
     public const string Retried = "an earlier revocation retried";
@@ -50,18 +52,35 @@ internal sealed class PrivilegeRevocation(AccountsDbContext db, IPublisher publi
             await db.PendingRevocations.Where(p => p.UserId == userId && p.Generation == generation).ExecuteDeleteAsync(CancellationToken.None);
     }
 
+    /// <summary>
+    /// Whether the account is disabled, or refused by the Entra re-check (<see cref="EntraRefusal"/>), is read now, not
+    /// passed in: a retried revocation of such an account must still stop what runs on its behalf (D154, D161), and an
+    /// enabled, mapped one must not. A refusal counts only while Microsoft sign-in can be used: with it off the person
+    /// signs in with a password again (D8), so a mark a settings save has not cleared yet must not stop their tasks. A failure is rethrown as a <see cref="RevocationFailedException"/> carrying what did
+    /// not happen, for the owner (D162).
+    /// </summary>
     private async Task PublishAsync(string userId, string reason, string actorId, string retry)
     {
         try
         {
-            await publisher.Publish(new PrivilegesRevoked(userId, reason), CancellationToken.None);
+            var lockoutEnd = await db.Users.Where(u => u.Id == userId).Select(u => u.LockoutEnd).SingleOrDefaultAsync(CancellationToken.None);
+            var disabled = AccountStatus.IsDisabled(lockoutEnd);
+            var removed = disabled || (entra.Current.CanSignIn && await EntraRefusal.IsMarkedAsync(db, userId, CancellationToken.None));
+            await publisher.Publish(new PrivilegesRevoked(userId, reason, disabled, removed), CancellationToken.None);
         }
         catch (Exception ex)
         {
             logger.LogError(ex,
                 "Revoking what {UserId} issued ({Reason}) failed after {ActorUserId}'s change was saved; {Retry}",
                 userId, reason, actorId, retry);
-            throw;
+            throw new RevocationFailedException(Describe(ex), ex);
         }
+    }
+
+    /// <summary>The handlers' own words where they gave them (<see cref="RevocationFailedException"/>), else a plain one.</summary>
+    private static string Describe(Exception ex)
+    {
+        var failures = ex is AggregateException aggregate ? aggregate.InnerExceptions : [ex];
+        return string.Join(" ", failures.Select(f => f is RevocationFailedException own ? own.Message : "Not everything the person issued could be revoked.").Distinct());
     }
 }

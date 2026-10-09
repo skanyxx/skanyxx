@@ -10,12 +10,15 @@ namespace Skanyxx.Module.Identity.Entra;
 /// <c>POST /users/{oid}/checkMemberGroups</c> with an app-only token (client credentials, the sign-in's own client id
 /// and secret; needs the application permission <c>GroupMember.Read.All</c> with admin consent). Asks only about the
 /// mapped group ids, at most <see cref="BatchSize"/> per call (Graph's limit), and keeps only ids it asked about. One
-/// token per sign-in: overage is rare and a sign-in is a handful of calls. Failures throw <see cref="HttpRequestException"/>,
-/// an unreadable body included (CR L2), so the sign-in answers "try again" rather than a 500.
+/// token per instance (a sign-in resolves one; the re-check job one per sweep, D158), reused while it has more than a
+/// minute left and the settings version is the same. Failures throw <see cref="HttpRequestException"/>, an unreadable
+/// body included (CR L2), so the sign-in answers "try again" rather than a 500.
 /// </summary>
-internal sealed class GraphMembership(HttpClient http, EntraEndpoints endpoints) : IGraphMembership
+internal sealed class GraphMembership(HttpClient http, EntraEndpoints endpoints, TimeProvider time) : IGraphMembership
 {
     public const int BatchSize = 20;
+
+    private (int Version, string Token, DateTimeOffset Expires)? _token;
 
     public async Task<IReadOnlySet<string>> MemberOfAsync(EntraConfig config, Guid objectId, IReadOnlyCollection<string> groupIds, CancellationToken ct)
     {
@@ -46,6 +49,9 @@ internal sealed class GraphMembership(HttpClient http, EntraEndpoints endpoints)
 
     private async Task<string> TokenAsync(EntraConfig config, CancellationToken ct)
     {
+        if (_token is { } held && held.Version == config.Version && held.Expires > time.GetUtcNow().AddMinutes(1))
+            return held.Token;
+
         using var form = new FormUrlEncodedContent(new Dictionary<string, string>
         {
             ["grant_type"] = "client_credentials",
@@ -55,8 +61,11 @@ internal sealed class GraphMembership(HttpClient http, EntraEndpoints endpoints)
         });
         using var response = await http.PostAsync(endpoints.Token(config.TenantId), form, ct);
         response.EnsureSuccessStatusCode();
-        return (await ReadAsync<TokenResponse>(response, ct))?.AccessToken
-            ?? throw new HttpRequestException("The token endpoint answered without an access token.");
+        var token = await ReadAsync<TokenResponse>(response, ct);
+        if (token?.AccessToken is not { } access)
+            throw new HttpRequestException("The token endpoint answered without an access token.");
+        _token = (config.Version, access, time.GetUtcNow().AddSeconds(token.ExpiresIn ?? 0));
+        return access;
     }
 
     private static async Task<T?> ReadAsync<T>(HttpResponseMessage response, CancellationToken ct)
@@ -73,5 +82,6 @@ internal sealed class GraphMembership(HttpClient http, EntraEndpoints endpoints)
 
     private sealed record GraphValues(List<string>? Value);
 
-    private sealed record TokenResponse([property: JsonPropertyName("access_token")] string? AccessToken);
+    private sealed record TokenResponse(
+        [property: JsonPropertyName("access_token")] string? AccessToken, [property: JsonPropertyName("expires_in")] int? ExpiresIn);
 }

@@ -16,7 +16,7 @@ public sealed class OrgGrantTests(PostgresFixture postgres) : MemoryTestBase(pos
 {
     private const string Team = "team:billing";
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         App.Org.Join(Users.Ana, "billing", "finance");
@@ -57,8 +57,8 @@ public sealed class OrgGrantTests(PostgresFixture postgres) : MemoryTestBase(pos
         await App.OwnerClient().SetGrantsAsync("y", new { scope = Team, canSearch = true, canUpsert = false });
 
         var replace = await App.SupervisorClient().SetGrantsAsync("y", new { scope = "company", canSearch = true, canUpsert = false });
-        var secret = await App.SupervisorClient().PostAsJsonAsync("/api/memory/agents/y/secret", new { actsForUsers = false });
-        var ownerSecret = await App.OwnerClient().PostAsJsonAsync("/api/memory/agents/y/secret", new { actsForUsers = false });
+        var secret = await App.SupervisorClient().PostAsJsonAsync("/api/memory/agents/y/secret", new { actsForUsers = false }, cancellationToken: TestContext.Current.CancellationToken);
+        var ownerSecret = await App.OwnerClient().PostAsJsonAsync("/api/memory/agents/y/secret", new { actsForUsers = false }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, replace.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, secret.StatusCode);
@@ -141,7 +141,7 @@ public sealed class OrgGrantTests(PostgresFixture postgres) : MemoryTestBase(pos
         await App.OwnerClient().SetGrantsAsync("y", new { scope = Team, canSearch = true, canUpsert = false });
         await App.OwnerClient().SetGrantsAsync("y", new { scope = Team, canSearch = false, canUpsert = false });
 
-        var secret = await App.SupervisorClient().PostAsJsonAsync("/api/memory/agents/y/secret", new { actsForUsers = false });
+        var secret = await App.SupervisorClient().PostAsJsonAsync("/api/memory/agents/y/secret", new { actsForUsers = false }, cancellationToken: TestContext.Current.CancellationToken);
         var replace = await App.SupervisorClient().SetGrantsAsync("y",
             new { scope = "company", canSearch = true, canUpsert = false }, new { scope = "department:finance", canSearch = false, canUpsert = false });
 

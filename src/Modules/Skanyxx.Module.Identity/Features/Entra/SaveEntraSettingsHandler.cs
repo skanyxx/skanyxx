@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Data;
 using Skanyxx.Module.Identity.Entra;
 
@@ -19,11 +20,14 @@ namespace Skanyxx.Module.Identity.Features.Entra;
 /// under another's version (CR M1). Ids are stored as lowercase GUIDs. The secret is kept Data-Protection-protected
 /// and never logged; an empty one keeps the stored secret. Logged at Warning with the actor and client address.
 /// Turning Microsoft sign-in on (off → on) ends every session of every Entra-managed account but the owner's, in the
-/// same transaction (D15): a password session opened while it was off must not outlive D8.
+/// same transaction (D15): a password session opened while it was off must not outlive D8. A save that leaves Microsoft
+/// sign-in unusable (off, or no group mapped) or changes the tenant clears every re-check refusal in the same transaction
+/// (<see cref="EntraRefusal"/>, D161): those people may sign in with their password again, so a later revocation must
+/// not stop their sandbox tasks as if their access were gone.
 /// </summary>
 internal sealed class SaveEntraSettingsHandler(
-    AccountsDbContext db, EntraSettingsCache cache, EntraRedirectUri redirect, EntraKeyRing keyRing, ClientAddress client, TimeProvider time,
-    ILogger<SaveEntraSettingsHandler> logger)
+    AccountsDbContext db, EntraSettingsCache cache, EntraRedirectUri redirect, EntraKeyRing keyRing, IdentityAudit audit, ClientAddress client,
+    TimeProvider time, ILogger<SaveEntraSettingsHandler> logger)
     : IRequestHandler<SaveEntraSettingsCommand, Outcome<EntraSettingsDto>>
 {
     public const string NotReloaded = "Saved, but this server could not reload the settings yet: they apply within a minute.";
@@ -53,6 +57,8 @@ internal sealed class SaveEntraSettingsHandler(
 
         var row = await db.EntraSettings.SingleOrDefaultAsync(ct);
         var turnedOn = command.Enabled && row?.Enabled != true;
+        var tenantId = EntraClaims.NormalizeId(command.TenantId) ?? "";
+        var tenantChanged = row is not null && row.TenantId != tenantId;
         if (row is null)
             db.EntraSettings.Add(row = new EntraSettings());
         if (newSecret)
@@ -61,7 +67,7 @@ internal sealed class SaveEntraSettingsHandler(
             throw new ValidationException([new ValidationFailure(nameof(command.ClientSecret), "Enter the client secret to turn Microsoft sign-in on.")]);
 
         row.Enabled = command.Enabled;
-        row.TenantId = EntraClaims.NormalizeId(command.TenantId) ?? "";
+        row.TenantId = tenantId;
         row.ClientId = EntraClaims.NormalizeId(command.ClientId) ?? "";
         row.UpdatedBy = command.ActorId;
         row.UpdatedUtc = time.GetUtcNow();
@@ -70,6 +76,13 @@ internal sealed class SaveEntraSettingsHandler(
         await db.SaveChangesAsync(ct);
         await db.EntraSettings.ExecuteUpdateAsync(s => s.SetProperty(x => x.Version, x => x.Version + 1), ct);
         var ended = turnedOn ? await EndManagedSessionsAsync(ct) : 0;
+        var refusalsCleared = !(command.Enabled && groups.Count > 0) || tenantChanged ? await EntraRefusal.ClearAllAsync(db, ct) : 0;
+        await audit.WriteAsync(AuditActions.EntraSettingsSaved, command.ActorId, null, new
+        {
+            enabled = row.Enabled, tenantId = row.TenantId, clientId = row.ClientId, secret = newSecret ? "replaced" : "kept",
+            groups = groups.Select(g => new { g.GroupId, g.Roles, g.Teams }), turnedOn, sessionsEnded = ended,
+            refusalsCleared, keyRingUnencrypted = newSecret && keyRing.Unencrypted
+        }, ct);
         await transaction.CommitAsync(ct);
 
         logger.LogWarning("Microsoft sign-in settings saved by {ActorUserId} from {RemoteIp}: {State}, tenant {TenantId}, client {ClientId}, " +

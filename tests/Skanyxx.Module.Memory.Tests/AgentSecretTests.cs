@@ -22,7 +22,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     [Fact]
     public async Task Issue_ReturnsAPrefixed256BitSecret_Once()
     {
-        var response = await App.SupervisorClient().PostAsync(Path, null);
+        var response = await App.SupervisorClient().PostAsync(Path, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(response.Headers.CacheControl?.NoStore);
@@ -37,15 +37,15 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     [Fact]
     public async Task Status_ReportsTheSecret_WithoutEverReturningIt()
     {
-        var before = await (await App.SupervisorClient().GetAsync(Path)).JsonAsync();
-        var issued = await (await App.SupervisorClient().PostAsync(Path, null)).JsonAsync();
+        var before = await (await App.SupervisorClient().GetAsync(Path, TestContext.Current.CancellationToken)).JsonAsync();
+        var issued = await (await App.SupervisorClient().PostAsync(Path, null, TestContext.Current.CancellationToken)).JsonAsync();
 
-        var status = await App.SupervisorClient().GetAsync(Path);
+        var status = await App.SupervisorClient().GetAsync(Path, TestContext.Current.CancellationToken);
 
         Assert.False(before.GetProperty("hasSecret").GetBoolean());
         Assert.Equal(System.Text.Json.JsonValueKind.Null, before.GetProperty("createdBy").ValueKind);
         Assert.Equal(HttpStatusCode.OK, status.StatusCode);
-        var body = await status.Content.ReadAsStringAsync();
+        var body = await status.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var json = await status.JsonAsync();
         Assert.True(json.GetProperty("hasSecret").GetBoolean());
         Assert.Equal(issued.GetProperty("createdAt").GetDateTime(), json.GetProperty("createdAt").GetDateTime());
@@ -82,7 +82,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         Assert.Equal(HttpStatusCode.Unauthorized, withOld.StatusCode);
         Assert.Equal(HttpStatusCode.OK, withCurrent.StatusCode);
         await using var db = Postgres.CreateDbContext();
-        Assert.Equal(1, await db.AgentSecrets.CountAsync());
+        Assert.Equal(1, await db.AgentSecrets.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -90,10 +90,10 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         var secret = await App.IssueSecretAsync("seed");
 
-        var revoke = await App.SupervisorClient().DeleteAsync(Path);
+        var revoke = await App.SupervisorClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
         var mcp = await App.PostMcpAsync("tools/list", $"Bearer {secret}");
-        var again = await App.SupervisorClient().DeleteAsync(Path);
-        var status = await (await App.SupervisorClient().GetAsync(Path)).JsonAsync();
+        var again = await App.SupervisorClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
+        var status = await (await App.SupervisorClient().GetAsync(Path, TestContext.Current.CancellationToken)).JsonAsync();
 
         Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, mcp.StatusCode);
@@ -110,12 +110,12 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         await App.IssueSecretAsync("seed");
 
-        var response = await App.Client("olga", role).SendAsync(new HttpRequestMessage(new HttpMethod(method), Path));
+        var response = await App.Client("olga", role).SendAsync(new HttpRequestMessage(new HttpMethod(method), Path), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.DoesNotContain("skx_mem_", await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("skx_mem_", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         await using var db = Postgres.CreateDbContext();
-        Assert.Equal(1, await db.AgentSecrets.CountAsync());
+        Assert.Equal(1, await db.AgentSecrets.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -124,7 +124,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     [InlineData("DELETE")]
     public async Task Anonymous_IsUnauthorized(string method)
     {
-        var response = await App.Client().SendAsync(new HttpRequestMessage(new HttpMethod(method), Path));
+        var response = await App.Client().SendAsync(new HttpRequestMessage(new HttpMethod(method), Path), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -134,14 +134,14 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     [InlineData("a%0A")]
     public async Task InvalidAgentId_IsAValidationError(string agentId)
     {
-        var response = await App.SupervisorClient().PostAsync($"/api/memory/agents/{agentId}/secret", null);
+        var response = await App.SupervisorClient().PostAsync($"/api/memory/agents/{agentId}/secret", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     public static TheoryData<string?> BadAuthorization => new()
     {
-        null,
+        (string?)null,
         "Basic c2VlZDpzZWVk",
         "Bearer",
         "Bearer ",
@@ -177,7 +177,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
 
         Assert.Equal(HttpStatusCode.OK, initialize.StatusCode);
         Assert.Equal(HttpStatusCode.OK, tools.StatusCode);
-        Assert.Contains("memory_search", await tools.Content.ReadAsStringAsync());
+        Assert.Contains("memory_search", await tools.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     // Stateless MCP serves no standalone SSE stream (GET) and has no session to end (DELETE): MCP Streamable HTTP allows 405.
@@ -194,7 +194,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         var secret = await App.IssueSecretAsync("seed");
 
-        var response = await App.Client().SendAsync(McpRequest(method, $"Bearer {secret}"));
+        var response = await App.Client().SendAsync(McpRequest(method, $"Bearer {secret}"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.MethodNotAllowed, response.StatusCode);
         Assert.Equal(["POST"], response.Content.Headers.Allow);
@@ -208,7 +208,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     [InlineData("PUT", "Bearer " + UnknownSecret)]
     public async Task Mcp_GetOrDelete_WithoutAValidSecret_Is401(string method, string? authorization)
     {
-        var response = await App.Client().SendAsync(McpRequest(method, authorization));
+        var response = await App.Client().SendAsync(McpRequest(method, authorization), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         // The agent scheme's challenge, not the Host's user fallback (which also answers 401).
@@ -235,7 +235,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         request.Headers.Accept.ParseAdd("application/json");
         request.Headers.Accept.ParseAdd("text/event-stream");
 
-        var response = await App.SupervisorClient().SendAsync(request);
+        var response = await App.SupervisorClient().SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -248,8 +248,8 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         await using var client = await App.McpWithSecretAsync(reader, userId: Users.Ana,
             headers: new Dictionary<string, string> { ["X-Agent-Id"] = "writer" });
 
-        var company = await client.CallToolAsync("memory_upsert", Upsert("company"));
-        var personal = await client.CallToolAsync("memory_upsert", Upsert("personal"));
+        var company = await client.CallToolAsync("memory_upsert", Upsert("company"), cancellationToken: TestContext.Current.CancellationToken);
+        var personal = await client.CallToolAsync("memory_upsert", Upsert("personal"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(company.IsError);
         Assert.Contains("No upsert grant", Text(company));
@@ -264,7 +264,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         await App.SupervisorClient().SetGrantsAsync("writer", new { scope = "company", canSearch = true, canUpsert = true });
         await using var client = await App.McpAsync("writer");
 
-        var company = await client.CallToolAsync("memory_upsert", Upsert("company"));
+        var company = await client.CallToolAsync("memory_upsert", Upsert("company"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotEqual(true, company.IsError);
         Assert.Contains("agent:writer", Text(company));
@@ -276,9 +276,9 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         var secret = await App.IssueSecretAsync("seed");
 
         await using var db = Postgres.CreateDbContext();
-        var row = await db.AgentSecrets.SingleAsync();
+        var row = await db.AgentSecrets.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         var rowText = await db.Database.SqlQueryRaw<string>(
-            "SELECT row_to_json(s)::text AS \"Value\" FROM memory_agent_secrets s").SingleAsync();
+            "SELECT row_to_json(s)::text AS \"Value\" FROM memory_agent_secrets s").SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(SHA256.HashData(Encoding.UTF8.GetBytes(secret)), row.SecretHash);
         Assert.Equal(MemoryApp.Supervisor, row.CreatedBy);
@@ -291,10 +291,10 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         var secret = await App.IssueSecretAsync("seed", actsForUsers: true);
         await using (var client = await App.McpAsync("seed", userId: Users.Ana))
-            await client.CallToolAsync("memory_upsert", Upsert("personal"));
+            await client.CallToolAsync("memory_upsert", Upsert("personal"), cancellationToken: TestContext.Current.CancellationToken);
         await App.PostMcpAsync("tools/list", $"Bearer {UnknownSecret}");
         await App.PostMcpAsync("tools/list", "Bearer not-a-secret-but-sensitive");
-        await App.SupervisorClient().GetAsync(Path);
+        await App.SupervisorClient().GetAsync(Path, TestContext.Current.CancellationToken);
 
         var logs = App.Logs;
 
@@ -310,21 +310,21 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     [Fact]
     public async Task ActsForUsers_BySupervisor_IsForbidden()
     {
-        var response = await App.SupervisorClient().PostAsJsonAsync(Path, new { actsForUsers = true });
+        var response = await App.SupervisorClient().PostAsJsonAsync(Path, new { actsForUsers = true }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.DoesNotContain("skx_mem_", await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("skx_mem_", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         await using var db = Postgres.CreateDbContext();
-        Assert.Equal(0, await db.AgentSecrets.CountAsync());
+        Assert.Equal(0, await db.AgentSecrets.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task ActsForUsers_ByOwner_IsSet_ReportedByStatus_AndEachIssueSetsItAgain()
     {
-        var issued = await App.OwnerClient().PostAsJsonAsync(Path, new { actsForUsers = true });
-        var status = await (await App.SupervisorClient().GetAsync(Path)).JsonAsync();
-        var rotated = await App.OwnerClient().PostAsync(Path, null); // no body = off
-        var after = await (await App.SupervisorClient().GetAsync(Path)).JsonAsync();
+        var issued = await App.OwnerClient().PostAsJsonAsync(Path, new { actsForUsers = true }, cancellationToken: TestContext.Current.CancellationToken);
+        var status = await (await App.SupervisorClient().GetAsync(Path, TestContext.Current.CancellationToken)).JsonAsync();
+        var rotated = await App.OwnerClient().PostAsync(Path, null, TestContext.Current.CancellationToken); // no body = off
+        var after = await (await App.SupervisorClient().GetAsync(Path, TestContext.Current.CancellationToken)).JsonAsync();
 
         Assert.Equal(HttpStatusCode.OK, issued.StatusCode);
         Assert.True((await issued.JsonAsync()).GetProperty("actsForUsers").GetBoolean());
@@ -340,14 +340,14 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         var owners = await App.IssueSecretAsync("seed", actsForUsers: true);
 
-        var rotate = await App.SupervisorClient().PostAsync(Path, null);
+        var rotate = await App.SupervisorClient().PostAsync(Path, null, TestContext.Current.CancellationToken);
         var mcp = await App.PostMcpAsync("tools/list", $"Bearer {owners}");
 
         Assert.Equal(HttpStatusCode.Forbidden, rotate.StatusCode);
-        Assert.DoesNotContain("skx_mem_", await rotate.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("skx_mem_", await rotate.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.OK, mcp.StatusCode);
         await using var db = Postgres.CreateDbContext();
-        var row = await db.AgentSecrets.SingleAsync();
+        var row = await db.AgentSecrets.SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(row.ActsForUsers);
         Assert.Equal(MemoryApp.Owner, row.CreatedBy);
         Assert.Equal(SHA256.HashData(Encoding.UTF8.GetBytes(owners)), row.SecretHash);
@@ -358,13 +358,13 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         var owners = await App.IssueSecretAsync("seed", actsForUsers: true);
 
-        var revoke = await App.SupervisorClient().DeleteAsync(Path);
+        var revoke = await App.SupervisorClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
         var mcp = await App.PostMcpAsync("tools/list", $"Bearer {owners}");
 
         Assert.Equal(HttpStatusCode.Forbidden, revoke.StatusCode);
         Assert.Equal(HttpStatusCode.OK, mcp.StatusCode);
         await using var db = Postgres.CreateDbContext();
-        Assert.True((await db.AgentSecrets.SingleAsync()).ActsForUsers);
+        Assert.True((await db.AgentSecrets.SingleAsync(cancellationToken: TestContext.Current.CancellationToken)).ActsForUsers);
     }
 
     [Fact]
@@ -372,15 +372,15 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         var owners = await App.IssueSecretAsync("seed", actsForUsers: true);
 
-        var rotate = await App.OwnerClient().PostAsJsonAsync(Path, new { actsForUsers = true });
+        var rotate = await App.OwnerClient().PostAsJsonAsync(Path, new { actsForUsers = true }, cancellationToken: TestContext.Current.CancellationToken);
         var withOld = await App.PostMcpAsync("tools/list", $"Bearer {owners}");
-        var revoke = await App.OwnerClient().DeleteAsync(Path);
+        var revoke = await App.OwnerClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, rotate.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, withOld.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, revoke.StatusCode);
         await using var db = Postgres.CreateDbContext();
-        Assert.Equal(0, await db.AgentSecrets.CountAsync());
+        Assert.Equal(0, await db.AgentSecrets.CountAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -388,9 +388,9 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         var old = await App.IssueSecretAsync("seed");
 
-        var rotate = await App.SupervisorClient().PostAsync(Path, null);
+        var rotate = await App.SupervisorClient().PostAsync(Path, null, TestContext.Current.CancellationToken);
         var withOld = await App.PostMcpAsync("tools/list", $"Bearer {old}");
-        var revoke = await App.SupervisorClient().DeleteAsync(Path);
+        var revoke = await App.SupervisorClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, rotate.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, withOld.StatusCode);
@@ -401,11 +401,11 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     public async Task Refusals_AreAuditedAtWarning_WithActorAgentAndReason()
     {
         var owners = await App.IssueSecretAsync("seed", actsForUsers: true);
-        await App.SupervisorClient().PostAsJsonAsync("/api/memory/agents/other/secret", new { actsForUsers = true });
-        await App.SupervisorClient().PostAsync(Path, null);
-        await App.SupervisorClient().DeleteAsync(Path);
-        await App.Client("olga", SkanyxxRoles.Employee).PostAsync(Path, null);
-        await App.Client("olga", SkanyxxRoles.Employee).DeleteAsync(Path);
+        await App.SupervisorClient().PostAsJsonAsync("/api/memory/agents/other/secret", new { actsForUsers = true }, cancellationToken: TestContext.Current.CancellationToken);
+        await App.SupervisorClient().PostAsync(Path, null, TestContext.Current.CancellationToken);
+        await App.SupervisorClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
+        await App.Client("olga", SkanyxxRoles.Employee).PostAsync(Path, null, TestContext.Current.CancellationToken);
+        await App.Client("olga", SkanyxxRoles.Employee).DeleteAsync(Path, TestContext.Current.CancellationToken);
 
         var refusals = App.Logs.Split('\n').Where(l => l.StartsWith("Warning Agent memory secret") && l.Contains(" refused ")).ToList();
 
@@ -427,8 +427,8 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         var secret = await App.IssueSecretAsync("seed");
         await using var client = await App.McpWithSecretAsync(secret, userId: Users.Ana);
 
-        var search = await client.CallToolAsync("memory_search", new Dictionary<string, object?> { ["query"] = "refund" });
-        var upsert = await client.CallToolAsync("memory_upsert", Upsert("personal"));
+        var search = await client.CallToolAsync("memory_search", new Dictionary<string, object?> { ["query"] = "refund" }, cancellationToken: TestContext.Current.CancellationToken);
+        var upsert = await client.CallToolAsync("memory_upsert", Upsert("personal"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains("company-refund", Text(search));
         Assert.DoesNotContain("ana-refund", Text(search));
@@ -444,8 +444,8 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         var secret = await App.IssueSecretAsync("seed", actsForUsers: true);
         await using var client = await App.McpWithSecretAsync(secret, userId: Users.Ana);
 
-        var search = await client.CallToolAsync("memory_search", new Dictionary<string, object?> { ["query"] = "refund" });
-        var upsert = await client.CallToolAsync("memory_upsert", Upsert("personal"));
+        var search = await client.CallToolAsync("memory_search", new Dictionary<string, object?> { ["query"] = "refund" }, cancellationToken: TestContext.Current.CancellationToken);
+        var upsert = await client.CallToolAsync("memory_upsert", Upsert("personal"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains("ana-refund", Text(search));
         Assert.NotEqual(true, upsert.IsError);
@@ -464,7 +464,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         var secret = await App.IssueSecretAsync("seed", actsForUsers: true);
         await using var client = await App.McpWithSecretAsync(secret, userId: userId);
 
-        var upsert = await client.CallToolAsync("memory_upsert", Upsert("personal"));
+        var upsert = await client.CallToolAsync("memory_upsert", Upsert("personal"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(upsert.IsError);
         Assert.Contains("No user context", Text(upsert));
@@ -517,8 +517,8 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
             [TestAuthHandler.UserHeader] = MemoryApp.Supervisor, [TestAuthHandler.RolesHeader] = SkanyxxRoles.Supervisor
         });
 
-        var personal = await client.CallToolAsync("memory_upsert", Upsert("personal"));
-        var company = await client.CallToolAsync("memory_upsert", Upsert("company"));
+        var personal = await client.CallToolAsync("memory_upsert", Upsert("personal"), cancellationToken: TestContext.Current.CancellationToken);
+        var company = await client.CallToolAsync("memory_upsert", Upsert("company"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(company.IsError); // a supervisor could write company; the default agent grant cannot
         if (actsForUsers)
@@ -533,7 +533,7 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     {
         var first = await App.IssueSecretAsync("seed");
         var second = await App.IssueSecretAsync("seed", actsForUsers: true);
-        await App.OwnerClient().DeleteAsync(Path);
+        await App.OwnerClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
 
         var warnings = App.Logs.Split('\n').Where(l => l.StartsWith("Warning Agent memory secret")).ToList();
 
@@ -550,12 +550,12 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
     public async Task Refusal_NeverEchoesThePresentedSecret()
     {
         var revoked = await App.IssueSecretAsync("seed");
-        await App.SupervisorClient().DeleteAsync(Path);
+        await App.SupervisorClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
 
         foreach (var presented in new[] { revoked, UnknownSecret, "not-a-secret-but-sensitive" })
         {
             var response = await App.PostMcpAsync("tools/list", $"Bearer {presented}");
-            var body = await response.Content.ReadAsStringAsync();
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
             Assert.DoesNotContain(presented, body);

@@ -1,4 +1,5 @@
-# Local data plane for development: the memory engine's Postgres (D053).
+# Local data plane for development: the memory engine's Postgres (D053) and the bundled git (D023) that holds
+# skanyxx-agents, the repo studio proposals are pull requests against.
 services:
   postgres:
     image: postgres:16-alpine
@@ -16,5 +17,29 @@ services:
       timeout: 3s
       retries: 10
 
+  # Started by scripts/dev/first-hour.sh git, which also creates the one account Skanyxx uses and keeps its token out of
+  # every file in the repo. Registration is off and sign-in is required to read anything: nobody else has an account,
+  # so main changes only by a merge Skanyxx makes (README "Studio").
+  gitea:
+    image: gitea/gitea:1.24
+    environment:
+      GITEA__security__INSTALL_LOCK: "true"
+      GITEA__database__DB_TYPE: sqlite3
+      GITEA__server__ROOT_URL: http://localhost:3300/
+      GITEA__server__HTTP_PORT: "3000"
+      GITEA__server__DISABLE_SSH: "true"
+      GITEA__service__DISABLE_REGISTRATION: "true"
+      GITEA__service__REQUIRE_SIGNIN_VIEW: "true"
+    ports:
+      - "127.0.0.1:3300:3000"
+    volumes:
+      - skanyxx-gitea:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
 volumes:
   skanyxx-postgres:
+  skanyxx-gitea:

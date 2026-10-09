@@ -26,11 +26,11 @@ public sealed class DataProtectionTests(PostgresFixture postgres) : IDisposable
         await app.BootstrapAsync();
 
         var cookie = SetCookie.AuthHeader(await app.SignInAsync(useCookie: true));
-        var me = await app.Client(cookie: cookie).GetAsync("/api/identity/me");
+        var me = await app.Client(cookie: cookie).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, me.StatusCode);
         await using var scope = app.Services.CreateAsyncScope();
-        var keys = await scope.ServiceProvider.GetRequiredService<Data.AccountsDbContext>().DataProtectionKeys.Select(k => k.Xml).ToListAsync();
+        var keys = await scope.ServiceProvider.GetRequiredService<Data.AccountsDbContext>().DataProtectionKeys.Select(k => k.Xml).ToListAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.NotEmpty(keys);
         Assert.All(keys, xml => Assert.Contains("<encryptedSecret", xml));
     }

@@ -41,10 +41,10 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
         if (method is "PUT" or "POST")
             request.Content = JsonContent.Create(new { ticketKey = "SDB-1", pipelineId = "ticket-fix", decision = "approve", name = "n", stages = Array.Empty<object>() });
 
-        var response = await client.SendAsync(request);
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Empty((await App.Client().GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs", TicketsApp.Json))!);
+        Assert.Empty((await App.Client().GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken))!);
     }
 
     [Fact]
@@ -53,10 +53,10 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
         var ana = App.Client();
         ana.DefaultRequestHeaders.Add("X-User-Id", "bob");
 
-        var started = await ana.PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" });
-        var run = (await started.Content.ReadFromJsonAsync<RunDto>(TicketsApp.Json))!;
+        var started = await ana.PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
+        var run = (await started.Content.ReadFromJsonAsync<RunDto>(TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken))!;
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
-        var decided = await ana.PostAsJsonAsync($"/api/tickets/runs/{run.Id}/decision", new { decision = "approve" });
+        var decided = await ana.PostAsJsonAsync($"/api/tickets/runs/{run.Id}/decision", new { decision = "approve" }, cancellationToken: TestContext.Current.CancellationToken);
         var done = await App.WaitForAsync(run.Id, RunState.Succeeded);
 
         Assert.Equal(HttpStatusCode.OK, decided.StatusCode);
@@ -71,7 +71,7 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
         var bob = App.Client("bob");
         bob.DefaultRequestHeaders.Add("X-User-Id", TicketsApp.User);
 
-        var response = await bob.PostAsync($"/api/tickets/runs/{run.Id}/cancel", null);
+        var response = await bob.PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
@@ -87,8 +87,8 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
         var olga = App.ClientAs("olga", role);
 
-        var save = await olga.PutAsJsonAsync("/api/tickets/pipelines/mine", Pipeline(Stage("plan", "plan", "ticket-planner")));
-        var cancel = await olga.PostAsync($"/api/tickets/runs/{run.Id}/cancel", null);
+        var save = await olga.PutAsJsonAsync("/api/tickets/pipelines/mine", Pipeline(Stage("plan", "plan", "ticket-planner")), cancellationToken: TestContext.Current.CancellationToken);
+        var cancel = await olga.PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, save.StatusCode);
         Assert.Equal(expected == HttpStatusCode.Created ? HttpStatusCode.OK : HttpStatusCode.Forbidden, cancel.StatusCode);
@@ -98,7 +98,7 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
     public async Task SupervisorByName_WithoutRole_IsNotASupervisor()
     {
         var response = await App.ClientAs(TicketsApp.Supervisor).PutAsJsonAsync("/api/tickets/pipelines/mine",
-            Pipeline(Stage("plan", "plan", "ticket-planner")));
+            Pipeline(Stage("plan", "plan", "ticket-planner")), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

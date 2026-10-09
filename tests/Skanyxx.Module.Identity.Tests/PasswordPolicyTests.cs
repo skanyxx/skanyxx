@@ -15,7 +15,7 @@ public sealed class PasswordPolicyTests(PostgresFixture postgres) : IdentityTest
         var accepted = await App.BootstrapAsync();
 
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-        Assert.Contains("password", (await refused.Content.ReadAsStringAsync()).ToLowerInvariant());
+        Assert.Contains("password", (await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).ToLowerInvariant());
         Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
     }
 
@@ -30,7 +30,7 @@ public sealed class PasswordPolicyTests(PostgresFixture postgres) : IdentityTest
         var stillOpen = await App.LookupInviteAsync(token);
 
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-        Assert.Contains("\"Password\"", await refused.Content.ReadAsStringAsync());
+        Assert.Contains("\"Password\"", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.OK, stillOpen.StatusCode);
     }
 
@@ -41,7 +41,7 @@ public sealed class PasswordPolicyTests(PostgresFixture postgres) : IdentityTest
         var owner = (await App.SignInBearerAsync()).AccessToken;
         var token = await App.InviteAsync(owner, "al@skanyxx.example");
 
-        var accepted = await App.Client().PostAsJsonAsync("/api/identity/invites/accept", new { token, password = "totally normal password" });
+        var accepted = await App.Client().PostAsJsonAsync("/api/identity/invites/accept", new { token, password = "totally normal password" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, accepted.StatusCode);
     }

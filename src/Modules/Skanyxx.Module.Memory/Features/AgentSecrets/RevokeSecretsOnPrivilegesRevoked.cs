@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Memory.Data;
 
@@ -10,8 +11,10 @@ namespace Skanyxx.Module.Memory.Features.AgentSecrets;
 /// Offboarding: a person who loses supervisor or is disabled must not keep agent access through secrets they minted
 /// and kept a copy of. Deletes every secret whose <c>created_by</c> is them, in one statement; the agents are locked
 /// out of <c>/mcp/memory</c> until a supervisor issues new ones. An owner's secrets (acts-for-users included) are the
-/// owner's, whom neither event reaches.
+/// owner's, whom neither event reaches. Runs before every handler that calls out (D160): one local statement that a
+/// slow or unreachable AX must not hold up.
 /// </summary>
+[NotificationOrder(NotificationOrderAttribute.Revocation)]
 internal sealed class RevokeSecretsOnPrivilegesRevoked(MemoryDbContext db, ILogger<RevokeSecretsOnPrivilegesRevoked> logger)
     : INotificationHandler<PrivilegesRevoked>
 {

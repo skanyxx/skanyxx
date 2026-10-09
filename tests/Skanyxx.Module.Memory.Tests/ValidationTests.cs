@@ -44,7 +44,7 @@ public sealed class ValidationTests(PostgresFixture postgres) : MemoryTestBase(p
     [Fact]
     public async Task EmptySearchQuery_Rejected()
     {
-        var response = await App.Client("ana").GetAsync("/api/memory/cards?q=");
+        var response = await App.Client("ana").GetAsync("/api/memory/cards?q=", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

@@ -14,7 +14,7 @@ public sealed class StartupTests
         });
 
         // Opening the migration lock's connection goes through EF's execution strategy, which wraps a transient failure.
-        var error = await Assert.ThrowsAnyAsync<Exception>(() => app.StartAsync());
+        var error = await Assert.ThrowsAnyAsync<Exception>(() => app.StartAsync(TestContext.Current.CancellationToken));
         Assert.IsAssignableFrom<NpgsqlException>(error as NpgsqlException ?? error.InnerException);
     }
 }

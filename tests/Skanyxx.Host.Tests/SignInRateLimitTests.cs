@@ -16,11 +16,11 @@ public sealed class SignInRateLimitTests(PostgresFixture fixture)
         });
         var credentials = new { email = HostApp.OwnerEmail, password = "wrong password" };
 
-        var api = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials);
-        var form = await host.Client().PostAsync("/Login", new FormUrlEncodedContent(new Dictionary<string, string>()));
-        var third = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials);
-        var setupForm = await host.Client().PostAsync("/Setup", new FormUrlEncodedContent(new Dictionary<string, string>()));
-        var status = await host.Client().GetAsync("/api/identity/status");
+        var api = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials, cancellationToken: TestContext.Current.CancellationToken);
+        var form = await host.Client().PostAsync("/Login", new FormUrlEncodedContent(new Dictionary<string, string>()), TestContext.Current.CancellationToken);
+        var third = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials, cancellationToken: TestContext.Current.CancellationToken);
+        var setupForm = await host.Client().PostAsync("/Setup", new FormUrlEncodedContent(new Dictionary<string, string>()), TestContext.Current.CancellationToken);
+        var status = await host.Client().GetAsync("/api/identity/status", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, form.StatusCode); // no antiforgery token, but it still counted
@@ -42,9 +42,9 @@ public sealed class SignInRateLimitTests(PostgresFixture fixture)
 
         var starts = new List<HttpResponseMessage>();
         for (var i = 0; i < 3; i++)
-            starts.Add(await host.Client().PostAsync("/Login?handler=Microsoft", new FormUrlEncodedContent(new Dictionary<string, string>())));
-        var signIn = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials);
-        var callback = await host.Client().PostAsync("/signin-oidc", new FormUrlEncodedContent(new Dictionary<string, string>()));
+            starts.Add(await host.Client().PostAsync("/Login?handler=Microsoft", new FormUrlEncodedContent(new Dictionary<string, string>()), TestContext.Current.CancellationToken));
+        var signIn = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials, cancellationToken: TestContext.Current.CancellationToken);
+        var callback = await host.Client().PostAsync("/signin-oidc", new FormUrlEncodedContent(new Dictionary<string, string>()), TestContext.Current.CancellationToken);
 
         Assert.All(starts, r => Assert.NotEqual(HttpStatusCode.TooManyRequests, r.StatusCode));
         Assert.Equal(HttpStatusCode.Unauthorized, signIn.StatusCode);
@@ -67,13 +67,13 @@ public sealed class SignInRateLimitTests(PostgresFixture fixture)
         });
         var credentials = new { email = HostApp.OwnerEmail, password = "wrong password" };
 
-        var signIn = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials);
-        var signInLimited = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials);
-        var page = await host.Client().GetAsync("/Invite?token=skx_inv_guess");
-        var lookup = await host.Client().PostAsJsonAsync("/api/identity/invites/lookup", new { token = "skx_inv_guess" });
-        var accept = await host.Client().PostAsJsonAsync("/api/identity/invites/accept", new { token = "skx_inv_guess", password = "a long enough password" });
-        var fourth = await host.Client().GetAsync("/Invite?token=skx_inv_guess");
-        var status = await host.Client().GetAsync("/api/identity/status");
+        var signIn = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials, cancellationToken: TestContext.Current.CancellationToken);
+        var signInLimited = await host.Client().PostAsJsonAsync("/api/identity/sign-in", credentials, cancellationToken: TestContext.Current.CancellationToken);
+        var page = await host.Client().GetAsync("/Invite?token=skx_inv_guess", TestContext.Current.CancellationToken);
+        var lookup = await host.Client().PostAsJsonAsync("/api/identity/invites/lookup", new { token = "skx_inv_guess" }, cancellationToken: TestContext.Current.CancellationToken);
+        var accept = await host.Client().PostAsJsonAsync("/api/identity/invites/accept", new { token = "skx_inv_guess", password = "a long enough password" }, cancellationToken: TestContext.Current.CancellationToken);
+        var fourth = await host.Client().GetAsync("/Invite?token=skx_inv_guess", TestContext.Current.CancellationToken);
+        var status = await host.Client().GetAsync("/api/identity/status", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, signIn.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, signInLimited.StatusCode);

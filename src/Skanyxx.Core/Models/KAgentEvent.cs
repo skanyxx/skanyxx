@@ -22,6 +22,10 @@ public class SessionWithEventsResponse
     [JsonPropertyName("agentId")]
     public string AgentId { get; set; } = string.Empty;
 
+    /// <summary>kagent 0.10 answers <c>GET /api/sessions/{id}</c> with <c>{session, events}</c>.</summary>
+    [JsonPropertyName("session")]
+    public KAgentSession? Session { get; set; }
+
     [JsonPropertyName("events")]
     public List<KAgentEvent> Events { get; set; } = new();
 }

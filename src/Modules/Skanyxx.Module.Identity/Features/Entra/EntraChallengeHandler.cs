@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Entra;
 
 namespace Skanyxx.Module.Identity.Features.Entra;
@@ -16,7 +17,7 @@ namespace Skanyxx.Module.Identity.Features.Entra;
 /// </summary>
 internal sealed class EntraChallengeHandler(
     EntraSettingsCache cache, EntraRedirectUri redirect, ExternalLogins logins, UserManager<IdentityUser> users, PasswordStepUp stepUp,
-    ClientAddress client, ILogger<EntraChallengeHandler> logger)
+    IdentityAudit audit, ClientAddress client, ILogger<EntraChallengeHandler> logger)
     : IRequestHandler<EntraChallengeQuery, Outcome<EntraChallenge>>
 {
     public const string Off = "Microsoft sign-in is not enabled.";
@@ -43,6 +44,7 @@ internal sealed class EntraChallengeHandler(
             if (await stepUp.CheckAsync(userId, query.LinkPassword!, ct) is { } refused)
             {
                 logger.LogWarning("Microsoft link for {UserId} from {RemoteIp} not started: {Reason}", userId, client.Current, refused.Message);
+                await audit.WriteAsync(AuditActions.EntraLinkRefused, userId, userId, new { reason = "link not started: " + refused.Message }, ct);
                 return new Outcome<EntraChallenge>(refused.Status, Message: refused.Message);
             }
         }

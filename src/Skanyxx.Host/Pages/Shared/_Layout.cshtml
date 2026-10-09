@@ -49,6 +49,24 @@
                         <span class="nav-icon">&#x25F1;</span>
                         <span class="nav-label">Chat</span>
                     </a>
+                    <a href="/Library" class="nav-item @(currentPage == "/Library" ? "active" : "")">
+                        <span class="nav-icon">&#x2261;</span>
+                        <span class="nav-label">Library</span>
+                    </a>
+                    @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Builder))
+                    {
+                        <a href="/Studio" class="nav-item @(currentPage == "/Studio" ? "active" : "")">
+                            <span class="nav-icon">&#x2692;</span>
+                            <span class="nav-label">Studio</span>
+                        </a>
+                    }
+                    @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor))
+                    {
+                        <a href="/Sandboxes" class="nav-item @(currentPage == "/Sandboxes" ? "active" : "")">
+                            <span class="nav-icon">&#x25A3;</span>
+                            <span class="nav-label">Sandboxes</span>
+                        </a>
+                    }
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Infrastructure</div>
@@ -78,16 +96,20 @@
                         <span class="nav-icon">&#x2922;</span>
                         <span class="nav-label">Hooks</span>
                     </a>
-                    <a href="/Debug" class="nav-item @(currentPage == "/Debug" ? "active" : "")">
-                        <span class="nav-icon">&#x27E9;</span>
-                        <span class="nav-label">Debug</span>
-                    </a>
-                    <a href="/Settings" class="nav-item @(currentPage == "/Settings" ? "active" : "")">
-                        <span class="nav-icon">&#x2699;</span>
-                        <span class="nav-label">Settings</span>
-                    </a>
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner))
                     {
+                        <a href="/Debug" class="nav-item @(currentPage == "/Debug" ? "active" : "")">
+                            <span class="nav-icon">&#x27E9;</span>
+                            <span class="nav-label">Debug</span>
+                        </a>
+                        <a href="/Settings" class="nav-item @(currentPage == "/Settings" ? "active" : "")">
+                            <span class="nav-icon">&#x2699;</span>
+                            <span class="nav-label">Settings</span>
+                        </a>
+                        <a href="/Model" class="nav-item @(currentPage == "/Model" ? "active" : "")">
+                            <span class="nav-icon">&#x2699;</span>
+                            <span class="nav-label">Model</span>
+                        </a>
                         <a href="/People" class="nav-item @(currentPage == "/People" ? "active" : "")">
                             <span class="nav-icon">&#x263A;</span>
                             <span class="nav-label">People</span>
@@ -99,6 +121,10 @@
                         <a href="/Entra" class="nav-item @(currentPage == "/Entra" ? "active" : "")">
                             <span class="nav-icon">&#x229E;</span>
                             <span class="nav-label">Microsoft sign-in</span>
+                        </a>
+                        <a href="/Audit" class="nav-item @(currentPage == "/Audit" ? "active" : "")">
+                            <span class="nav-icon">&#x2630;</span>
+                            <span class="nav-label">Audit</span>
                         </a>
                     }
                 </div>

@@ -21,7 +21,7 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     private string _owner = null!;
     private string _ownerId = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString, services: s => s.AddSingleton<ILoggerProvider>(_log));
@@ -30,25 +30,25 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
         _ownerId = (await postgres.OwnerAsync()).Id;
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     [Fact]
     public async Task Owner_BuildsTheTree_AndListsIt()
     {
         var (_, bea) = await _app.AddMemberAsync(_owner);
 
-        var department = await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "finance", name = "Finance" });
-        var team = await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "billing", name = "Billing", department = "finance" });
-        var added = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null);
-        var departments = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/departments");
-        var teams = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/teams");
-        var beasTeams = await Owner().GetFromJsonAsync<JsonElement>($"/api/identity/people/{bea}/teams");
-        var ownersTeams = await Owner().GetFromJsonAsync<JsonElement>($"/api/identity/people/{_ownerId}/teams");
+        var department = await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "finance", name = "Finance" }, cancellationToken: TestContext.Current.CancellationToken);
+        var team = await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "billing", name = "Billing", department = "finance" }, cancellationToken: TestContext.Current.CancellationToken);
+        var added = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null, TestContext.Current.CancellationToken);
+        var departments = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/departments", cancellationToken: TestContext.Current.CancellationToken);
+        var teams = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/teams", cancellationToken: TestContext.Current.CancellationToken);
+        var beasTeams = await Owner().GetFromJsonAsync<JsonElement>($"/api/identity/people/{bea}/teams", cancellationToken: TestContext.Current.CancellationToken);
+        var ownersTeams = await Owner().GetFromJsonAsync<JsonElement>($"/api/identity/people/{_ownerId}/teams", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, department.StatusCode);
         Assert.Equal(HttpStatusCode.Created, team.StatusCode);
         Assert.Equal(HttpStatusCode.OK, added.StatusCode);
-        Assert.Equal([bea], (await added.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("members").EnumerateArray().Select(m => m.GetString()));
+        Assert.Equal([bea], (await added.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("members").EnumerateArray().Select(m => m.GetString()));
         Assert.Equal("""[{"slug":"finance","name":"Finance"}]""", departments.GetRawText());
         Assert.Equal($$"""[{"slug":"billing","name":"Billing","department":"finance","members":["{{bea}}"]}]""", teams.GetRawText());
         Assert.Equal(teams.GetRawText(), beasTeams.GetRawText());
@@ -59,14 +59,14 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     public async Task Renames_KeepTheSlug_AndATeamMovesBetweenDepartments()
     {
         await TreeAsync();
-        await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "ops", name = "Ops" });
+        await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "ops", name = "Ops" }, cancellationToken: TestContext.Current.CancellationToken);
 
-        var renameDepartment = await Owner().PutAsJsonAsync("/api/identity/org/departments/finance", new { slug = "other", name = "Money" });
-        var move = await Owner().PutAsJsonAsync("/api/identity/org/teams/billing", new { slug = "other", name = "Invoicing", department = "ops" });
-        var teams = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/teams");
-        var departments = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/departments");
+        var renameDepartment = await Owner().PutAsJsonAsync("/api/identity/org/departments/finance", new { slug = "other", name = "Money" }, cancellationToken: TestContext.Current.CancellationToken);
+        var move = await Owner().PutAsJsonAsync("/api/identity/org/teams/billing", new { slug = "other", name = "Invoicing", department = "ops" }, cancellationToken: TestContext.Current.CancellationToken);
+        var teams = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/teams", cancellationToken: TestContext.Current.CancellationToken);
+        var departments = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/departments", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal("""{"slug":"finance","name":"Money"}""", (await renameDepartment.Content.ReadFromJsonAsync<JsonElement>()).GetRawText());
+        Assert.Equal("""{"slug":"finance","name":"Money"}""", (await renameDepartment.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetRawText());
         Assert.Equal(HttpStatusCode.OK, move.StatusCode);
         Assert.Equal("""[{"slug":"billing","name":"Invoicing","department":"ops","members":[]}]""", teams.GetRawText());
         Assert.Equal(["finance", "ops"], departments.EnumerateArray().Select(d => d.GetProperty("slug").GetString()));
@@ -80,8 +80,8 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     [InlineData("")]
     public async Task BadSlugs_Are400(string slug)
     {
-        var department = await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug, name = "Finance" });
-        var team = await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug, name = "Billing", department = "finance" });
+        var department = await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug, name = "Finance" }, cancellationToken: TestContext.Current.CancellationToken);
+        var team = await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug, name = "Billing", department = "finance" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, department.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, team.StatusCode);
@@ -94,7 +94,7 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
         await using var db = postgres.CreateDbContext();
         db.Departments.Add(new Data.OrgDepartment { Slug = "Bad Slug", Name = "Bad", CreatedBy = _ownerId, CreatedUtc = DateTimeOffset.UtcNow });
 
-        var error = await Assert.ThrowsAsync<Microsoft.EntityFrameworkCore.DbUpdateException>(() => db.SaveChangesAsync());
+        var error = await Assert.ThrowsAsync<Microsoft.EntityFrameworkCore.DbUpdateException>(() => db.SaveChangesAsync(TestContext.Current.CancellationToken));
 
         Assert.Contains("CK_identity_org_departments_slug", error.InnerException!.Message);
     }
@@ -104,7 +104,7 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     [InlineData("Bad\u202Ename")]
     public async Task BadNames_Are400(string name)
     {
-        var response = await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "finance", name });
+        var response = await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "finance", name }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -114,9 +114,9 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     {
         await TreeAsync();
 
-        var department = await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "finance", name = "Again" });
-        var team = await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "billing", name = "Again", department = "finance" });
-        var sameSlugOtherKind = await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "finance", name = "Finance team", department = "finance" });
+        var department = await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "finance", name = "Again" }, cancellationToken: TestContext.Current.CancellationToken);
+        var team = await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "billing", name = "Again", department = "finance" }, cancellationToken: TestContext.Current.CancellationToken);
+        var sameSlugOtherKind = await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "finance", name = "Finance team", department = "finance" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, department.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, team.StatusCode);
@@ -129,13 +129,13 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     {
         await TreeAsync();
 
-        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "t", name = "T", department = "nope" })).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsJsonAsync("/api/identity/org/departments/nope", new { name = "N" })).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsJsonAsync("/api/identity/org/teams/nope", new { name = "N", department = "finance" })).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsJsonAsync("/api/identity/org/teams/billing", new { name = "N", department = "nope" })).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsync($"/api/identity/org/teams/nope/members/{_ownerId}", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsync($"/api/identity/org/teams/billing/members/{Guid.NewGuid()}", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await Owner().GetAsync($"/api/identity/people/{Guid.NewGuid()}/teams")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "t", name = "T", department = "nope" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsJsonAsync("/api/identity/org/departments/nope", new { name = "N" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsJsonAsync("/api/identity/org/teams/nope", new { name = "N", department = "finance" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsJsonAsync("/api/identity/org/teams/billing", new { name = "N", department = "nope" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsync($"/api/identity/org/teams/nope/members/{_ownerId}", null, TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Owner().PutAsync($"/api/identity/org/teams/billing/members/{Guid.NewGuid()}", null, TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await Owner().GetAsync($"/api/identity/people/{Guid.NewGuid()}/teams", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -144,22 +144,22 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
         await TreeAsync();
         var (_, bea) = await _app.AddMemberAsync(_owner);
         var (_, cal) = await _app.AddMemberAsync(_owner, "cal@skanyxx.example");
-        await Owner().PostAsync($"/api/identity/people/{cal}/disable", null);
+        await Owner().PostAsync($"/api/identity/people/{cal}/disable", null, TestContext.Current.CancellationToken);
 
-        var add = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null);
-        var again = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null);
-        var owner = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{_ownerId}", null);
-        var disabled = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{cal}", null);
-        var remove = await Owner().DeleteAsync($"/api/identity/org/teams/billing/members/{bea}");
-        var removeAgain = await Owner().DeleteAsync($"/api/identity/org/teams/billing/members/{bea}");
+        var add = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null, TestContext.Current.CancellationToken);
+        var again = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null, TestContext.Current.CancellationToken);
+        var owner = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{_ownerId}", null, TestContext.Current.CancellationToken);
+        var disabled = await Owner().PutAsync($"/api/identity/org/teams/billing/members/{cal}", null, TestContext.Current.CancellationToken);
+        var remove = await Owner().DeleteAsync($"/api/identity/org/teams/billing/members/{bea}", TestContext.Current.CancellationToken);
+        var removeAgain = await Owner().DeleteAsync($"/api/identity/org/teams/billing/members/{bea}", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, add.StatusCode);
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
         Assert.Equal(HttpStatusCode.OK, owner.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, disabled.StatusCode);
-        Assert.Contains("disabled", await disabled.Content.ReadAsStringAsync());
+        Assert.Contains("disabled", await disabled.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.OK, remove.StatusCode);
-        Assert.Equal([_ownerId], (await removeAgain.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("members").EnumerateArray().Select(m => m.GetString()));
+        Assert.Equal([_ownerId], (await removeAgain.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("members").EnumerateArray().Select(m => m.GetString()));
         Assert.Single(_log.Warnings, w => w.Contains($"{bea} added to team billing"));
         Assert.Single(_log.Warnings, w => w.Contains($"{bea} removed from team billing"));
         Assert.Empty(_log.Errors);
@@ -176,17 +176,17 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
         await TreeAsync();
         var (_, cal) = await _app.AddMemberAsync(_owner, "cal@skanyxx.example");
         await using var disabler = postgres.CreateDbContext();
-        await using (var transaction = await disabler.Database.BeginTransactionAsync())
+        await using (var transaction = await disabler.Database.BeginTransactionAsync(TestContext.Current.CancellationToken))
         {
-            var email = await disabler.Users.Where(u => u.Id == cal).Select(u => u.NormalizedEmail!).SingleAsync();
+            var email = await disabler.Users.Where(u => u.Id == cal).Select(u => u.NormalizedEmail!).SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
             await AccountLock.AcquireAsync(disabler, email, CancellationToken.None);
 
-            var add = Owner().PutAsync($"/api/identity/org/teams/billing/members/{cal}", null);
-            await Task.Delay(500);
+            var add = Owner().PutAsync($"/api/identity/org/teams/billing/members/{cal}", null, TestContext.Current.CancellationToken);
+            await Task.Delay(500, TestContext.Current.CancellationToken);
             Assert.False(add.IsCompleted, "the add did not wait for the account lock");
 
-            await disabler.Users.Where(u => u.Id == cal).ExecuteUpdateAsync(s => s.SetProperty(u => u.LockoutEnd, AccountStatus.DisabledUntil));
-            await transaction.CommitAsync();
+            await disabler.Users.Where(u => u.Id == cal).ExecuteUpdateAsync(s => s.SetProperty(u => u.LockoutEnd, AccountStatus.DisabledUntil), cancellationToken: TestContext.Current.CancellationToken);
+            await transaction.CommitAsync(TestContext.Current.CancellationToken);
 
             Assert.Equal(HttpStatusCode.Conflict, (await add).StatusCode);
         }
@@ -199,11 +199,11 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     {
         await TreeAsync();
         var (_, bea) = await _app.AddMemberAsync(_owner);
-        await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null);
+        await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, (await Owner().PostAsync($"/api/identity/people/{bea}/disable", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Owner().PostAsync($"/api/identity/people/{bea}/disable", null, TestContext.Current.CancellationToken)).StatusCode);
         var whileDisabled = await MembershipAsync(bea);
-        Assert.Equal(HttpStatusCode.OK, (await Owner().PostAsync($"/api/identity/people/{bea}/enable", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Owner().PostAsync($"/api/identity/people/{bea}/enable", null, TestContext.Current.CancellationToken)).StatusCode);
 
         Assert.Equal(["billing"], whileDisabled.Teams);
         Assert.Equal(["billing"], (await MembershipAsync(bea)).Teams);
@@ -229,13 +229,13 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
 
         foreach (var (method, path, body) in routes)
         {
-            var asSupervisor = await _app.Client(bearer: member.AccessToken).SendAsync(Request(method, path, body));
-            var anonymous = await _app.Client().SendAsync(Request(method, path, body));
+            var asSupervisor = await _app.Client(bearer: member.AccessToken).SendAsync(Request(method, path, body), TestContext.Current.CancellationToken);
+            var anonymous = await _app.Client().SendAsync(Request(method, path, body), TestContext.Current.CancellationToken);
             Assert.True(asSupervisor.StatusCode == HttpStatusCode.Forbidden, $"{method} {path}: {asSupervisor.StatusCode}");
             Assert.True(anonymous.StatusCode == HttpStatusCode.Unauthorized, $"{method} {path}: {anonymous.StatusCode}");
         }
 
-        var teams = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/teams");
+        var teams = await Owner().GetFromJsonAsync<JsonElement>("/api/identity/org/teams", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal("""[{"slug":"billing","name":"Billing","department":"finance","members":[]}]""", teams.GetRawText());
         Assert.Equal(routes.Length, _log.Warnings.Count(w => w.Contains($"refused for {memberId}")));
         Assert.Contains(_log.Warnings, w => w.Contains($"Owner-only route PUT api/identity/org/teams/{{slug}}/members/{{userId}} refused for {memberId} from 127.0.0.1"));
@@ -245,9 +245,9 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     public async Task Changes_AreAuditedAtWarning_WithActorTargetAndAddress()
     {
         await TreeAsync();
-        await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "ops", name = "Ops" });
-        await Owner().PutAsJsonAsync("/api/identity/org/departments/ops", new { name = "Operations" });
-        await Owner().PutAsJsonAsync("/api/identity/org/teams/billing", new { name = "Invoicing", department = "ops" });
+        await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "ops", name = "Ops" }, cancellationToken: TestContext.Current.CancellationToken);
+        await Owner().PutAsJsonAsync("/api/identity/org/departments/ops", new { name = "Operations" }, cancellationToken: TestContext.Current.CancellationToken);
+        await Owner().PutAsJsonAsync("/api/identity/org/teams/billing", new { name = "Invoicing", department = "ops" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains($"Department finance created by {_ownerId} from 127.0.0.1", _log.Warnings);
         Assert.Contains($"Team billing created in department finance by {_ownerId} from 127.0.0.1", _log.Warnings);
@@ -261,17 +261,17 @@ public sealed class OrgTests(PostgresFixture postgres) : IAsyncLifetime
     public async Task Membership_IsLive_AndDepartmentsComeThroughTheTeams()
     {
         await TreeAsync();
-        await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "ops", name = "Ops" });
-        await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "tooling", name = "Tooling", department = "ops" });
+        await Owner().PostAsJsonAsync("/api/identity/org/departments", new { slug = "ops", name = "Ops" }, cancellationToken: TestContext.Current.CancellationToken);
+        await Owner().PostAsJsonAsync("/api/identity/org/teams", new { slug = "tooling", name = "Tooling", department = "ops" }, cancellationToken: TestContext.Current.CancellationToken);
         var (_, bea) = await _app.AddMemberAsync(_owner);
         var none = await MembershipAsync(bea);
 
-        await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null);
+        await Owner().PutAsync($"/api/identity/org/teams/billing/members/{bea}", null, TestContext.Current.CancellationToken);
         var inBilling = await MembershipAsync(bea);
-        await Owner().PutAsJsonAsync("/api/identity/org/teams/billing", new { name = "Billing", department = "ops" });
+        await Owner().PutAsJsonAsync("/api/identity/org/teams/billing", new { name = "Billing", department = "ops" }, cancellationToken: TestContext.Current.CancellationToken);
         var moved = await MembershipAsync(bea);
-        await Owner().PutAsync($"/api/identity/org/teams/tooling/members/{bea}", null);
-        await Owner().DeleteAsync($"/api/identity/org/teams/billing/members/{bea}");
+        await Owner().PutAsync($"/api/identity/org/teams/tooling/members/{bea}", null, TestContext.Current.CancellationToken);
+        await Owner().DeleteAsync($"/api/identity/org/teams/billing/members/{bea}", TestContext.Current.CancellationToken);
         var afterRemoval = await MembershipAsync(bea);
 
         Assert.Empty(none.Teams);

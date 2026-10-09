@@ -17,9 +17,9 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
     private HostApp _host = null!;
     private Browser _owner = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
-        _host = await HostApp.StartAsync(await fixture.NewDatabaseAsync());
+        _host = await HostApp.StartAsync(await fixture.NewDatabaseAsync(), HostApp.WithoutSandboxes);
         _owner = new Browser(_host);
         var setup = await _owner.SubmitAsync("/Setup", new()
         {
@@ -28,22 +28,22 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         Assert.Equal(HttpStatusCode.Redirect, setup.StatusCode);
     }
 
-    public async Task DisposeAsync() => await _host.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 
     [Fact]
     public async Task InviteForm_ShowsTheLinkOnce_AndTheAcceptPageCreatesTheAccountAndSignsIn()
     {
         var invited = await InviteAsync("builder");
-        var html = await invited.Content.ReadAsStringAsync();
+        var html = await invited.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var token = InviteToken().Match(html).Groups[1].Value;
-        var later = await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync();
+        var later = await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         var member = new Browser(_host);
         var acceptPage = await member.GetAsync("/Invite?token=" + token);
-        var acceptHtml = await acceptPage.Content.ReadAsStringAsync();
+        var acceptHtml = await acceptPage.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var accepted = await member.SubmitAsync("/Invite", new() { ["Token"] = token, ["Password"] = MemberPassword, ["DisplayName"] = "Bea" },
             tokenFrom: "/Invite?token=" + token);
-        var nav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync();
+        var nav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var reuse = await new Browser(_host).GetAsync("/Invite?token=" + token);
 
         Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
@@ -69,13 +69,13 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
     {
         var member = await MemberAsync("supervisor");
 
-        var ownerNav = await (await _owner.GetAsync("/Hooks")).Content.ReadAsStringAsync();
+        var ownerNav = await (await _owner.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var ownerPage = await _owner.GetAsync("/People");
-        var memberNav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync();
+        var memberNav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var memberPage = await member.GetAsync("/People");
         var memberPost = await member.SubmitAsync("/People?handler=Invite", new() { ["email"] = "x@skanyxx.example", ["roles"] = "builder" },
             tokenFrom: "/Hooks");
-        var anonymous = await _host.Client().GetAsync("/People");
+        var anonymous = await _host.Client().GetAsync("/People", TestContext.Current.CancellationToken);
 
         Assert.Contains("href=\"/People\"", ownerNav);
         Assert.Equal(HttpStatusCode.OK, ownerPage.StatusCode);
@@ -84,7 +84,7 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         Assert.Contains("/Login", memberPage.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.Redirect, memberPost.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
-        Assert.DoesNotContain("x@skanyxx.example", await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync());
+        Assert.DoesNotContain("x@skanyxx.example", await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -96,44 +96,44 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         var roles = await _owner.SubmitAsync($"/People?handler=Roles&id={memberId}", new() { ["roles"] = "employee" }, tokenFrom: "/People");
         var afterRoles = await member.GetAsync("/Hooks");
         var signedInAgain = await new Browser(_host).SubmitAsync("/Login", new() { ["Email"] = MemberEmail, ["Password"] = MemberPassword });
-        var me = await _host.Client(await BearerAsync()).GetFromJsonAsync<JsonElement>("/api/identity/me");
+        var me = await _host.Client(await BearerAsync()).GetFromJsonAsync<JsonElement>("/api/identity/me", cancellationToken: TestContext.Current.CancellationToken);
         var disable = await _owner.SubmitAsync($"/People?handler=Disable&id={memberId}", [], tokenFrom: "/People");
         var signInDisabled = await new Browser(_host).SubmitAsync("/Login", new() { ["Email"] = MemberEmail, ["Password"] = MemberPassword });
 
         Assert.Equal(HttpStatusCode.OK, roles.StatusCode);
-        Assert.Contains("Roles saved.", await roles.Content.ReadAsStringAsync());
+        Assert.Contains("Roles saved.", await roles.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Redirect, afterRoles.StatusCode); // the old cookie is gone
         Assert.Equal(HttpStatusCode.Redirect, signedInAgain.StatusCode);
         Assert.Equal(["employee"], me.GetProperty("roles").EnumerateArray().Select(r => r.GetString()));
-        Assert.Contains("Account disabled.", await disable.Content.ReadAsStringAsync());
-        Assert.Contains("Invalid email or password.", await signInDisabled.Content.ReadAsStringAsync());
+        Assert.Contains("Account disabled.", await disable.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("Invalid email or password.", await signInDisabled.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task Revoke_FromThePage_KillsTheLink()
     {
-        var token = InviteToken().Match(await (await InviteAsync("employee")).Content.ReadAsStringAsync()).Groups[1].Value;
-        var invites = await _host.Client(await OwnerBearerAsync()).GetFromJsonAsync<JsonElement>("/api/identity/invites");
+        var token = InviteToken().Match(await (await InviteAsync("employee")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Groups[1].Value;
+        var invites = await _host.Client(await OwnerBearerAsync()).GetFromJsonAsync<JsonElement>("/api/identity/invites", cancellationToken: TestContext.Current.CancellationToken);
 
         var revoke = await _owner.SubmitAsync($"/People?handler=Revoke&id={invites[0].GetProperty("id").GetString()}", [], tokenFrom: "/People");
         var page = await new Browser(_host).GetAsync("/Invite?token=" + token);
 
-        Assert.Contains("Invite revoked.", await revoke.Content.ReadAsStringAsync());
+        Assert.Contains("Invite revoked.", await revoke.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.NotFound, page.StatusCode);
     }
 
     [Fact]
     public async Task AcceptPage_UnknownOrMissingToken_Is404_AndPostNeedsAntiforgery()
     {
-        var token = InviteToken().Match(await (await InviteAsync("builder")).Content.ReadAsStringAsync()).Groups[1].Value;
+        var token = InviteToken().Match(await (await InviteAsync("builder")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Groups[1].Value;
 
-        var unknown = await _host.Client().GetAsync("/Invite?token=skx_inv_nope");
-        var missing = await _host.Client().GetAsync("/Invite");
+        var unknown = await _host.Client().GetAsync("/Invite?token=skx_inv_nope", TestContext.Current.CancellationToken);
+        var missing = await _host.Client().GetAsync("/Invite", TestContext.Current.CancellationToken);
         var noAntiforgery = await new Browser(_host).PostFormAsync("/Invite", new() { ["Token"] = token, ["Password"] = MemberPassword });
-        var stillOpen = await _host.Client().GetAsync("/Invite?token=" + token);
+        var stillOpen = await _host.Client().GetAsync("/Invite?token=" + token, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
-        Assert.Contains("invalid or has expired", await unknown.Content.ReadAsStringAsync());
+        Assert.Contains("invalid or has expired", await unknown.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, noAntiforgery.StatusCode);
         Assert.Equal(HttpStatusCode.OK, stillOpen.StatusCode);
@@ -143,7 +143,7 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
     [Fact]
     public async Task AcceptPage_FailedPosts_AreNoStoreAndNoReferrer_WithAccurateStatus()
     {
-        var token = InviteToken().Match(await (await InviteAsync("builder")).Content.ReadAsStringAsync()).Groups[1].Value;
+        var token = InviteToken().Match(await (await InviteAsync("builder")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Groups[1].Value;
         var member = new Browser(_host);
 
         var tooShort = await member.SubmitAsync("/Invite", new() { ["Token"] = token, ["Password"] = "short" }, tokenFrom: "/Invite?token=" + token);
@@ -171,20 +171,20 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         var ownerId = await PersonIdAsync(HostApp.OwnerEmail);
         var memberId = await PersonIdAsync(MemberEmail);
 
-        var html = await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync();
+        var html = await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var forced = await _owner.SubmitAsync($"/People?handler=Roles&id={ownerId}", new() { ["roles"] = "builder" }, tokenFrom: "/People");
         var stillOwner = await _owner.GetAsync("/People");
 
         Assert.Contains($"id={memberId}&amp;handler=Roles", html);
         Assert.DoesNotContain($"id={ownerId}&amp;handler=Roles", html);
-        Assert.Contains("The owner&#x27;s roles are fixed", await forced.Content.ReadAsStringAsync());
+        Assert.Contains("The owner&#x27;s roles are fixed", await forced.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.OK, stillOwner.StatusCode); // no stamp rotation: the owner is still signed in
     }
 
     [Fact]
     public async Task PeoplePost_FromAForeignOrigin_Is403()
     {
-        var html = await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync();
+        var html = await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var antiforgery = Regex.Match(html, "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
 
         var response = await _owner.PostFormAsync("/People?handler=Invite",
@@ -192,7 +192,7 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
             r => r.Headers.Add("Origin", "https://evil.example"));
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.DoesNotContain("evil@skanyxx.example", await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync());
+        Assert.DoesNotContain("evil@skanyxx.example", await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     /// <summary>Verifier round 2: an upgraded install without Identity:PublicBaseUrl starts; the invite form says what to set.</summary>
@@ -207,8 +207,8 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         });
 
         var invited = await owner.SubmitAsync("/People?handler=Invite", new() { ["email"] = MemberEmail, ["roles"] = "builder" }, tokenFrom: "/People");
-        var html = await invited.Content.ReadAsStringAsync();
-        var invites = await host.Client(await BearerAsync(host, HostApp.OwnerEmail, HostApp.OwnerPassword)).GetFromJsonAsync<JsonElement>("/api/identity/invites");
+        var html = await invited.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var invites = await host.Client(await BearerAsync(host, HostApp.OwnerEmail, HostApp.OwnerPassword)).GetFromJsonAsync<JsonElement>("/api/identity/invites", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains("Invite links need Identity:PublicBaseUrl in appsettings.json", html);
         Assert.Contains("http://localhost:5282", html);

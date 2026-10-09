@@ -1,19 +1,21 @@
+using MediatR;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Runtime;
 
 namespace Skanyxx.Host.Pages;
 
-public class IndexModel : PageModel
+/// <summary>
+/// Home is Chat with the seed (D5, D017), not the leftover Dashboard. The owner goes to the model step instead while
+/// the model is not configured (or kagent cannot say), because Chat cannot answer before it is.
+/// </summary>
+public sealed class IndexModel(IMediator mediator) : PageModel
 {
-    private readonly ILogger<IndexModel> _logger;
-
-    public IndexModel(ILogger<IndexModel> logger)
+    public async Task<IActionResult> OnGetAsync(CancellationToken ct)
     {
-        _logger = logger;
-    }
-
-    public void OnGet()
-    {
-
+        if (Caller.IsOwner(User) && (await mediator.Send(new ModelSettingsQuery(), ct)).Value is not { Configured: true })
+            return LocalRedirect("/Model");
+        return LocalRedirect("/Chat");
     }
 }

@@ -39,7 +39,7 @@ public sealed class HealthTests(PostgresFixture fixture)
                 Console.SetOut(original);
             }
         });
-        var body = await response.Content.ReadAsStringAsync();
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var log = console.ToString();
 
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");

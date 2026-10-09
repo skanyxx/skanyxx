@@ -52,7 +52,7 @@ public sealed class CapacityTests(PostgresFixture postgres) : TicketsTestBase(po
         await using var scope = App.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<TicketsDbContext>();
 
-        var name = await db.Database.SqlQuery<string>($"SELECT current_setting('application_name') AS \"Value\"").SingleAsync();
+        var name = await db.Database.SqlQuery<string>($"SELECT current_setting('application_name') AS \"Value\"").SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         var settings = new NpgsqlConnectionStringBuilder(db.Database.GetConnectionString());
 
         Assert.Equal("skanyxx-tickets", name);

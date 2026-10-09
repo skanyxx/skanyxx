@@ -25,7 +25,7 @@ public sealed class EntraPasswordRuleTests(PostgresFixture postgres) : IAsyncLif
     private IdentityApp _app = null!;
     private string _owner = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString, services: s => s.AddSingleton<ILoggerProvider>(_log));
@@ -33,7 +33,7 @@ public sealed class EntraPasswordRuleTests(PostgresFixture postgres) : IAsyncLif
         _owner = (await _app.SignInBearerAsync()).AccessToken;
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     /// <summary>D14: a stored secret nobody can decrypt turns Microsoft sign-in off, but not D8 — only the owner's switch does.</summary>
     [Fact]
@@ -53,7 +53,7 @@ public sealed class EntraPasswordRuleTests(PostgresFixture postgres) : IAsyncLif
         Assert.True(saved.GetProperty("enabled").GetBoolean());
         Assert.False(saved.GetProperty("active").GetBoolean()); // sign-in is off: nothing can reach Microsoft
         Assert.Equal(HttpStatusCode.Unauthorized, password.StatusCode);
-        Assert.Contains(SignInFailure.Message, await password.Content.ReadAsStringAsync());
+        Assert.Contains(SignInFailure.Message, await password.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Forbidden, refresh.StatusCode);
         Assert.Equal(HttpStatusCode.OK, passwordWhileOff.StatusCode);
     }
@@ -77,7 +77,7 @@ public sealed class EntraPasswordRuleTests(PostgresFixture postgres) : IAsyncLif
 
     /// <summary>
     /// SEC N3 + QA-3 L1: the right password of a managed account gets the wrong-password answer, and counts toward the
-    /// lockout exactly like a wrong one, so both do the same database work; the right one is logged for the owner.
+    /// lockout exactly like a wrong one, so both do the same database work and log the same Warning.
     /// </summary>
     [Fact]
     public async Task AManagedAccountsPassword_IsAnsweredLikeAWrongOne_AndCountedLikeOne()
@@ -96,7 +96,21 @@ public sealed class EntraPasswordRuleTests(PostgresFixture postgres) : IAsyncLif
         Assert.Equal(await DetailAsync(wrong), await DetailAsync(right));
         Assert.Equal(1, afterWrong);
         Assert.Equal(2, afterRight);
-        Assert.Contains(_log.Lines, l => l.StartsWith("Warning:") && l.Contains($"Password sign-in of {managedId}") && l.Contains("signs in with Microsoft"));
+        // QA-2 L1: the same Warning for both, so the log level does not tell the branches apart either.
+        var warnings = _log.Lines.Where(l => l.StartsWith("Warning:") && l.Contains($"Password sign-in of {managedId}")).ToList();
+        Assert.Equal(2, warnings.Count);
+        Assert.Contains("signs in with Microsoft", warnings[0]);
+        Assert.Equal(warnings[0], warnings[1]);
+        // CR M2 / D166: the same audit row for both, so the right password costs no extra round trip; nothing says which.
+        await using var db = postgres.CreateDbContext();
+        var rows = await db.Audit.Where(a => a.Action == "signin.managed_password_refused").OrderBy(a => a.Id).ToListAsync(cancellationToken: TestContext.Current.CancellationToken);
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, r =>
+        {
+            Assert.Equal(managedId, r.TargetId);
+            Assert.Null(r.ActorId);
+            Assert.Null(r.Details);
+        });
     }
 
     /// <summary>
@@ -132,10 +146,10 @@ public sealed class EntraPasswordRuleTests(PostgresFixture postgres) : IAsyncLif
         var stamp = await StampAsync(managedId);
 
         await SaveAsync(enabled: true);
-        var managedAccess = await _app.Client(bearer: managed.AccessToken).GetAsync("/api/identity/me");
+        var managedAccess = await _app.Client(bearer: managed.AccessToken).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
         var managedRefresh = await _app.RefreshAsync(managed.RefreshToken);
-        var localAccess = await _app.Client(bearer: local.AccessToken).GetAsync("/api/identity/me");
-        var ownerAccess = await _app.Client(bearer: _owner).GetAsync("/api/identity/me");
+        var localAccess = await _app.Client(bearer: local.AccessToken).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
+        var ownerAccess = await _app.Client(bearer: _owner).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
         var turnedOn = _log.Lines.Where(l => l.Contains("Microsoft sign-in turned on")).ToList();
         await SaveAsync(enabled: true, secret: null);
         await SaveAsync(enabled: true, secret: null);

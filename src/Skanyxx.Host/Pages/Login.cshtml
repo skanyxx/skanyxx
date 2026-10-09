@@ -9,6 +9,10 @@
 {
     <p class="text-error" role="alert">@Model.Error</p>
 }
+else if (Model.Reset)
+{
+    <p class="text-success" role="status">Your password was changed and every session ended. Sign in with the new one.</p>
+}
 <form method="post" class="auth-form" onsubmit="this.querySelector('button[type=submit]').disabled = true">
     <input type="hidden" asp-for="ReturnUrl" />
     <label asp-for="Email">Email</label>
@@ -22,6 +26,10 @@
     </details>
     <button type="submit" class="btn btn-primary">Sign in</button>
 </form>
+@if (Model.PasswordResetByEmail)
+{
+    <p><a href="/ForgotPassword">Forgot your password?</a></p>
+}
 @if (Model.MicrosoftSignIn)
 {
     @* Fixed, whoever signs in: a Microsoft-managed account's password gets the same "invalid" answer as a wrong one (SEC N3). *@

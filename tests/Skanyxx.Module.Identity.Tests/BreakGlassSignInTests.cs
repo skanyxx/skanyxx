@@ -18,7 +18,7 @@ public sealed class BreakGlassSignInTests(PostgresFixture postgres) : IAsyncLife
     private readonly WarningLog _log = new();
     private IdentityApp _app = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString, s => s["Identity:BootstrapToken"] = Token,
@@ -26,7 +26,7 @@ public sealed class BreakGlassSignInTests(PostgresFixture postgres) : IAsyncLife
         Assert.Equal(HttpStatusCode.Created, (await _app.BootstrapAsync(token: Token)).StatusCode);
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     [Fact]
     public async Task Owner_WithTokenAndPassword_SignsIn_WhileAnAttackerKeepsTheAccountLocked()

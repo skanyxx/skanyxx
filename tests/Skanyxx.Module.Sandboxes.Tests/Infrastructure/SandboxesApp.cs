@@ -33,6 +33,8 @@ public sealed class SandboxesApp : IAsyncDisposable
 
     public LogCapture Logs { get; }
 
+    public IServiceProvider Services => _app.Services;
+
     private Uri BaseAddress => new(_app.Urls.First());
 
     public static async Task<SandboxesApp> StartAsync(string axAddress, Action<Dictionary<string, string?>>? configure = null)

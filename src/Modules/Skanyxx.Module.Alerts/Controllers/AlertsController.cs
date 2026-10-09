@@ -1,9 +1,12 @@
+using Skanyxx.Core.Platform;
+using Microsoft.AspNetCore.Authorization;
 using Skanyxx.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Skanyxx.Core.Models;
 
 namespace Skanyxx.Module.Alerts.Controllers;
 
+// D116: what changes kagent, the cluster or runs a process on the Host is the owner's alone, like D109.
 [ApiController]
 [Route("api/[controller]")]
 public class AlertsController : ControllerBase
@@ -35,6 +38,7 @@ public class AlertsController : ControllerBase
         return Ok(await _alertService.GetStatsAsync());
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("{id}/acknowledge")]
     public async Task<ActionResult> Acknowledge(string id)
     {
@@ -50,6 +54,7 @@ public class AlertsController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("{id}/resolve")]
     public async Task<ActionResult> Resolve(string id)
     {
@@ -65,6 +70,7 @@ public class AlertsController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost]
     public async Task<ActionResult<Alert>> Create([FromBody] Alert alert)
     {

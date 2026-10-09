@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Data;
 using Skanyxx.Module.Identity.Entra;
 
@@ -16,8 +17,8 @@ namespace Skanyxx.Module.Identity.Features.People;
 /// removing it would leave an account nobody can ever reach again; disabling is the reversible way to stop it.
 /// </summary>
 internal sealed class RemoveEntraLoginHandler(
-    AccountsDbContext db, UserManager<IdentityUser> users, SessionRevocation sessions, AccountReader accounts, ClientAddress client,
-    ILogger<RemoveEntraLoginHandler> logger)
+    AccountsDbContext db, UserManager<IdentityUser> users, SessionRevocation sessions, AccountReader accounts, IdentityAudit audit,
+    ClientAddress client, ILogger<RemoveEntraLoginHandler> logger)
     : IRequestHandler<RemoveEntraLoginCommand, Outcome<PersonDto>>
 {
     public const string NotLinked = "This person has no Microsoft login.";
@@ -35,6 +36,8 @@ internal sealed class RemoveEntraLoginHandler(
             return Outcome<PersonDto>.Conflict(null, OnlySignIn);
 
         LockedAccount.Require(await users.RemoveLoginAsync(user, login.LoginProvider, login.ProviderKey));
+        await EntraRefusal.ClearAsync(db, user.Id, ct);
+        await audit.WriteAsync(AuditActions.EntraLoginRemoved, command.ActorId, user.Id, new { key = login.ProviderKey }, ct);
         await sessions.EndAllAsync(user, ct);
         await transaction.CommitAsync(ct);
 

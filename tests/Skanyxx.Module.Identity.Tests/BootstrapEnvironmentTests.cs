@@ -27,10 +27,10 @@ public sealed class BootstrapEnvironmentTests(PostgresFixture postgres)
         if (realIp is not null)
             request.Headers.Add("X-Real-IP", realIp);
 
-        var response = await app.Client().SendAsync(request);
+        var response = await app.Client().SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Contains("Identity:BootstrapToken", await response.Content.ReadAsStringAsync());
+        Assert.Contains("Identity:BootstrapToken", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(0, await postgres.UserCountAsync());
     }
 
@@ -71,7 +71,7 @@ public sealed class BootstrapEnvironmentTests(PostgresFixture postgres)
         };
         request.Headers.Host = host;
 
-        var response = await app.Client().SendAsync(request);
+        var response = await app.Client().SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, await postgres.UserCountAsync());

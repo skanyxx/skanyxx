@@ -24,7 +24,7 @@ public sealed class BootstrapTests(PostgresFixture postgres) : IdentityTestBase(
     public async Task Bootstrap_CreatesAnOwner_WithALowercaseGuidId()
     {
         var response = await App.BootstrapAsync();
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var id = body.RootElement.GetProperty("id").GetString()!;
 
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
@@ -47,7 +47,7 @@ public sealed class BootstrapTests(PostgresFixture postgres) : IdentityTestBase(
         Assert.Equal(1, await Postgres.UserCountAsync());
         // A problem, not ConflictResponse: there is no current state to hand back (verifier G8).
         Assert.Equal("application/problem+json", second.Content.Headers.ContentType?.MediaType);
-        Assert.DoesNotContain("\"current\"", await second.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("\"current\"", await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public sealed class BootstrapTests(PostgresFixture postgres) : IdentityTestBase(
     public async Task ShortPassword_Is400_KeyedByPassword()
     {
         var response = await App.BootstrapAsync(password: "elevenchars");
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.True(body.RootElement.GetProperty("errors").TryGetProperty("Password", out _));
@@ -81,7 +81,7 @@ public sealed class BootstrapTests(PostgresFixture postgres) : IdentityTestBase(
         };
         request.Headers.Add("X-Forwarded-For", "203.0.113.9");
 
-        var response = await App.Client().SendAsync(request);
+        var response = await App.Client().SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, await Postgres.UserCountAsync());
@@ -93,7 +93,7 @@ public sealed class BootstrapTests(PostgresFixture postgres) : IdentityTestBase(
         await using var scope = App.Services.CreateAsyncScope();
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
 
-        var outcome = await mediator.Send(new BootstrapOwnerCommand(IdentityApp.OwnerEmail, IdentityApp.OwnerPassword, null, null, FromLoopback: false));
+        var outcome = await mediator.Send(new BootstrapOwnerCommand(IdentityApp.OwnerEmail, IdentityApp.OwnerPassword, null, null, FromLoopback: false), TestContext.Current.CancellationToken);
 
         Assert.Equal(OutcomeStatus.Forbidden, outcome.Status);
         Assert.Equal(0, await Postgres.UserCountAsync());

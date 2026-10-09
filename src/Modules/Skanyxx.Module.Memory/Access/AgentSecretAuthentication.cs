@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Domain;
 
@@ -19,10 +20,10 @@ internal sealed class AgentSecretAuthentication(
     IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, MemoryDbContext db)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
-    public const string SchemeName = "MemoryAgentSecret";
+    public const string SchemeName = AgentPrincipal.SchemeName;
 
-    /// <summary>D084: <c>"true"</c> when the agent may name a user in <c>X-User-Id</c>; otherwise it is ignored.</summary>
-    public const string ActsForUsersClaim = "skanyxx:memory:acts_for_users";
+    /// <inheritdoc cref="AgentPrincipal.ActsForUsersClaim"/>
+    public const string ActsForUsersClaim = AgentPrincipal.ActsForUsersClaim;
     private const string Bearer = "Bearer ";
 
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()

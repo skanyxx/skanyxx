@@ -18,6 +18,6 @@ internal sealed class CreateInviteEndpoint(IMediator mediator) : Endpoint<Create
     {
         var outcome = await mediator.Send(new CreateInviteCommand(Caller.UserId(User)!, req.Email?.Trim() ?? "", req.Roles ?? []), ct);
         HttpContext.Response.Headers.CacheControl = "no-store";
-        await Send.ResultAsync(outcome.ToHttp(i => new InviteCreatedResponse(i.InviteId, i.Link, i.ExpiresAt)));
+        await Send.ResultAsync(outcome.ToHttp(i => new InviteCreatedResponse(i.InviteId, i.Link, i.ExpiresAt, i.Emailed)));
     }
 }

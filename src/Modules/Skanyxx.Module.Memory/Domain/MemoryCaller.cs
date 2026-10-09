@@ -1,3 +1,5 @@
+using Skanyxx.Core.Platform.Memory;
+
 namespace Skanyxx.Module.Memory.Domain;
 
 /// <summary>
@@ -6,6 +8,9 @@ namespace Skanyxx.Module.Memory.Domain;
 /// </summary>
 public sealed record MemoryCaller(string? UserId, string? AgentId, bool IsSupervisor = false, bool IsOwner = false)
 {
+    /// <summary>A signed-in person (REST, the Host's library page); never an agent.</summary>
+    public static MemoryCaller For(LibraryUser user) => new(user.UserId, null, user.IsSupervisor, user.IsOwner);
+
     public bool IsAgent => AgentId is not null;
 
     public Scope? PersonalScope => UserId is null ? null : Scope.Personal(UserId);

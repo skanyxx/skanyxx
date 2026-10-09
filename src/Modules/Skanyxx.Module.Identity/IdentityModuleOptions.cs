@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Npgsql;
+using Skanyxx.Module.Identity.Email;
 
 namespace Skanyxx.Module.Identity;
 
@@ -55,6 +56,23 @@ public sealed class IdentityModuleOptions
 
     [Range(1, 1_000)]
     public int MaxPoolSize { get; set; } = 20;
+
+    /// <summary>Outgoing email (D150). Unset (<see cref="SmtpOptions.Host"/> empty): invite links are copied by the owner, as before, and nobody can reset a password by email.</summary>
+    public SmtpOptions Smtp { get; set; } = new();
+
+    /// <summary>How long a password-reset link works (D156); one use, and a newer link for the same account revokes it.</summary>
+    [Range(5, 24 * 60)]
+    public int PasswordResetMinutes { get; set; } = 60;
+
+    /// <summary>
+    /// Audit rows, and invites that are no longer pending, older than this are deleted by the retention job (D155).
+    /// </summary>
+    [Range(1, 3650)]
+    public int AuditRetentionDays { get; set; } = 365;
+
+    /// <summary>How often the groups of Entra-managed accounts are re-read from Microsoft Graph while Microsoft sign-in is on (D158).</summary>
+    [Range(5, 24 * 60)]
+    public int EntraRecheckMinutes { get; set; } = 60;
 
     /// <summary>The parsed <see cref="PublicBaseUrl"/>; null when unset. Links are built from this, not the raw string.</summary>
     internal Uri? PublicBaseUri => string.IsNullOrEmpty(PublicBaseUrl) ? null : new Uri(PublicBaseUrl, UriKind.Absolute);

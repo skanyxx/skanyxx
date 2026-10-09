@@ -19,18 +19,18 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
         ["BootstrapToken"] = HostApp.BootstrapToken
     };
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         _database = await fixture.NewDatabaseAsync();
         _host = await HostApp.StartAsync(_database);
     }
 
-    public async Task DisposeAsync() => await _host.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 
     [Fact]
     public async Task BeforeSetup_LoginRedirectsToSetup()
     {
-        var response = await _host.Client().GetAsync("/Login");
+        var response = await _host.Client().GetAsync("/Login", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal("/Setup", response.Headers.Location?.OriginalString);
@@ -43,10 +43,11 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
 
         var setup = await browser.SubmitAsync("/Setup", Owner);
         var page = await browser.GetAsync("/Hooks");
-        var html = await page.Content.ReadAsStringAsync();
+        var html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Redirect, setup.StatusCode);
-        Assert.Equal("/", setup.Headers.Location?.OriginalString);
+        // The first hour goes on with the owner's model step (D5).
+        Assert.Equal("/Model", setup.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Contains("Ana Owner", html);
         Assert.Contains("Sign out", html);
@@ -57,7 +58,7 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
     {
         await new Browser(_host).SubmitAsync("/Setup", Owner);
 
-        var page = await _host.Client().GetAsync("/Setup");
+        var page = await _host.Client().GetAsync("/Setup", TestContext.Current.CancellationToken);
         var api = await _host.BootstrapAsync(); // with the token: the guard passes, the owner already exists
 
         Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
@@ -69,16 +70,16 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
     public async Task Setup_ThroughAProxy_WithoutToken_IsRefused()
     {
         var browser = new Browser(_host);
-        var html = await (await browser.GetAsync("/Setup")).Content.ReadAsStringAsync();
+        var html = await (await browser.GetAsync("/Setup")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var token = System.Text.RegularExpressions.Regex.Match(html, "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
 
         var response = await browser.PostFormAsync("/Setup",
             new Dictionary<string, string>(Owner) { ["BootstrapToken"] = "", ["__RequestVerificationToken"] = token },
             r => r.Headers.Add("X-Forwarded-For", "203.0.113.9"));
-        var status = await _host.Client().GetFromJsonAsync<JsonElement>("/api/identity/status");
+        var status = await _host.Client().GetFromJsonAsync<JsonElement>("/api/identity/status", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode); // the form again, with the error
-        Assert.Contains("bootstrap token", await response.Content.ReadAsStringAsync());
+        Assert.Contains("bootstrap token", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.False(status.GetProperty("bootstrapped").GetBoolean());
     }
 
@@ -90,9 +91,9 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
 
         var response = await new Browser(host).SubmitAsync("/Setup", new Dictionary<string, string>(Owner) { ["BootstrapToken"] = "" });
         var api = await host.BootstrapAsync(token: null);
-        var status = await host.Client().GetFromJsonAsync<JsonElement>("/api/identity/status");
+        var status = await host.Client().GetFromJsonAsync<JsonElement>("/api/identity/status", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains("Identity:BootstrapToken", await response.Content.ReadAsStringAsync());
+        Assert.Contains("Identity:BootstrapToken", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Forbidden, api.StatusCode);
         Assert.False(status.GetProperty("bootstrapped").GetBoolean());
     }
@@ -123,7 +124,7 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
             new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword, ["ReturnUrl"] = "/Hooks" });
 
         Assert.Equal(HttpStatusCode.OK, wrong.StatusCode);
-        Assert.Contains("Invalid email or password.", await wrong.Content.ReadAsStringAsync());
+        Assert.Contains("Invalid email or password.", await wrong.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Redirect, right.StatusCode);
         Assert.Equal("/Hooks", right.Headers.Location?.OriginalString);
         Assert.True(browser.HasCookie("skanyxx.auth"));
@@ -135,14 +136,14 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
     {
         await new Browser(_host).SubmitAsync("/Setup", Owner);
         for (var i = 0; i < 5; i++)
-            await _host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = HostApp.OwnerEmail, password = "wrong password " + i });
+            await _host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = HostApp.OwnerEmail, password = "wrong password " + i }, cancellationToken: TestContext.Current.CancellationToken);
         var fields = new Dictionary<string, string> { ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword };
 
         var locked = await new Browser(_host).SubmitAsync("/Login", fields);
         var breakGlass = await new Browser(_host).SubmitAsync("/Login", new(fields) { ["BootstrapToken"] = HostApp.BootstrapToken });
 
         Assert.Equal(HttpStatusCode.OK, locked.StatusCode);
-        Assert.Contains("Invalid email or password.", await locked.Content.ReadAsStringAsync());
+        Assert.Contains("Invalid email or password.", await locked.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Redirect, breakGlass.StatusCode);
     }
 
@@ -153,16 +154,16 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
         await new Browser(_host).SubmitAsync("/Setup", Owner);
         var browser = new Browser(_host);
         await using var connection = new NpgsqlConnection(_database);
-        await connection.OpenAsync();
-        await using var transaction = await connection.BeginTransactionAsync();
+        await connection.OpenAsync(TestContext.Current.CancellationToken);
+        await using var transaction = await connection.BeginTransactionAsync(TestContext.Current.CancellationToken);
         // The key an in-flight sign-in holds: AccountLock, seed 0x49444E03.
         await using (var hold = new NpgsqlCommand("SELECT pg_advisory_xact_lock(hashtextextended('OWNER@SKANYXX.EXAMPLE', 1229213187))", connection, transaction))
-            await hold.ExecuteNonQueryAsync();
+            await hold.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
 
         var response = await browser.SubmitAsync("/Login", new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword });
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Contains("Sign-in is in progress for this account; try again.", await response.Content.ReadAsStringAsync());
+        Assert.Contains("Sign-in is in progress for this account; try again.", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     /// <summary>CR3 m1 / SEC3 R3-5: the button disables itself after the first click, and the token field is bounded.</summary>
@@ -171,7 +172,7 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
     {
         await new Browser(_host).SubmitAsync("/Setup", Owner);
 
-        var html = await (await _host.Client().GetAsync("/Login")).Content.ReadAsStringAsync();
+        var html = await (await _host.Client().GetAsync("/Login", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Contains("onsubmit=\"this.querySelector('button[type=submit]').disabled = true\"", html);
         Assert.Matches("<input(?=[^>]*name=\"BootstrapToken\")(?=[^>]*maxlength=\"512\")", html);
@@ -233,11 +234,11 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
     {
         var browser = new Browser(_host);
         await browser.SubmitAsync("/Setup", Owner);
-        var signIn = await _host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = HostApp.OwnerEmail, password = HostApp.OwnerPassword });
-        var refreshToken = (await signIn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("tokens").GetProperty("refreshToken").GetString();
+        var signIn = await _host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = HostApp.OwnerEmail, password = HostApp.OwnerPassword }, cancellationToken: TestContext.Current.CancellationToken);
+        var refreshToken = (await signIn.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("tokens").GetProperty("refreshToken").GetString();
 
         await browser.SubmitAsync("/Logout", [], tokenFrom: "/Hooks");
-        var refresh = await _host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken });
+        var refresh = await _host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, refresh.StatusCode);
     }
@@ -245,7 +246,7 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
     [Fact]
     public async Task SessionCookie_IsHttpOnly_Lax_AndSecureOutsideDevelopment()
     {
-        var html = await (await _host.Client().GetAsync("/Setup")).Content.ReadAsStringAsync();
+        var html = await (await _host.Client().GetAsync("/Setup", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var browser = new Browser(_host);
 
         var setup = await browser.SubmitAsync("/Setup", Owner);

@@ -1,0 +1,43 @@
+@page
+@model ModelModel
+@using Microsoft.AspNetCore.Mvc.Rendering
+@using Skanyxx.Core.Platform.Runtime
+@{
+    ViewData["Title"] = "Model";
+}
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
+<p class="text-muted">
+    Choose the model the seed agent answers with. kagent runs it: the settings go into kagent's ModelConfig
+    <code>@(Model.Current?.Ref)</code>, and an API key goes straight into the Kubernetes Secret kagent keeps for it.
+    Skanyxx does not store the key and never shows it again. Ollama needs no key.
+</p>
+@if (Model.Current is { Provider: not null } current)
+{
+    <p>
+        Now: <strong>@current.Provider</strong> · <code>@current.Model</code>
+        · API key @(current.HasApiKey ? "set" : "not set")
+        · kagent @(current.Accepted ? "accepted it" : "has not accepted it" + (current.StatusMessage is null ? "" : $" ({current.StatusMessage})"))
+        @if (current.Configured)
+        {
+            <a href="/Chat" class="btn btn-secondary">Continue to Chat</a>
+        }
+    </p>
+}
+<form method="post" class="card auth-form">
+    <label asp-for="Provider">Provider</label>
+    <select asp-for="Provider" asp-items="@(new SelectList(ModelProviders.All))"></select>
+    <label asp-for="ModelId">Model</label>
+    <input asp-for="ModelId" required maxlength="200" autocomplete="off" placeholder="e.g. gpt-4.1, claude-sonnet-4-5, qwen3-coder:30b" />
+    <label asp-for="BaseUrl">Ollama host (required), or the API base URL (optional)</label>
+    <input asp-for="BaseUrl" type="url" maxlength="500" autocomplete="off" placeholder="http://ollama.example:11434 — empty = the provider's default (OpenAI, Anthropic)" />
+    <label asp-for="ApiKey">API key</label>
+    @* Never rendered back: the value is always empty; leaving it empty keeps the stored key (same provider). *@
+    @* new-password: browsers and password managers must not fill the owner's sign-in password in here. *@
+    <input name="ApiKey" id="ApiKey" type="password" value="" maxlength="4096" autocomplete="new-password" spellcheck="false"
+           data-1p-ignore data-lpignore="true" data-form-type="other"
+           placeholder="@(Model.Current?.HasApiKey == true ? "set — leave empty to keep it" : "paste the key (not needed for Ollama)")" />
+    <button type="submit" class="btn btn-primary">Save and go to Chat</button>
+</form>

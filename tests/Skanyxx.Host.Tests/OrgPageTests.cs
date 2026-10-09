@@ -14,9 +14,9 @@ public sealed partial class OrgPageTests(PostgresFixture fixture) : IAsyncLifeti
     private HostApp _host = null!;
     private Browser _owner = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
-        _host = await HostApp.StartAsync(await fixture.NewDatabaseAsync());
+        _host = await HostApp.StartAsync(await fixture.NewDatabaseAsync(), HostApp.WithoutSandboxes);
         _owner = new Browser(_host);
         var setup = await _owner.SubmitAsync("/Setup", new()
         {
@@ -25,7 +25,7 @@ public sealed partial class OrgPageTests(PostgresFixture fixture) : IAsyncLifeti
         Assert.Equal(HttpStatusCode.Redirect, setup.StatusCode);
     }
 
-    public async Task DisposeAsync() => await _host.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _host.DisposeAsync();
 
     [Fact]
     public async Task Owner_BuildsTheTreeOnThePage_AndPeopleShowsTheTeams()
@@ -41,24 +41,24 @@ public sealed partial class OrgPageTests(PostgresFixture fixture) : IAsyncLifeti
         var taken = await _owner.SubmitAsync("/Org?handler=CreateTeam", new() { ["slug"] = "billing", ["name"] = "Again", ["department"] = "ops" }, tokenFrom: "/Org");
         var bad = await _owner.SubmitAsync("/Org?handler=CreateDepartment", new() { ["slug"] = "Bad Slug", ["name"] = "Bad" }, tokenFrom: "/Org");
         var unknown = await _owner.SubmitAsync("/Org?handler=AddMember&slug=nope", new() { ["userId"] = memberId }, tokenFrom: "/Org");
-        var page = await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync();
+        var page = await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         await _owner.SubmitAsync($"/People?handler=Disable&id={memberId}", [], tokenFrom: "/People");
-        var pageWhileDisabled = await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync();
-        var people = await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync();
+        var pageWhileDisabled = await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var people = await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var removed = await _owner.SubmitAsync($"/Org?handler=RemoveMember&slug=billing&userId={memberId}", [], tokenFrom: "/Org");
-        var teams = await _host.Client(await BearerAsync(HostApp.OwnerEmail, HostApp.OwnerPassword)).GetFromJsonAsync<JsonElement>("/api/identity/org/teams");
+        var teams = await _host.Client(await BearerAsync(HostApp.OwnerEmail, HostApp.OwnerPassword)).GetFromJsonAsync<JsonElement>("/api/identity/org/teams", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Contains("Department created.", await department.Content.ReadAsStringAsync());
-        Assert.Contains("Department created.", await second.Content.ReadAsStringAsync());
-        Assert.Contains("Team created.", await team.Content.ReadAsStringAsync());
-        Assert.Contains("Member added.", await added.Content.ReadAsStringAsync());
-        Assert.Contains("Team saved.", await moved.Content.ReadAsStringAsync());
-        Assert.Contains("Department renamed.", await renamed.Content.ReadAsStringAsync());
-        Assert.Contains("already exists", await taken.Content.ReadAsStringAsync());
+        Assert.Contains("Department created.", await department.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("Department created.", await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("Team created.", await team.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("Member added.", await added.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("Team saved.", await moved.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("Department renamed.", await renamed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("already exists", await taken.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Conflict, taken.StatusCode); // CR M4: the status says what the page says
         Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, unknown.StatusCode);
-        Assert.Contains("No team", await unknown.Content.ReadAsStringAsync());
+        Assert.Contains("No team", await unknown.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.DoesNotContain(">disabled</span>", page);
         Assert.Contains(">disabled</span>", pageWhileDisabled); // SEC L3: kept, and marked
         Assert.Contains("department:finance", page);
@@ -67,7 +67,7 @@ public sealed partial class OrgPageTests(PostgresFixture fixture) : IAsyncLifeti
         Assert.Contains("value=\"Money\"", page);
         Assert.Contains("Bea", page);
         Assert.Contains("<td>Invoicing</td>", people);
-        Assert.Contains("Member removed.", await removed.Content.ReadAsStringAsync());
+        Assert.Contains("Member removed.", await removed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal("""[{"slug":"billing","name":"Invoicing","department":"ops","members":[]}]""", teams.GetRawText());
     }
 
@@ -78,31 +78,31 @@ public sealed partial class OrgPageTests(PostgresFixture fixture) : IAsyncLifeti
         var member = new Browser(_host);
         await member.SubmitAsync("/Login", new() { ["Email"] = MemberEmail, ["Password"] = MemberPassword });
 
-        var ownerNav = await (await _owner.GetAsync("/Hooks")).Content.ReadAsStringAsync();
-        var memberNav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync();
+        var ownerNav = await (await _owner.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var memberNav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var memberPage = await member.GetAsync("/Org");
         var memberPost = await member.SubmitAsync("/Org?handler=CreateDepartment", new() { ["slug"] = "evil", ["name"] = "Evil" }, tokenFrom: "/Hooks");
-        var anonymous = await _host.Client().GetAsync("/Org");
+        var anonymous = await _host.Client().GetAsync("/Org", TestContext.Current.CancellationToken);
 
         Assert.Contains("href=\"/Org\"", ownerNav);
         Assert.DoesNotContain("href=\"/Org\"", memberNav);
         Assert.Equal(HttpStatusCode.Redirect, memberPage.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, memberPost.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
-        Assert.DoesNotContain("department:evil", await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync());
+        Assert.DoesNotContain("department:evil", await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
     public async Task OrgPost_NeedsAntiforgery_AndTheOwnOrigin()
     {
-        var html = await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync();
+        var html = await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var antiforgery = Antiforgery().Match(html).Groups[1].Value;
 
         var noToken = await _owner.PostFormAsync("/Org?handler=CreateDepartment", new() { ["slug"] = "a", ["name"] = "A" });
         var foreign = await _owner.PostFormAsync("/Org?handler=CreateDepartment",
             new() { ["slug"] = "b", ["name"] = "B", ["__RequestVerificationToken"] = antiforgery },
             r => r.Headers.Add("Origin", "https://evil.example"));
-        var page = await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync();
+        var page = await (await _owner.GetAsync("/Org")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, noToken.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, foreign.StatusCode);

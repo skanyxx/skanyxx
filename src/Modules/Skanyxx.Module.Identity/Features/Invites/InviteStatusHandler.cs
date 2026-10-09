@@ -4,12 +4,13 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Data;
 
 namespace Skanyxx.Module.Identity.Features.Invites;
 
 internal sealed class InviteStatusHandler(
-    AccountsDbContext db, ClientAddress client, TimeProvider time, ILogger<InviteStatusHandler> logger)
+    AccountsDbContext db, IdentityAudit audit, ClientAddress client, TimeProvider time, ILogger<InviteStatusHandler> logger)
     : IRequestHandler<InviteStatusQuery, Outcome<InviteDetails>>
 {
     /// <summary>The one answer for unknown, used, revoked and expired: which of them it is would help nobody but a guesser.</summary>
@@ -28,6 +29,7 @@ internal sealed class InviteStatusHandler(
 
         // Never the token: this line is where guessing shows, next to the 429s.
         logger.LogWarning("Invite lookup refused from {RemoteIp}: invalid", client.Current);
+        await audit.WriteSampledAsync(AuditActions.InviteLookupRefused, "invalid", null, null, null, ct);
         return Outcome<InviteDetails>.NotFound(Invalid);
     }
 }

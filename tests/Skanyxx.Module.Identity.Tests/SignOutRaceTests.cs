@@ -14,7 +14,7 @@ public sealed class SignOutRaceTests(PostgresFixture postgres) : IAsyncLifetime
     private readonly RaceSchedule _races = new();
     private IdentityApp _app = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString, services: s =>
@@ -25,7 +25,7 @@ public sealed class SignOutRaceTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Created, (await _app.BootstrapAsync()).StatusCode);
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     [Fact]
     public async Task OneLostRace_IsRetried_AndTheStampRotates()
@@ -34,7 +34,7 @@ public sealed class SignOutRaceTests(PostgresFixture postgres) : IAsyncLifetime
         var before = (await postgres.OwnerAsync()).SecurityStamp;
         _races.Remaining = 1;
 
-        var signOut = await _app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null);
+        var signOut = await _app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NoContent, signOut.StatusCode);
         Assert.NotEqual(before, (await postgres.OwnerAsync()).SecurityStamp);
@@ -47,7 +47,7 @@ public sealed class SignOutRaceTests(PostgresFixture postgres) : IAsyncLifetime
         var tokens = await _app.SignInBearerAsync();
         _races.Remaining = 2;
 
-        var signOut = await _app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null);
+        var signOut = await _app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.InternalServerError, signOut.StatusCode);
     }

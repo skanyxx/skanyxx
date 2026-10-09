@@ -1,0 +1,2 @@
+# helm dependency build output (pinned by Chart.lock)
+charts/

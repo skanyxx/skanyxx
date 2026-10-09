@@ -1,0 +1,231 @@
+@page
+@model StudioModel
+@{
+    ViewData["Title"] = "Studio";
+    var me = Model.Me;
+}
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
+@if (Model.Message is not null)
+{
+    <p class="text-success" role="status">@Model.Message</p>
+}
+<p class="text-muted">
+    Compose an agent and save it as a pull request in <code>@(Model.Overview?.Repo ?? "skanyxx-agents")</code>. Nothing is
+    live until a supervisor merges it; Skanyxx then applies it to kagent. Memory grants travel in the same pull request.
+</p>
+@if (Model.Overview?.RepoProblem is { } problem)
+{
+    <p><strong>@problem</strong></p>
+}
+
+@if (Model.Detail is { } detail)
+{
+    var s = detail.Summary;
+    <div class="card mb-3" id="proposal">
+        <div class="card-header">
+            <h3 class="card-title">#@s.Number @s.Title</h3>
+            <span class="text-muted">proposed by @(s.ProposedBy == me.UserId ? "you" : s.ProposedBy) · head <code>@s.HeadSha[..Math.Min(12, s.HeadSha.Length)]</code></span>
+        </div>
+        @if (detail.Problems.Count > 0)
+        {
+            <p class="text-error">Cannot be merged: @string.Join(" ", detail.Problems)</p>
+        }
+        @if (detail.NeedsOwner)
+        {
+            <p><span class="badge badge-warning">owner merge</span> It sets or removes a team or department grant: only the owner merges it.</p>
+        }
+        @foreach (var file in detail.Files)
+        {
+            <h4><code>@file.Path</code> <span class="text-muted">@file.Status</span></h4>
+            <pre data-file="@file.Path">@file.Content</pre>
+        }
+        <div class="flex gap-2 items-center">
+            @if (me.CanMerge && detail.Problems.Count == 0 && (!detail.NeedsOwner || me.IsOwner))
+            {
+                <form method="post" asp-page-handler="Merge" asp-route-pr="@s.Number">
+                    <button type="submit" class="btn btn-primary" data-merge="@s.Number">Merge and make live</button>
+                </form>
+            }
+            @if (detail.Problems.Count == 0)
+            {
+                <form method="post" asp-page-handler="Preview" asp-route-pr="@s.Number">
+                    <button type="submit" class="btn btn-secondary" data-preview="@s.Number">@(detail.Preview is null ? "Start preview" : "Refresh preview")</button>
+                </form>
+            }
+            @if (me.CanMerge || s.ProposedBy == me.UserId)
+            {
+                <form method="post" asp-page-handler="Close" asp-route-pr="@s.Number">
+                    <button type="submit" class="btn btn-ghost">Close without merging</button>
+                </form>
+            }
+        </div>
+        @if (detail.Preview is { } preview)
+        {
+            <h4>Preview chat <span class="text-muted">@preview.Name · @(preview.Ready ? "ready" : "starting") · search only, never saves to memory</span></h4>
+            <div id="previewLog" class="mb-3" aria-live="polite"></div>
+            <form id="previewChat" class="flex gap-2 items-center" data-number="@s.Number">
+                <input id="previewMessage" maxlength="16000" placeholder="Ask the proposed agent" autocomplete="off" aria-label="Message" />
+                <button type="submit" class="btn btn-primary">Send</button>
+            </form>
+        }
+    </div>
+}
+
+@if (Model.Overview is { RepoProblem: null } overview)
+{
+    <div class="table-container card mb-3">
+        <div class="card-header"><h3 class="card-title">Open proposals</h3></div>
+        <table>
+            <thead><tr><th>#</th><th>Title</th><th>Agent</th><th>Proposed by</th></tr></thead>
+            <tbody>
+                @foreach (var p in overview.Open)
+                {
+                    <tr>
+                        <td><a asp-page="/Studio" asp-route-pr="@p.Number" asp-fragment="proposal">#@p.Number</a></td>
+                        <td>@p.Title</td>
+                        <td><code>@p.Agent</code></td>
+                        <td>@(p.ProposedBy == me.UserId ? "you" : p.ProposedBy)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (overview.Open.Count == 0)
+        {
+            <p class="text-muted">No open proposals.</p>
+        }
+    </div>
+
+    <div class="table-container card mb-3">
+        <div class="card-header"><h3 class="card-title">Agents in main</h3></div>
+        <table>
+            <thead><tr><th>Agent</th><th>Description</th><th>In kagent</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var a in overview.Agents)
+                {
+                    <tr>
+                        <td><code>@a.Name</code></td>
+                        <td>@a.Description</td>
+                        <td>@(a.Live ? "live (merged)" : "not yet applied")</td>
+                        <td>
+                            @if (me.CanPropose)
+                            {
+                                <a asp-page="/Studio" asp-route-edit="@a.Name" asp-fragment="compose">Propose a change</a>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (overview.Agents.Count == 0)
+        {
+            <p class="text-muted">No agents yet (the seed is set up with the install, not here).</p>
+        }
+    </div>
+
+    @if (me.CanPropose && Model.Options is { } options)
+    {
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Factory</h3></div>
+            <p class="text-muted">Describe the agent in words; the factory drafts the form below. It creates nothing.</p>
+            <form method="post" asp-page-handler="Factory" class="flex gap-2 items-center">
+                <input name="FactoryRequest" maxlength="4000" placeholder="e.g. a refund helper that answers from company memory" autocomplete="off" aria-label="Describe the agent" />
+                <button type="submit" class="btn btn-secondary">Draft</button>
+            </form>
+        </div>
+
+        <form method="post" asp-page-handler="Propose" class="card auth-form mb-3" id="compose">
+            <div class="card-header"><h3 class="card-title">@(string.IsNullOrEmpty(Model.Edit) ? "Compose an agent" : $"Change {Model.Edit}")</h3></div>
+            <label asp-for="Name">Name</label>
+            <input asp-for="Name" required maxlength="34" pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?" autocomplete="off" />
+            <label asp-for="Description">Description</label>
+            <input asp-for="Description" maxlength="500" autocomplete="off" />
+            <label asp-for="ModelConfig">Model</label>
+            <select asp-for="ModelConfig">
+                @foreach (var m in options.ModelConfigs)
+                {
+                    <option value="@m">@m</option>
+                }
+            </select>
+            <label asp-for="Instructions">Instructions (the job, tone, what it must not do)</label>
+            <textarea asp-for="Instructions" rows="8" maxlength="16000" required></textarea>
+            <label asp-for="Skills">Skills (OCI image references, one per line)</label>
+            <textarea asp-for="Skills" rows="2"></textarea>
+            <fieldset>
+                <legend>MCP tools (allow-listed servers)</legend>
+                @if (options.McpServers.Count == 0)
+                {
+                    <p class="text-muted">None allow-listed (Studio:McpServers).</p>
+                }
+                @foreach (var server in options.McpServers)
+                {
+                    <p><code>@server.Server</code>
+                        @foreach (var tool in server.Tools)
+                        {
+                            var value = $"{server.Server}/{tool}";
+                            <label><input type="checkbox" name="Tools" value="@value" checked="@Model.Ticked(Model.Tools, value)" /> @tool</label>
+                        }
+                    </p>
+                }
+            </fieldset>
+            <fieldset>
+                <legend>Memory grants (Skanyxx, D033)</legend>
+                <table>
+                    <thead><tr><th>Scope</th><th>Search</th><th>Upsert</th></tr></thead>
+                    <tbody>
+                        @foreach (var scope in options.Scopes)
+                        {
+                            <tr>
+                                <td><code>@scope</code>@(scope == "company" ? "" : " (owner merges)")</td>
+                                <td><input type="checkbox" name="Search" value="@scope" checked="@Model.Ticked(Model.Search, scope)" aria-label="Search @scope" /></td>
+                                <td><input type="checkbox" name="Upsert" value="@scope" checked="@Model.Ticked(Model.Upsert, scope)" aria-label="Upsert @scope" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </fieldset>
+            <label asp-for="TtlDays">kagent TTL memory, days (empty = off; not the company bank)</label>
+            <input asp-for="TtlDays" type="number" min="1" max="365" />
+            <button type="submit" class="btn btn-primary">Propose (opens a pull request)</button>
+        </form>
+    }
+}
+
+<script>
+    (() => {
+        const form = document.getElementById('previewChat');
+    if (!form) return;
+        const log = document.getElementById('previewLog');
+        const input = document.getElementById('previewMessage');
+        let conversationId = null;
+        const line = (who, text) => {
+            const p = document.createElement('p');
+            const b = document.createElement('strong');
+            b.textContent = who + ': ';
+            p.appendChild(b);
+            p.appendChild(document.createTextNode(text));
+            log.appendChild(p);
+        };
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const message = input.value.trim();
+            if (!message) return;
+            input.value = '';
+            line('You', message);
+            const response = await fetch(`/api/studio/proposals/${form.dataset.number}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message, conversationId })
+            });
+            const body = await response.json().catch(() => ({}));
+            if (response.ok) {
+                conversationId = body.conversationId;
+                line('Preview', body.message?.content ?? '');
+            } else {
+                line('Error', body.detail ?? body.title ?? `HTTP ${response.status}`);
+            }
+        });
+    })();
+</script>

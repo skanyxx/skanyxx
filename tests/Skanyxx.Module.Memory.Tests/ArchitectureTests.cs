@@ -1,6 +1,6 @@
 using ArchUnitNET.Domain;
 using ArchUnitNET.Loader;
-using ArchUnitNET.xUnit;
+using ArchUnitNET.xUnitV3;
 using FluentValidation;
 using MediatR;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
@@ -65,10 +65,12 @@ public sealed class ArchitectureTests
         Assert.DoesNotContain(Module.GetTypes(), t => t.BaseType is { IsGenericType: true } b
             && b.GetGenericTypeDefinition() == typeof(FastEndpoints.Validator<>));
 
+    /// <summary>The module's own requests and the memory contracts it handles for the Host (Core.Platform.Memory).</summary>
     [Fact]
     public void EveryRequest_HasExactlyOneValidator()
     {
-        var requests = Module.GetTypes()
+        var contracts = typeof(Skanyxx.Core.Platform.Memory.LiftCardCommand);
+        var requests = Module.GetTypes().Concat(contracts.Assembly.GetTypes().Where(t => t.Namespace == contracts.Namespace))
             .Where(t => !t.IsAbstract && t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IRequest<>)))
             .ToList();
         var validated = Module.GetTypes()
@@ -78,7 +80,7 @@ public sealed class ArchitectureTests
             .Select(i => i.GetGenericArguments()[0])
             .ToList();
 
-        Assert.NotEmpty(requests);
+        Assert.Contains(typeof(Skanyxx.Core.Platform.Memory.RenameCardCommand), requests);
         foreach (var request in requests)
             Assert.True(validated.Count(v => v == request) == 1, $"{request.Name} must have exactly one validator.");
     }

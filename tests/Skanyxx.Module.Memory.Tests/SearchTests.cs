@@ -17,7 +17,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
         await boss.PutCardAsync("company", "old-refund-window", what: "Refund window is 7 days", why: "Old refund policy");
         await using (var db = Postgres.CreateDbContext())
             await db.Cards.Where(c => c.Key == "old-refund-window")
-                .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, CardStatus.Stale));
+                .ExecuteUpdateAsync(s => s.SetProperty(c => c.Status, CardStatus.Stale), cancellationToken: TestContext.Current.CancellationToken);
 
         var hits = await App.Client("ana").SearchAsync("refund window");
 
@@ -149,7 +149,7 @@ public sealed class SearchTests(PostgresFixture postgres) : MemoryTestBase(postg
     {
         await App.Client("bob").PutCardAsync("personal:bob", "bob-refund");
 
-        var response = await App.Client("ana").GetAsync("/api/memory/cards/personal:bob/bob-refund");
+        var response = await App.Client("ana").GetAsync("/api/memory/cards/personal:bob/bob-refund", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }

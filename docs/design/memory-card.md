@@ -38,3 +38,15 @@ Writer (human or agent with **upsert** grant) sends `collection` + `key` + `vers
 ## Prompt budget (one turn)
 
 Top-k **published** cards from **search-granted** collections. k is small (start at **5**). Worst case ~5 × (200+400) characters, not the bank.
+
+## As built (2026-10-05, D102)
+
+- **Rename (D038):** `POST /api/memory/cards/{scope}/{key}/rename {newKey, version}` — people only (no MCP tool). Allowed
+  where the person may write the scope; stale version or a key taken in the scope → `409` with the current card. The row
+  keeps its id, so `lifted_from` links survive; `version` +1, `who` unchanged (the renamer is on the audit line). The
+  `409` body's `reason` is `stale` or `taken` (D104).
+- **Library (`/Library`):** search and open what you may read. `company` lists published cards only; your personal,
+  team and department scopes list every status with a badge. An unpublished `company` card opens only for supervisors
+  and its author; to anyone else it is a missing card (D103). The card view shows `body` and `source` (as text). Lift
+  buttons appear only for higher scopes you may write, on published cards.
+- `source` is still only a pointer on the card; MinIO/S3 for bodies larger than the card is not built.

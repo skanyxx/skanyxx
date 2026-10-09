@@ -26,7 +26,7 @@ public sealed class RobustnessTests(PostgresFixture postgres) : TicketsTestBase(
         var fine = await App.StartRunAsync(pipelineId: "fine");
         var failed = await App.WaitForAsync(boom.Id, RunState.Failed);
         await App.WaitForAsync(fine.Id, RunState.Succeeded);
-        await Task.Delay(1500);
+        await Task.Delay(1500, TestContext.Current.CancellationToken);
 
         Assert.Equal("the run stopped on an internal error (InvalidOperationException) after 3 tries", failed.Error);
         Assert.Equal(3, ExplodingOn.Calls);
@@ -165,8 +165,8 @@ public sealed class RobustnessTests(PostgresFixture postgres) : TicketsTestBase(
 
         for (var i = 0; i < 5; i++)
             await App.StartRunAsync();
-        var sixth = await App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" });
-        var otherUser = await App.Client("bob").PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" });
+        var sixth = await App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
+        var otherUser = await App.Client("bob").PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
         release.SetResult();
 
         Assert.Equal(HttpStatusCode.TooManyRequests, sixth.StatusCode);

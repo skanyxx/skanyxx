@@ -55,10 +55,58 @@ jobs:
           echo "version=$VERSION"     >> $GITHUB_OUTPUT
           echo "prerelease=$PRE"      >> $GITHUB_OUTPUT
 
+  # ── Tests: every suite passes before any installer is built ────
+  # Host, Identity, Memory and Tickets start Postgres through Testcontainers on the runner's Docker (ubuntu-latest has
+  # it; the Windows and macOS runners cannot run Linux containers, hence one Linux job). Sandboxes fakes AX.
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Test code and pulled images run here: read-only token, and none left in .git/config.
+    permissions:
+      contents: read
+    env:
+      TESTINGPLATFORM_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Skanyxx.sln
+
+      - name: Build solution (populates modules/, which the Host tests load)
+        run: dotnet build Skanyxx.sln --configuration ${{ env.CONFIGURATION }} --no-restore
+
+      # Each suite on its own, every one even after a failure, so the log names every failing suite.
+      - name: Test
+        run: |
+          failed=0
+          for suite in Host Module.Identity Module.Memory Module.Sandboxes Module.Tickets; do
+            dotnet test --project "tests/Skanyxx.$suite.Tests/Skanyxx.$suite.Tests.csproj" \
+              --configuration ${{ env.CONFIGURATION }} --no-build \
+              --report-xunit-trx --report-xunit-trx-filename "$suite.trx" --results-directory TestResults || failed=1
+          done
+          exit $failed
+
+      # Only on failure or a timeout; the release job downloads the *-installer artifacts only.
+      - name: Upload test results
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/
+          retention-days: 7
+
   # ── Windows: InnoSetup .exe installer wizard ────────────────────
   build-windows:
     name: Windows installer (.exe)
-    needs: meta
+    needs: [meta, test]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -116,7 +164,7 @@ jobs:
   # ── macOS: .pkg installer wizard (arm64 + x64) ──────────────────
   build-macos:
     name: macOS installer (.pkg) — ${{ matrix.label }}
-    needs: meta
+    needs: [meta, test]
     runs-on: macos-latest
     strategy:
       fail-fast: false
@@ -216,7 +264,7 @@ jobs:
   # ── Linux: .deb package ─────────────────────────────────────────
   build-linux:
     name: Linux installer (.deb)
-    needs: meta
+    needs: [meta, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -300,10 +348,13 @@ jobs:
     needs: [meta, build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - name: Download all artifacts
+      # Installers only (windows-installer, macos-<arch>-installer, linux-deb-installer): a test-results artifact
+      # left by a failed first attempt in the same run must never become a release asset.
+      - name: Download installer artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts/
+          pattern: '*-installer'
           merge-multiple: true
 
       - name: List artifacts

@@ -17,7 +17,7 @@ public sealed class OptionsTests
             ["Memory:SearchTopK"] = topK
         });
 
-        await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
+        await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync(TestContext.Current.CancellationToken));
     }
 
     // Supervisors come from role claims now; a Memory:Supervisors list left in an old config must not stop startup.

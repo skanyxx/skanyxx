@@ -27,14 +27,14 @@ public sealed class ErrorMappingTests : SandboxesTestBase
 
         foreach (var response in new[]
         {
-            await App.Client().GetAsync("/api/sandboxes/tasks"),
-            await App.Client().GetAsync("/api/sandboxes/tasks/fix-42"),
-            await App.Client().GetAsync("/api/sandboxes/workspaces"),
-            await App.Client().GetAsync("/api/sandboxes/models"),
+            await App.Client().GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken),
+            await App.Client().GetAsync("/api/sandboxes/tasks/fix-42", TestContext.Current.CancellationToken),
+            await App.Client().GetAsync("/api/sandboxes/workspaces", TestContext.Current.CancellationToken),
+            await App.Client().GetAsync("/api/sandboxes/models", TestContext.Current.CancellationToken),
             await RunAsync("fix-42")
         })
         {
-            var body = await response.Content.ReadAsStringAsync();
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.Equal(http, response.StatusCode);
             Assert.Contains(message, body);
             Assert.DoesNotContain("hunter2", body);
@@ -47,7 +47,7 @@ public sealed class ErrorMappingTests : SandboxesTestBase
     {
         Ax.FailWith = StatusCode.NotFound;
 
-        Assert.Equal(HttpStatusCode.NotFound, (await App.Client().GetAsync("/api/sandboxes/models")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await App.Client().GetAsync("/api/sandboxes/models", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -55,8 +55,8 @@ public sealed class ErrorMappingTests : SandboxesTestBase
     {
         await using var app = await SandboxesApp.StartAsync("http://127.0.0.1:1");
 
-        var response = await app.Client().GetAsync("/api/sandboxes/tasks");
-        var body = await response.Content.ReadAsStringAsync();
+        var response = await app.Client().GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
         Assert.Contains("AX unreachable.", body);
@@ -67,12 +67,12 @@ public sealed class ErrorMappingTests : SandboxesTestBase
     public async Task EveryCall_UsesTheConfiguredAtespace()
     {
         await RunAsync("fix-42");
-        await App.Client().GetAsync("/api/sandboxes/tasks/fix-42");
-        await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/suspend", null);
-        await App.Client().GetAsync("/api/sandboxes/workspaces");
-        await App.Client().GetAsync("/api/sandboxes/models");
-        await App.Client(SandboxesApp.Supervisor).PutAsJsonAsync("/api/sandboxes/workspaces/ws", new { });
-        await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/stop", null);
+        await App.Client().GetAsync("/api/sandboxes/tasks/fix-42", TestContext.Current.CancellationToken);
+        await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/suspend", null, TestContext.Current.CancellationToken);
+        await App.Client().GetAsync("/api/sandboxes/workspaces", TestContext.Current.CancellationToken);
+        await App.Client().GetAsync("/api/sandboxes/models", TestContext.Current.CancellationToken);
+        await App.Client(SandboxesApp.Supervisor).PutAsJsonAsync("/api/sandboxes/workspaces/ws", new { }, cancellationToken: TestContext.Current.CancellationToken);
+        await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/stop", null, TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(Ax.Atespaces);
         Assert.All(Ax.Atespaces, a => Assert.Equal(SandboxesApp.Atespace, a));
@@ -87,7 +87,7 @@ public sealed class ErrorMappingTests : SandboxesTestBase
         using var cancel = new CancellationTokenSource();
 
         var run = App.Client().PutAsJsonAsync("/api/sandboxes/tasks/fix-42", RunBody(), cancel.Token);
-        await Ax.UpdateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await Ax.UpdateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         await cancel.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);

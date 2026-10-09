@@ -11,7 +11,7 @@ public sealed class PipelineTests(PostgresFixture postgres) : TicketsTestBase(po
     [Fact]
     public async Task DefaultPipeline_IsSeeded_WithTheLoopAndTheGate()
     {
-        var pipeline = await App.Client().GetFromJsonAsync<Pipeline>("/api/tickets/pipelines/ticket-fix", TicketsApp.Json);
+        var pipeline = await App.Client().GetFromJsonAsync<Pipeline>("/api/tickets/pipelines/ticket-fix", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(["plan", "review-plan", "code", "qa-code", "review"], pipeline!.Stages.Select(s => s.Id));
         var qa = pipeline.Stages[3];
@@ -22,7 +22,7 @@ public sealed class PipelineTests(PostgresFixture postgres) : TicketsTestBase(po
     [Fact]
     public async Task Pipeline_UsesSnakeCaseEnumNames_OnTheWire()
     {
-        var json = await App.Client().GetStringAsync("/api/tickets/pipelines/ticket-fix");
+        var json = await App.Client().GetStringAsync("/api/tickets/pipelines/ticket-fix", TestContext.Current.CancellationToken);
 
         Assert.Contains("\"onFail\":\"goto\"", json);
         Assert.Contains("\"gate\":\"human\"", json);
@@ -46,7 +46,7 @@ public sealed class PipelineTests(PostgresFixture postgres) : TicketsTestBase(po
 
         Assert.Equal(HttpStatusCode.Created, created.StatusCode);
         Assert.Equal(HttpStatusCode.OK, replaced.StatusCode);
-        var saved = await App.Client().GetFromJsonAsync<Pipeline>("/api/tickets/pipelines/mine", TicketsApp.Json);
+        var saved = await App.Client().GetFromJsonAsync<Pipeline>("/api/tickets/pipelines/mine", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(["code"], saved!.Stages.Select(s => s.Id));
     }
 
@@ -83,8 +83,8 @@ public sealed class PipelineTests(PostgresFixture postgres) : TicketsTestBase(po
     {
         var response = await App.SavePipelineAsync("bad", pipeline);
 
-        Assert.True(response.StatusCode == HttpStatusCode.BadRequest, $"{why}: {response.StatusCode} {await response.Content.ReadAsStringAsync()}");
-        Assert.Equal(HttpStatusCode.NotFound, (await App.Client().GetAsync("/api/tickets/pipelines/bad")).StatusCode);
+        Assert.True(response.StatusCode == HttpStatusCode.BadRequest, $"{why}: {response.StatusCode} {await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)}");
+        Assert.Equal(HttpStatusCode.NotFound, (await App.Client().GetAsync("/api/tickets/pipelines/bad", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -92,9 +92,9 @@ public sealed class PipelineTests(PostgresFixture postgres) : TicketsTestBase(po
     {
         await App.SavePipelineAsync("gone", Pipeline(Stage("plan", "plan", "ticket-planner")));
 
-        var byUser = await App.Client().DeleteAsync("/api/tickets/pipelines/gone");
-        var bySupervisor = await App.Client(TicketsApp.Supervisor).DeleteAsync("/api/tickets/pipelines/gone");
-        var again = await App.Client(TicketsApp.Supervisor).DeleteAsync("/api/tickets/pipelines/gone");
+        var byUser = await App.Client().DeleteAsync("/api/tickets/pipelines/gone", TestContext.Current.CancellationToken);
+        var bySupervisor = await App.Client(TicketsApp.Supervisor).DeleteAsync("/api/tickets/pipelines/gone", TestContext.Current.CancellationToken);
+        var again = await App.Client(TicketsApp.Supervisor).DeleteAsync("/api/tickets/pipelines/gone", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, byUser.StatusCode);
         Assert.Equal(HttpStatusCode.OK, bySupervisor.StatusCode);

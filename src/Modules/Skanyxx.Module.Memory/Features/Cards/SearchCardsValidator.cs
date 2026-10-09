@@ -1,11 +1,11 @@
 using FluentValidation;
+using Skanyxx.Core.Platform.Memory;
 
 namespace Skanyxx.Module.Memory.Features.Cards;
 
 internal sealed class SearchCardsValidator : AbstractValidator<SearchCardsQuery>
 {
-    /// <summary>Also bounds the number of words CardSearch turns into tsqueries.</summary>
-    public const int MaxQueryLength = 500;
+    public const int MaxQueryLength = CardFormat.MaxQueryLength;
 
     public SearchCardsValidator()
     {

@@ -1,0 +1,164 @@
+{{- define "skanyxx.gitea.env" }}
+- name: GITEA__database__DB_TYPE
+  value: sqlite3
+- name: GITEA__database__PATH
+  value: /var/lib/gitea/data/gitea.db
+- name: GITEA__server__HTTP_PORT
+  value: "3000"
+- name: GITEA__server__ROOT_URL
+  value: {{ .rootUrl | quote }}
+- name: GITEA__server__DISABLE_SSH
+  value: "true"
+- name: GITEA__server__START_SSH_SERVER
+  value: "false"
+- name: GITEA__server__LFS_START_SERVER
+  value: "false"
+- name: GITEA__security__INSTALL_LOCK
+  value: "true"
+- name: GITEA__security__SECRET_KEY
+  valueFrom: {secretKeyRef: {name: {{ .name }}, key: secret-key}}
+- name: GITEA__security__INTERNAL_TOKEN
+  valueFrom: {secretKeyRef: {name: {{ .name }}, key: internal-token}}
+- name: GITEA__service__DISABLE_REGISTRATION
+  value: "true"
+- name: GITEA__service__REQUIRE_SIGNIN_VIEW
+  value: "true"
+- name: GITEA__oauth2__ENABLED
+  value: "false"
+- name: GITEA__log__LEVEL
+  value: Warn
+- name: GITEA_ADMIN_USERNAME
+  valueFrom: {secretKeyRef: {name: {{ .name }}, key: admin-username}}
+- name: GITEA_ADMIN_PASSWORD
+  valueFrom: {secretKeyRef: {name: {{ .name }}, key: admin-password}}
+{{- end }}
+{{- define "skanyxx.gitea.mounts" }}
+- name: data
+  mountPath: /var/lib/gitea
+- name: config
+  mountPath: /etc/gitea
+- name: tmp
+  mountPath: /tmp
+{{- end }}
+{{- define "skanyxx.gitea.securityContext" }}
+allowPrivilegeEscalation: false
+readOnlyRootFilesystem: true
+capabilities:
+  drop: [ALL]
+{{- end }}
+{{- if .Values.gitea.enabled }}
+{{- $name := include "skanyxx.component" (dict "ctx" . "name" "gitea") }}
+{{- $sel := dict "ctx" . "name" "gitea" }}
+{{- $secret := include "skanyxx.giteaSecret" . }}
+{{- $rootUrl := default (printf "http://%s.%s.svc:3000/" $name .Release.Namespace) .Values.gitea.rootUrl }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  selector:
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skanyxx.labels" . | nindent 8 }}
+        {{- include "skanyxx.selectorLabels" $sel | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      # The image's entrypoint writes app.ini from the GITEA__* env (environment-to-ini) before running the command:
+      # migrate, then create the admin or reset its password to the Secret's (the Secret stays authoritative). Gitea's CLI
+      # takes the password only as a flag, so it is on this short-lived container's command line (D143).
+      initContainers:
+        - name: admin
+          image: {{ include "skanyxx.image" (dict "image" .Values.gitea.image) | quote }}
+          imagePullPolicy: {{ .Values.gitea.image.pullPolicy }}
+          command: [/usr/local/bin/docker-entrypoint.sh]
+          args:
+            - /bin/sh
+            - -ec
+            - |
+              gitea -c "$GITEA_APP_INI" migrate
+              if gitea -c "$GITEA_APP_INI" admin user list --admin | awk 'NR > 1 {print $2}' | grep -qx "$GITEA_ADMIN_USERNAME"; then
+                gitea -c "$GITEA_APP_INI" admin user change-password --username "$GITEA_ADMIN_USERNAME" \
+                  --password "$GITEA_ADMIN_PASSWORD" --must-change-password=false
+              else
+                gitea -c "$GITEA_APP_INI" admin user create --admin --username "$GITEA_ADMIN_USERNAME" \
+                  --password "$GITEA_ADMIN_PASSWORD" --email {{ .Values.gitea.adminEmail | quote }} --must-change-password=false
+              fi
+          securityContext:
+            {{- include "skanyxx.gitea.securityContext" . | trim | nindent 12 }}
+          env:
+            {{- include "skanyxx.gitea.env" (dict "name" $secret "rootUrl" $rootUrl) | trim | nindent 12 }}
+          resources:
+            {{- toYaml .Values.gitea.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "skanyxx.gitea.mounts" . | trim | nindent 12 }}
+      containers:
+        - name: gitea
+          image: {{ include "skanyxx.image" (dict "image" .Values.gitea.image) | quote }}
+          imagePullPolicy: {{ .Values.gitea.image.pullPolicy }}
+          securityContext:
+            {{- include "skanyxx.gitea.securityContext" . | trim | nindent 12 }}
+          env:
+            {{- include "skanyxx.gitea.env" (dict "name" $secret "rootUrl" $rootUrl) | trim | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 3000
+          readinessProbe:
+            httpGet: {path: /api/healthz, port: http}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: http}
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.gitea.resources | nindent 12 }}
+          volumeMounts:
+            {{- include "skanyxx.gitea.mounts" . | trim | nindent 12 }}
+      volumes:
+        - name: config
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.gitea.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.gitea.storage }}
+{{- end }}

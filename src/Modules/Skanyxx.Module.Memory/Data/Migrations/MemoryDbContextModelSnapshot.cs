@@ -18,7 +18,7 @@ namespace Skanyxx.Module.Memory.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -195,6 +195,74 @@ namespace Skanyxx.Module.Memory.Data.Migrations
                             t.HasCheckConstraint("ck_memory_cards_type", "type IN ('decision', 'fact', 'procedure', 'open')");
 
                             t.HasCheckConstraint("ck_memory_cards_version", "version > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Memory.Domain.StudioAgent", b =>
+                {
+                    b.Property<string>("AgentId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("agent_id");
+
+                    b.Property<DateTime>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("claimed_at");
+
+                    b.Property<string>("DeployedFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("deployed_fingerprint");
+
+                    b.Property<bool>("Suspended")
+                        .HasColumnType("boolean")
+                        .HasColumnName("suspended");
+
+                    b.HasKey("AgentId");
+
+                    b.ToTable("memory_studio_agents", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_memory_studio_agents_agent", "agent_id ~ '^[a-z0-9][a-z0-9._@-]{0,127}$'");
+                        });
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Memory.Domain.StudioRepo", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("full_name");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<string>("RecordedBy")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("recorded_by");
+
+                    b.Property<string>("RepoCreatedAt")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("repo_created_at");
+
+                    b.Property<long>("RepoId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("repo_id");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("memory_studio_repo", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_memory_studio_repo_single", "id = 1");
                         });
                 });
 

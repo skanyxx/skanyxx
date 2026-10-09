@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Module.Identity.Accounts;
 
 namespace Skanyxx.Module.Identity.Tests;
 
@@ -22,7 +23,7 @@ public sealed class PrivilegesRevokedTests(PostgresFixture postgres) : IAsyncLif
     private IdentityApp _app = null!;
     private string _owner = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString,
@@ -31,7 +32,7 @@ public sealed class PrivilegesRevokedTests(PostgresFixture postgres) : IAsyncLif
         _owner = (await _app.SignInBearerAsync()).AccessToken;
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     [Fact]
     public async Task RolesSavedWithoutSupervisor_AreAnnounced_EvenUnchanged_RolesWithSupervisorAreNot()
@@ -53,15 +54,16 @@ public sealed class PrivilegesRevokedTests(PostgresFixture postgres) : IAsyncLif
     {
         var (_, memberId) = await _app.AddMemberAsync(_owner);
 
-        var disable = await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null);
-        var again = await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null);
+        var disable = await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null, TestContext.Current.CancellationToken);
+        var again = await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null, TestContext.Current.CancellationToken);
         var afterDisable = _recorder.Received;
-        var enable = await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/enable", null);
+        var enable = await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/enable", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, disable.StatusCode);
         Assert.Equal(HttpStatusCode.OK, again.StatusCode);
         Assert.Equal(HttpStatusCode.OK, enable.StatusCode);
-        var announced = new PrivilegesRevoked(memberId, "account disabled");
+        // D154: a disable says so, so modules that run things for the person stop them.
+        var announced = new PrivilegesRevoked(memberId, "account disabled", AccountDisabled: true, AccessRemoved: true);
         Assert.Equal([announced, announced], afterDisable);
         Assert.Equal(afterDisable, _recorder.Received);
     }
@@ -79,7 +81,7 @@ public sealed class PrivilegesRevokedTests(PostgresFixture postgres) : IAsyncLif
         _recorder.Throw = true;
 
         var failed = await ChangeAsync(memberId, change);
-        var saved = await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/people");
+        var saved = await _app.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/people", cancellationToken: TestContext.Current.CancellationToken);
         var owedAfterFailure = await OwedAsync(memberId);
         _recorder.Throw = false;
         var retried = await ChangeAsync(memberId, change);
@@ -96,6 +98,50 @@ public sealed class PrivilegesRevokedTests(PostgresFixture postgres) : IAsyncLif
         Assert.False(await OwedAsync(memberId));
         Assert.Equal(2, _recorder.Received.Count);
         Assert.All(_recorder.Received, r => Assert.Equal(memberId, r.UserId));
+    }
+
+    /// <summary>
+    /// D153: every handler runs even when another one fails first (an unreachable AX must not keep memory from revoking
+    /// secrets); the failure still reaches the owner as a 500 and the revocation stays owed. Negative check: with MediatR's
+    /// default publisher the second handler never sees the notification.
+    /// </summary>
+    [Fact]
+    public async Task AFailingHandler_DoesNotStopTheOthers()
+    {
+        var failing = new Recorder { Throw = true };
+        await using var app = await IdentityApp.StartAsync(postgres.ConnectionString, services: s => s
+            .AddSingleton<INotificationHandler<PrivilegesRevoked>>(failing)
+            .AddSingleton<INotificationHandler<PrivilegesRevoked>>(_recorder));
+        var owner = (await app.SignInBearerAsync()).AccessToken;
+        var (_, memberId) = await app.AddMemberAsync(owner, "second@skanyxx.example", SkanyxxRoles.Supervisor);
+
+        var disable = await app.Client(bearer: owner).PostAsync($"/api/identity/people/{memberId}/disable", null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.InternalServerError, disable.StatusCode);
+        Assert.Single(failing.Received);
+        Assert.Equal([new PrivilegesRevoked(memberId, "account disabled", AccountDisabled: true, AccessRemoved: true)], _recorder.Received);
+        Assert.True(await OwedAsync(memberId));
+    }
+
+    /// <summary>
+    /// D154: a retried revocation reads the account as it is now: published by an enable (owed from a failed disable),
+    /// it no longer says disabled; published by a role save while disabled, it does.
+    /// </summary>
+    [Fact]
+    public async Task AccountDisabled_IsReadWhenPublishing()
+    {
+        var (_, memberId) = await _app.AddMemberAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Supervisor);
+        _recorder.Throw = true;
+        await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null, TestContext.Current.CancellationToken);
+        _recorder.Throw = false;
+
+        var enable = await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/enable", null, TestContext.Current.CancellationToken); // retries the owed one
+        await _app.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null, TestContext.Current.CancellationToken);
+        await SetRolesAsync(memberId, SkanyxxRoles.Employee);
+
+        Assert.Equal(HttpStatusCode.OK, enable.StatusCode);
+        Assert.Equal([true, false, true, true], _recorder.Received.Select(r => r.AccountDisabled));
+        Assert.Equal(PrivilegeRevocation.Retried, _recorder.Received[1].Reason);
     }
 
     /// <summary>

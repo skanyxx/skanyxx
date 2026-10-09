@@ -18,8 +18,8 @@ public sealed class ValidationTests : SandboxesTestBase
     public async Task NonDnsLabelNames_Are400_AndNeverReachAx(string name)
     {
         var run = await RunAsync(name);
-        var get = await App.Client().GetAsync($"/api/sandboxes/tasks/{name}");
-        var stop = await App.Client().PostAsync($"/api/sandboxes/tasks/{name}/stop", null);
+        var get = await App.Client().GetAsync($"/api/sandboxes/tasks/{name}", TestContext.Current.CancellationToken);
+        var stop = await App.Client().PostAsync($"/api/sandboxes/tasks/{name}/stop", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, get.StatusCode);
@@ -72,7 +72,7 @@ public sealed class ValidationTests : SandboxesTestBase
     [Fact]
     public async Task UnknownFields_LikeDebug_AreIgnored()
     {
-        await App.Client().PutAsJsonAsync("/api/sandboxes/tasks/fix-42", new { image = "ghcr.io/acme/img", debug = true });
+        await App.Client().PutAsJsonAsync("/api/sandboxes/tasks/fix-42", new { image = "ghcr.io/acme/img", debug = true }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(Assert.Single(Ax.Updates).Task.Spec.Debug);
     }
@@ -80,7 +80,7 @@ public sealed class ValidationTests : SandboxesTestBase
     [Fact]
     public async Task QueryString_CannotRetargetTheRoute()
     {
-        await App.Client().PutAsJsonAsync("/api/sandboxes/tasks/fix-42?name=other", new { image = "ghcr.io/acme/img" });
+        await App.Client().PutAsJsonAsync("/api/sandboxes/tasks/fix-42?name=other", new { image = "ghcr.io/acme/img" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("fix-42", Assert.Single(Ax.Updates).Task.Metadata.Name);
     }
@@ -106,9 +106,9 @@ public sealed class ValidationTests : SandboxesTestBase
             return request;
         }
 
-        var anonymous = await App.Client(userId: null).SendAsync(Request(null));
-        var headerOnly = await App.Client(userId: null).SendAsync(Request(SandboxesApp.Supervisor));
-        var invalid = await App.Client(userId: "Ana Smith").SendAsync(Request(null));
+        var anonymous = await App.Client(userId: null).SendAsync(Request(null), TestContext.Current.CancellationToken);
+        var headerOnly = await App.Client(userId: null).SendAsync(Request(SandboxesApp.Supervisor), TestContext.Current.CancellationToken);
+        var invalid = await App.Client(userId: "Ana Smith").SendAsync(Request(null), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, headerOnly.StatusCode);
@@ -122,7 +122,7 @@ public sealed class ValidationTests : SandboxesTestBase
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/sandboxes/tasks");
         request.Headers.Add("Origin", "https://evil.example");
 
-        var response = await App.Client().SendAsync(request);
+        var response = await App.Client().SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
@@ -140,7 +140,7 @@ public sealed class ValidationTests : SandboxesTestBase
         };
         request.Headers.ExpectContinue = true;
 
-        var response = await App.Client(SandboxesApp.User).SendAsync(request);
+        var response = await App.Client(SandboxesApp.User).SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
     }

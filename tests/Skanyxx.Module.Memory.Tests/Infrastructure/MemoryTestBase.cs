@@ -9,11 +9,11 @@ public abstract class MemoryTestBase(PostgresFixture postgres) : IAsyncLifetime
     protected virtual int UpsertsPerMinute => 1000;
     protected virtual int UpsertsPerMinuteTotal => 10_000;
 
-    public virtual async Task InitializeAsync()
+    public virtual async ValueTask InitializeAsync()
     {
         await Postgres.ResetAsync();
         App = await MemoryApp.StartAsync(Postgres.ConnectionString, UpsertsPerMinute, UpsertsPerMinuteTotal);
     }
 
-    public async Task DisposeAsync() => await App.DisposeAsync();
+    public async ValueTask DisposeAsync() => await App.DisposeAsync();
 }

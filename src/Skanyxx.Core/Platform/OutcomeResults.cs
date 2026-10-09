@@ -19,13 +19,16 @@ public static class OutcomeResults
         _ => throw new ArgumentOutOfRangeException(nameof(status), status, null)
     };
 
+    /// <summary>The value as it is: for handlers that already return the contract's DTO.</summary>
+    public static IResult ToHttp<T>(this Outcome<T> outcome) => outcome.ToHttp(value => value);
+
     /// <summary>Statuses come from <see cref="HttpStatus"/>, so pages and endpoints cannot drift apart.</summary>
     public static IResult ToHttp<T, TDto>(this Outcome<T> outcome, Func<T, TDto> map) => outcome.Status switch
     {
         OutcomeStatus.Ok => Results.Ok(map(outcome.Value!)),
         OutcomeStatus.Created => Results.Json(map(outcome.Value!), statusCode: outcome.Status.HttpStatus()),
         OutcomeStatus.Conflict => Results.Json(
-            new ConflictResponse<TDto>(outcome.Message!, outcome.Value is null ? default : map(outcome.Value)),
+            new ConflictResponse<TDto>(outcome.Message!, outcome.Value is null ? default : map(outcome.Value), outcome.Reason),
             statusCode: outcome.Status.HttpStatus()),
         OutcomeStatus.NotFound or OutcomeStatus.Forbidden or OutcomeStatus.Unauthorized or OutcomeStatus.RateLimited or OutcomeStatus.Unavailable =>
             Results.Problem(outcome.Message, statusCode: outcome.Status.HttpStatus()),

@@ -13,7 +13,7 @@ public sealed class TaskApiTests : SandboxesTestBase
         var response = await RunAsync("fix-42");
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
-        var task = (await response.Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json))!;
+        var task = (await response.Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken))!;
         Assert.Equal("fix-42", task.Name);
         Assert.Equal(SandboxesApp.User, task.Owner);
         Assert.Matches(@"^ax-fix-42-[0-9a-f]{8}\z", task.AgentId);
@@ -41,8 +41,8 @@ public sealed class TaskApiTests : SandboxesTestBase
     public async Task Run_NeverReturnsEnvValues()
     {
         var body = await (await RunAsync("fix-42", body: RunBody(env: new Dictionary<string, string> { ["API_TOKEN"] = "s3cr3t-value" })))
-            .Content.ReadAsStringAsync();
-        var read = await App.Client().GetStringAsync("/api/sandboxes/tasks/fix-42");
+            .Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var read = await App.Client().GetStringAsync("/api/sandboxes/tasks/fix-42", TestContext.Current.CancellationToken);
 
         Assert.Contains("API_TOKEN", read);
         Assert.DoesNotContain("s3cr3t-value", body);
@@ -52,8 +52,8 @@ public sealed class TaskApiTests : SandboxesTestBase
     [Fact]
     public async Task Run_OnAnExistingTask_IsAnUpdate_KeepingOwnerSuspensionAndAgentId()
     {
-        var first = await (await RunAsync("fix-42")).Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json);
-        await App.Client(SandboxesApp.Supervisor).PostAsync("/api/sandboxes/tasks/fix-42/suspend", null);
+        var first = await (await RunAsync("fix-42")).Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        await App.Client(SandboxesApp.Supervisor).PostAsync("/api/sandboxes/tasks/fix-42/suspend", null, TestContext.Current.CancellationToken);
 
         var response = await RunAsync("fix-42");
 
@@ -69,8 +69,8 @@ public sealed class TaskApiTests : SandboxesTestBase
     {
         Ax.Seed("seeded", "ana");
 
-        var task = await App.Client().GetFromJsonAsync<SandboxTask>("/api/sandboxes/tasks/seeded", SandboxesApp.Json);
-        var missing = await App.Client().GetAsync("/api/sandboxes/tasks/nope");
+        var task = await App.Client().GetFromJsonAsync<SandboxTask>("/api/sandboxes/tasks/seeded", SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        var missing = await App.Client().GetAsync("/api/sandboxes/tasks/nope", TestContext.Current.CancellationToken);
 
         Assert.Equal("Running", task!.Phase);
         Assert.Equal("ana", task.Owner);
@@ -83,7 +83,7 @@ public sealed class TaskApiTests : SandboxesTestBase
         foreach (var name in new[] { "a", "b", "c" })
             Ax.Seed(name, "ana");
 
-        var page = await App.Client().GetFromJsonAsync<List<SandboxTask>>("/api/sandboxes/tasks?limit=2&offset=1", SandboxesApp.Json);
+        var page = await App.Client().GetFromJsonAsync<List<SandboxTask>>("/api/sandboxes/tasks?limit=2&offset=1", SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(["b", "c"], page!.Select(t => t.Name));
         Assert.All(Ax.Atespaces, a => Assert.Equal(SandboxesApp.Atespace, a));
@@ -94,14 +94,14 @@ public sealed class TaskApiTests : SandboxesTestBase
     [InlineData("limit=101")]
     [InlineData("offset=-1")]
     public async Task List_RejectsBadPaging(string query) =>
-        Assert.Equal(HttpStatusCode.BadRequest, (await App.Client().GetAsync($"/api/sandboxes/tasks?{query}")).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await App.Client().GetAsync($"/api/sandboxes/tasks?{query}", TestContext.Current.CancellationToken)).StatusCode);
 
     [Fact]
     public async Task Stop_DeletesInAx_AndIsAccepted()
     {
         await RunAsync("fix-42");
 
-        var response = await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/stop", null);
+        var response = await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/stop", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Accepted, response.StatusCode);
         Assert.Equal(1, Ax.DeleteCalls);
@@ -113,10 +113,10 @@ public sealed class TaskApiTests : SandboxesTestBase
     {
         await RunAsync("fix-42");
 
-        var suspended = await (await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/suspend", null))
-            .Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json);
-        var resumed = await (await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/resume", null))
-            .Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json);
+        var suspended = await (await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/suspend", null, TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        var resumed = await (await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/resume", null, TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(suspended!.Suspended);
         Assert.Equal("Suspended", suspended.Phase);
@@ -130,14 +130,14 @@ public sealed class TaskApiTests : SandboxesTestBase
     [InlineData("POST", "/api/sandboxes/tasks/nope/resume")]
     [InlineData("GET", "/api/sandboxes/tasks/nope/watch")]
     public async Task MissingTask_Is404(string method, string path) =>
-        Assert.Equal(HttpStatusCode.NotFound, (await App.Client().SendAsync(new HttpRequestMessage(new HttpMethod(method), path))).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await App.Client().SendAsync(new HttpRequestMessage(new HttpMethod(method), path), TestContext.Current.CancellationToken)).StatusCode);
 
     [Fact]
     public async Task Models_AreListed_WithoutTheirSecretRef()
     {
         Ax.SeedModel("planner");
 
-        var body = await App.Client().GetStringAsync("/api/sandboxes/models");
+        var body = await App.Client().GetStringAsync("/api/sandboxes/models", TestContext.Current.CancellationToken);
         var models = System.Text.Json.JsonSerializer.Deserialize<List<SandboxModel>>(body, SandboxesApp.Json);
 
         Assert.Equal(new SandboxModel("planner", "google", "gemini-2.5-pro"), Assert.Single(models!));
@@ -154,8 +154,8 @@ public sealed class TaskApiTests : SandboxesTestBase
             Type = "Ready", Status = "False", Reason = "ActorCreationFailed", Message = FakeAx.SecretDetail
         });
 
-        var body = await App.Client().GetStringAsync("/api/sandboxes/tasks/seeded");
-        var list = await App.Client().GetStringAsync("/api/sandboxes/tasks");
+        var body = await App.Client().GetStringAsync("/api/sandboxes/tasks/seeded", TestContext.Current.CancellationToken);
+        var list = await App.Client().GetStringAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken);
 
         Assert.Contains("ActorCreationFailed", body);
         Assert.DoesNotContain("hunter2", body);

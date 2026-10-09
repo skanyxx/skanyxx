@@ -10,7 +10,7 @@ public sealed class RebindingTests(PostgresFixture fixture)
         var request = new HttpRequestMessage(HttpMethod.Get, "/api/tickets/pipelines");
         request.Headers.Host = "rebind.attacker.example";
 
-        var response = await fixture.Host.Client().SendAsync(request);
+        var response = await fixture.Host.Client().SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
@@ -70,7 +70,7 @@ public sealed class RebindingTests(PostgresFixture fixture)
         var response = await SendAsync(method, path, origin, await fixture.Host.OwnerAsync());
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
-        Assert.Contains("origin is not allowed", await response.Content.ReadAsStringAsync());
+        Assert.Contains("origin is not allowed", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public sealed class RebindingTests(PostgresFixture fixture)
     {
         var browser = new Browser(fixture.Host);
         await fixture.Host.OwnerAsync();
-        var page = await (await browser.GetAsync("/Login")).Content.ReadAsStringAsync();
+        var page = await (await browser.GetAsync("/Login")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var token = System.Text.RegularExpressions.Regex.Match(page, "name=\"__RequestVerificationToken\" type=\"hidden\" value=\"([^\"]+)\"").Groups[1].Value;
         var sameOrigin = fixture.Host.BaseAddress.GetLeftPart(UriPartial.Authority);
 
@@ -92,23 +92,11 @@ public sealed class RebindingTests(PostgresFixture fixture)
     [Fact]
     public async Task WildcardAllowedHosts_OutsideDevelopment_RefusesToStart()
     {
-        var console = new StringWriter();
-        var original = Console.Out;
-        Console.SetOut(console);
-        InvalidOperationException ex;
-        try
-        {
-            ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                HostApp.StartAsync(fixture.ConnectionString, s => s["AllowedHosts"] = "*"));
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            HostApp.StartAsync(fixture.ConnectionString, s => s["AllowedHosts"] = "*"));
 
+        // The Fatal log line and the exit code for the same failure: ExitCodeTests.
         Assert.Contains("AllowedHosts must list the host names", ex.Message);
-        // CR m8: a startup failure is logged as Fatal (and flushed) before the process exits.
-        Assert.Contains(console.ToString().Split('\n'), line => line.Contains("\"@l\":\"Fatal\"") && line.Contains("AllowedHosts"));
     }
 
     private Task<HttpResponseMessage> SendAsync(string method, string path, string? origin, HttpClient? client = null)

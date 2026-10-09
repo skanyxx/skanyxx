@@ -20,7 +20,9 @@ One agent (`seed`) wired to Skanyxx company memory over MCP with its own secret 
    the old secret is already dead — run the whole block again to reissue. `seed-secret.example.yaml` only shows the
    Secret's shape (the whole header, no trailing newline); it is deliberately not in `kustomization.yaml`.
 
-   `actsForUsers` (D084): leave it `false` unless the agent must work in each user's **personal** memory. With `false`,
+   `actsForUsers` (D084): leave it `false` unless the agent must work in each user's **personal** memory. The seed is
+   that agent: the first hour issues its secret with `true` (`scripts/dev/first-hour.sh seed-secret` does steps 1–2
+   for a local run). With `false`,
    `X-User-Id` is ignored and the agent sees company memory and its grants only. `true` can only be set by the
    **owner** (a supervisor gets `403`) — see "Acting for users" below. Every issue sets the flag again: a rotation
    that omits it turns it off.
@@ -37,7 +39,11 @@ One agent (`seed`) wired to Skanyxx company memory over MCP with its own secret 
 
 - Another agent = another Secret + RemoteMCPServer (`skanyxx-memory-<agent>`), referenced from that agent's `tools`.
   kagent's controller lists tools with the server's own headers, and `/mcp/memory` answers `401` without a secret.
-- The in-cluster URL assumes Skanyxx's Service `skanyxx` in namespace `skanyxx` on port 8080; change `url` to yours.
+- The in-cluster URL assumes Skanyxx's Service `skanyxx` in namespace `skanyxx` on its **mcp port 8081**: Skanyxx
+  serves `/mcp/memory` there only when `Memory:McpPort=8081` is set (the Helm chart sets it; D138). A Skanyxx without
+  that setting serves `/mcp/memory` on its one port: change `url` to yours. On a Helm install (`deploy/helm/skanyxx`)
+  `scripts/helm/seed-agent.sh` applies these files into the release namespace with the release's own Service and mcp
+  port, and issues the secret (README "Install with Helm").
 - Never list `authorization` in `allowedHeaders`, and do not turn on token propagation / STS for an agent using this
   server: the user's kagent token would replace the agent secret (fails closed with `401`, confusingly).
 
@@ -49,8 +55,9 @@ anything else is treated as no user (no personal scope, personal writes refused)
 
 Say it plainly: **an agent that acts for users can read and write any user's personal memory just by naming that
 user's id.** The secret is the whole credential; Skanyxx cannot check that the user really asked. That is why only
-the owner can turn it on, why kagent must run with `auth.mode: secure` (the Helm default, `unsecure`, lets any caller
-of kagent choose the user), and why such an agent should not also carry shell or Kubernetes tools (a prompt injection
+the owner can turn it on, why kagent's API must stay private to the cluster (kagent 0.10.2 has no `secure` mode: the
+Helm default `unsecure` lets any caller choose the user, and `trusted-proxy` takes it from a JWT that kagent does not
+verify itself — it trusts an authenticating proxy such as oauth2-proxy in front; D101), and why such an agent should not also carry shell or Kubernetes tools (a prompt injection
 there reads the secret). Keep read access to Secrets in the `kagent` namespace tight.
 
 ## Transport and network (requirements)
@@ -61,5 +68,6 @@ there reads the secret). Keep read access to Secrets in the `kagent` namespace t
   over `https://` and give the RemoteMCPServer a `tls` block (kagent v1alpha2 `spec.tls`: `caCertSecretRef` +
   `caCertSecretKey` for a private CA, `disableSystemCAs` to trust only it; never `disableVerify`). kagent rejects
   `spec.tls` on an `http://` URL. The plain `http://` URL in `seed-remotemcpserver.yaml` is for a meshed cluster only.
-- `skanyxx-ingress-networkpolicy.example.yaml` lets only the `kagent` namespace (and your ingress controller) reach
-  Skanyxx's pod port. It is an example: adjust labels, namespaces and port, and apply it in Skanyxx's namespace.
+- `skanyxx-ingress-networkpolicy.example.yaml` lets only the `kagent` namespace reach Skanyxx's mcp port (8081) and
+  your ingress controller its UI/API port (8080). It is an example: adjust labels, namespaces and ports, and apply it
+  in Skanyxx's namespace. The Helm chart ships its own (default-deny, D137).

@@ -10,8 +10,10 @@ using Skanyxx.Core.Platform.Identity;
 namespace Skanyxx.Host.Pages;
 
 /// <summary>
-/// The owner's people admin (D026): invite (the link is shown on this response only), change roles, disable/enable,
-/// remove a Microsoft login (D10), revoke pending invites; shows each person's teams (managed on the Org page). The same commands as <c>api/identity/invites</c> and <c>api/identity/people</c>.
+/// The owner's people admin (D026): invite (emailed to the invitee when SMTP is set, D151; otherwise the link is shown
+/// on this response only), change roles, disable/enable, remove a Microsoft login (D10), issue a password-reset link
+/// (D157: emailed, or shown once), revoke pending invites; shows each person's teams (managed on the Org page). The
+/// same commands as <c>api/identity/invites</c> and <c>api/identity/people</c>.
 /// </summary>
 [Authorize(Roles = SkanyxxRoles.Owner)]
 public sealed class PeopleModel(IMediator mediator) : PageModel
@@ -24,8 +26,11 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
 
     public IEnumerable<TeamDto> TeamsOf(string userId) => _teamsByMember[userId];
 
-    /// <summary>Set only on the response to a successful invite; never stored or shown again.</summary>
+    /// <summary>Set only on the response to a successful invite that was not emailed; never stored or shown again.</summary>
     public string? InviteLinkOnce { get; private set; }
+
+    /// <summary>Set only on the response to a reset link that was not emailed; never stored or shown again.</summary>
+    public string? ResetLinkOnce { get; private set; }
 
     public string? Message { get; private set; }
 
@@ -41,7 +46,9 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
             {
                 InviteLinkOnce = issued.Link;
                 Response.Headers.CacheControl = "no-store";
-                Message = $"Invite created for {email?.Trim()}. Copy the link now: it is not shown again.";
+                Message = issued.Emailed
+                    ? $"Invite emailed to {email?.Trim()}."
+                    : $"Invite created for {email?.Trim()}. Copy the link now: it is not shown again.";
             }
             else
             {
@@ -62,6 +69,25 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
     public async Task<IActionResult> OnPostRemoveMicrosoftAsync(string id, CancellationToken ct) =>
         await RunAsync(async () => Report(await mediator.Send(new RemoveEntraLoginCommand(Actor, id), ct),
             "Microsoft login removed: the account is local-only and its sessions ended."), ct);
+
+    public async Task<IActionResult> OnPostResetAsync(string id, CancellationToken ct) =>
+        await RunAsync(async () =>
+        {
+            var outcome = await mediator.Send(new IssuePasswordResetCommand(Actor, id), ct);
+            if (outcome.Value is { } issued)
+            {
+                ResetLinkOnce = issued.Link;
+                Response.Headers.CacheControl = "no-store";
+                Message = issued.Emailed
+                    ? "Password-reset link emailed to the person."
+                    : "Password-reset link created. Copy it now and give it to the person: it is not shown again.";
+            }
+            else
+            {
+                Error = outcome.Message;
+                Response.StatusCode = outcome.Status.HttpStatus();
+            }
+        }, ct);
 
     public async Task<IActionResult> OnPostRevokeAsync(string id, CancellationToken ct) =>
         await RunAsync(async () => Report(await mediator.Send(new RevokeInviteCommand(Actor, id), ct), "Invite revoked."), ct);
@@ -89,6 +115,12 @@ public sealed class PeopleModel(IMediator mediator) : PageModel
         {
             Error = string.Join(" ", ex.Errors.Select(e => e.ErrorMessage).Distinct());
             Response.StatusCode = StatusCodes.Status400BadRequest;
+        }
+        catch (RevocationFailedException ex)
+        {
+            // D162: the change is saved; what it should have revoked is not all done, and the message says how to retry.
+            Error = ex.Message;
+            Response.StatusCode = StatusCodes.Status500InternalServerError;
         }
         await LoadAsync(ct);
         return Page();

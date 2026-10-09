@@ -18,9 +18,9 @@ public sealed class RateLimitTests(PostgresFixture postgres) : MemoryTestBase(po
         await using var calm = await App.McpAsync("calm");
 
         for (var i = 0; i < 3; i++)
-            Assert.NotEqual(true, (await loop.CallToolAsync("memory_upsert", Args($"loop-{i}"))).IsError);
-        var overLimit = await loop.CallToolAsync("memory_upsert", Args("loop-3"));
-        var other = await calm.CallToolAsync("memory_upsert", Args("calm-0"));
+            Assert.NotEqual(true, (await loop.CallToolAsync("memory_upsert", Args($"loop-{i}"), cancellationToken: TestContext.Current.CancellationToken)).IsError);
+        var overLimit = await loop.CallToolAsync("memory_upsert", Args("loop-3"), cancellationToken: TestContext.Current.CancellationToken);
+        var other = await calm.CallToolAsync("memory_upsert", Args("calm-0"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.True(overLimit.IsError);
         Assert.Contains("rate limit", string.Concat(overLimit.Content.OfType<ModelContextProtocol.Protocol.TextContentBlock>().Select(t => t.Text)));
@@ -88,4 +88,31 @@ public sealed class RateLimitTests(PostgresFixture postgres) : MemoryTestBase(po
         for (var i = 0; i < 3; i++)
             Assert.Equal(HttpStatusCode.Created, (await App.Client("bob").PutCardAsync("personal:bob", $"card-{i}")).StatusCode);
     }
+
+    /// <summary>
+    /// A rename takes a write slot only when it is about to be written: refusals (missing card, stale version, taken key)
+    /// are reads, and a re-submitted stale form must not spend the person's writes.
+    /// </summary>
+    [Fact]
+    public async Task Rename_SpendsASlotOnlyOnAWrite()
+    {
+        var ana = App.Client("ana");
+        Assert.Equal(HttpStatusCode.Created, (await ana.PutCardAsync("personal:ana", "refund-window")).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await ana.PutCardAsync("personal:ana", "refunds")).StatusCode);
+
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.Equal(HttpStatusCode.NotFound, (await RenameAsync(ana, "no-such-card", "anything", 1)).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await RenameAsync(ana, "refund-window", "refund-period", 7)).StatusCode);
+            Assert.Equal(HttpStatusCode.Conflict, (await RenameAsync(ana, "refund-window", "refunds", 1)).StatusCode);
+        }
+        var renamed = await RenameAsync(ana, "refund-window", "refund-period", 1);
+        var overLimit = await RenameAsync(ana, "refund-period", "refund-days", 2);
+
+        Assert.Equal(HttpStatusCode.OK, renamed.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, overLimit.StatusCode);
+    }
+
+    private static Task<HttpResponseMessage> RenameAsync(HttpClient client, string key, string newKey, int version) =>
+        System.Net.Http.Json.HttpClientJsonExtensions.PostAsJsonAsync(client, $"/api/memory/cards/personal:ana/{key}/rename", new { newKey, version });
 }

@@ -8,7 +8,7 @@ We design in small steps. This folder is the running record — not a product sp
 | [decisions.md](decisions.md) | Locked choices and **why**. If we reverse one, add a new row; do not silently edit history. |
 | [facts.md](facts.md) | Constraints from Skanyxx today, [kagent](https://kagent.dev/docs/kagent/), [AX](https://github.com/google/ax), [Joicy](https://github.com/DmarshalTU/Joicy). |
 | [ax-tasks.md](ax-tasks.md) | kagent = Agents; AX = Tasks. v1 flags. |
-| [ax-integration.md](ax-integration.md) | AX v0.3.1 reality vs design; reuse; v1 Sandboxes slice; proposed D069+. |
+| [ax-integration.md](ax-integration.md) | AX v0.3.1 reality vs design; reuse; v1 Sandboxes slice; D069–D077 (locked 2026-10-08). |
 | [open.md](open.md) | Questions not decided yet. Next conversation step lives here. |
 | [spine.md](spine.md) | Ordered walk from the start. Follow this. |
 | [three-planes.md](three-planes.md) | Step 1 deep dive: Skanyxx vs kagent vs memory. |

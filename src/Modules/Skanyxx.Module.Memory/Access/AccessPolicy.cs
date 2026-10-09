@@ -42,6 +42,17 @@ public sealed class AccessPolicy(MemoryDbContext db, IOrgMembership org)
         };
     }
 
+    /// <summary>
+    /// D103 (on top of <see cref="CanReadAsync"/>): a company card that is not published is a draft, shown only to those
+    /// who may write company (supervisors, the owner). `who` names the last writer, not an author, so it grants nothing. To
+    /// anyone else it does not exist — callers answer
+    /// exactly as for a missing card, so a guessed key reveals nothing.
+    /// </summary>
+    public bool CanOpen(MemoryCaller caller, Card card) =>
+        card.Status == CardStatus.Published
+        || Scope.Parse(card.Scope).Level != ScopeLevel.Company
+        || IsSupervisor(caller);
+
     public async Task<SearchScopes> SearchScopesAsync(MemoryCaller caller, CancellationToken ct)
     {
         if (!caller.IsAgent)
@@ -79,6 +90,31 @@ public sealed class AccessPolicy(MemoryDbContext db, IOrgMembership org)
         var target = scope.ToString();
         var grants = await GrantsAsync(caller, ct);
         return grants.Any(g => g.CanUpsert && Resolve(g.Scope, caller) == target);
+    }
+
+    /// <summary>
+    /// Every scope a person may write, i.e. upsert, lift into or rename in (the library offers only these): their
+    /// personal scope, their teams and departments, and company. Each candidate goes through <see cref="CanUpsertAsync"/>,
+    /// so this list cannot drift from the rule it enumerates. A person's only; an agent's writes are its grants.
+    /// </summary>
+    public async Task<IReadOnlyList<Scope>> WritableScopesAsync(MemoryCaller caller, CancellationToken ct)
+    {
+        if (caller.IsAgent)
+            throw new InvalidOperationException("Writable scopes are a person's; an agent's are its grants.");
+
+        var membership = await MembershipAsync(caller, ct);
+        List<Scope> candidates =
+        [
+            caller.PersonalScope!.Value,
+            .. membership.Teams.Order().Select(t => new Scope(ScopeLevel.Team, t)),
+            .. membership.Departments.Order().Select(d => new Scope(ScopeLevel.Department, d)),
+            Scope.Company
+        ];
+        var writable = new List<Scope>();
+        foreach (var scope in candidates)
+            if (await CanUpsertAsync(caller, scope, ct))
+                writable.Add(scope);
+        return writable;
     }
 
     /// <summary>Why <see cref="CanUpsertAsync"/> said no, in the caller's terms: an agent lacks a grant, a person lacks a right.</summary>

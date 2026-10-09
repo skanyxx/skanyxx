@@ -1,0 +1,11 @@
+{{- if .Values.dragonfly.enabled }}
+# The Dragonfly chart's own ServiceAccount cannot turn the token mount off, and Dragonfly never calls the Kubernetes
+# API: its pods use this one (dragonfly.serviceAccount.name).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.dragonfly.serviceAccount.name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+{{- end }}

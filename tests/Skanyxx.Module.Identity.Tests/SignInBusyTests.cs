@@ -25,7 +25,7 @@ public sealed class SignInBusyTests(PostgresFixture postgres) : IdentityTestBase
         await App.BootstrapAsync();
 
         var response = await WhileLockedAsync("OWNER@SKANYXX.EXAMPLE", () => App.SignInAsync());
-        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync()).RootElement;
+        var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement;
 
         Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
         Assert.Equal(TimeSpan.FromSeconds(1), response.Headers.RetryAfter?.Delta);
@@ -57,8 +57,8 @@ public sealed class SignInBusyTests(PostgresFixture postgres) : IdentityTestBase
         }
         await using (var db = Postgres.CreateDbContext())
             Assert.Equal(
-                await db.Database.SqlQuery<int>($"SELECT hashtext({Collider}) AS \"Value\"").SingleAsync(),
-                await db.Database.SqlQuery<int>($"SELECT hashtext({Victim.ToUpperInvariant()}) AS \"Value\"").SingleAsync());
+                await db.Database.SqlQuery<int>($"SELECT hashtext({Collider}) AS \"Value\"").SingleAsync(cancellationToken: TestContext.Current.CancellationToken),
+                await db.Database.SqlQuery<int>($"SELECT hashtext({Victim.ToUpperInvariant()}) AS \"Value\"").SingleAsync(cancellationToken: TestContext.Current.CancellationToken));
 
         var response = await WhileLockedAsync(Collider, () => App.SignInAsync(Victim, VictimPassword));
 

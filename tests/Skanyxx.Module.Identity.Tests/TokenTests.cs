@@ -5,7 +5,7 @@ namespace Skanyxx.Module.Identity.Tests;
 
 public sealed class TokenTests(PostgresFixture postgres) : IdentityTestBase(postgres)
 {
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         Assert.Equal(HttpStatusCode.Created, (await App.BootstrapAsync()).StatusCode);
@@ -17,8 +17,8 @@ public sealed class TokenTests(PostgresFixture postgres) : IdentityTestBase(post
         var first = await App.SignInBearerAsync();
 
         var refreshed = await RefreshAsync(first.RefreshToken);
-        var tokens = Tokens.From(JsonDocument.Parse(await refreshed.Content.ReadAsStringAsync()).RootElement);
-        var me = await App.Client(bearer: tokens.AccessToken).GetAsync("/api/identity/me");
+        var tokens = Tokens.From(JsonDocument.Parse(await refreshed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).RootElement);
+        var me = await App.Client(bearer: tokens.AccessToken).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, refreshed.StatusCode);
         Assert.Equal(HttpStatusCode.OK, me.StatusCode);
@@ -39,7 +39,7 @@ public sealed class TokenTests(PostgresFixture postgres) : IdentityTestBase(post
     {
         var tokens = await App.SignInBearerAsync();
 
-        var response = await App.Client(bearer: tokens.RefreshToken).GetAsync("/api/identity/me");
+        var response = await App.Client(bearer: tokens.RefreshToken).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -50,7 +50,7 @@ public sealed class TokenTests(PostgresFixture postgres) : IdentityTestBase(post
         var tokens = await App.SignInBearerAsync();
         var tampered = tokens.AccessToken[..^4] + (tokens.AccessToken.EndsWith("AAAA") ? "BBBB" : "AAAA");
 
-        var response = await App.Client(bearer: tampered).GetAsync("/api/identity/me");
+        var response = await App.Client(bearer: tampered).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -60,7 +60,7 @@ public sealed class TokenTests(PostgresFixture postgres) : IdentityTestBase(post
     {
         var tokens = await App.SignInBearerAsync();
 
-        var signOut = await App.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null);
+        var signOut = await App.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
         var refresh = await RefreshAsync(tokens.RefreshToken);
 
         Assert.Equal(HttpStatusCode.NoContent, signOut.StatusCode);

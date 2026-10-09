@@ -23,7 +23,7 @@ public sealed class FreshDatabaseTests(PostgresFixture fixture)
         {
             (await first.BootstrapAsync()).EnsureSuccessStatusCode();
             var signIn = await first.Client().PostAsJsonAsync("/api/identity/sign-in",
-                new { email = HostApp.OwnerEmail, password = HostApp.OwnerPassword, useCookie = true });
+                new { email = HostApp.OwnerEmail, password = HostApp.OwnerPassword, useCookie = true }, cancellationToken: TestContext.Current.CancellationToken);
             signIn.EnsureSuccessStatusCode();
             cookie = signIn.Headers.GetValues("Set-Cookie").Single(c => c.StartsWith("skanyxx.auth=")).Split(';')[0];
         }
@@ -33,7 +33,7 @@ public sealed class FreshDatabaseTests(PostgresFixture fixture)
         {
             var request = new HttpRequestMessage(HttpMethod.Get, "/api/identity/me");
             request.Headers.Add("Cookie", cookie);
-            var me = await second.Client().SendAsync(request);
+            var me = await second.Client().SendAsync(request, TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.OK, me.StatusCode);
         }
 

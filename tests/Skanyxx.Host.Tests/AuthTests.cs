@@ -22,7 +22,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     [InlineData("/api/no-such-route")]
     public async Task Anonymous_Api_Is401Problem(string path)
     {
-        var response = await fixture.Host.Client().GetAsync(path);
+        var response = await fixture.Host.Client().GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -37,7 +37,7 @@ public sealed class AuthTests(PostgresFixture fixture)
         var client = fixture.Host.Client();
         client.DefaultRequestHeaders.Add("X-User-Id", "ana");
 
-        var response = await client.GetAsync(path);
+        var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -45,7 +45,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     [Fact]
     public async Task Bearer_ReachesALegacyController()
     {
-        var response = await (await fixture.Host.OwnerAsync()).GetAsync("/api/hooks");
+        var response = await (await fixture.Host.OwnerAsync()).GetAsync("/api/hooks", TestContext.Current.CancellationToken);
 
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
     }
@@ -55,7 +55,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     [InlineData("/", "/Login?ReturnUrl=%2F")]
     public async Task Anonymous_Page_RedirectsToLogin(string path, string location)
     {
-        var response = await fixture.Host.Client().GetAsync(path);
+        var response = await fixture.Host.Client().GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
         Assert.Equal(location, new Uri(fixture.Host.BaseAddress, response.Headers.Location!).PathAndQuery);
@@ -71,7 +71,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     {
         await fixture.Host.OwnerAsync(); // bootstrapped, so /Login shows the form instead of redirecting to setup
 
-        var response = await fixture.Host.Client().GetAsync(path);
+        var response = await fixture.Host.Client().GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -81,18 +81,18 @@ public sealed class AuthTests(PostgresFixture fixture)
     public async Task Mcp_AnswersAnAgentSecret_AndNothingElse()
     {
         var owner = await fixture.Host.OwnerAsync();
-        var issued = await owner.PostAsync("/api/memory/agents/smoke-agent/secret", null);
+        var issued = await owner.PostAsync("/api/memory/agents/smoke-agent/secret", null, TestContext.Current.CancellationToken);
         issued.EnsureSuccessStatusCode();
-        var secret = (await issued.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("secret").GetString()!;
+        var secret = (await issued.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("secret").GetString()!;
 
-        var withSecret = await fixture.Host.Client(secret).SendAsync(ToolsList());
+        var withSecret = await fixture.Host.Client(secret).SendAsync(ToolsList(), TestContext.Current.CancellationToken);
         var withAgentHeader = fixture.Host.Client();
         withAgentHeader.DefaultRequestHeaders.Add("X-Agent-Id", "smoke-agent");
-        var headerOnly = await withAgentHeader.SendAsync(ToolsList());
-        var userToken = await owner.SendAsync(ToolsList());
+        var headerOnly = await withAgentHeader.SendAsync(ToolsList(), TestContext.Current.CancellationToken);
+        var userToken = await owner.SendAsync(ToolsList(), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, withSecret.StatusCode);
-        Assert.Contains("memory_search", await withSecret.Content.ReadAsStringAsync());
+        Assert.Contains("memory_search", await withSecret.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Unauthorized, headerOnly.StatusCode);
         Assert.Equal("Bearer", Assert.Single(headerOnly.Headers.WwwAuthenticate).Scheme);
         Assert.Equal(HttpStatusCode.Unauthorized, userToken.StatusCode);
@@ -123,10 +123,10 @@ public sealed class AuthTests(PostgresFixture fixture)
     {
         var secret = await IssueAsync(await fixture.Host.OwnerAsync(), "smoke-agent", actsForUsers: false);
 
-        var response = await fixture.Host.Client(secret).GetAsync(path);
+        var response = await fixture.Host.Client(secret).GetAsync(path, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.DoesNotContain(secret, await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain(secret, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     // D084: a browser session plus a valid secret on /mcp is the agent, and the named user counts only when the owner
@@ -137,7 +137,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     public async Task SignedInCookie_PlusSecret_OnMcp_IsTheAgent_WithTheUserOnlyWhenActingForUsers(bool actsForUsers)
     {
         var owner = await fixture.Host.OwnerAsync();
-        var ownerId = (await owner.GetFromJsonAsync<JsonElement>("/api/identity/me")).GetProperty("id").GetString()!;
+        var ownerId = (await owner.GetFromJsonAsync<JsonElement>("/api/identity/me", cancellationToken: TestContext.Current.CancellationToken)).GetProperty("id").GetString()!;
         var agent = actsForUsers ? "acting-agent" : "plain-agent";
         var secret = await IssueAsync(owner, agent, actsForUsers);
         var browser = new Browser(fixture.Host);
@@ -148,7 +148,7 @@ public sealed class AuthTests(PostgresFixture fixture)
         request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", secret);
         request.Headers.Add("X-User-Id", ownerId);
         var response = await browser.SendAsync(request);
-        var body = await response.Content.ReadAsStringAsync();
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         if (actsForUsers)

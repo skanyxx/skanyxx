@@ -11,8 +11,8 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     {
         await App.SupervisorClient().PutCardAsync("personal:boss", "secret");
 
-        var read = await App.Client().GetAsync("/api/memory/cards/personal:boss/secret?userId=boss");
-        var search = await App.Client().GetAsync("/api/memory/cards?q=refund&userId=boss");
+        var read = await App.Client().GetAsync("/api/memory/cards/personal:boss/secret?userId=boss", TestContext.Current.CancellationToken);
+        var search = await App.Client().GetAsync("/api/memory/cards?q=refund&userId=boss", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, read.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, search.StatusCode);
@@ -22,9 +22,9 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     public async Task Identity_InJsonBody_IsIgnored()
     {
         var anonymous = await App.Client().PutAsJsonAsync("/api/memory/cards/company/k1",
-            new { userId = MemoryApp.Supervisor, version = 0, type = "fact", what = "w", why = "y" });
+            new { userId = MemoryApp.Supervisor, version = 0, type = "fact", what = "w", why = "y" }, cancellationToken: TestContext.Current.CancellationToken);
         var asAna = await App.Client("ana").PutAsJsonAsync("/api/memory/cards/company/k1",
-            new { userId = MemoryApp.Supervisor, version = 0, type = "fact", what = "w", why = "y" });
+            new { userId = MemoryApp.Supervisor, version = 0, type = "fact", what = "w", why = "y" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, asAna.StatusCode);
@@ -39,11 +39,11 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
         await boss.PutCardAsync("personal:boss", "secret", body: "BOSS-ONLY");
         await App.Client("ana").PutCardAsync("personal:ana", "note");
 
-        var read = await boss.GetAsync("/api/memory/cards/company/k?scope=personal:boss&key=secret");
+        var read = await boss.GetAsync("/api/memory/cards/company/k?scope=personal:boss&key=secret", TestContext.Current.CancellationToken);
         var put = await App.Client("ana").PutCardAsync("personal:ana", "note?version=0&scope=company&key=other", version: 1, what: "v2");
         var grants = await boss.SetGrantsAsync("a?agentId=b", new { scope = "company", canSearch = true, canUpsert = false });
         var lift = await App.Client("ana").PostAsJsonAsync(
-            "/api/memory/cards/personal:ana/note/lift?targetScope=company", new { targetScope = "team:t" });
+            "/api/memory/cards/personal:ana/note/lift?targetScope=company", new { targetScope = "team:t" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, read.StatusCode);
         Assert.Equal(HttpStatusCode.OK, put.StatusCode);
@@ -59,7 +59,7 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     public async Task NulCharacters_AreAValidationError_NotA500()
     {
         var write = await App.Client("ana").PutCardAsync("personal:ana", "nul", what: "a\0b");
-        var search = await App.Client("ana").GetAsync("/api/memory/cards?q=a%00b");
+        var search = await App.Client("ana").GetAsync("/api/memory/cards?q=a%00b", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, write.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, search.StatusCode);
@@ -95,7 +95,7 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
         request.Headers.Accept.ParseAdd("text/event-stream");
         request.Headers.Authorization = new("Bearer", await App.IssueSecretAsync("seed"));
 
-        var response = await App.Client().SendAsync(request);
+        var response = await App.Client().SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
     }
@@ -104,7 +104,7 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     public async Task MalformedJson_IsProblemDetails()
     {
         var response = await App.Client("ana").PutAsync("/api/memory/cards/personal:ana/k",
-            new StringContent("{", System.Text.Encoding.UTF8, "application/json"));
+            new StringContent("{", System.Text.Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
@@ -116,14 +116,14 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     {
         var response = await App.Client("ana").PutAsync("/api/memory/cards/personal:ana/k", new StringContent(
             "{\"version\":\"<script>alert(1)</script>\",\"type\":\"fact\",\"what\":\"w\",\"why\":\"y\"}",
-            System.Text.Encoding.UTF8, "application/json"));
+            System.Text.Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
         var grants = await App.SupervisorClient().PutAsync("/api/memory/grants/seed",
-            new StringContent("{\"grants\":\"not-a-list\"}", System.Text.Encoding.UTF8, "application/json"));
+            new StringContent("{\"grants\":\"not-a-list\"}", System.Text.Encoding.UTF8, "application/json"), TestContext.Current.CancellationToken);
 
         foreach (var r in new[] { response, grants })
         {
             Assert.Equal(HttpStatusCode.BadRequest, r.StatusCode);
-            var body = await r.Content.ReadAsStringAsync();
+            var body = await r.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             var json = System.Text.Json.JsonDocument.Parse(body).RootElement;
             Assert.Equal(System.Text.Json.JsonValueKind.Object, json.GetProperty("errors").ValueKind);
             Assert.False(string.IsNullOrEmpty(json.GetProperty("traceId").GetString()));
@@ -145,11 +145,11 @@ public sealed class SecurityTests(PostgresFixture postgres) : MemoryTestBase(pos
     [Fact]
     public async Task ApiFailure_ReturnsProblemDetails_WithoutInternals()
     {
-        var response = await App.Client("ana").GetAsync(MemoryApp.ApiFailurePath);
+        var response = await App.Client("ana").GetAsync(MemoryApp.ApiFailurePath, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
         Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
-        Assert.DoesNotContain("internal detail", await response.Content.ReadAsStringAsync());
+        Assert.DoesNotContain("internal detail", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Theory]

@@ -9,7 +9,7 @@ using Skanyxx.Core.Platform.Identity;
 
 namespace Skanyxx.Host.Pages;
 
-/// <summary>Owner bootstrap (D025): the same command and guard as <c>POST api/identity/bootstrap</c>, then a cookie sign-in.</summary>
+/// <summary>Owner bootstrap (D025): the same command and guard as <c>POST api/identity/bootstrap</c>, then a cookie sign-in and the model step.</summary>
 [AllowAnonymous]
 public sealed class SetupModel(IMediator mediator) : PageModel
 {
@@ -43,7 +43,8 @@ public sealed class SetupModel(IMediator mediator) : PageModel
             {
                 case OutcomeStatus.Created:
                     await mediator.Send(new SignInCommand(email, password, UseCookie: true), ct);
-                    return LocalRedirect("/");
+                    // The first hour goes on with the owner's model step, then Chat with the seed (first-hour.md, D5).
+                    return LocalRedirect("/Model");
                 case OutcomeStatus.Conflict:
                     return RedirectToPage("/Login");
                 default:

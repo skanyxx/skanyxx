@@ -103,3 +103,45 @@ counter reset) and the Login page points everyone at the Microsoft button; turni
 managed non-owner account's sessions. A Microsoft login that is an account's only sign-in (no password) cannot be
 removed (`409`; disable instead). Guest detection compares `idp` with the tenant's exact v1/v2 issuer. A sign-in queued
 behind a login removal changes nothing; the link's password step-up never waits on the account lock (`429` busy).
+
+## As built (section 6, 2026-10-07) — identity leftovers (D150–D159)
+
+**Email (D150, D151).** Optional SMTP (`Identity:Smtp`, MailKit; STARTTLS by default, clear text only to a loopback
+relay). With it, invite links go to the invitee and are not returned to the owner; without it, nothing changes (the
+owner copies the link). Core's `IEmailSender` is the seam; tests use a fake.
+
+**Durable audit (D152, D155).** `identity_audit`: who, what, to whom, from where, when, and details without secrets —
+one row for every Warning-level audit line in the module, written in the same transaction as the change (a failed
+change leaves no row; a refusal's row stands on its own). Append-only (a trigger refuses updates). The owner reads it on
+the **Audit** page or `GET api/identity/audit`. A retention job (`Identity:AuditRetentionDays`, 365) removes old rows,
+invites that stopped being pending before the cutoff, and expired reset links, and records what it removed.
+
+**Password reset (D156, D157).** "Forgot your password?" (with SMTP) answers the same for every email and emails a
+single-use, hashed, 60-minute link from a background queue, at most once per two minutes per account. The owner can issue
+a link from **People** — emailed, or shown once without SMTP. Using a link sets the password, clears the lockout and ends
+every session. Never for the owner (break-glass unchanged), a disabled account, or an Entra-managed account while
+Microsoft sign-in is on; with it off, an account Entra created can get its first password this way.
+
+**Entra re-check (D158).** While Microsoft sign-in is on, every `Identity:EntraRecheckMinutes` (60) one replica asks Graph
+which mapped groups each managed account is in: re-mapped like a sign-in, or — no mapped group, user gone — refused like
+one (roles, teams and sessions gone, account kept, supervisor revocation published). Graph down: nothing changes.
+
+**Offboarding reaches sandboxes (D153, D154).** `PrivilegesRevoked` says whether the account is disabled; on a disable
+the sandboxes module stops the person's active AX tasks (workspaces stay; a demotion stops nothing). Every handler of a
+notification runs even if another fails, so an AX outage cannot block memory's secret revocation; a failure answers
+`500` and disabling again retries. Details: README "Identity and security model". Leftovers: `open.md`.
+
+**QA round 1 repairs (D160–D169).** Memory's revocation runs before the sandbox stop (declared handler order), and a
+cancelled publish stays cancellation. An Entra re-check refusal now also ends sessions when nothing else changed and stops
+the person's sandbox tasks (`PrivilegesRevoked.AccessRemoved`, once per refusal). A failed stop answers `500` with "…
+disable again to retry" on the API and the People page. Reset links die with a disable and when refused at use. The
+managed-password refusal writes the same row for a right and a wrong password. Anonymous-origin refusals are sampled to
+one row a minute per kind. The sweep runs once per interval across replicas (`identity_job_runs`), Graph 403/400 are
+Errors. SMTP sends are capped and cancellable; a link shown after a failed send is audited. `identity_audit` refuses
+TRUNCATE, has an `(Action, Id)` index, and is purged in batches.
+
+**QA round 2 repairs (amending D160–D167).** Turning Microsoft sign-in off, leaving it with no mapped group, or changing
+the tenant clears every re-check refusal in the save, and a refusal only counts while sign-in is usable, so a person back
+on their password keeps their sandbox tasks. A roles save whose stop failed says "Roles saved. … — save again to retry".
+Owner-route refusals are sampled per route and person. The managed-password refusal logs the same Warning either way.
+The sweep claim uses the database's clock. A cancellation after a handler failure keeps the failure (an aggregate).

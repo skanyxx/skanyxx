@@ -11,5 +11,5 @@ alwaysApply: false
 - Locked **why** lives in `decisions.md`. Reverse = **new D-row** (new id, date, why). Never edit an old row’s meaning in place.
 - One idea per bullet. No essays (`docs/design/README.md`).
 - `todo.md` is the build order. `open.md` is undecided leftovers — do not treat leftovers as the current slice.
-- Proposed AX D069–D077 are in `ax-integration.md` only until copied into `decisions.md`.
+- AX D069–D077 are locked in `decisions.md` (2026-10-08); `ax-integration.md` keeps the reasoning.
 - Community (step 5) is paused (D054).

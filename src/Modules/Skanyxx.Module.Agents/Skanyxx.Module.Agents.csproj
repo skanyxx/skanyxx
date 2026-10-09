@@ -8,6 +8,13 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\Skanyxx.Core\Skanyxx.Core.csproj" />
   </ItemGroup>
+  <!-- Runtime copy comes from the Host (PluginLoadContext shared list); the module ships only its own dll. -->
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" Version="16.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Skanyxx.Host.Tests" />
+  </ItemGroup>
   <Target Name="CopyToModules" AfterTargets="Build">
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SolutionDir)src\Skanyxx.Host\modules\" />
     <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(SolutionDir)src\Skanyxx.Host\modules\" />

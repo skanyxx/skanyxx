@@ -5,7 +5,7 @@ namespace Skanyxx.Module.Identity.Tests;
 
 public sealed class LockoutTests(PostgresFixture postgres) : IdentityTestBase(postgres)
 {
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         Assert.Equal(HttpStatusCode.Created, (await App.BootstrapAsync()).StatusCode);
@@ -18,7 +18,7 @@ public sealed class LockoutTests(PostgresFixture postgres) : IdentityTestBase(po
             Assert.Equal(HttpStatusCode.Unauthorized, (await App.SignInAsync(password: "wrong password " + i)).StatusCode);
 
         var locked = await App.SignInAsync();
-        var body = await locked.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await locked.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, locked.StatusCode);
         Assert.Equal("Invalid email or password.", body.GetProperty("detail").GetString());

@@ -1,0 +1,224 @@
+@page
+@model SandboxesModel
+@{
+    ViewData["Title"] = "Sandboxes";
+}
+<p class="text-muted">
+    <span class="badge badge-warning">Experimental</span>
+    Run a container task in a sandbox on Google AX, watch it start and stop it. AX is pre-1.0 and may change or break.
+</p>
+<p class="text-muted">On AX v0.3.1 a suspended task that names its own image does not resume (it ends Failed): suspend only what
+    you can run again.</p>
+
+@if (!Model.Enabled)
+{
+    <div class="card" id="sandboxes-off">
+        <p>Sandboxes are off. Set <code>Sandboxes:Enabled</code> to <code>true</code> and point <code>Sandboxes:Address</code>
+            at an AX server (README, "AX Tasks (Experimental)").</p>
+    </div>
+}
+else
+{
+    <section id="sandboxes" data-me="@Model.Me">
+        <p id="sandboxes-error" class="text-error" role="alert" hidden></p>
+        <p id="sandboxes-status" class="text-success" role="status" hidden></p>
+
+        <div class="card mb-3">
+            <div class="card-header"><h3 class="card-title">Run a task</h3></div>
+            <form id="run-form" class="flex flex-col gap-2">
+                <label for="run-name">Name (lowercase letters, digits and <code>-</code>)</label>
+                @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
+                <input id="run-name" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
+                <label for="run-image">Image (full reference; the allowed prefixes are suggested)</label>
+                <input id="run-image" required list="allowed-images" autocomplete="off" />
+                <datalist id="allowed-images">
+                    @foreach (var image in Model.AllowedImages)
+                    {
+                        <option value="@image"></option>
+                    }
+                </datalist>
+                <label for="run-command">Command, one argument per line, kept as typed (empty = the image's own)</label>
+                <textarea id="run-command" rows="3" spellcheck="false">sh
+-c
+echo hello from a sandbox; sleep 300</textarea>
+                <div><button type="submit" class="btn btn-primary" id="run-button">Run</button></div>
+            </form>
+        </div>
+
+        <div class="card mb-3">
+            <div class="card-header flex items-center gap-2">
+                <h3 class="card-title">Tasks</h3>
+                <button type="button" class="btn btn-ghost" id="refresh">Refresh</button>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th scope="col">Name</th><th scope="col">Owner</th><th scope="col">Image</th><th scope="col">Phase</th><th scope="col" aria-label="Actions"></th></tr></thead>
+                    <tbody id="tasks"></tbody>
+                </table>
+            </div>
+            <p id="tasks-empty" class="text-muted" hidden>No tasks.</p>
+            <p id="tasks-capped" class="text-muted" hidden></p>
+        </div>
+
+        <div class="card" id="watch-card" hidden>
+            <div class="card-header"><h3 class="card-title">Watching <code id="watch-name"></code></h3></div>
+            <pre id="watch-log" role="log" aria-live="polite"></pre>
+        </div>
+    </section>
+
+    <script>
+    (() => {
+        const me = document.getElementById('sandboxes').dataset.me;
+        const errorBox = document.getElementById('sandboxes-error');
+        const statusBox = document.getElementById('sandboxes-status');
+        const base = '/api/sandboxes/tasks';
+        // The API pages its list (at most 100 a page); a full page says so rather than passing for the whole list.
+        const listLimit = 100;
+        let watching = null;
+
+        // Values from the API are only ever set with textContent.
+        const say = (box, text) => { box.textContent = text; box.hidden = !text; };
+        const fail = text => { say(statusBox, ''); say(errorBox, text); };
+        const done = text => { say(errorBox, ''); say(statusBox, text); };
+
+        const problemText = (problem, status) =>
+            problem.detail || problem.message
+            || (problem.errors ? Object.values(problem.errors).flat().join(' ') : '')
+            || problem.title || `HTTP ${status}`;
+
+        // Content-Type only with a body: the API reads a JSON body whenever one is announced.
+        async function call(method, path, body) {
+            const init = { method };
+            if (body !== undefined) {
+                init.headers = { 'Content-Type': 'application/json' };
+                init.body = JSON.stringify(body);
+            }
+            const response = await fetch(path, init);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(problemText(data, response.status));
+            return data;
+        }
+
+        function button(label, name, action) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'btn btn-ghost';
+            b.textContent = label;
+            b.setAttribute('aria-label', `${label} ${name}`);
+            b.addEventListener('click', action);
+            return b;
+        }
+
+        function cell(row, text) {
+            const td = document.createElement('td');
+            td.textContent = text;
+            row.appendChild(td);
+            return td;
+        }
+
+        async function load() {
+            try {
+                const tasks = await call('GET', `${base}?limit=${listLimit}`);
+                const body = document.getElementById('tasks');
+                body.replaceChildren();
+                for (const t of tasks) {
+                    const row = document.createElement('tr');
+                    row.dataset.task = t.name; // a hook for browser tests
+                    cell(row, t.name);
+                    cell(row, t.owner === me ? 'you' : (t.owner ?? '—'));
+                    cell(row, t.image);
+                    cell(row, t.suspended ? `${t.phase} (suspended)` : t.phase);
+                    const actions = cell(row, '');
+                    actions.appendChild(button('Watch', t.name, () => watch(t.name)));
+                    if ((t.phase === 'Pending' || t.phase === 'Running') && !t.suspended) actions.appendChild(button('Suspend', t.name, () => act(t.name, 'suspend')));
+                    if (t.phase === 'Suspended') actions.appendChild(button('Resume', t.name, () => act(t.name, 'resume')));
+                    if (t.phase !== 'Terminating') actions.appendChild(button('Stop', t.name, () => {
+                        if (confirm(`Stop ${t.name}? AX deletes the task.`)) act(t.name, 'stop');
+                    }));
+                    body.appendChild(row);
+                }
+                document.getElementById('tasks-empty').hidden = tasks.length > 0;
+                const capped = document.getElementById('tasks-capped');
+                capped.textContent = `Showing the first ${listLimit} tasks.`;
+                capped.hidden = tasks.length < listLimit;
+            } catch (e) {
+                fail(e.message);
+            }
+        }
+
+        async function act(name, action) {
+            try {
+                await call('POST', `${base}/${encodeURIComponent(name)}/${action}`);
+                done(`${action} sent for ${name}.`);
+            } catch (e) {
+                fail(e.message);
+            }
+            await load();
+        }
+
+        // AX streams start-up only (until Running or Failed); the module ends with one "final", "gone" or "error" frame.
+        function watch(name) {
+            watching?.close();
+            const log = document.getElementById('watch-log');
+            log.textContent = '';
+            document.getElementById('watch-name').textContent = name;
+            document.getElementById('watch-card').hidden = false;
+            const line = text => { log.textContent += `${new Date().toLocaleTimeString()}  ${text}\n`; };
+            const source = new EventSource(`${base}/${encodeURIComponent(name)}/watch`);
+            watching = source;
+            const frame = kind => event => {
+                const data = JSON.parse(event.data);
+                const t = data.task;
+                line(t ? `${kind}: ${t.phase}${t.suspended ? ' (suspended)' : ''}` : `${kind}${data.error ? ': ' + data.error : ''}`);
+                if (kind !== 'initial' && kind !== 'modified') {
+                    source.close();
+                    load();
+                }
+            };
+            for (const kind of ['initial', 'modified', 'final', 'gone']) source.addEventListener(kind, frame(kind));
+            // A server "error" frame carries data. A refused watch (404, 429 too many watches) gives EventSource no status
+            // or body, so the task itself is asked for the reason.
+            let drops = 0;
+            source.addEventListener('error', async event => {
+                if (event.data) return frame('error')(event);
+                // A dropped stream reconnects by itself; three drops without a final frame end the watch.
+                if (source.readyState !== EventSource.CLOSED) {
+                    if (++drops < 3) return line('connection dropped, reconnecting');
+                    source.close();
+                    line('connection dropped three times; watch stopped');
+                    return load();
+                }
+                try {
+                    await call('GET', `${base}/${encodeURIComponent(name)}`);
+                    line('watch refused or closed (the server allows a few watches per person at a time)');
+                } catch (e) {
+                    line(`watch closed: ${e.message}`);
+                }
+            });
+        }
+
+        document.getElementById('run-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            const name = document.getElementById('run-name').value.trim();
+            const image = document.getElementById('run-image').value.trim();
+            // Each line is one argument exactly as typed (spaces included); only blank lines are dropped.
+            const command = document.getElementById('run-command').value.split('\n').map(s => s.replace(/\r$/, '')).filter(s => s.trim().length > 0);
+            const runButton = document.getElementById('run-button');
+            runButton.disabled = true;
+            try {
+                await call('PUT', `${base}/${encodeURIComponent(name)}`, command.length > 0 ? { image, command } : { image });
+                done(`${name} started.`);
+                watch(name);
+            } catch (e) {
+                fail(e.message);
+            } finally {
+                runButton.disabled = false;
+            }
+            await load();
+        });
+
+        document.getElementById('refresh').addEventListener('click', load);
+        load();
+    })();
+    </script>
+}

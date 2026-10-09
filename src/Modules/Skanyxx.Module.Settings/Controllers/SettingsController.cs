@@ -1,13 +1,21 @@
 using Skanyxx.Core.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Data;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace Skanyxx.Module.Settings.Controllers;
 
+/// <summary>
+/// The legacy console's settings, connections and layouts: owner only (an employee could otherwise plant script in what
+/// the owner's Settings page renders). The theme every page reads is <see cref="ThemeController"/>. A connection's token
+/// is write-only: it is never returned (<see cref="ConnectionView.HasToken"/>), and an update without one keeps it.
+/// </summary>
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Roles = SkanyxxRoles.Owner)]
 public class SettingsController : ControllerBase
 {
     private readonly ISettingsService _settings;
@@ -58,30 +66,37 @@ public class SettingsController : ControllerBase
     }
 
     [HttpGet("connections")]
-    public async Task<ActionResult<List<KAgentConnection>>> GetConnections() => await _settings.GetConnectionsAsync();
+    public async Task<ActionResult<List<ConnectionView>>> GetConnections() =>
+        (await _settings.GetConnectionsAsync()).Select(ConnectionView.From).ToList();
 
     [HttpGet("connections/{id}")]
-    public async Task<ActionResult<KAgentConnection>> GetConnection(int id)
+    public async Task<ActionResult<ConnectionView>> GetConnection(int id)
     {
         var connection = await _settings.GetConnectionAsync(id);
         if (connection == null) return NotFound();
-        return connection;
+        return ConnectionView.From(connection);
     }
 
     [HttpPost("connections")]
-    public async Task<ActionResult<KAgentConnection>> CreateConnection([FromBody] KAgentConnection connection)
+    public async Task<ActionResult<ConnectionView>> CreateConnection([FromBody] KAgentConnection connection)
     {
         connection.Id = 0;
         var saved = await _settings.SaveConnectionAsync(connection);
-        return CreatedAtAction(nameof(GetConnection), new { id = saved.Id }, saved);
+        return CreatedAtAction(nameof(GetConnection), new { id = saved.Id }, ConnectionView.From(saved));
     }
 
     [HttpPut("connections/{id}")]
-    public async Task<ActionResult<KAgentConnection>> UpdateConnection(int id, [FromBody] KAgentConnection connection)
+    public async Task<ActionResult<ConnectionView>> UpdateConnection(int id, [FromBody] KAgentConnection connection)
     {
-        connection.Id = id;
-        var saved = await _settings.SaveConnectionAsync(connection);
-        return Ok(saved);
+        var existing = await _settings.GetConnectionAsync(id);
+        if (existing == null) return NotFound();
+        existing.Name = connection.Name;
+        existing.BaseUrl = connection.BaseUrl;
+        existing.Port = connection.Port;
+        existing.Protocol = connection.Protocol;
+        if (!string.IsNullOrEmpty(connection.Token))
+            existing.Token = connection.Token;
+        return ConnectionView.From(await _settings.SaveConnectionAsync(existing));
     }
 
     [HttpDelete("connections/{id}")]

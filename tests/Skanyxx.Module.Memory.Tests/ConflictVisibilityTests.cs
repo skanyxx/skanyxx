@@ -52,7 +52,7 @@ public sealed class ConflictVisibilityTests(PostgresFixture postgres) : MemoryTe
         {
             var card = db.Cards.Single();
             card.Status = CardStatus.Candidate;
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         var response = await App.Client("ana").LiftAsync("personal:ana", "draft", "team:billing");

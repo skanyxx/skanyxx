@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.Net.Http.Headers;
 
@@ -14,22 +15,39 @@ namespace Skanyxx.Core.Platform;
 /// origin passes, so the app's forms and fetches keep working; the host name itself is already held to
 /// <c>AllowedHosts</c>.</item>
 /// </list>
+/// Allowed: <see cref="SkanyxxOptions.AllowedOrigins"/>, plus the origin of <c>Identity:PublicBaseUrl</c> (where people
+/// reach Skanyxx, so its pages' own origin), read as configuration so Core needs nothing from the Identity module.
 /// Non-browser clients (kagent, curl, MCP SDKs) send no <c>Origin</c> and pass. The one exception is the Microsoft
 /// sign-in callback (<see cref="GuardedPaths.ExternalSignInCallback"/>), which the OIDC handler protects itself.
 /// </summary>
-public sealed class OriginGuardMiddleware(RequestDelegate next, IOptions<SkanyxxOptions> options)
+public sealed class OriginGuardMiddleware
 {
-    private readonly HashSet<string> _allowed = new(
-        options.Value.AllowedOrigins.Select(o => o.TrimEnd('/')), StringComparer.OrdinalIgnoreCase);
+    public const string PublicBaseUrlKey = "Identity:PublicBaseUrl";
+
+    private readonly RequestDelegate _next;
+    private readonly HashSet<string> _allowed;
+
+    public OriginGuardMiddleware(RequestDelegate next, IOptions<SkanyxxOptions> options, IConfiguration configuration,
+        IHostEnvironment environment, ILogger<OriginGuardMiddleware> logger)
+    {
+        _next = next;
+        _allowed = new(options.Value.AllowedOrigins.Select(o => o.TrimEnd('/')), StringComparer.OrdinalIgnoreCase);
+        if (Uri.TryCreate(configuration[PublicBaseUrlKey], UriKind.Absolute, out var publicBase) && publicBase.Scheme is "http" or "https")
+            _allowed.Add(publicBase.GetLeftPart(UriPartial.Authority));
+        if (_allowed.Count == 0 && !environment.IsDevelopment())
+            logger.LogWarning(
+                "Neither Skanyxx:AllowedOrigins nor Identity:PublicBaseUrl is set: browser calls to /api/chat, /api/model and the " +
+                "other guarded APIs are refused (403), so Chat cannot send. Set Identity:PublicBaseUrl to the address people use.");
+    }
 
     public Task InvokeAsync(HttpContext context)
     {
         var request = context.Request;
         var origin = request.Headers[HeaderNames.Origin].ToString();
         if (origin.Length == 0 || _allowed.Contains(origin) || GuardedPaths.IsExternalSignInCallback(request.Path))
-            return next(context);
+            return _next(context);
         if (!GuardedPaths.Contains(request.Path) && (IsSafe(request.Method) || IsSameOrigin(origin, request)))
-            return next(context);
+            return _next(context);
 
         return Results.Problem("This origin is not allowed.", statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
     }

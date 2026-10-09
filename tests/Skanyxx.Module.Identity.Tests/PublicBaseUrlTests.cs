@@ -57,14 +57,14 @@ public sealed class PublicBaseUrlTests(PostgresFixture postgres)
         var owner = (await app.SignInBearerAsync()).AccessToken;
         var refused = await app.CreateInviteAsync(owner, IdentityApp.MemberEmail, SkanyxxRoles.Builder);
         var other = await app.CreateInviteAsync(owner, "someone@skanyxx.example", SkanyxxRoles.Builder);
-        var body = await refused.Content.ReadFromJsonAsync<JsonElement>();
+        var body = await refused.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, other.StatusCode);
         Assert.Contains("Identity:PublicBaseUrl", body.GetProperty("message").GetString());
         Assert.Contains("http://localhost:5282", body.GetProperty("message").GetString());
         await using var db = postgres.CreateDbContext(connectionString);
-        var invite = await db.Invites.AsNoTracking().SingleAsync();
+        var invite = await db.Invites.AsNoTracking().SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(IdentityApp.MemberEmail, invite.Email);
         Assert.Null(invite.RevokedUtc);
     }

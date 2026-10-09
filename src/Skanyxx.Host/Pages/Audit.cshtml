@@ -1,0 +1,41 @@
+@page
+@model AuditModel
+@{
+    ViewData["Title"] = "Audit";
+}
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
+<div class="card mb-3">
+    <form method="get" class="flex gap-2 items-center">
+        <input name="action" value="@Model.Action" placeholder="action, e.g. person.disabled" maxlength="64" />
+        <input name="userId" value="@Model.UserId" placeholder="person id (actor or target)" maxlength="450" />
+        <button type="submit" class="btn btn-secondary">Filter</button>
+    </form>
+    <p class="text-muted">Identity changes and refusals, newest first. Rows older than Identity:AuditRetentionDays are removed.</p>
+</div>
+<div class="table-container card">
+    <table>
+        <thead>
+            <tr><th>When (UTC)</th><th>Action</th><th>Actor</th><th>Target</th><th title="The connection's address: behind a reverse proxy or ingress this is the proxy, not the person.">Client (direct peer)</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var entry in Model.Entries)
+            {
+                <tr>
+                    <td>@entry.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
+                    <td><code>@entry.Action</code></td>
+                    <td>@Model.Name(entry.ActorId)</td>
+                    <td>@Model.Name(entry.TargetId)</td>
+                    <td>@entry.RemoteIp</td>
+                    <td><code>@entry.Details?.GetRawText()</code></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+@if (Model.Entries.Count == AuditModel.PageSize)
+{
+    <p><a href="/Audit?action=@Uri.EscapeDataString(Model.Action ?? "")&userId=@Uri.EscapeDataString(Model.UserId ?? "")&before=@Model.Entries[^1].Id">Older</a></p>
+}

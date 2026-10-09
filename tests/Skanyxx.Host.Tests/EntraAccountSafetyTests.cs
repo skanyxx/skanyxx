@@ -41,17 +41,17 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var whileOff = await PasswordSignInAsync(Bob, MemberPassword);
         var offBrowser = new Browser(Host);
         Assert.Equal(HttpStatusCode.Redirect, (await offBrowser.SubmitAsync("/Login", new() { ["Email"] = Bob, ["Password"] = MemberPassword })).StatusCode);
-        var refreshToken = (await whileOff.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("tokens").GetProperty("refreshToken").GetString();
+        var refreshToken = (await whileOff.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("tokens").GetProperty("refreshToken").GetString();
         await SaveSettingsAsync();
-        var refreshAfterOn = await Host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken });
+        var refreshAfterOn = await Host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, form.StatusCode);
-        Assert.Contains("Invalid email or password.", await form.Content.ReadAsStringAsync());
-        Assert.DoesNotContain(EntraPasswordMessage, await form.Content.ReadAsStringAsync());
+        Assert.Contains("Invalid email or password.", await form.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.DoesNotContain(EntraPasswordMessage, await form.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Unauthorized, api.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
-        Assert.Equal((await wrong.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString(),
-            (await api.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("detail").GetString()); // no oracle
+        Assert.Equal((await wrong.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("detail").GetString(),
+            (await api.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("detail").GetString()); // no oracle
         Assert.Equal(HttpStatusCode.OK, (await MeAsync(other)).Status); // an unlinked account signed in with its password while on
         Assert.Equal(HttpStatusCode.OK, whileOff.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await MeAsync(offBrowser)).Status); // D15: turning it on ended the cookie
@@ -69,15 +69,15 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         await SaveSettingsAsync();
         var (_, bobId) = await PasswordMemberAsync(Bob, role: "employee");
         var signedIn = await PasswordSignInAsync(Bob, MemberPassword);
-        var refreshToken = (await signedIn.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("tokens").GetProperty("refreshToken").GetString();
+        var refreshToken = (await signedIn.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("tokens").GetProperty("refreshToken").GetString();
         await InsertLoginAsync(bobId, KeyOf(Oid(4)));
 
-        var whileOn = await Host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken });
+        var whileOn = await Host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken }, cancellationToken: TestContext.Current.CancellationToken);
         await SaveSettingsAsync(enabled: false, secret: null);
-        var whileOff = await Host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken });
+        var whileOff = await Host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, whileOn.StatusCode);
-        Assert.Contains(EntraPasswordMessage, await whileOn.Content.ReadAsStringAsync());
+        Assert.Contains(EntraPasswordMessage, await whileOn.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.OK, whileOff.StatusCode);
     }
 
@@ -85,9 +85,9 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
     [Fact]
     public async Task TheLoginPage_PointsAtTheMicrosoftButton_OnlyWhileItIsOn()
     {
-        var off = await (await new Browser(Host).GetAsync("/Login")).Content.ReadAsStringAsync();
+        var off = await (await new Browser(Host).GetAsync("/Login")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         await SaveSettingsAsync();
-        var on = await (await new Browser(Host).GetAsync("/Login")).Content.ReadAsStringAsync();
+        var on = await (await new Browser(Host).GetAsync("/Login")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain(MicrosoftHint, off);
         Assert.Contains(MicrosoftHint, on);
@@ -106,7 +106,7 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var newcomer = await Flow.SignInAsync(new Browser(Host), EntraFlow.Claims(Tenant, Oid(2), [Supervisors], email: "new@contoso.example", acct: null));
 
         Assert.Equal(HttpStatusCode.Forbidden, existing.StatusCode);
-        Assert.Contains("optional claim &#x27;acct&#x27;", await existing.Content.ReadAsStringAsync());
+        Assert.Contains("optional claim &#x27;acct&#x27;", await existing.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Forbidden, newcomer.StatusCode);
         Assert.Equal(before, await PeopleCountAsync());
         Assert.Equal(["employee", "supervisor"], (await MeAsync(first)).Roles.Order()); // still signed in, roles kept
@@ -128,7 +128,7 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var admitted = await Flow.SignInAsync(new Browser(Host), member);
 
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
-        Assert.Contains("has no access to Skanyxx", await refused.Content.ReadAsStringAsync());
+        Assert.Contains("has no access to Skanyxx", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Redirect, admitted.StatusCode);
         Assert.Equal(before + 1, await PeopleCountAsync());
     }
@@ -147,16 +147,16 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var wrong = await StartLinkAsync(stolen, "a guess at the password");
         var answers = new List<string>();
         for (var i = 0; i < 5; i++)
-            answers.Add(await (await StartLinkAsync(stolen, "another guess")).Content.ReadAsStringAsync());
+            answers.Add(await (await StartLinkAsync(stolen, "another guess")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var lockedOut = await StartLinkAsync(stolen);
 
         Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
-        Assert.Contains("Enter your current password", await none.Content.ReadAsStringAsync());
+        Assert.Contains("Enter your current password", await none.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Forbidden, wrong.StatusCode);
-        Assert.Contains("not your current password", await wrong.Content.ReadAsStringAsync());
+        Assert.Contains("not your current password", await wrong.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Contains(answers, a => a.Contains("Too many wrong passwords"));
         Assert.Equal(HttpStatusCode.Forbidden, lockedOut.StatusCode);
-        Assert.Contains("Too many wrong passwords", await lockedOut.Content.ReadAsStringAsync());
+        Assert.Contains("Too many wrong passwords", await lockedOut.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.All([none, wrong, lockedOut], r => Assert.NotEqual(HttpStatusCode.Redirect, r.StatusCode)); // never sent to Microsoft
         Assert.Empty(await LoginsAsync(memberId));
     }
@@ -183,14 +183,14 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         Assert.Equal(HttpStatusCode.OK, (await MeAsync(member)).Status);
 
         var removed = await OwnerBrowser.SubmitAsync($"/People?handler=RemoveMicrosoft&id={memberId}", [], tokenFrom: "/People");
-        var again = await Owner.DeleteAsync($"/api/identity/people/{memberId}/entra-login");
+        var again = await Owner.DeleteAsync($"/api/identity/people/{memberId}/entra-login", TestContext.Current.CancellationToken);
         var password = await PasswordSignInAsync(Bob, MemberPassword);
-        var bearer = (await password.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("tokens").GetProperty("accessToken").GetString();
-        var byMember = await Host.Client(bearer).DeleteAsync($"/api/identity/people/{memberId}/entra-login");
+        var bearer = (await password.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("tokens").GetProperty("accessToken").GetString();
+        var byMember = await Host.Client(bearer).DeleteAsync($"/api/identity/people/{memberId}/entra-login", TestContext.Current.CancellationToken);
         var microsoft = await Flow.SignInAsync(new Browser(Host), EntraFlow.Claims(Tenant, Oid(5), [Billing], email: Bob));
 
         Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
-        Assert.Contains("Microsoft login removed", await removed.Content.ReadAsStringAsync());
+        Assert.Contains("Microsoft login removed", await removed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Empty(await LoginsAsync(memberId));
         Assert.Equal(HttpStatusCode.Unauthorized, (await MeAsync(member)).Status);
         Assert.False((await PersonAsync(Bob)).GetProperty("entraManaged").GetBoolean());
@@ -215,12 +215,12 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var (member, memberId) = await PasswordMemberAsync(Bob);
         await LinkAsync(member, Oid(5), [Billing]);
 
-        var api = await Owner.DeleteAsync($"/api/identity/people/{createdId}/entra-login");
+        var api = await Owner.DeleteAsync($"/api/identity/people/{createdId}/entra-login", TestContext.Current.CancellationToken);
         var form = await OwnerBrowser.SubmitAsync($"/People?handler=RemoveMicrosoft&id={createdId}", [], tokenFrom: "/People");
-        var page = await (await OwnerBrowser.GetAsync("/People")).Content.ReadAsStringAsync();
+        var page = await (await OwnerBrowser.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, api.StatusCode);
-        Assert.Contains("Microsoft is this account", await api.Content.ReadAsStringAsync());
+        Assert.Contains("Microsoft is this account", await api.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Conflict, form.StatusCode);
         Assert.Single(await LoginsAsync(createdId));
         Assert.Equal(HttpStatusCode.OK, (await MeAsync(microsoft)).Status); // nothing ended
@@ -250,9 +250,9 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var passwordless = await StartLinkAsync(microsoft, "a guess");
 
         Assert.All(answers, a => Assert.Equal(HttpStatusCode.Conflict, a.StatusCode));
-        Assert.Contains("already linked", await answers[0].Content.ReadAsStringAsync());
+        Assert.Contains("already linked", await answers[0].Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Forbidden, passwordless.StatusCode);
-        Assert.Contains("has no password", await passwordless.Content.ReadAsStringAsync());
+        Assert.Contains("has no password", await passwordless.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(0, await FailedCountAsync(id));
     }
 
@@ -313,7 +313,7 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var id = (await PersonAsync(Email)).GetProperty("id").GetString()!;
         FailRevocations = true;
 
-        var save = await Owner.PutAsJsonAsync($"/api/identity/people/{id}/roles", new { roles = new[] { "employee" } });
+        var save = await Owner.PutAsJsonAsync($"/api/identity/people/{id}/roles", new { roles = new[] { "employee" } }, cancellationToken: TestContext.Current.CancellationToken);
         var owed = await OwedAsync(id);
         FailRevocations = false;
         var signIn = await Flow.SignInAsync(new Browser(Host), EntraFlow.Claims(Tenant, Oid(1), [Billing]));
@@ -383,7 +383,7 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var created = await Flow.SignInAsync(new Browser(Host), verified);
 
         Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
-        Assert.Contains("does not verify the email address", await refused.Content.ReadAsStringAsync());
+        Assert.Contains("does not verify the email address", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Redirect, created.StatusCode);
         Assert.Equal(before + 1, await PeopleCountAsync());
     }
@@ -412,7 +412,7 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         var failed = await Flow.SignInAsync(new Browser(Host), claims);
 
         Assert.Equal(HttpStatusCode.BadGateway, failed.StatusCode);
-        Assert.Contains("could not read your groups", await failed.Content.ReadAsStringAsync());
+        Assert.Contains("could not read your groups", await failed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     /// <summary>The IdP refusing (the person cancelled, or consent was denied) comes back to the sign-in page cleanly: no 500, no session.</summary>
@@ -431,7 +431,7 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
 
         Assert.Equal("/Login?returnUrl=%2FOrg&handler=Microsoft", callback.Headers.Location!.OriginalString);
         Assert.Equal(HttpStatusCode.Unauthorized, completed.StatusCode);
-        Assert.Contains("Microsoft sign-in did not complete", await completed.Content.ReadAsStringAsync());
+        Assert.Contains("Microsoft sign-in did not complete", await completed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Unauthorized, (await MeAsync(browser)).Status);
     }
 
@@ -451,11 +451,11 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
     [Fact]
     public async Task AStoredSecret_WithUnencryptedKeys_IsWarnedAbout()
     {
-        var before = await (await OwnerBrowser.GetAsync("/Entra")).Content.ReadAsStringAsync();
+        var before = await (await OwnerBrowser.GetAsync("/Entra")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         await SaveSettingsAsync();
 
-        var page = await (await OwnerBrowser.GetAsync("/Entra")).Content.ReadAsStringAsync();
-        var settings = await Owner.GetFromJsonAsync<JsonElement>("/api/identity/entra/settings");
+        var page = await (await OwnerBrowser.GetAsync("/Entra")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var settings = await Owner.GetFromJsonAsync<JsonElement>("/api/identity/entra/settings", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain("stored unencrypted", before); // nothing stored yet
         Assert.Contains("stored unencrypted in the same database", page);

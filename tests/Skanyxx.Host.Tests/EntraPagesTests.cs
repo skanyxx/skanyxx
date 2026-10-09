@@ -15,10 +15,10 @@ public sealed class EntraPagesTests(PostgresFixture fixture, MockIdentityProvide
     {
         var anonymous = new Browser(Host);
 
-        var login = await (await anonymous.GetAsync("/Login")).Content.ReadAsStringAsync();
+        var login = await (await anonymous.GetAsync("/Login")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var start = await anonymous.SubmitAsync("/Login?handler=Microsoft", [], tokenFrom: "/Login");
         var link = await StartLinkAsync(OwnerBrowser, HostApp.OwnerPassword);
-        var account = await (await OwnerBrowser.GetAsync("/Account")).Content.ReadAsStringAsync();
+        var account = await (await OwnerBrowser.GetAsync("/Account")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.DoesNotContain("Sign in with Microsoft", login);
         Assert.Equal(HttpStatusCode.NotFound, start.StatusCode);
@@ -72,19 +72,19 @@ public sealed class EntraPagesTests(PostgresFixture fixture, MockIdentityProvide
             ["Groups[0].GroupId"] = Supervisors, ["Groups[0].Label"] = "Supervisors", ["Groups[0].Roles"] = "supervisor",
             ["Groups[1].GroupId"] = Billing, ["Groups[1].Teams"] = "billing", ["Groups[2].GroupId"] = ""
         });
-        var page = await (await OwnerBrowser.GetAsync("/Entra")).Content.ReadAsStringAsync();
+        var page = await (await OwnerBrowser.GetAsync("/Entra")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var refused = await OwnerBrowser.SubmitAsync("/Entra", new()
         {
             ["Enabled"] = "true", ["TenantId"] = Tenant, ["ClientId"] = Client, ["Groups[0].GroupId"] = Billing, ["Groups[0].Roles"] = "owner"
         });
-        var settings = await Owner.GetFromJsonAsync<JsonElement>("/api/identity/entra/settings");
+        var settings = await Owner.GetFromJsonAsync<JsonElement>("/api/identity/entra/settings", cancellationToken: TestContext.Current.CancellationToken);
         var (supervisor, _) = await PasswordMemberAsync("sam@skanyxx.example", "supervisor");
         var memberPage = await supervisor.GetAsync("/Entra");
         var memberPost = await supervisor.SubmitAsync("/Entra", new() { ["Enabled"] = "false" }, tokenFrom: "/Account");
-        var memberNav = await (await supervisor.GetAsync("/Account")).Content.ReadAsStringAsync();
+        var memberNav = await (await supervisor.GetAsync("/Account")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var anonymous = await new Browser(Host).GetAsync("/Entra");
 
-        var body = await saved.Content.ReadAsStringAsync();
+        var body = await saved.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Saved. The next Microsoft sign-in uses these settings.", body);
         Assert.DoesNotContain(Secret, body);
         Assert.DoesNotContain(Secret, page);
@@ -92,13 +92,13 @@ public sealed class EntraPagesTests(PostgresFixture fixture, MockIdentityProvide
         Assert.Contains("https://skanyxx.example/signin-oidc", page);
         Assert.Contains("href=\"/Entra\"", page);
         Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-        Assert.Contains("The owner role cannot be granted", await refused.Content.ReadAsStringAsync());
+        Assert.Contains("The owner role cannot be granted", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal("""[{"groupId":"00000000-0000-0000-0000-0000000000a1","label":"Supervisors","roles":["supervisor"],"teams":[]},{"groupId":"00000000-0000-0000-0000-0000000000b1","label":null,"roles":[],"teams":["billing"]}]""",
             settings.GetProperty("groups").GetRawText());
         Assert.True(settings.GetProperty("active").GetBoolean());
         Assert.Equal(HttpStatusCode.Redirect, memberPage.StatusCode); // pages answer a refusal with the login page, as /Org does
         Assert.Equal(HttpStatusCode.Redirect, memberPost.StatusCode);
-        Assert.True((await Owner.GetFromJsonAsync<JsonElement>("/api/identity/entra/settings")).GetProperty("enabled").GetBoolean());
+        Assert.True((await Owner.GetFromJsonAsync<JsonElement>("/api/identity/entra/settings", cancellationToken: TestContext.Current.CancellationToken)).GetProperty("enabled").GetBoolean());
         Assert.DoesNotContain("href=\"/Entra\"", memberNav);
         Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
         Assert.Contains("/Login?ReturnUrl=%2FEntra", anonymous.Headers.Location!.OriginalString);
@@ -113,7 +113,7 @@ public sealed class EntraPagesTests(PostgresFixture fixture, MockIdentityProvide
     {
         await SaveSettingsAsync();
         var (member, memberId) = await PasswordMemberAsync("bob@skanyxx.example");
-        Assert.Contains("Link Microsoft account", await (await member.GetAsync("/Account")).Content.ReadAsStringAsync());
+        Assert.Contains("Link Microsoft account", await (await member.GetAsync("/Account")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         var challenge = await StartLinkAsync(member);
         var linked = await EntraFlow.CompleteAsync(member, await Flow.AtMicrosoftAsync(member, challenge,
@@ -123,7 +123,7 @@ public sealed class EntraPagesTests(PostgresFixture fixture, MockIdentityProvide
         var signedIn = await Flow.SignInAsync(later, EntraFlow.Claims(Tenant, Oid(3), [Supervisors, Billing], email: "robert@contoso.example"));
 
         Assert.Equal(HttpStatusCode.OK, linked.StatusCode);
-        Assert.Contains("Your Microsoft account is linked", await linked.Content.ReadAsStringAsync());
+        Assert.Contains("Your Microsoft account is linked", await linked.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(["supervisor"], afterLink.Roles); // the linking browser got a fresh session with the mapped roles
         Assert.Equal(HttpStatusCode.Unauthorized, (await MeAsync(member)).Status); // the later sign-in added a role: other sessions ended
         Assert.Equal(HttpStatusCode.Redirect, signedIn.StatusCode);
@@ -151,7 +151,7 @@ public sealed class EntraPagesTests(PostgresFixture fixture, MockIdentityProvide
         var completed = await EntraFlow.CompleteAsync(browser, await Flow.AtMicrosoftAsync(browser, challenge, EntraFlow.Claims(Tenant, Oid(4), [Supervisors])));
 
         Assert.Equal(HttpStatusCode.Unauthorized, completed.StatusCode);
-        Assert.Contains("Microsoft sign-in did not complete", await completed.Content.ReadAsStringAsync());
+        Assert.Contains("Microsoft sign-in did not complete", await completed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Empty(await LoginsAsync(aliceId));
         Assert.Empty(await LoginsAsync(bobId));
         Assert.Equal(bobId, (await MeAsync(browser)).Id);

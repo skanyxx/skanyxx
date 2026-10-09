@@ -8,13 +8,13 @@ public abstract class SandboxesTestBase : IAsyncLifetime
     protected FakeAx Ax => Server.Ax;
     protected SandboxesApp App { get; private set; } = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         Server = await FakeAxServer.StartAsync();
         App = await SandboxesApp.StartAsync(Server.Url);
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await App.DisposeAsync();
         await Server.DisposeAsync();

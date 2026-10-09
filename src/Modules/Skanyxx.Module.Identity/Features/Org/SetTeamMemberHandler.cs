@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Data;
 
 namespace Skanyxx.Module.Identity.Features.Org;
@@ -12,7 +13,8 @@ namespace Skanyxx.Module.Identity.Features.Org;
 /// Adds an existing, enabled person to a team, or removes them. Idempotent both ways; only a real change is logged.
 /// It takes effect on the person's next request: memory asks <see cref="IOrgMembership"/> on every request.
 /// </summary>
-internal sealed class SetTeamMemberHandler(AccountsDbContext db, ClientAddress client, TimeProvider time, ILogger<SetTeamMemberHandler> logger)
+internal sealed class SetTeamMemberHandler(
+    AccountsDbContext db, IdentityAudit audit, ClientAddress client, TimeProvider time, ILogger<SetTeamMemberHandler> logger)
     : IRequestHandler<SetTeamMemberCommand, Outcome<TeamDto>>
 {
     public async Task<Outcome<TeamDto>> Handle(SetTeamMemberCommand command, CancellationToken ct)
@@ -48,6 +50,8 @@ internal sealed class SetTeamMemberHandler(AccountsDbContext db, ClientAddress c
             INSERT INTO identity_org_team_members ("TeamSlug", "UserId", "AddedBy", "AddedUtc")
             VALUES ({command.Team}, {command.UserId}, {command.ActorId}, {time.GetUtcNow()}) ON CONFLICT ("TeamSlug", "UserId") DO NOTHING
             """, ct);
+        if (added > 0)
+            await audit.WriteAsync(AuditActions.MemberAdded, command.ActorId, command.UserId, new { team = command.Team }, ct);
         await transaction.CommitAsync(ct);
         if (added > 0)
             logger.LogWarning("{UserId} added to team {Team} by {ActorUserId} from {RemoteIp}", command.UserId, command.Team, command.ActorId, client.Current);
@@ -56,7 +60,11 @@ internal sealed class SetTeamMemberHandler(AccountsDbContext db, ClientAddress c
 
     private async Task RemoveAsync(SetTeamMemberCommand command, CancellationToken ct)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var removed = await db.TeamMembers.Where(m => m.TeamSlug == command.Team && m.UserId == command.UserId).ExecuteDeleteAsync(ct);
+        if (removed > 0)
+            await audit.WriteAsync(AuditActions.MemberRemoved, command.ActorId, command.UserId, new { team = command.Team }, ct);
+        await transaction.CommitAsync(ct);
         if (removed > 0)
             logger.LogWarning("{UserId} removed from team {Team} by {ActorUserId} from {RemoteIp}", command.UserId, command.Team, command.ActorId, client.Current);
     }

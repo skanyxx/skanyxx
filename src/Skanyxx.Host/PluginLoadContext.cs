@@ -22,7 +22,8 @@ public class PluginLoadContext : AssemblyLoadContext
         "Skanyxx.Core", "MediatR", "Microsoft.Extensions", "Microsoft.EntityFrameworkCore",
         "Npgsql", "Dapper", "FastEndpoints", "FluentValidation", "ModelContextProtocol", "HealthChecks",
         "Grpc", "Google.Protobuf", "Microsoft.AspNetCore.Identity", "Microsoft.AspNetCore.DataProtection",
-        "Microsoft.AspNetCore.Authentication.OpenIdConnect", "Microsoft.IdentityModel", "System.IdentityModel.Tokens.Jwt"
+        "Microsoft.AspNetCore.Authentication.OpenIdConnect", "Microsoft.IdentityModel", "System.IdentityModel.Tokens.Jwt",
+        "YamlDotNet", "MailKit", "MimeKit", "BouncyCastle.Cryptography"
     ];
 
     public static bool IsShared(string? name) =>

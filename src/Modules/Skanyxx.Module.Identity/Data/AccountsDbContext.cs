@@ -10,7 +10,7 @@ namespace Skanyxx.Module.Identity.Data;
 /// ASP.NET Core Identity's schema under <c>identity_*</c> table names, so it can share a database with other modules,
 /// plus the Data Protection key ring (cookies and bearer tokens are protected with it, so every replica must share it
 /// and it must survive a restart), the refresh-token chains, the owed privilege revocations, the invites, the org tree (departments ⊃ teams ⊃ members)
-/// and the Microsoft Entra ID sign-in settings with their group map.
+/// the Microsoft Entra ID sign-in settings with their group map, the audit trail, the password-reset links and when the background jobs last ran.
 /// </summary>
 public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> options)
     : IdentityDbContext<IdentityUser>(options), IDataProtectionKeyContext
@@ -37,6 +37,12 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
     public DbSet<EntraSettings> EntraSettings => Set<EntraSettings>();
 
     public DbSet<EntraGroupMap> EntraGroups => Set<EntraGroupMap>();
+
+    public DbSet<AuditEntry> Audit => Set<AuditEntry>();
+
+    public DbSet<PasswordReset> PasswordResets => Set<PasswordReset>();
+
+    public DbSet<JobRun> JobRuns => Set<JobRun>();
 
     /// <summary>The memory scope id shape (its CHECK constraint), so every slug is a valid <c>team:</c>/<c>department:</c> scope.</summary>
     private const string SlugCheck = "~ '^[a-z0-9][a-z0-9._@-]{0,127}$'";
@@ -79,6 +85,40 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
             invite.HasIndex(i => i.TokenHash).IsUnique();
             // Re-inviting revokes the older one under the account lock; the index makes "one open invite" hold regardless.
             invite.HasIndex(i => i.NormalizedEmail).IsUnique().HasFilter("\"AcceptedUtc\" IS NULL AND \"RevokedUtc\" IS NULL");
+            // The account an invite created; the invite row outlives nothing it points at (D155).
+            invite.HasOne<IdentityUser>().WithMany().HasForeignKey(i => i.AcceptedUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+        builder.Entity<AuditEntry>(audit =>
+        {
+            audit.ToTable("identity_audit");
+            audit.Property(a => a.Id).UseIdentityAlwaysColumn();
+            audit.Property(a => a.Action).HasMaxLength(64);
+            audit.Property(a => a.ActorId).HasMaxLength(450);
+            audit.Property(a => a.TargetId).HasMaxLength(450);
+            audit.Property(a => a.RemoteIp).HasMaxLength(64);
+            audit.Property(a => a.Details).HasColumnType("jsonb");
+            // No FKs: a row must outlive the account, invite or team it names.
+            audit.HasIndex(a => a.AtUtc);
+            audit.HasIndex(a => a.TargetId);
+            audit.HasIndex(a => a.ActorId);
+            // The Audit page's action filter, newest first (keyset on Id).
+            audit.HasIndex(a => new { a.Action, a.Id });
+        });
+        builder.Entity<JobRun>(run =>
+        {
+            run.ToTable("identity_job_runs");
+            run.HasKey(r => r.Name);
+            run.Property(r => r.Name).HasMaxLength(64);
+        });
+        builder.Entity<PasswordReset>(reset =>
+        {
+            reset.ToTable("identity_password_resets");
+            reset.Property(r => r.Id).HasMaxLength(36);
+            reset.Property(r => r.CreatedBy).HasMaxLength(450);
+            reset.HasIndex(r => r.TokenHash).IsUnique();
+            // Issuing revokes the older one under the account lock; the index makes "one open link" hold regardless.
+            reset.HasIndex(r => r.UserId).IsUnique().HasFilter("\"UsedUtc\" IS NULL AND \"RevokedUtc\" IS NULL");
+            reset.HasOne<IdentityUser>().WithMany().HasForeignKey(r => r.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<OrgDepartment>(department =>

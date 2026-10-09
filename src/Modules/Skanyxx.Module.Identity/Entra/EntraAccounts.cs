@@ -4,7 +4,9 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Data;
 using Skanyxx.Module.Identity.Features.People;
 
@@ -16,11 +18,13 @@ namespace Skanyxx.Module.Identity.Entra;
 /// and teams; the owner is never changed by the mapping. A role change ends the account's other sessions. Taking
 /// <c>supervisor</c> away marks a <see cref="Core.Platform.Identity.PrivilegesRevoked"/> as owed in the same transaction;
 /// after the commit it is published only when one is owed (this change's, or an earlier failed one: the retry), so a
-/// Microsoft sign-in that takes nothing away does not depend on the memory database (D13, replacing D12).
+/// Microsoft sign-in that takes nothing away does not depend on the memory database (D13, replacing D12). Every change
+/// is audited in its transaction (D152); a refusal that changes nothing is audited on its own, after its rollback.
+/// The Graph re-check (D158) applies a fresh mapping through <see cref="RecheckAsync"/>, under the same rules.
 /// </summary>
 internal sealed class EntraAccounts(
     AccountsDbContext db, UserManager<IdentityUser> users, SessionRevocation sessions, PrivilegeRevocation revocation,
-    ClientAddress client, TimeProvider time, ILogger<EntraAccounts> logger)
+    IdentityAudit audit, ClientAddress client, TimeProvider time, ILogger<EntraAccounts> logger)
 {
     public const string EmailTaken =
         "An account with this email already exists. Sign in with your password, then link your Microsoft account on your Account page.";
@@ -45,6 +49,12 @@ internal sealed class EntraAccounts(
 
     private const string RetryHint = "the next Microsoft sign-in of this account publishes again";
 
+    private const string RecheckLost = "Entra group re-check without supervisor";
+
+    private const string RecheckRefused = "Entra group re-check refused the account";
+
+    private const string RecheckRetry = "the next re-check, Microsoft sign-in or People save of this account publishes again";
+
     /// <summary>
     /// One Entra identity (tid|oid) at a time, whichever account a callback is about to bind it to (CR L4). Listed with
     /// every other advisory-lock key in Skanyxx.Module.Memory's MemoryMigrator.
@@ -65,6 +75,7 @@ internal sealed class EntraAccounts(
         if (EntraClaims.EmailUnverified(info.Principal))
         {
             logger.LogWarning("Microsoft sign-in {Key} from {RemoteIp} refused: xms_edov says the email's domain is not verified", info.ProviderKey, client.Current);
+            await audit.WriteAsync(AuditActions.EntraSignInRefused, null, null, new { key = info.ProviderKey, reason = "xms_edov: email domain not verified" }, ct);
             return Outcome<IdentityUser>.Forbidden(EmailNotVerified);
         }
 
@@ -73,10 +84,12 @@ internal sealed class EntraAccounts(
         if (await users.FindByLoginAsync(EntraScheme.Name, info.ProviderKey) is { } raced)
             return Outcome<IdentityUser>.Ok(raced);
         await AccountLock.AcquireAsync(db, users.NormalizeEmail(email), ct);
-        if (await users.FindByEmailAsync(email) is not null)
+        if (await users.FindByEmailAsync(email) is { } taken)
         {
+            await transaction.RollbackAsync(ct);
             logger.LogWarning("Microsoft sign-in {Key} from {RemoteIp} refused: the email belongs to an existing account without this login",
                 info.ProviderKey, client.Current);
+            await audit.WriteAsync(AuditActions.EntraSignInRefused, null, taken.Id, new { key = info.ProviderKey, reason = "email taken by an account without this login" }, ct);
             return Outcome<IdentityUser>.Conflict(null, EmailTaken);
         }
 
@@ -87,6 +100,8 @@ internal sealed class EntraAccounts(
         if (DisplayNameOf(info.Principal) is { } name)
             LockedAccount.Require(await users.AddClaimAsync(user, AccountReader.DisplayNameClaim(name)));
         var changes = await ApplyAsync(user, mapping, ct);
+        await audit.WriteAsync(AuditActions.EntraAccountCreated, EntraScheme.Actor, user.Id,
+            new { key = info.ProviderKey, roles = changes!.AddedRoles, teams = changes.AddedTeams }, ct);
         await transaction.CommitAsync(ct);
 
         logger.LogWarning("Account {UserId} created by Microsoft sign-in {Key} from {RemoteIp} with roles {Roles} and teams {Teams}",
@@ -104,12 +119,17 @@ internal sealed class EntraAccounts(
         var user = await LockedLoginAsync(userId, key, ct);
         if (user is null || AccountStatus.IsDisabled(user))
         {
-            logger.LogWarning("Microsoft sign-in of {UserId} ({Key}) from {RemoteIp} refused: {Reason}", userId, key, client.Current,
-                user is null ? "the Microsoft login is no longer on the account" : "account disabled");
+            await transaction.RollbackAsync(ct);
+            var reason = user is null ? "the Microsoft login is no longer on the account" : "account disabled";
+            logger.LogWarning("Microsoft sign-in of {UserId} ({Key}) from {RemoteIp} refused: {Reason}", userId, key, client.Current, reason);
+            await audit.WriteAsync(AuditActions.EntraSignInRefused, null, userId, new { key, reason }, ct);
             return null;
         }
 
         var changes = await ApplyAsync(user, mapping, ct);
+        await EntraRefusal.ClearAsync(db, user.Id, ct);
+        if (changes?.Any == true)
+            await audit.WriteAsync(AuditActions.EntraRemapped, EntraScheme.Actor, user.Id, Details(key, changes), ct);
         if (changes?.RolesChanged == true)
             await sessions.EndAllAsync(user, ct);
         var lost = await RecordSupervisorAsync(user, mapping, changes, ct);
@@ -130,12 +150,17 @@ internal sealed class EntraAccounts(
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         if (await LockedLoginAsync(userId, key, ct) is not { } user)
         {
+            await transaction.RollbackAsync(ct);
             logger.LogWarning("Microsoft sign-in of {UserId} ({Key}) from {RemoteIp} refused ({Reason}); the Microsoft login is no longer on the account",
                 userId, key, client.Current, reason);
+            await audit.WriteAsync(AuditActions.EntraSignInRefused, null, userId, new { key, reason, effect = "the Microsoft login is no longer on the account" }, ct);
             return;
         }
 
         var changes = await ApplyAsync(user, NoGroups, ct);
+        await audit.WriteAsync(AuditActions.EntraSignInRefused, null, user.Id, changes is null
+            ? new { key, reason, effect = "the owner is not changed by the mapping" }
+            : new { key, reason, effect = "roles and teams removed, sessions ended", removedRoles = changes.RemovedRoles, removedTeams = changes.RemovedTeams }, ct);
         if (changes is not null)
             await sessions.EndAllAsync(user, ct);
         var lost = await RecordSupervisorAsync(user, NoGroups, changes, ct);
@@ -167,6 +192,7 @@ internal sealed class EntraAccounts(
 
         LockedAccount.Require(await users.AddLoginAsync(user, new UserLoginInfo(EntraScheme.Name, key, EntraScheme.DisplayName)));
         var changes = await ApplyAsync(user, mapping, ct);
+        await audit.WriteAsync(AuditActions.EntraLinked, user.Id, user.Id, Details(key, changes!), ct);
         await sessions.EndAllAsync(user, ct);
         var lost = await RecordSupervisorAsync(user, mapping, changes, ct);
         await transaction.CommitAsync(ct);
@@ -176,6 +202,71 @@ internal sealed class EntraAccounts(
         await revocation.SettleAsync(user.Id, lost ? SupervisorLost : PrivilegeRevocation.Retried, EntraScheme.Actor, RetryHint);
         return Outcome<IdentityUser>.Ok(user);
     }
+
+    /// <summary>
+    /// D158: applies what Graph says now to an Entra-managed account between sign-ins. A mapping that still grants access
+    /// re-maps it exactly as a sign-in would (a role change ends its sessions) and clears an earlier refusal; one that
+    /// grants nothing — no mapped group any more, or the user is gone from the tenant — is a refused sign-in (D2): roles
+    /// and teams removed, the account kept. The first such refusal (<see cref="EntraRefusal"/>, D161) also ends every
+    /// session whether or not roles or teams changed, and owes a revocation that stops the person's sandbox tasks
+    /// (<c>AccessRemoved</c>). Nothing changes for an account that is disabled, the owner, or no longer has that login,
+    /// and nothing is written when the mapping already holds. An owed revocation (this change's or an earlier one) is
+    /// published after the commit; a failure there leaves it owed (logged at Error), and the next re-check retries it.
+    /// True when something changed.
+    /// </summary>
+    public async Task<bool> RecheckAsync(string userId, string key, EntraMapping mapping, CancellationToken ct)
+    {
+        EntraRoleChanges? changes;
+        var (lost, fresh) = (false, false);
+        var granted = mapping.GrantsAccess;
+        await using (var transaction = await db.Database.BeginTransactionAsync(ct))
+        {
+            if (await LockedLoginAsync(userId, key, ct) is not { } user || AccountStatus.IsDisabled(user))
+                return false;
+
+            changes = await ApplyAsync(user, granted ? mapping : NoGroups, ct);
+            if (changes is not null)
+            {
+                if (granted)
+                    await EntraRefusal.ClearAsync(db, user.Id, ct);
+                else
+                    fresh = await EntraRefusal.MarkAsync(db, user.Id, time.GetUtcNow(), ct);
+            }
+            if (changes?.Any == true || fresh)
+            {
+                await audit.WriteAsync(granted ? AuditActions.EntraRecheckRemapped : AuditActions.EntraRecheckRefused, EntraScheme.Actor, user.Id,
+                    fresh ? new { key, addedRoles = changes!.AddedRoles, removedRoles = changes.RemovedRoles, addedTeams = changes.AddedTeams,
+                        removedTeams = changes.RemovedTeams, effect = "sessions ended, sandbox tasks stopped" } : Details(key, changes!), ct);
+                if (changes!.RolesChanged || !granted)
+                    await sessions.EndAllAsync(user, ct);
+                lost = await RecordSupervisorAsync(user, granted ? mapping : NoGroups, changes, ct);
+                if (fresh)
+                    await revocation.MarkAsync(user.Id, ct);
+            }
+            await transaction.CommitAsync(ct);
+        }
+
+        var changed = changes?.Any == true || fresh;
+        if (changed)
+            logger.LogWarning("Account {UserId} ({Key}) {What} by the Entra group re-check: roles added {AddedRoles} removed {RemovedRoles}, teams added {AddedTeams} removed {RemovedTeams}{Sessions}",
+                userId, key, granted ? "re-mapped" : "refused (no mapped group)", changes!.AddedRoles, changes.RemovedRoles,
+                changes.AddedTeams, changes.RemovedTeams, changes.RolesChanged || !granted ? "; sessions ended" : "");
+        try
+        {
+            if (changes is not null)
+                await revocation.SettleAsync(userId, lost ? RecheckLost : fresh ? RecheckRefused : PrivilegeRevocation.Retried, EntraScheme.Actor, RecheckRetry);
+        }
+        catch (RevocationFailedException)
+        {
+            // Logged at Error by PrivilegeRevocation; the change is saved and the mark stays, so the next sweep retries.
+        }
+        return changed;
+    }
+
+    private static object Details(string key, EntraRoleChanges changes) => new
+    {
+        key, addedRoles = changes.AddedRoles, removedRoles = changes.RemovedRoles, addedTeams = changes.AddedTeams, removedTeams = changes.RemovedTeams
+    };
 
     /// <summary>
     /// Replaces the account's roles and team memberships with the mapping's. Null for the owner, whose roles and teams

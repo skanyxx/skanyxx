@@ -137,9 +137,19 @@ public sealed class FakeAx : AX.AXBase
         return task.Clone();
     }
 
+    /// <summary>DeleteTask refuses these (Unavailable), as a task whose deletion AX cannot carry out.</summary>
+    public HashSet<string> Undeletable { get; } = [];
+
+    /// <summary>DeleteTask answers NotFound for these: deleted by someone else between the caller's read and its delete.</summary>
+    public HashSet<string> GoneOnDelete { get; } = [];
+
     public override Task<DeleteTaskResponse> DeleteTask(DeleteTaskRequest request, ServerCallContext context)
     {
         Enter(request.Atespace);
+        if (Undeletable.Contains(request.Name))
+            throw new RpcException(new Status(StatusCode.Unavailable, SecretDetail));
+        if (GoneOnDelete.Contains(request.Name))
+            throw new RpcException(new Status(StatusCode.NotFound, "task not found"));
         var task = Existing(request.Name);
         Interlocked.Increment(ref DeleteCalls);
         task.Status.Phase = "Terminating";

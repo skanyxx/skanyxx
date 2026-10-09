@@ -14,8 +14,8 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
-        var byOther = await App.Client("bob").PostAsync($"/api/tickets/runs/{run.Id}/cancel", null);
-        var bySupervisor = await App.Client(TicketsApp.Supervisor).PostAsync($"/api/tickets/runs/{run.Id}/cancel", null);
+        var byOther = await App.Client("bob").PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
+        var bySupervisor = await App.Client(TicketsApp.Supervisor).PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, byOther.StatusCode);
         Assert.Equal(HttpStatusCode.OK, bySupervisor.StatusCode);
@@ -35,7 +35,7 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         Assert.Equal(expected, response.StatusCode);
         if (expected == HttpStatusCode.Forbidden)
         {
-            Assert.Contains("Only the person who started the run, or a supervisor, may decide its gate.", await response.Content.ReadAsStringAsync());
+            Assert.Contains("Only the person who started the run, or a supervisor, may decide its gate.", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             Assert.Equal(RunState.AwaitingHuman, (await App.GetRunAsync(run.Id)).State);
         }
     }
@@ -46,7 +46,7 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
-        await App.Client().PostAsync($"/api/tickets/runs/{run.Id}/cancel", null);
+        await App.Client().PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
         var cancelled = await App.GetRunAsync(run.Id);
 
         var gate = cancelled.StageRuns[^1];
@@ -127,7 +127,7 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         for (var i = 0; i < 5; i++)
             await App.WaitForAsync((await App.StartRunAsync(pipelineId: "parked")).Id, RunState.AwaitingHuman);
 
-        var sixth = await App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "parked" });
+        var sixth = await App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "parked" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, sixth.StatusCode);
     }
@@ -139,8 +139,8 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
-        var response = await App.Client().GetAsync($"/api/tickets/runs/{run.Id}/report");
-        var md = await response.Content.ReadAsStringAsync();
+        var response = await App.Client().GetAsync($"/api/tickets/runs/{run.Id}/report", TestContext.Current.CancellationToken);
+        var md = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("text/markdown; charset=utf-8", response.Content.Headers.ContentType!.ToString());
         Assert.StartsWith("# SDB-1: Refund button double-charges", md);

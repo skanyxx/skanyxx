@@ -643,49 +643,52 @@
                 })
                 .catch(function(error) {
                     console.error('Error loading connections:', error);
-                    document.getElementById('connectionsList').innerHTML = '<div class="loading-state">Failed to load connections</div>';
+                    document.getElementById('connectionsList').replaceChildren(el('div', 'loading-state', 'Failed to load connections'));
                 });
+        }
+
+        // Built with textContent only (no HTML parsing): connection names and URLs are stored data.
+        function el(tag, className, text) {
+            var node = document.createElement(tag);
+            if (className) node.className = className;
+            if (text !== undefined) node.textContent = text;
+            return node;
         }
 
         function renderConnections() {
             var container = document.getElementById('connectionsList');
+            container.replaceChildren();
             if (connections.length === 0) {
-                container.innerHTML = '<div class="loading-state">No connections configured. Add your first KAgent connection.</div>';
+                container.appendChild(el('div', 'loading-state', 'No connections configured. Add your first KAgent connection.'));
                 return;
             }
 
-            var html = '';
             connections.forEach(function(conn) {
-                html += '<div class="connection-card" data-id="' + conn.id + '">';
-                html += '<div class="connection-info">';
-                html += '<h4>' + conn.name + (conn.isDefault ? ' <span class="badge badge-info">Default</span>' : '') + '</h4>';
-                html += '<div class="connection-url">' + conn.protocol + '://' + conn.baseUrl + ':' + conn.port + '</div>';
-                html += '</div>';
-                html += '<div class="connection-actions">';
-                if (!conn.isDefault) {
-                    html += '<button class="btn btn-ghost btn-set-default" data-id="' + conn.id + '">Set Default</button>';
+                var card = el('div', 'connection-card');
+                var info = el('div', 'connection-info');
+                var title = el('h4', null, String(conn.name));
+                if (conn.isDefault) {
+                    title.appendChild(document.createTextNode(' '));
+                    title.appendChild(el('span', 'badge badge-info', 'Default'));
                 }
-                html += '<button class="btn btn-ghost btn-edit" data-id="' + conn.id + '">Edit</button>';
-                html += '<button class="btn btn-ghost text-error btn-delete" data-id="' + conn.id + '">Delete</button>';
-                html += '</div></div>';
-            });
-            container.innerHTML = html;
+                info.appendChild(title);
+                info.appendChild(el('div', 'connection-url', conn.protocol + '://' + conn.baseUrl + ':' + conn.port));
+                card.appendChild(info);
 
-            // Attach event listeners
-            container.querySelectorAll('.btn-set-default').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    setDefaultConnection(parseInt(this.getAttribute('data-id')));
-                });
-            });
-            container.querySelectorAll('.btn-edit').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    editConnection(parseInt(this.getAttribute('data-id')));
-                });
-            });
-            container.querySelectorAll('.btn-delete').forEach(function(btn) {
-                btn.addEventListener('click', function() {
-                    deleteConnection(parseInt(this.getAttribute('data-id')));
-                });
+                var actions = el('div', 'connection-actions');
+                if (!conn.isDefault) {
+                    var setDefault = el('button', 'btn btn-ghost', 'Set Default');
+                    setDefault.addEventListener('click', function() { setDefaultConnection(conn.id); });
+                    actions.appendChild(setDefault);
+                }
+                var edit = el('button', 'btn btn-ghost', 'Edit');
+                edit.addEventListener('click', function() { editConnection(conn.id); });
+                actions.appendChild(edit);
+                var remove = el('button', 'btn btn-ghost text-error', 'Delete');
+                remove.addEventListener('click', function() { deleteConnection(conn.id); });
+                actions.appendChild(remove);
+                card.appendChild(actions);
+                container.appendChild(card);
             });
         }
 
@@ -778,14 +781,15 @@
                 .then(function(response) { return response.json(); })
                 .then(function(info) {
                     console.log('System info loaded:', info);
-                    document.getElementById('systemInfo').innerHTML =
-                        '<div class="system-info-grid">' +
-                        '<div class="system-info-item"><div class="system-info-label">Platform</div><div class="system-info-value">' + info.platform + '</div></div>' +
-                        '<div class="system-info-item"><div class="system-info-label">Environment</div><div class="system-info-value">' + info.environment + '</div></div>' +
-                        '<div class="system-info-item"><div class="system-info-label">Memory Usage</div><div class="system-info-value">' + info.memoryUsage + '</div></div>' +
-                        '<div class="system-info-item"><div class="system-info-label">Version</div><div class="system-info-value">' + info.version + '</div></div>' +
-                        '<div class="system-info-item"><div class="system-info-label">Database</div><div class="system-info-value">' + info.database + '</div></div>' +
-                        '</div>';
+                    var grid = el('div', 'system-info-grid');
+                    [['Platform', info.platform], ['Environment', info.environment], ['Memory Usage', info.memoryUsage],
+                     ['Version', info.version], ['Database', info.database]].forEach(function(row) {
+                        var item = el('div', 'system-info-item');
+                        item.appendChild(el('div', 'system-info-label', row[0]));
+                        item.appendChild(el('div', 'system-info-value', String(row[1])));
+                        grid.appendChild(item);
+                    });
+                    document.getElementById('systemInfo').replaceChildren(grid);
                 })
                 .catch(function(error) {
                     console.error('Error loading system info:', error);

@@ -127,7 +127,7 @@
                     </svg>
                 </div>
                 <h3>Start a conversation</h3>
-                <p>Ask questions, get insights, or explore your infrastructure with AI assistance.</p>
+                <p>Ask how the company works: the agent searches company memory and cites the cards it used.</p>
             </div>
         </div>
 
@@ -856,36 +856,39 @@
         document.getElementById('securityWarning').style.display = 'none';
     }
 
+    // Merged agents only (D4), each namespace/name; ?agent=<namespace/name or name> picks one, else the seed, else the first.
     async function loadAgents() {
+        const select = document.getElementById('agentSelect');
+        const ref = a => `${a.namespace}/${a.name}`;
         try {
-            const response = await fetch('/api/agents');
-            if (!response.ok) throw new Error('Failed to load agents');
-
-            const agents = await response.json();
-            const select = document.getElementById('agentSelect');
-
+            const response = await fetch('/api/chat/agents');
+            const agents = response.ok ? await response.json() : [];
+            if (!response.ok) {
+                const problem = await response.json().catch(() => ({}));
+                throw new Error(problem.detail || `HTTP ${response.status}`);
+            }
             if (agents.length === 0) {
                 select.innerHTML = '<option value="">No agents available</option>';
                 return;
             }
 
-            select.innerHTML = agents.map(a =>
-                `<option value="${a.name}">${a.name}</option>`
-            ).join('');
-
-            selectedAgent = agents[0];
-            select.value = selectedAgent.name;
+            select.innerHTML = agents.map(a => `<option value="${escapeHtml(ref(a))}">${escapeHtml(ref(a))}</option>`).join('');
+            const wanted = new URLSearchParams(location.search).get('agent');
+            selectedAgent = agents.find(a => ref(a) === wanted) || agents.find(a => a.name === wanted)
+                || agents.find(a => a.name === 'seed') || agents[0];
+            select.value = ref(selectedAgent);
             updateAgentHeader();
+            newChat();
 
             select.addEventListener('change', function() {
-                selectedAgent = agents.find(a => a.name === this.value) || { name: this.value };
+                selectedAgent = agents.find(a => ref(a) === this.value);
                 updateAgentHeader();
                 newChat();
             });
         } catch (error) {
             console.error('Failed to load agents:', error);
-            document.getElementById('agentSelect').innerHTML = '<option value="k8s-agent">k8s-agent</option>';
-            selectedAgent = { name: 'k8s-agent' };
+            select.innerHTML = '<option value="">Agents unavailable</option>';
+            selectedAgent = null;
             updateAgentHeader();
         }
     }
@@ -935,8 +938,8 @@
                         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                     </svg>
                 </div>
-                <h3>New conversation with ${selectedAgent?.name || 'Agent'}</h3>
-                <p>Ask questions, get insights, or explore your infrastructure with AI assistance.</p>
+                <h3>New conversation with ${escapeHtml(selectedAgent?.name || 'Agent')}</h3>
+                <p>Ask how the company works: the agent searches company memory and cites the cards it used.</p>
             </div>
         `;
     }
@@ -1004,7 +1007,8 @@
                 body: JSON.stringify({
                     message: messageToSend, // Send masked message to API
                     conversationId: conversationId,
-                    agentName: selectedAgent?.name || 'k8s-agent'
+                    agentNamespace: selectedAgent?.namespace || '',
+                    agentName: selectedAgent?.name || ''
                 })
             });
 
@@ -1014,7 +1018,7 @@
 
             if (!response.ok) {
                 // Show detailed error message
-                const errorMessage = data.message || data.error || `HTTP ${response.status}: ${response.statusText}`;
+                const errorMessage = data.detail || (data.errors && Object.values(data.errors).flat().join(' ')) || `HTTP ${response.status}: ${response.statusText}`;
                 throw new Error(errorMessage);
             }
 

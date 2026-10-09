@@ -28,9 +28,9 @@ public sealed class InviteAccessTests(PostgresFixture postgres)
             SkanyxxRoles.Supervisor, SkanyxxRoles.Builder, SkanyxxRoles.Employee);
         var path = route.Replace("{member}", supervisorId);
 
-        var asSupervisor = await app.Client(bearer: supervisor.AccessToken).SendAsync(Request(method, path));
-        var anonymous = await app.Client().SendAsync(Request(method, path));
-        var people = await app.Client(bearer: owner).GetFromJsonAsync<System.Text.Json.JsonElement>("/api/identity/people");
+        var asSupervisor = await app.Client(bearer: supervisor.AccessToken).SendAsync(Request(method, path), TestContext.Current.CancellationToken);
+        var anonymous = await app.Client().SendAsync(Request(method, path), TestContext.Current.CancellationToken);
+        var people = await app.Client(bearer: owner).GetFromJsonAsync<System.Text.Json.JsonElement>("/api/identity/people", cancellationToken: TestContext.Current.CancellationToken);
         var target = people.EnumerateArray().Single(p => p.GetProperty("id").GetString() == supervisorId);
 
         Assert.Equal(HttpStatusCode.Forbidden, asSupervisor.StatusCode);
@@ -60,7 +60,7 @@ public sealed class InviteAccessTests(PostgresFixture postgres)
         var guess = await app.LookupInviteAsync("skx_inv_guess");   // invite 3
         var limited = await app.LookupInviteAsync("skx_inv_guess"); // invite 4: over
         var signIn = await app.SignInAsync();                        // sign-in 3: its window untouched
-        var list = await app.Client(bearer: owner).GetAsync("/api/identity/invites");
+        var list = await app.Client(bearer: owner).GetAsync("/api/identity/invites", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, lookup.StatusCode);
         Assert.Equal(HttpStatusCode.Created, accept.StatusCode);

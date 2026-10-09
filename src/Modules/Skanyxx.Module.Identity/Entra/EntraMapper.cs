@@ -20,7 +20,18 @@ internal sealed class EntraMapper(IGraphMembership graph)
         IReadOnlySet<string> groups = EntraClaims.IsOverage(principal)
             ? await graph.MemberOfAsync(config, Guid.Parse(principal.FindFirstValue(EntraClaims.ObjectId)!), [.. config.Groups.Keys], ct)
             : principal.FindAll(EntraClaims.Groups).Select(c => EntraClaims.NormalizeId(c.Value)).OfType<string>().ToHashSet();
+        return Map(kind, groups, config);
+    }
 
+    /// <summary>
+    /// D158: the mapping for a member by what Graph says now (no token, so no guest check: guests are refused at sign-in
+    /// and an account is only ever created or linked for a member).
+    /// </summary>
+    public async Task<EntraMapping> RecheckAsync(Guid objectId, EntraConfig config, CancellationToken ct) =>
+        Map(EntraAccountKind.Member, await graph.MemberOfAsync(config, objectId, [.. config.Groups.Keys], ct), config);
+
+    private static EntraMapping Map(EntraAccountKind kind, IReadOnlySet<string> groups, EntraConfig config)
+    {
         var rules = groups.Where(config.Groups.ContainsKey).Select(g => config.Groups[g]).ToList();
         return new EntraMapping(kind, rules.Count,
             [.. rules.SelectMany(r => r.Roles).Where(SkanyxxRoles.Grantable.Contains).Distinct().Order()],

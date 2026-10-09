@@ -1,6 +1,6 @@
 using ArchUnitNET.Domain;
 using ArchUnitNET.Loader;
-using ArchUnitNET.xUnit;
+using ArchUnitNET.xUnitV3;
 using FluentValidation;
 using MediatR;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;

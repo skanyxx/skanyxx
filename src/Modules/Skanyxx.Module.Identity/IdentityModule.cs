@@ -16,7 +16,11 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
+using Skanyxx.Core.Platform.Email;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
+using Skanyxx.Module.Identity.Email;
+using Skanyxx.Module.Identity.Passwords;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Data;
 using Skanyxx.Module.Identity.Entra;
@@ -52,6 +56,7 @@ public sealed class IdentityModule : IModule
                 "Identity:PublicBaseUrl must be empty or an absolute https:// URL written exactly (no spaces, backslashes, query, " +
                 "fragment or user info), e.g. https://skanyxx.example.com; http only for a loopback host such as http://localhost:5282.")
             .ValidateOnStart();
+        services.AddSingleton<IValidateOptions<IdentityModuleOptions>, SmtpOptionsValidation>();
 
         services.AddDbContext<AccountsDbContext>((sp, o) => o.UseNpgsql(
             sp.GetRequiredService<IOptions<IdentityModuleOptions>>().Value.ConnectionSettings().ConnectionString,
@@ -94,6 +99,7 @@ public sealed class IdentityModule : IModule
         services.AddHttpContextAccessor();
         services.AddSingleton<IAuthorizationHandler, OwnerRouteRefusals>();
         services.AddScoped<IOrgMembership, OrgMembershipReader>();
+        AddEmailAndAudit(services);
         AddEntraSignIn(services);
 
         services.AddHealthChecks().AddNpgSql(
@@ -109,6 +115,8 @@ public sealed class IdentityModule : IModule
 
         var options = serviceProvider.GetRequiredService<IOptions<IdentityModuleOptions>>().Value;
         var logger = serviceProvider.GetRequiredService<ILogger<IdentityModule>>();
+        if (options.Smtp.IsConfigured && options.PublicBaseUri is null)
+            logger.LogWarning("Identity:Smtp is set but Identity:PublicBaseUrl is not: no invite or password-reset link can be built, so nothing is emailed.");
         if (string.IsNullOrEmpty(options.DataProtectionCertificatePath))
             logger.LogWarning(
                 "The Data Protection key ring is stored unencrypted in the identity database; anyone who can read it can forge " +
@@ -120,6 +128,24 @@ public sealed class IdentityModule : IModule
                 "Identity:PublicBaseUrl is {PublicBaseUrl}, a loopback address, but Skanyxx listens beyond this machine: an invite link " +
                 "would send each invitee to their own machine. Set it to the address people use to reach Skanyxx.", publicBase);
         return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// SMTP (D150, a test replaces <see cref="IEmailSender"/>), the audit trail and its retention (D152, D155), and
+    /// password reset (D156): the self-service requests are answered at once and handled by a background worker.
+    /// </summary>
+    private static void AddEmailAndAudit(IServiceCollection services)
+    {
+        services.AddSingleton<IEmailSender, SmtpEmailSender>();
+        services.AddScoped<LinkMail>();
+        services.AddScoped<IdentityAudit>();
+        services.AddSingleton<AuditSampler>();
+        services.AddSingleton<IdentityRetention>();
+        services.AddHostedService(sp => sp.GetRequiredService<IdentityRetention>());
+        services.AddScoped<PasswordResets>();
+        services.AddSingleton<ResetRequestQueue>();
+        services.AddSingleton<ResetRequestWorker>();
+        services.AddHostedService(sp => sp.GetRequiredService<ResetRequestWorker>());
     }
 
     /// <summary>
@@ -235,6 +261,8 @@ public sealed class IdentityModule : IModule
         services.AddScoped<EntraPasswordRule>();
         services.AddScoped<PasswordStepUp>();
         services.AddScoped<ExternalLogins>();
+        services.AddSingleton<EntraRecheck>();
+        services.AddHostedService(sp => sp.GetRequiredService<EntraRecheck>());
     }
 
     private const string BearerPrefix = "Bearer ";

@@ -4,67 +4,24 @@ namespace Skanyxx.Core.Infrastructure;
 
 public static class HttpClientExtensions
 {
+    /// <summary>
+    /// One <see cref="KAgentApiClient"/> for the process, on a plain named client: no retry, no circuit breaker, no
+    /// client-wide timeout. Never add a retry policy here: A2A <c>message/send</c> and the ModelConfig writes are not
+    /// idempotent, so a replay would run a second LLM turn (and its memory writes) or a second save. Timeouts are per
+    /// call inside the client (<c>KAgent:ControlTimeoutSeconds</c>, <c>KAgent:ChatTimeoutSeconds</c>).
+    /// </summary>
     public static IServiceCollection AddKAgentHttpClient(this IServiceCollection services, IConfiguration configuration)
     {
-        var kagentSection = configuration.GetSection("KAgent");
-
-        // Build URL from config parts
-        var protocol = kagentSection["Protocol"] ?? "http";
-        var host = kagentSection["BaseUrl"] ?? "localhost";
-        var port = kagentSection["Port"] ?? "8083";
-        var ingressUrl = kagentSection["IngressUrl"];
-
-        // Use IngressUrl if set, otherwise build from parts
-        var baseUrl = !string.IsNullOrEmpty(ingressUrl)
-            ? ingressUrl
-            : $"{protocol}://{host}:{port}";
-
-        var timeout = int.TryParse(kagentSection["Timeout"], out var t) ? t : 30000;
-
-        services.AddTransient<PollyRateLimitingHandler>();
-
-        services.AddHttpClient<KAgentApiClient>(client =>
+        services.AddHttpClient(KAgentApiClient.HttpClientName, client =>
         {
-            client.BaseAddress = new Uri(baseUrl);
-            client.Timeout = TimeSpan.FromMilliseconds(timeout);
+            client.Timeout = Timeout.InfiniteTimeSpan;
             client.DefaultRequestHeaders.Add("Accept", "application/json");
             client.DefaultRequestHeaders.Add("User-Agent", "SkanyxxWeb/1.0");
-        })
-        .AddHttpMessageHandler<PollyRateLimitingHandler>()
-        .AddPolicyHandler(HttpClientPolicies.GetRetryPolicy())
-        .AddPolicyHandler(HttpClientPolicies.GetCircuitBreakerPolicy())
-        .SetHandlerLifetime(TimeSpan.FromMinutes(5));
-
+        });
+        services.AddSingleton(sp => new KAgentApiClient(
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(KAgentApiClient.HttpClientName),
+            configuration,
+            sp.GetRequiredService<ILogger<KAgentApiClient>>()));
         return services;
-    }
-
-    public static IHttpClientBuilder AddResilientHttpClient(
-        this IServiceCollection services,
-        string name,
-        Action<HttpClient> configureClient,
-        RateLimiterOptions? rateLimiterOptions = null)
-    {
-        var options = rateLimiterOptions ?? new RateLimiterOptions();
-
-        return services.AddHttpClient(name, configureClient)
-            .AddHttpMessageHandler(() => new PollyRateLimitingHandler(options.PermitLimit, options.Window))
-            .AddPolicyHandler(HttpClientPolicies.GetRetryPolicy())
-            .AddPolicyHandler(HttpClientPolicies.GetCircuitBreakerPolicy())
-            .SetHandlerLifetime(TimeSpan.FromMinutes(5));
-    }
-
-    public static IHttpClientBuilder AddResilientHttpClient<TClient>(
-        this IServiceCollection services,
-        Action<HttpClient> configureClient,
-        RateLimiterOptions? rateLimiterOptions = null)
-        where TClient : class
-    {
-        var options = rateLimiterOptions ?? new RateLimiterOptions();
-
-        return services.AddHttpClient<TClient>(configureClient)
-            .AddHttpMessageHandler(() => new PollyRateLimitingHandler(options.PermitLimit, options.Window))
-            .AddPolicyHandler(HttpClientPolicies.GetRetryPolicy())
-            .AddPolicyHandler(HttpClientPolicies.GetCircuitBreakerPolicy())
-            .SetHandlerLifetime(TimeSpan.FromMinutes(5));
     }
 }

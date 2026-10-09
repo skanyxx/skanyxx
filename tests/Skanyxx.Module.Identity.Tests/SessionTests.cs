@@ -17,8 +17,8 @@ public sealed class SessionTests(PostgresFixture postgres)
         await using var app = await StartAsync();
         var cookie = SetCookie.AuthHeader(await app.SignInAsync(useCookie: true));
 
-        var signOut = await app.Client(cookie: cookie).PostAsync("/api/identity/sign-out", null);
-        var replay = await app.Client(cookie: cookie).GetAsync("/api/identity/me");
+        var signOut = await app.Client(cookie: cookie).PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
+        var replay = await app.Client(cookie: cookie).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NoContent, signOut.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, replay.StatusCode);
@@ -31,8 +31,8 @@ public sealed class SessionTests(PostgresFixture postgres)
         var cookie = SetCookie.AuthHeader(await app.SignInAsync(useCookie: true));
         var tokens = await app.SignInBearerAsync();
 
-        await app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null);
-        var browser = await app.Client(cookie: cookie).GetAsync("/api/identity/me");
+        await app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
+        var browser = await app.Client(cookie: cookie).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, browser.StatusCode);
     }
@@ -51,7 +51,7 @@ public sealed class SessionTests(PostgresFixture postgres)
         var before = checks.Count;
 
         for (var i = 0; i < 3; i++)
-            Assert.Equal(HttpStatusCode.OK, (await app.Client(cookie: cookie).GetAsync("/api/identity/me")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await app.Client(cookie: cookie).GetAsync("/api/identity/me", TestContext.Current.CancellationToken)).StatusCode);
 
         Assert.Equal(before + 3, checks.Count);
     }
@@ -100,9 +100,9 @@ public sealed class SessionTests(PostgresFixture postgres)
         clock.Advance(TimeSpan.FromHours(23.5)); // 30 min left on the chain; a full access token would run 1 h
         var refreshed = await TokensAsync(await app.RefreshAsync(tokens.RefreshToken));
         clock.Advance(TimeSpan.FromMinutes(29));
-        var beforeCap = await app.Client(bearer: refreshed.AccessToken).GetAsync("/api/identity/me");
+        var beforeCap = await app.Client(bearer: refreshed.AccessToken).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
         clock.Advance(TimeSpan.FromMinutes(2));
-        var pastCap = await app.Client(bearer: refreshed.AccessToken).GetAsync("/api/identity/me");
+        var pastCap = await app.Client(bearer: refreshed.AccessToken).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.InRange(refreshed.ExpiresIn, 1, 30 * 60);
         Assert.Equal(HttpStatusCode.OK, beforeCap.StatusCode);
@@ -138,7 +138,7 @@ public sealed class SessionTests(PostgresFixture postgres)
         for (var hour = 7; hour <= 28; hour += 7)
         {
             clock.Advance(TimeSpan.FromHours(7));
-            var response = await app.Client(cookie: cookie).GetAsync("/api/identity/me");
+            var response = await app.Client(cookie: cookie).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
             statuses.Add(response.StatusCode);
             if (response.StatusCode == HttpStatusCode.OK && response.Headers.Contains("Set-Cookie"))
                 cookie = SetCookie.AuthHeader(response);

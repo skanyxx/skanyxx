@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Data;
 
 namespace Skanyxx.Module.Identity.Features.People;
@@ -15,10 +16,13 @@ namespace Skanyxx.Module.Identity.Features.People;
 /// revokes, after the commit, what the person issued as one (<see cref="PrivilegeRevocation"/>). Taking supervisor away
 /// also marks the revocation as owed in the same transaction (D13), so a failed publish is retried by the next save or
 /// Microsoft sign-in of the account without supervisor. A save that leaves supervisor on drops any owed revocation (D17).
+/// A real change is audited in the same transaction (D152). When the publish fails (a disabled or Entra-refused
+/// account's sandbox tasks with AX down) the roles stay saved and the <see cref="RevocationFailedException"/> says so
+/// and that saving again retries, as a disable does (D162).
 /// </summary>
 internal sealed class SetRolesHandler(
     AccountsDbContext db, UserManager<IdentityUser> users, SessionRevocation sessions, AccountReader accounts, PrivilegeRevocation revocation,
-    ClientAddress client, ILogger<SetRolesHandler> logger)
+    IdentityAudit audit, ClientAddress client, ILogger<SetRolesHandler> logger)
     : IRequestHandler<SetRolesCommand, Outcome<PersonDto>>
 {
     public const string OwnerFixed = "The owner's roles are fixed: the owner already has every permission a role grants.";
@@ -40,6 +44,7 @@ internal sealed class SetRolesHandler(
         {
             LockedAccount.Require(await users.RemoveFromRolesAsync(user, removed));
             LockedAccount.Require(await users.AddToRolesAsync(user, added));
+            await audit.WriteAsync(AuditActions.RolesChanged, command.ActorId, user.Id, new { added, removed }, ct);
             await sessions.EndAllAsync(user, ct);
         }
         var withoutSupervisor = !wanted.Contains(SkanyxxRoles.Supervisor);
@@ -52,8 +57,15 @@ internal sealed class SetRolesHandler(
         if (removed.Count > 0 || added.Count > 0)
             logger.LogWarning("Roles of {UserId} changed by {ActorUserId} from {RemoteIp}: added {Added}, removed {Removed}; sessions ended",
                 user.Id, command.ActorId, client.Current, added, removed);
-        await revocation.SettleAsync(user.Id, withoutSupervisor ? "roles saved without supervisor" : PrivilegeRevocation.Retried, command.ActorId,
-            PrivilegeRevocation.SaveAgain, always: withoutSupervisor);
+        try
+        {
+            await revocation.SettleAsync(user.Id, withoutSupervisor ? "roles saved without supervisor" : PrivilegeRevocation.Retried, command.ActorId,
+                PrivilegeRevocation.SaveAgain, always: withoutSupervisor);
+        }
+        catch (RevocationFailedException ex)
+        {
+            throw new RevocationFailedException($"Roles saved. {ex.Message.TrimEnd('.')} — save again to retry.", ex.InnerException);
+        }
         return Outcome<PersonDto>.Ok(await accounts.ToPersonAsync(user));
     }
 }

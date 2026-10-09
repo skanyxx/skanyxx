@@ -24,7 +24,7 @@ public sealed class MockIdentityProvider : IAsyncLifetime
 
     public string Origin => BaseUrl;
 
-    public Task InitializeAsync() => _container.StartAsync();
+    public async ValueTask InitializeAsync() => await _container.StartAsync();
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync() => _container.DisposeAsync();
 }

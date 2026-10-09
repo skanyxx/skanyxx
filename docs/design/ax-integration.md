@@ -62,29 +62,29 @@ Found by the survey; not caused by AX. Candidates for a later cleanup.
 - Ownership: creator stored in task env `SKANYXX_OWNER` only (v0.3.1 has no labels). Run/replace = creator; stop/suspend/resume = creator or supervisor.
 - Limits: `AllowedImages` (+ optional digest; `:` is a prefix boundary only when it starts a tag, never a registry port), `MaxCpu`/`MaxMemory`, global + per-user cap (re-runs count), watch caps. Condition messages not returned.
 - Cap check: every activating run counts + upserts under one atespace-wide lock (per replica), so distinct `X-User-Id`s cannot race past the global cap. The count pages the **whole atespace** each time (v0.3.1 `ListTasks` has no owner/label filter): O(tasks) per activation, activations serialised, bounded by `CountBudgetSeconds`, refused at 10k tasks. Paging stops only on an empty page (AX drops unparsable entries, so a short page is not the end). Still approximate: AX orders by last save, so concurrent saves can shift offsets.
-- Startup safety (implements the D072/D077 intent; D069–D077 stay **proposed**): the module is **off by default** (enable it explicitly), a non-empty `MemoryMcpUrl` is **refused at startup** (no longer only an operator rule), and a non-empty `AllowedImages` is refused unless `Sandboxes:NetworkIsolationConfirmed=true`. NetworkPolicy manifests: `deploy/sandboxes/` — still unverified on a Substrate sandbox runtime.
+- Startup safety (implements the D072/D077 intent; D069–D077 locked 2026-10-08): the module is **off by default** (enable it explicitly), a non-empty `MemoryMcpUrl` is **refused at startup** (no longer only an operator rule), and a non-empty `AllowedImages` is refused unless `Sandboxes:NetworkIsolationConfirmed=true`. NetworkPolicy manifests: `deploy/sandboxes/` — the deny policy verified on kind + gVisor in the WorkerPool's namespace (D178); micro-VM / GKE unverified.
 - AX has no auth → **Skanyxx is AX's only client**. NetworkPolicy: only the Skanyxx API pod reaches `ax-server:8080`. No browser/desktop client talks to AX directly.
 
-## 5. Proposed decisions (not in `decisions.md` yet)
+## 5. AX decisions (proposed 2026-09-25, **locked 2026-10-08** — the rows now live in `decisions.md`)
 
 | ID | Proposed decision | Why |
 |---|---|---|
-| D069 (proposed) | **Supersedes D067's default for the appliance.** AX + Substrate **off** in the appliance; on-by-flag for BYO clusters that meet Substrate prereqs. | No upstream chart; Substrate needs beta k8s APIs + sandbox runtime a hidden k3s VM may not have. |
-| D070 (proposed) | AX is **source of truth** for sandboxes. Skanyxx keeps **no run table** and builds **no second run engine**. Tickets may later *call* Sandboxes as a step. | Two run engines drift. Tickets already owns durability for kagent. |
-| D071 (proposed) | Code and routes say **Sandboxes**, never "Task". | "Task" already means kagent A2A tasks and is near Tickets runs. |
-| D072 (proposed) | ax-server is reachable **only** from the Skanyxx API (NetworkPolicy). Skanyxx enforces owner, cap, creator-or-supervisor stop. | AX has no auth (#376). |
-| D073 (proposed) | Memory attach is a **contract with the task image**: read workspace MCP entry + `SKANYXX_*` env, send headers. Default runner is not supported for memory. | AX has no MCP headers and does not materialize MCP config. |
-| D074 (proposed) | D068 holds **only after** a Dragonfly smoke test of AX (streams, MULTI, Pub/Sub). Until then, AX may use its own bundled Redis. | Compatibility inferred from code, not tested. |
-| D075 (proposed) | Pin AX to one version (**v0.3.1** proto). Upgrades are a deliberate bump, not a chart float. | API was replaced 6 days before we read it. |
-| D076 (proposed) | Memory identity for sandboxes comes from a **Skanyxx-signed per-task token** (HMAC in reserved env), not headers. On the sandbox-facing listener (D077) **every** request is identified only by that token; headers are ignored and a request without a valid token is rejected, whatever agent id it names. | A sandbox picks its own `X-Agent-Id` / `X-User-Id` today; a rule scoped to `ax-*` ids is bypassed by sending a non-`ax-` id. Threat model includes workspace writers (supervisors), whose git/MCP content runs under other owners' identities. |
-| D077 (proposed) | Sandbox egress is **default-deny** (internet = `0.0.0.0/0` minus cluster CIDRs, RFC1918, `169.254.0.0/16`). A **dedicated sandbox-facing listener** (own port/Service) serves `/mcp/memory` and nothing else (`RequireHost` on the MCP map + every other endpoint kept off that port); it is the only Skanyxx port sandboxes may reach. **Not implemented**: today `/mcp/memory` is on the main pipeline, so until then `MemoryMcpUrl` stays empty and sandboxes reach no Skanyxx port. | NetworkPolicy filters ports, not paths; a second port on today's pipeline would serve the whole API. |
+| D069 | **Supersedes D067's default for the appliance.** AX + Substrate **off** in the appliance; on-by-flag for BYO clusters that meet Substrate prereqs. | No upstream chart; Substrate needs beta k8s APIs + sandbox runtime a hidden k3s VM may not have. |
+| D070 | AX is **source of truth** for sandboxes. Skanyxx keeps **no run table** and builds **no second run engine**. Tickets may later *call* Sandboxes as a step. | Two run engines drift. Tickets already owns durability for kagent. |
+| D071 | Code and routes say **Sandboxes**, never "Task". | "Task" already means kagent A2A tasks and is near Tickets runs. |
+| D072 | ax-server is reachable **only** from the Skanyxx API (NetworkPolicy). Skanyxx enforces owner, cap, creator-or-supervisor stop. | AX has no auth (#376). |
+| D073 | Memory attach is a **contract with the task image**: read workspace MCP entry + `SKANYXX_*` env, send headers. Default runner is not supported for memory. | AX has no MCP headers and does not materialize MCP config. |
+| D074 | D068 holds **only after** a Dragonfly smoke test of AX (streams, MULTI, Pub/Sub). Until then, AX may use its own bundled Redis. | Compatibility inferred from code, not tested. |
+| D075 | Pin AX to one version (**v0.3.1** proto). Upgrades are a deliberate bump, not a chart float. | API was replaced 6 days before we read it. |
+| D076 | Memory identity for sandboxes comes from a **Skanyxx-signed per-task token** (HMAC in reserved env), not headers. On the sandbox-facing listener (D077) **every** request is identified only by that token; headers are ignored and a request without a valid token is rejected, whatever agent id it names. | A sandbox picks its own `X-Agent-Id` / `X-User-Id` today; a rule scoped to `ax-*` ids is bypassed by sending a non-`ax-` id. Threat model includes workspace writers (supervisors), whose git/MCP content runs under other owners' identities. |
+| D077 | Sandbox egress is **default-deny** (internet = `0.0.0.0/0` minus cluster CIDRs, RFC1918, `169.254.0.0/16`). A **dedicated sandbox-facing listener** (own port/Service) serves `/mcp/memory` and nothing else (`RequireHost` on the MCP map + every other endpoint kept off that port); it is the only Skanyxx port sandboxes may reach. **Not implemented**: today `/mcp/memory` is on the main pipeline, so until then `MemoryMcpUrl` stays empty and sandboxes reach no Skanyxx port. | NetworkPolicy filters ports, not paths; a second port on today's pipeline would serve the whole API. |
 
 ## 6. Open questions for the doc owner
 
-- Accept D069 (AX off in appliance) or keep D067 and own a Substrate chart?
+- ~~Accept D069 (AX off in appliance) or keep D067 and own a Substrate chart?~~ D069 locked 2026-10-08.
 - What counts as "done" for a sandbox? Agent upserts a card / calls back, or "done" is not a v1 concept?
-- Accept D076 + D077 (token-only sandbox listener) as the precondition for turning memory attach on?
-- Does a Kubernetes NetworkPolicy apply to Substrate sandboxes (gVisor/microVM) at all? **Unverified**; the egress rules depend on it.
+- ~~Accept D076 + D077 (token-only sandbox listener) as the precondition for turning memory attach on?~~ Locked 2026-10-08.
+- Does a Kubernetes NetworkPolicy apply to Substrate sandboxes (gVisor/microVM) at all? **gVisor on kind: yes, on the WorkerPool's namespace (D178, 2026-10-08).** Micro-VM / GKE: unverified.
 - Which task image do we ship that honors the memory contract (D073)? Ours, or customer-provided only?
 - Atespace per install, per team, or per user?
 - Do Tickets ever launch sandboxes in v1, or strictly later?

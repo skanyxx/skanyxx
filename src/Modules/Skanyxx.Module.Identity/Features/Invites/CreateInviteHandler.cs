@@ -6,17 +6,21 @@ using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Data;
+using Skanyxx.Module.Identity.Email;
 
 namespace Skanyxx.Module.Identity.Features.Invites;
 
 /// <summary>
 /// Under the email's account lock (the one sign-in and accept take), so an invite cannot race an accept for the same
-/// email or a second invite: an existing account is refused, the open invite for the email is revoked, a new one is written.
+/// email or a second invite: an existing account is refused, the open invite for the email is revoked, a new one is written,
+/// with its audit row in the same transaction. With SMTP configured the link is emailed to the invitee after the commit
+/// and not returned (D151); without it, or when sending fails, the owner gets the link once, as before.
 /// </summary>
 internal sealed class CreateInviteHandler(
     AccountsDbContext db, UserManager<IdentityUser> users, IOptions<IdentityModuleOptions> options, InviteLinks links,
-    ClientAddress client, TimeProvider time, ILogger<CreateInviteHandler> logger)
+    IdentityAudit audit, LinkMail mail, ClientAddress client, TimeProvider time, ILogger<CreateInviteHandler> logger)
     : IRequestHandler<CreateInviteCommand, Outcome<InviteIssued>>
 {
     public async Task<Outcome<InviteIssued>> Handle(CreateInviteCommand command, CancellationToken ct)
@@ -48,10 +52,18 @@ internal sealed class CreateInviteHandler(
         };
         db.Invites.Add(invite);
         await db.SaveChangesAsync(ct);
+        await audit.WriteAsync(AuditActions.InviteCreated, command.ActorId, invite.Id,
+            new { email = invite.Email, roles = invite.Roles, expiresUtc = invite.ExpiresUtc, olderRevoked = revoked }, ct);
         await transaction.CommitAsync(ct);
 
         logger.LogWarning("Invite {InviteId} created by {ActorUserId} from {RemoteIp} with roles {Roles}, expires {ExpiresUtc}; older invites revoked: {Revoked}",
             invite.Id, command.ActorId, client.Current, invite.Roles, invite.ExpiresUtc, revoked);
-        return Outcome<InviteIssued>.Created(new InviteIssued(invite.Id, links.For(token), invite.ExpiresUtc));
+        var link = links.For(token);
+        var emailed = await mail.InviteAsync(invite.Email, link, invite.Roles, invite.ExpiresUtc, ct);
+        if (mail.Enabled && !emailed)
+            await audit.WriteAsync(AuditActions.InviteLinkShown, command.ActorId, invite.Id, new { reason = "the email could not be sent" }, CancellationToken.None);
+        if (mail.Enabled)
+            logger.LogWarning("Invite {InviteId} {Delivery}", invite.Id, emailed ? "emailed to the invitee" : "not emailed: the link is shown to the owner instead");
+        return Outcome<InviteIssued>.Created(new InviteIssued(invite.Id, emailed ? null : link, invite.ExpiresUtc, emailed));
     }
 }

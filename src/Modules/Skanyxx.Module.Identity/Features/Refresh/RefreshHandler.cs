@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Entra;
 
 namespace Skanyxx.Module.Identity.Features.Refresh;
@@ -17,8 +18,8 @@ namespace Skanyxx.Module.Identity.Features.Refresh;
 /// honoured again once it is off.
 /// </summary>
 internal sealed class RefreshHandler(
-    SignInManager<IdentityUser> signIn, BearerTokens tokens, RefreshChains chains, EntraPasswordRule entra, ClientAddress client, TimeProvider time,
-    ILogger<RefreshHandler> logger)
+    SignInManager<IdentityUser> signIn, BearerTokens tokens, RefreshChains chains, EntraPasswordRule entra, IdentityAudit audit, ClientAddress client,
+    TimeProvider time, ILogger<RefreshHandler> logger)
     : IRequestHandler<RefreshCommand, Outcome<AccessTokenResponse>>
 {
     private const string Refused = "The refresh token is invalid or expired; sign in again.";
@@ -31,6 +32,7 @@ internal sealed class RefreshHandler(
         if (await entra.RefusesAsync(user, ct))
         {
             logger.LogWarning("Refresh of {UserId} from {RemoteIp} refused: the account signs in with Microsoft (D8)", user.Id, client.Current);
+            await audit.WriteAsync(AuditActions.ManagedRefreshRefused, user.Id, user.Id, null, ct);
             return Outcome<AccessTokenResponse>.Forbidden(EntraPasswordRule.Message);
         }
         if (await chains.AdvanceAsync(user.Id, presented, time.GetUtcNow(), ct) is not { } next)

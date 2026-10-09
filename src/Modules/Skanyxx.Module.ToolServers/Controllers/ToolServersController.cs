@@ -1,3 +1,5 @@
+using Skanyxx.Core.Platform;
+using Microsoft.AspNetCore.Authorization;
 using Skanyxx.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Skanyxx.Core.Models;
@@ -5,6 +7,7 @@ using Skanyxx.Core.Services;
 
 namespace Skanyxx.Module.ToolServers.Controllers;
 
+// D116: what changes kagent, the cluster or runs a process on the Host is the owner's alone, like D109.
 [ApiController]
 [Route("api/toolservers")]
 public class ToolServersController : ControllerBase
@@ -32,6 +35,7 @@ public class ToolServersController : ControllerBase
         return server;
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost]
     public async Task<ActionResult<ToolServer>> Create([FromBody] CreateToolServerRequest request)
     {
@@ -46,6 +50,7 @@ public class ToolServersController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpDelete("{namespace}/{name}")]
     public async Task<ActionResult> Delete(string @namespace, string name)
     {
@@ -79,6 +84,7 @@ public class ToolServersController : ControllerBase
         });
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("{id}/restart")]
     public async Task<ActionResult> Restart(string id)
     {
@@ -93,6 +99,7 @@ public class ToolServersController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("{id}/ping")]
     public async Task<ActionResult> Ping(string id)
     {
@@ -107,6 +114,7 @@ public class ToolServersController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("{serverId}/tools/{toolName}/invoke")]
     public async Task<ActionResult> InvokeTool(string serverId, string toolName, [FromBody] object parameters)
     {

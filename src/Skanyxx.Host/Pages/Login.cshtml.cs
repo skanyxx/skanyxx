@@ -42,9 +42,17 @@ public sealed class LoginModel(IMediator mediator) : PageModel
     /// <summary>"Sign in with Microsoft" is offered (D6: hidden while off).</summary>
     public bool MicrosoftSignIn { get; private set; }
 
+    /// <summary>"Forgot your password?" is offered: SMTP is configured (D156).</summary>
+    public bool PasswordResetByEmail { get; private set; }
+
+    /// <summary>Back from the reset page: the password was changed.</summary>
+    [BindProperty(SupportsGet = true)]
+    public bool Reset { get; set; }
+
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
     {
-        if (!(await mediator.Send(new IdentityStatusQuery(), ct)).Value!.Bootstrapped)
+        var status = (await mediator.Send(new IdentityStatusQuery(), ct)).Value!;
+        if (!status.Bootstrapped)
             return RedirectToPage("/Setup");
         if (User.Identity?.IsAuthenticated == true)
             return LocalRedirect(SafeReturnUrl);
@@ -96,7 +104,11 @@ public sealed class LoginModel(IMediator mediator) : PageModel
         return Page();
     }
 
-    private async Task LoadAsync(CancellationToken ct) => MicrosoftSignIn = (await mediator.Send(new EntraStatusQuery(), ct)).Value!.Enabled;
+    private async Task LoadAsync(CancellationToken ct)
+    {
+        MicrosoftSignIn = (await mediator.Send(new EntraStatusQuery(), ct)).Value!.Enabled;
+        PasswordResetByEmail = (await mediator.Send(new IdentityStatusQuery(), ct)).Value!.PasswordResetByEmail;
+    }
 
     // Only same-site paths: an absolute ReturnUrl would make this page an open redirect.
     private string SafeReturnUrl => Url.IsLocalUrl(ReturnUrl) ? ReturnUrl! : "/";

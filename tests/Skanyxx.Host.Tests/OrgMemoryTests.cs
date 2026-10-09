@@ -22,25 +22,25 @@ public sealed class OrgMemoryTests(PostgresFixture fixture)
         var (member, memberId) = await PersonAsync(host, owner, "mia@skanyxx.example", "employee");
         var (outsider, _) = await PersonAsync(host, owner, "otto@skanyxx.example", "employee");
         var (supervisor, _) = await PersonAsync(host, owner, "sam@skanyxx.example", "supervisor");
-        Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/identity/org/departments", new { slug = "finance", name = "Finance" })).StatusCode);
-        Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/identity/org/teams", new { slug = "billing", name = "Billing", department = "finance" })).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsync($"/api/identity/org/teams/billing/members/{memberId}", null)).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/identity/org/departments", new { slug = "finance", name = "Finance" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/identity/org/teams", new { slug = "billing", name = "Billing", department = "finance" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsync($"/api/identity/org/teams/billing/members/{memberId}", null, TestContext.Current.CancellationToken)).StatusCode);
 
         var write = await member.PutAsJsonAsync("/api/memory/cards/team:billing/refund-window",
-            new { version = 0, type = "decision", what = "Refunds within 14 days", why = "Finance policy" });
-        var outsiderRead = await outsider.GetAsync("/api/memory/cards/team:billing/refund-window");
-        var outsiderSearch = await outsider.GetFromJsonAsync<JsonElement>("/api/memory/cards?q=refunds");
-        var supervisorRead = await supervisor.GetAsync("/api/memory/cards/team:billing/refund-window");
+            new { version = 0, type = "decision", what = "Refunds within 14 days", why = "Finance policy" }, cancellationToken: TestContext.Current.CancellationToken);
+        var outsiderRead = await outsider.GetAsync("/api/memory/cards/team:billing/refund-window", TestContext.Current.CancellationToken);
+        var outsiderSearch = await outsider.GetFromJsonAsync<JsonElement>("/api/memory/cards?q=refunds", cancellationToken: TestContext.Current.CancellationToken);
+        var supervisorRead = await supervisor.GetAsync("/api/memory/cards/team:billing/refund-window", TestContext.Current.CancellationToken);
         var supervisorWrite = await supervisor.PutAsJsonAsync("/api/memory/cards/team:billing/other",
-            new { version = 0, type = "fact", what = "w", why = "y" });
-        var lift = await supervisor.PostAsJsonAsync("/api/memory/cards/team:billing/refund-window/lift", new { targetScope = "company" });
-        var memberBefore = await member.GetAsync("/api/memory/cards/team:billing/refund-window");
+            new { version = 0, type = "fact", what = "w", why = "y" }, cancellationToken: TestContext.Current.CancellationToken);
+        var lift = await supervisor.PostAsJsonAsync("/api/memory/cards/team:billing/refund-window/lift", new { targetScope = "company" }, cancellationToken: TestContext.Current.CancellationToken);
+        var memberBefore = await member.GetAsync("/api/memory/cards/team:billing/refund-window", TestContext.Current.CancellationToken);
 
-        var removed = await owner.DeleteAsync($"/api/identity/org/teams/billing/members/{memberId}");
-        var memberAfter = await member.GetAsync("/api/memory/cards/team:billing/refund-window");
+        var removed = await owner.DeleteAsync($"/api/identity/org/teams/billing/members/{memberId}", TestContext.Current.CancellationToken);
+        var memberAfter = await member.GetAsync("/api/memory/cards/team:billing/refund-window", TestContext.Current.CancellationToken);
         var memberWriteAfter = await member.PutAsJsonAsync("/api/memory/cards/team:billing/refund-window",
-            new { version = 1, type = "decision", what = "Changed", why = "y" });
-        var companyCopy = await member.GetAsync("/api/memory/cards/company/refund-window");
+            new { version = 1, type = "decision", what = "Changed", why = "y" }, cancellationToken: TestContext.Current.CancellationToken);
+        var companyCopy = await member.GetAsync("/api/memory/cards/company/refund-window", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Created, write.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, outsiderRead.StatusCode);
@@ -69,16 +69,16 @@ public sealed class OrgMemoryTests(PostgresFixture fixture)
         var (supervisor, _) = await PersonAsync(host, owner, "sam@skanyxx.example", "supervisor");
         await using (var connection = new NpgsqlConnection(database))
         {
-            await connection.OpenAsync();
+            await connection.OpenAsync(TestContext.Current.CancellationToken);
             await using var insert = new NpgsqlCommand("""
                 INSERT INTO memory_cards (scope, key, version, type, what, why, who, updated_at, status)
                 VALUES ('team:ghost', 'orphan-refunds', 1, 'decision', 'Refunds within 30 days', 'Old policy', 'legacy', now(), 'published')
                 """, connection);
-            await insert.ExecuteNonQueryAsync();
+            await insert.ExecuteNonQueryAsync(TestContext.Current.CancellationToken);
         }
 
-        var supervisorHits = await supervisor.GetFromJsonAsync<JsonElement>("/api/memory/cards?q=refunds");
-        var employeeHits = await employee.GetFromJsonAsync<JsonElement>("/api/memory/cards?q=refunds");
+        var supervisorHits = await supervisor.GetFromJsonAsync<JsonElement>("/api/memory/cards?q=refunds", cancellationToken: TestContext.Current.CancellationToken);
+        var employeeHits = await employee.GetFromJsonAsync<JsonElement>("/api/memory/cards?q=refunds", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(["team:ghost"], supervisorHits.EnumerateArray().Select(h => h.GetProperty("scope").GetString()));
         Assert.Equal(0, employeeHits.GetArrayLength());

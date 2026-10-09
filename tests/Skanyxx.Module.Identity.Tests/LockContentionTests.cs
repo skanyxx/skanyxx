@@ -30,9 +30,9 @@ public sealed class LockContentionTests(PostgresFixture postgres)
             for (var i = 0; i < 40 && !(Volatile.Read(ref measured) && hasher.OwnerChecks >= 5); i++)
                 responses.Add((await app.SignInAsync(password: $"wrong password {worker}.{i}")).StatusCode);
         }));
-        await Task.Delay(150);
+        await Task.Delay(150, TestContext.Current.CancellationToken);
         var timer = Stopwatch.StartNew();
-        var status = await app.Client().GetAsync("/api/identity/status");
+        var status = await app.Client().GetAsync("/api/identity/status", TestContext.Current.CancellationToken);
         timer.Stop();
         Volatile.Write(ref measured, true);
         await flood;

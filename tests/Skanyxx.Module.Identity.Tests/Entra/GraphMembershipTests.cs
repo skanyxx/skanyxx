@@ -55,7 +55,7 @@ public sealed class GraphMembershipTests
     {
         var handler = new AnswersEverything();
 
-        var member = await new GraphMembership(new HttpClient(handler), new EntraEndpoints())
+        var member = await new GraphMembership(new HttpClient(handler), new EntraEndpoints(), TimeProvider.System)
             .MemberOfAsync(Config(), Oid, ["00000000-0000-0000-0000-000000000001"], CancellationToken.None);
 
         Assert.Equal(["00000000-0000-0000-0000-000000000001"], member);
@@ -90,7 +90,7 @@ public sealed class GraphMembershipTests
         Assert.Empty(_handler.Requests);
     }
 
-    private GraphMembership Graph() => new(new HttpClient(_handler), new EntraEndpoints());
+    private GraphMembership Graph() => new(new HttpClient(_handler), new EntraEndpoints(), TimeProvider.System);
 
     private static EntraConfig Config() => new(true, Tenant, ClientId, "the-secret", new Dictionary<string, EntraGroupMapDto>(), 1);
 

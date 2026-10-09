@@ -1,14 +1,15 @@
 using FluentValidation;
+using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Features.Cards;
 
+/// <summary>Lift is a human action: the command carries a <see cref="LibraryUser"/>, so an agent cannot send one.</summary>
 internal sealed class LiftCardValidator : AbstractValidator<LiftCardCommand>
 {
     public LiftCardValidator()
     {
-        RuleFor(c => c.Caller).SetValidator(new CallerValidator());
-        RuleFor(c => c.Caller.AgentId).Null().WithName("agentId").WithMessage("Lift is a human action.");
+        RuleFor(c => c.User).NotNull().SetValidator(new LibraryUserValidator());
         RuleFor(c => c.FromScope).Must(s => Scope.TryParse(s, out _)).WithMessage("Invalid scope.");
         RuleFor(c => c.ToScope).Must(s => Scope.TryParse(s, out _)).WithMessage("Invalid target scope.");
         RuleFor(c => c.Key).Must(CardKey.IsValid).WithMessage("Invalid key.");

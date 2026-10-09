@@ -30,7 +30,7 @@ public sealed class EntraLoginRaceTests(PostgresFixture postgres) : IdentityTest
 
     private string _owner = null!;
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         Assert.Equal(HttpStatusCode.Created, (await App.BootstrapAsync()).StatusCode);
@@ -97,29 +97,29 @@ public sealed class EntraLoginRaceTests(PostgresFixture postgres) : IdentityTest
 
         Assert.Equal([SkanyxxRoles.Supervisor], await RolesOfAsync(member));
         await using var db = Postgres.CreateDbContext();
-        Assert.False(await db.PendingRevocations.AnyAsync(p => p.UserId == member));
+        Assert.False(await db.PendingRevocations.AnyAsync(p => p.UserId == member, cancellationToken: TestContext.Current.CancellationToken));
     }
 
     /// <summary>CR m2: while another check holds the account, a link's password step-up is refused as busy (429), unchecked and uncounted.</summary>
     [Fact]
     public async Task AStepUpFindingTheAccountBusy_Is429_UncheckedAndUncounted()
     {
-        Assert.Equal(HttpStatusCode.OK, (await App.Client(bearer: _owner).PutAsJsonAsync("/api/identity/entra/settings", EntraSettingsTests.Settings())).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await App.Client(bearer: _owner).PutAsJsonAsync("/api/identity/entra/settings", EntraSettingsTests.Settings(), cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
         var (_, member) = await App.AddMemberAsync(_owner, "dana@skanyxx.example");
         await using var holder = new NpgsqlConnection(Postgres.ConnectionString);
-        await holder.OpenAsync();
-        await using var transaction = await holder.BeginTransactionAsync();
+        await holder.OpenAsync(TestContext.Current.CancellationToken);
+        await using var transaction = await holder.BeginTransactionAsync(TestContext.Current.CancellationToken);
         await ExecuteAsync(holder, "SELECT pg_advisory_xact_lock(hashtextextended(@key, @seed))", await NormalizedEmailAsync(member), AccountLock.LockSeed);
 
         await using var scope = App.Services.CreateAsyncScope();
         var outcome = await scope.ServiceProvider.GetRequiredService<IMediator>()
-            .Send(new EntraChallengeQuery("/Account?handler=Linked", member, "a wrong password"));
-        await transaction.CommitAsync();
+            .Send(new EntraChallengeQuery("/Account?handler=Linked", member, "a wrong password"), TestContext.Current.CancellationToken);
+        await transaction.CommitAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(OutcomeStatus.RateLimited, outcome.Status);
         Assert.Equal(PasswordStepUp.Busy, outcome.Message);
         await using var db = Postgres.CreateDbContext();
-        Assert.Equal(0, await db.Users.Where(u => u.Id == member).Select(u => u.AccessFailedCount).SingleAsync());
+        Assert.Equal(0, await db.Users.Where(u => u.Id == member).Select(u => u.AccessFailedCount).SingleAsync(cancellationToken: TestContext.Current.CancellationToken));
     }
 
     /// <summary>

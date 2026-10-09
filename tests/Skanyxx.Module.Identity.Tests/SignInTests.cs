@@ -6,7 +6,7 @@ namespace Skanyxx.Module.Identity.Tests;
 
 public sealed class SignInTests(PostgresFixture postgres) : IdentityTestBase(postgres)
 {
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         Assert.Equal(HttpStatusCode.Created, (await App.BootstrapAsync()).StatusCode);
@@ -17,7 +17,7 @@ public sealed class SignInTests(PostgresFixture postgres) : IdentityTestBase(pos
     {
         var tokens = await App.SignInBearerAsync();
 
-        var me = await App.Client(bearer: tokens.AccessToken).GetFromJsonAsync<JsonElement>("/api/identity/me");
+        var me = await App.Client(bearer: tokens.AccessToken).GetFromJsonAsync<JsonElement>("/api/identity/me", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(3600, tokens.ExpiresIn);
         Assert.Equal(IdentityApp.OwnerEmail, me.GetProperty("email").GetString());
@@ -29,9 +29,9 @@ public sealed class SignInTests(PostgresFixture postgres) : IdentityTestBase(pos
     public async Task Bearer_CallerIsTheUser_AndOwnerIsSupervisor()
     {
         var tokens = await App.SignInBearerAsync();
-        var me = await App.Client(bearer: tokens.AccessToken).GetFromJsonAsync<JsonElement>("/api/identity/me");
+        var me = await App.Client(bearer: tokens.AccessToken).GetFromJsonAsync<JsonElement>("/api/identity/me", cancellationToken: TestContext.Current.CancellationToken);
 
-        var probe = await App.Client(bearer: tokens.AccessToken).GetFromJsonAsync<JsonElement>(IdentityApp.ProbePath);
+        var probe = await App.Client(bearer: tokens.AccessToken).GetFromJsonAsync<JsonElement>(IdentityApp.ProbePath, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(me.GetProperty("id").GetString(), probe.GetProperty("userId").GetString());
         Assert.True(probe.GetProperty("supervisor").GetBoolean());
@@ -43,7 +43,7 @@ public sealed class SignInTests(PostgresFixture postgres) : IdentityTestBase(pos
         var response = await App.SignInAsync(useCookie: true);
         var cookie = SetCookie.Auth(response);
 
-        var me = await App.Client(cookie: SetCookie.AuthHeader(response)).GetAsync("/api/identity/me");
+        var me = await App.Client(cookie: SetCookie.AuthHeader(response)).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.True(cookie.HttpOnly);
@@ -56,7 +56,7 @@ public sealed class SignInTests(PostgresFixture postgres) : IdentityTestBase(pos
     public async Task Cookie_SignIn_ReturnsNoTokens()
     {
         var response = await App.SignInAsync(useCookie: true);
-        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        using var body = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
 
         Assert.Equal(JsonValueKind.Null, body.RootElement.GetProperty("tokens").ValueKind);
     }
@@ -95,7 +95,7 @@ public sealed class SignInTests(PostgresFixture postgres) : IdentityTestBase(pos
         var signIn = await App.SignInAsync(useCookie: true);
         var client = App.Client(cookie: SetCookie.AuthHeader(signIn));
 
-        var signOut = await client.PostAsync("/api/identity/sign-out", null);
+        var signOut = await client.PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
         var cleared = SetCookie.Auth(signOut);
 
         Assert.Equal(HttpStatusCode.NoContent, signOut.StatusCode);
@@ -106,7 +106,7 @@ public sealed class SignInTests(PostgresFixture postgres) : IdentityTestBase(pos
     [Fact]
     public async Task SignOut_WithoutAuthentication_Is401()
     {
-        var response = await App.Client().PostAsync("/api/identity/sign-out", null);
+        var response = await App.Client().PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }

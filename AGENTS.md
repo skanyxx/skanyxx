@@ -29,12 +29,12 @@ If the human asks to **test or run only**, do not add, edit, or “clean up” p
 
 - Reverse a decision → **new D-row** with date and why. Do not silently edit history.
 - Community catalog is paused (D054). Do not build it.
-- Proposed AX D069–D077 live in `docs/design/ax-integration.md` until they are copied into `decisions.md`. Do not treat them as locked.
+- AX decisions D069–D077 are **locked** (2026-10-08, in `decisions.md`; design context in `docs/design/ax-integration.md`).
 
 ## Tests
 
 - `dotnet test Skanyxx.sln`. Memory/Identity/Tickets/Sandboxes tests need Docker (Testcontainers).
-- Windows: Host tests can fail disposing `skanyxx.db` when collections run in parallel — harness bug, not “delete tests”. ArchUnitNET may fail with Application Control (`0x800711C7`) — environment, not architecture.
+- Windows: each `HostApp` has its own temp content root (so its own `skanyxx.db`), and `TempContentRoot.Delete` clears the SQLite pool before deleting it (a pooled connection kept the file open, D174). A new host-starting helper uses `TempContentRoot`; never delete tests over a lock. ArchUnitNET may fail with Application Control (`0x800711C7`) — environment, not architecture.
 - Do not weaken security tests to make a slice green.
 
 ## Defaults that bite

@@ -1,0 +1,34 @@
+{{- /*
+Where each data store is — bundled or the customer's own (D061) — and which Secret holds its credential. Skanyxx does
+not read S3, git or Redis yet; the slices that do map these to their configuration. No credential values here.
+*/ -}}
+{{- $ns := .Release.Namespace -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "skanyxx.component" (dict "ctx" . "name" "stores") }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+data:
+  {{- if .Values.minio.enabled }}
+  objectStore.endpoint: {{ printf "http://%s.%s.svc:9000" (include "skanyxx.component" (dict "ctx" . "name" "minio")) $ns | quote }}
+  objectStore.secret: {{ include "skanyxx.minioSecret" . | quote }}
+  {{- else }}
+  objectStore.endpoint: {{ .Values.external.objectStore.endpoint | quote }}
+  objectStore.bucket: {{ .Values.external.objectStore.bucket | quote }}
+  objectStore.secret: {{ .Values.external.objectStore.existingSecret | quote }}
+  {{- end }}
+  {{- if .Values.gitea.enabled }}
+  git.url: {{ printf "http://%s.%s.svc:3000" (include "skanyxx.component" (dict "ctx" . "name" "gitea")) $ns | quote }}
+  git.secret: {{ include "skanyxx.giteaSecret" . | quote }}
+  {{- else }}
+  git.url: {{ .Values.external.git.url | quote }}
+  git.secret: {{ .Values.external.git.existingSecret | quote }}
+  {{- end }}
+  {{- if .Values.dragonfly.enabled }}
+  redis.address: {{ printf "dragonfly.%s.svc:6379" $ns | quote }}
+  redis.secret: {{ .Values.dragonfly.passwordFromSecret.existingSecret.name | quote }}
+  {{- else }}
+  redis.address: {{ .Values.external.redis.address | quote }}
+  redis.secret: {{ .Values.external.redis.existingSecret | quote }}
+  {{- end }}

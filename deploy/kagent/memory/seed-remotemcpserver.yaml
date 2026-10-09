@@ -12,7 +12,7 @@ metadata:
 spec:
   description: Skanyxx company memory, as the seed agent
   protocol: STREAMABLE_HTTP
-  url: http://skanyxx.skanyxx.svc:8080/mcp/memory
+  url: http://skanyxx.skanyxx.svc:8081/mcp/memory
   headersFrom:
     - name: Authorization
       valueFrom:

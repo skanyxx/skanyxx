@@ -15,7 +15,7 @@ namespace Skanyxx.Module.Memory.Tests;
 /// </summary>
 public sealed class OrgAgentTests(PostgresFixture postgres) : MemoryTestBase(postgres)
 {
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         App.Org.Join(Users.Ana, "billing", "finance");
@@ -29,9 +29,9 @@ public sealed class OrgAgentTests(PostgresFixture postgres) : MemoryTestBase(pos
         await App.Client(Users.Ana).PutCardAsync($"personal:{Users.Ana}", "ana-refund");
         await using var client = await App.McpAsync("seed", userId: Users.Ana);
 
-        var found = Text(await client.CallToolAsync("memory_search", Query("refund")));
-        var team = await client.CallToolAsync("memory_upsert", Upsert("agent-card", "team:billing"));
-        var department = await client.CallToolAsync("memory_upsert", Upsert("agent-card", "department:finance"));
+        var found = Text(await client.CallToolAsync("memory_search", Query("refund"), cancellationToken: TestContext.Current.CancellationToken));
+        var team = await client.CallToolAsync("memory_upsert", Upsert("agent-card", "team:billing"), cancellationToken: TestContext.Current.CancellationToken);
+        var department = await client.CallToolAsync("memory_upsert", Upsert("agent-card", "department:finance"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains("ana-refund", found);
         Assert.DoesNotContain("team-refund", found);
@@ -46,9 +46,9 @@ public sealed class OrgAgentTests(PostgresFixture postgres) : MemoryTestBase(pos
         await App.OwnerClient().SetGrantsAsync("billing-bot", new { scope = "team:billing", canSearch = true, canUpsert = true });
         await using var client = await App.McpWithSecretAsync(await App.IssueSecretAsync("billing-bot", byOwner: true));
 
-        var found = Text(await client.CallToolAsync("memory_search", Query("refund")));
-        var written = await client.CallToolAsync("memory_upsert", Upsert("agent-card", "team:billing"));
-        var department = await client.CallToolAsync("memory_upsert", Upsert("agent-card", "department:finance"));
+        var found = Text(await client.CallToolAsync("memory_search", Query("refund"), cancellationToken: TestContext.Current.CancellationToken));
+        var written = await client.CallToolAsync("memory_upsert", Upsert("agent-card", "team:billing"), cancellationToken: TestContext.Current.CancellationToken);
+        var department = await client.CallToolAsync("memory_upsert", Upsert("agent-card", "department:finance"), cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Contains("team-refund", found);
         Assert.DoesNotContain("department-refund", found);
@@ -63,7 +63,7 @@ public sealed class OrgAgentTests(PostgresFixture postgres) : MemoryTestBase(pos
         await using var scope = App.Services.CreateAsyncScope();
 
         var outcome = await scope.ServiceProvider.GetRequiredService<IMediator>().Send(new UpsertCardCommand(
-            new MemoryCaller(null, "blind"), "team:billing", "team-refund", 0, "fact", "w", "y"));
+            new MemoryCaller(null, "blind"), "team:billing", "team-refund", 0, "fact", "w", "y"), TestContext.Current.CancellationToken);
 
         Assert.Equal(OutcomeStatus.Conflict, outcome.Status);
         Assert.Null(outcome.Value);

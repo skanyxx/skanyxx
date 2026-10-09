@@ -16,6 +16,8 @@ internal sealed class GetCardHandler(MemoryDbContext db, AccessPolicy access) : 
 
         var card = await db.Cards.AsNoTracking()
             .SingleOrDefaultAsync(c => c.Scope == query.Scope && c.Key == query.Key, ct);
-        return card is null ? Outcome<Card>.NotFound($"No card '{query.Scope}/{query.Key}'.") : Outcome<Card>.Ok(card);
+        return card is null || !access.CanOpen(query.Caller, card)
+            ? Outcome<Card>.NotFound($"No card '{query.Scope}/{query.Key}'.")
+            : Outcome<Card>.Ok(card);
     }
 }

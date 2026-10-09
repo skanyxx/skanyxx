@@ -1,0 +1,99 @@
+{{- if .Values.minio.enabled }}
+{{- $name := include "skanyxx.component" (dict "ctx" . "name" "minio") }}
+{{- $sel := dict "ctx" . "name" "minio" }}
+{{- $secret := include "skanyxx.minioSecret" . }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  selector:
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: s3
+      port: 9000
+      targetPort: s3
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skanyxx.labels" . | nindent 8 }}
+        {{- include "skanyxx.selectorLabels" $sel | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: minio
+          image: {{ include "skanyxx.image" (dict "image" .Values.minio.image) | quote }}
+          imagePullPolicy: {{ .Values.minio.image.pullPolicy }}
+          # S3 only: the console listens on loopback and is not published.
+          args: [server, /data, --address, ":9000", --console-address, "127.0.0.1:9001", --certs-dir, /tmp/certs]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: HOME
+              value: /tmp
+            - name: MINIO_BROWSER
+              value: "off"
+            - name: MINIO_ROOT_USER
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: access-key}}
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: secret-key}}
+          ports:
+            - name: s3
+              containerPort: 9000
+          readinessProbe:
+            httpGet: {path: /minio/health/ready, port: s3}
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: {path: /minio/health/live, port: s3}
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.minio.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.minio.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.minio.storage }}
+{{- end }}

@@ -53,8 +53,13 @@ internal sealed class EntraOidcEvents(string tenantId, EntraRedirectUri redirect
     /// </summary>
     public override async Task RemoteFailure(RemoteFailureContext context)
     {
-        context.HttpContext.RequestServices.GetRequiredService<ILogger<EntraOidcEvents>>().LogWarning(
+        var services = context.HttpContext.RequestServices;
+        services.GetRequiredService<ILogger<EntraOidcEvents>>().LogWarning(
             "Microsoft sign-in callback refused from {RemoteIp}: {Reason}", context.HttpContext.Connection.RemoteIpAddress, context.Failure?.Message);
+        var reason = context.Failure?.Message ?? "unknown";
+        // Anyone can post a broken callback: sampled (D167), and not cancelled by the caller going away.
+        await services.GetRequiredService<Audit.IdentityAudit>().WriteSampledAsync(Audit.AuditActions.EntraCallbackRefused, "callback", null, null,
+            new { reason = reason.Length > 300 ? reason[..300] : reason }, CancellationToken.None);
         var properties = context.Properties ?? await StateOfAsync(context);
         context.Response.Redirect(properties?.RedirectUri ?? SignInCompletion);
         context.HandleResponse();

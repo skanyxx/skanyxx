@@ -13,7 +13,7 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
 {
     private string _owner = null!;
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         Assert.Equal(HttpStatusCode.Created, (await App.BootstrapAsync()).StatusCode);
@@ -25,7 +25,7 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
     {
         var (_, memberId) = await App.AddMemberAsync(_owner, IdentityApp.MemberEmail, SkanyxxRoles.Builder, SkanyxxRoles.Employee);
 
-        var people = await App.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/people");
+        var people = await App.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/people", cancellationToken: TestContext.Current.CancellationToken);
         var member = people.EnumerateArray().Single(p => p.GetProperty("id").GetString() == memberId);
         var owner = people.EnumerateArray().Single(p => p.GetProperty("id").GetString() != memberId);
 
@@ -43,7 +43,7 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
 
         var set = await SetRolesAsync(memberId, SkanyxxRoles.Supervisor, SkanyxxRoles.Employee);
         var fresh = await App.SignInBearerAsync(IdentityApp.MemberEmail, IdentityApp.MemberPassword);
-        var probe = await App.Client(bearer: fresh.AccessToken).GetFromJsonAsync<JsonElement>(IdentityApp.ProbePath);
+        var probe = await App.Client(bearer: fresh.AccessToken).GetFromJsonAsync<JsonElement>(IdentityApp.ProbePath, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, set.StatusCode);
         Assert.Equal(["employee", "supervisor"], probe.GetProperty("roles").EnumerateArray().Select(r => r.GetString()));
@@ -58,7 +58,7 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
         var (_, memberId) = await App.AddMemberAsync(_owner);
 
         var response = await SetRolesAsync(memberId, role);
-        var people = await App.Client(bearer: _owner).GetStringAsync("/api/identity/people");
+        var people = await App.Client(bearer: _owner).GetStringAsync("/api/identity/people", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(people, "\"owner\""));
@@ -72,12 +72,12 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
 
         var none = await SetRolesAsync(ownerId);
         var hats = await SetRolesAsync(ownerId, SkanyxxRoles.Builder);
-        var stillSignedIn = await App.Client(bearer: _owner).GetAsync(IdentityApp.ProbePath);
-        var people = await App.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/people");
+        var stillSignedIn = await App.Client(bearer: _owner).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
+        var people = await App.Client(bearer: _owner).GetFromJsonAsync<JsonElement>("/api/identity/people", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, none.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, hats.StatusCode);
-        Assert.Contains("The owner's roles are fixed", await hats.Content.ReadAsStringAsync());
+        Assert.Contains("The owner's roles are fixed", await hats.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.OK, stillSignedIn.StatusCode);
         Assert.Equal(["owner"], people[0].GetProperty("roles").EnumerateArray().Select(r => r.GetString()));
     }
@@ -90,11 +90,11 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
         await using (var db = Postgres.CreateDbContext())
         {
             db.UserClaims.Add(new IdentityUserClaim<string> { UserId = memberId, ClaimType = SkanyxxClaims.DisplayName, ClaimValue = "Second Name" });
-            await db.SaveChangesAsync();
+            await db.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var response = await App.Client(bearer: _owner).GetAsync("/api/identity/people");
-        var member = (await response.Content.ReadFromJsonAsync<JsonElement>()).EnumerateArray().Single(p => p.GetProperty("id").GetString() == memberId);
+        var response = await App.Client(bearer: _owner).GetAsync("/api/identity/people", TestContext.Current.CancellationToken);
+        var member = (await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).EnumerateArray().Single(p => p.GetProperty("id").GetString() == memberId);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("Bea Builder", member.GetProperty("displayName").GetString());
@@ -123,8 +123,8 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
 
         var mediator = scope.ServiceProvider.GetRequiredService<IMediator>();
         var outcome = disable
-            ? await mediator.Send(new SetDisabledCommand(ownerId, memberId, Disabled: true))
-            : await mediator.Send(new SetRolesCommand(ownerId, memberId, [SkanyxxRoles.Employee]));
+            ? await mediator.Send(new SetDisabledCommand(ownerId, memberId, Disabled: true), TestContext.Current.CancellationToken)
+            : await mediator.Send(new SetRolesCommand(ownerId, memberId, [SkanyxxRoles.Employee]), TestContext.Current.CancellationToken);
 
         Assert.Equal(OutcomeStatus.Ok, outcome.Status);
     }
@@ -136,7 +136,7 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
     {
         var ownerId = (await Postgres.OwnerAsync()).Id;
 
-        var response = await App.Client(bearer: _owner).PostAsync($"/api/identity/people/{ownerId}/{action}", null);
+        var response = await App.Client(bearer: _owner).PostAsync($"/api/identity/people/{ownerId}/{action}", null, TestContext.Current.CancellationToken);
         var signIn = await App.SignInAsync();
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
@@ -148,15 +148,15 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
     {
         var (_, memberId) = await App.AddMemberAsync(_owner);
 
-        var disable = await App.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null);
+        var disable = await App.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/disable", null, TestContext.Current.CancellationToken);
         var refused = await App.SignInAsync(IdentityApp.MemberEmail, IdentityApp.MemberPassword);
-        var enable = await App.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/enable", null);
+        var enable = await App.Client(bearer: _owner).PostAsync($"/api/identity/people/{memberId}/enable", null, TestContext.Current.CancellationToken);
         var allowed = await App.SignInAsync(IdentityApp.MemberEmail, IdentityApp.MemberPassword);
 
-        Assert.True((await disable.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("disabled").GetBoolean());
+        Assert.True((await disable.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("disabled").GetBoolean());
         Assert.Equal(HttpStatusCode.Unauthorized, refused.StatusCode);
-        Assert.Contains("Invalid email or password.", await refused.Content.ReadAsStringAsync());
-        Assert.False((await enable.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("disabled").GetBoolean());
+        Assert.Contains("Invalid email or password.", await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.False((await enable.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("disabled").GetBoolean());
         Assert.Equal(HttpStatusCode.OK, allowed.StatusCode);
     }
 
@@ -164,7 +164,7 @@ public sealed class PeopleTests(PostgresFixture postgres) : IdentityTestBase(pos
     public async Task UnknownPerson_Is404()
     {
         var roles = await SetRolesAsync(Guid.NewGuid().ToString(), SkanyxxRoles.Builder);
-        var disable = await App.Client(bearer: _owner).PostAsync($"/api/identity/people/{Guid.NewGuid()}/disable", null);
+        var disable = await App.Client(bearer: _owner).PostAsync($"/api/identity/people/{Guid.NewGuid()}/disable", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, roles.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, disable.StatusCode);

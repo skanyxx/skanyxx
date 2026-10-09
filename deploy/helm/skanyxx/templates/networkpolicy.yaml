@@ -1,0 +1,207 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $skanyxx := dict "ctx" . "name" "skanyxx" }}
+{{- $np := .Values.networkPolicy }}
+# D137: the namespace is default-deny. Every pod here (kagent's agent pods included, whatever the controller creates)
+# refuses all traffic and sends nothing but DNS, unless one of the policies below allows more (policies add up).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-default-deny
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+  egress:
+    - ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# Skanyxx: the UI/API port answers this namespace and, while the ingress is on, the ingress controller. Its egress
+# stays open: Jira, Entra, a BYO database or kagent may be anywhere.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "skanyxx.fullname" . }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" $skanyxx | nindent 6 }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+        {{- if .Values.ingress.enabled }}
+        {{- range $np.ingressNamespaces }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ . }}
+        {{- end }}
+        {{- end }}
+      ports:
+        - port: http
+    {{- if or .Values.kagent.enabled $np.mcpFrom }}
+    # /mcp/memory (agent secrets, memory content) has a port of its own (D138): the bundled kagent's controller (tool
+    # discovery) and agent pods, plus networkPolicy.mcpFrom (a BYO kagent's namespace, D147).
+    - from:
+        {{- if .Values.kagent.enabled }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kagent
+              app.kubernetes.io/component: controller
+        - podSelector:
+            matchLabels:
+              app: kagent
+            matchExpressions:
+              - {key: kagent, operator: Exists}
+        {{- end }}
+        {{- with $np.mcpFrom }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      ports:
+        - port: mcp
+    {{- end }}
+  egress:
+    - {}
+{{- if .Values.kagent.enabled }}
+---
+# kagent 0.10.2 authenticates nobody (D101): its controller API answers this namespace only. Its egress stays open:
+# it needs the Kubernetes API, whose address differs per cluster.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kagent-controller
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kagent
+      app.kubernetes.io/component: controller
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector: {}
+  egress:
+    - {}
+---
+# kagent's agent pods (labelled app=kagent, kagent=<agent> by its controller): A2A only from the controller (Chat goes
+# through it). Out (D148): kagent's controller, Skanyxx's mcp port (never its UI/API), DNS (default-deny), the model
+# provider, and networkPolicy.modelEgress.extra (a local model, a tool server you add).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kagent-agents
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: kagent
+    matchExpressions:
+      - {key: kagent, operator: Exists}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kagent
+              app.kubernetes.io/component: controller
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kagent
+              app.kubernetes.io/component: controller
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "skanyxx.selectorLabels" $skanyxx | nindent 14 }}
+      ports:
+        - port: mcp
+    {{- with $np.modelEgress.cidrs }}
+    # The model provider: these ranges minus every cluster/private range of the same family (clusterCidrs, D149).
+    - to:
+        {{- range . }}
+        {{- $v6 := contains ":" . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+            except:
+              {{- range $np.clusterCidrs }}
+              {{- if eq $v6 (contains ":" .) }}
+              - {{ . | quote }}
+              {{- end }}
+              {{- end }}
+        {{- end }}
+      ports:
+        {{- range $np.modelEgress.ports }}
+        - port: {{ . }}
+        {{- end }}
+    {{- end }}
+    {{- with $np.modelEgress.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+{{- end }}
+{{- range $store := list (dict "name" "postgres" "on" .Values.postgresql.enabled "port" "postgres" "kagent" true)
+                         (dict "name" "minio" "on" .Values.minio.enabled "port" "s3" "kagent" false)
+                         (dict "name" "gitea" "on" .Values.gitea.enabled "port" "http" "kagent" false) }}
+{{- if $store.on }}
+---
+# The {{ $store.name }} store answers Skanyxx{{ if $store.kagent }} and kagent's controller{{ end }} only; it sends nothing but DNS.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "skanyxx.component" (dict "ctx" $ "name" $store.name) }}
+  labels:
+    {{- include "skanyxx.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" (dict "ctx" $ "name" $store.name) | nindent 6 }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "skanyxx.selectorLabels" $skanyxx | nindent 14 }}
+        {{- if and $store.kagent $.Values.kagent.enabled }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kagent
+              app.kubernetes.io/component: controller
+        {{- end }}
+      ports:
+        - port: {{ $store.port }}
+{{- end }}
+{{- end }}
+{{- if .Values.dragonfly.enabled }}
+---
+# Dragonfly: Skanyxx (memory cache/locks later) and, when AX is on, AX's namespace (its Redis, D068).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: dragonfly
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: dragonfly
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "skanyxx.selectorLabels" $skanyxx | nindent 14 }}
+        {{- if .Values.ax.enabled }}
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.ax.namespace }}
+        {{- end }}
+      ports:
+        - port: 6379
+{{- end }}
+{{- end }}

@@ -28,7 +28,7 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : MemoryTestBa
         if (method != "GET")
             request.Content = JsonContent.Create(new { version = 0, type = "fact", what = "w", why = "y", targetScope = "company", grants = Array.Empty<object>() });
 
-        var response = await client.SendAsync(request);
+        var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         Assert.Equal(0, await Postgres.CardCountAsync());
@@ -81,8 +81,8 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : MemoryTestBa
         var upsert = await mcp.CallToolAsync("memory_upsert", new Dictionary<string, object?>
         {
             ["key"] = "k", ["type"] = "fact", ["what"] = "w", ["why"] = "y"
-        });
-        var rest = await App.Client().GetAsync("/api/memory/cards?q=w");
+        }, cancellationToken: TestContext.Current.CancellationToken);
+        var rest = await App.Client().GetAsync("/api/memory/cards?q=w", TestContext.Current.CancellationToken);
 
         Assert.NotEqual(true, upsert.IsError);
         Assert.Equal(1, await Postgres.CardCountAsync());

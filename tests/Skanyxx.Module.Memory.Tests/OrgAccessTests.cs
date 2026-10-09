@@ -15,7 +15,7 @@ public sealed class OrgAccessTests(PostgresFixture postgres) : MemoryTestBase(po
     private const string Team = "team:billing";
     private const string Department = "department:finance";
 
-    public override async Task InitializeAsync()
+    public override async ValueTask InitializeAsync()
     {
         await base.InitializeAsync();
         App.Org.Join("ana", "billing", "finance");
@@ -71,7 +71,7 @@ public sealed class OrgAccessTests(PostgresFixture postgres) : MemoryTestBase(po
         await App.Client("bob").PutCardAsync(Department, "refund-close");
         var overseer = App.Client(user, role);
 
-        var read = await overseer.GetAsync($"/api/memory/cards/{Team}/refund-window");
+        var read = await overseer.GetAsync($"/api/memory/cards/{Team}/refund-window", TestContext.Current.CancellationToken);
         var hits = await overseer.SearchAsync("refund");
         var writeTeam = await overseer.PutCardAsync(Team, "boss-card");
         var writeDepartment = await overseer.PutCardAsync(Department, "boss-card");
@@ -98,8 +98,8 @@ public sealed class OrgAccessTests(PostgresFixture postgres) : MemoryTestBase(po
         Assert.Equal(HttpStatusCode.Forbidden, (await GetAsync("ana", scope, "orphan-refund")).StatusCode);
         Assert.Empty(await App.Client("ana").SearchAsync("refund"));
         Assert.Equal(HttpStatusCode.Forbidden, (await App.Client("ana").PutCardAsync(scope, "x")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await App.SupervisorClient().GetAsync($"/api/memory/cards/{scope}/orphan-refund")).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await App.OwnerClient().GetAsync($"/api/memory/cards/{scope}/orphan-refund")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await App.SupervisorClient().GetAsync($"/api/memory/cards/{scope}/orphan-refund", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await App.OwnerClient().GetAsync($"/api/memory/cards/{scope}/orphan-refund", TestContext.Current.CancellationToken)).StatusCode);
         Assert.Equal(["orphan-refund"], (await App.SupervisorClient().SearchAsync("refund")).Select(h => h.Key));
     }
 

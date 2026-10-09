@@ -12,24 +12,37 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public string ConnectionString => _container.GetConnectionString();
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
         await using var db = CreateDbContext();
         await db.Database.MigrateAsync();
     }
 
-    public Task DisposeAsync() => _container.DisposeAsync().AsTask();
+    public ValueTask DisposeAsync() => _container.DisposeAsync();
 
     public AccountsDbContext CreateDbContext(string? connectionString = null) =>
         new(new DbContextOptionsBuilder<AccountsDbContext>()
             .UseNpgsql(connectionString ?? ConnectionString, o => o.MigrationsHistoryTable(AccountsDbContext.MigrationsTable)).Options);
 
-    /// <summary>Back to "not bootstrapped": every account, the org tree and the Microsoft sign-in settings go, the seeded roles and the key ring stay.</summary>
+    /// <summary>
+    /// Back to "not bootstrapped": every account (and its reset links), the org tree, the Microsoft sign-in settings, the
+    /// job runs and the audit go, the seeded roles and the key ring stay.
+    /// </summary>
     public async Task ResetAsync()
     {
         await using var db = CreateDbContext();
-        await db.Database.ExecuteSqlRawAsync("TRUNCATE identity_users, identity_invites, identity_org_departments, identity_entra_settings, identity_entra_groups CASCADE");
+        await db.Database.ExecuteSqlRawAsync(
+            "TRUNCATE identity_users, identity_invites, identity_org_departments, identity_entra_settings, identity_entra_groups, identity_job_runs CASCADE");
+        // identity_audit refuses TRUNCATE (D169); DELETE is what the retention job uses too.
+        await db.Database.ExecuteSqlRawAsync("DELETE FROM identity_audit");
+    }
+
+    /// <summary>The audit rows, oldest first.</summary>
+    public async Task<List<AuditEntry>> AuditAsync(string? action = null)
+    {
+        await using var db = CreateDbContext();
+        return await db.Audit.AsNoTracking().Where(a => action == null || a.Action == action).OrderBy(a => a.Id).ToListAsync();
     }
 
     /// <summary>A new empty database in the same server, for tests that must not disturb the shared one.</summary>

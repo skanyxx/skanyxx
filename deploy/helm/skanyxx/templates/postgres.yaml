@@ -1,0 +1,147 @@
+{{- if .Values.postgresql.enabled }}
+{{- $name := include "skanyxx.component" (dict "ctx" . "name" "postgres") }}
+{{- $sel := dict "ctx" . "name" "postgres" }}
+{{- $secret := include "skanyxx.postgresSecret" . }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-init
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+data:
+  # Runs once, on an empty data directory (docker-entrypoint-initdb.d). Passwords come from env; psql quotes them.
+  # Each role may connect to its own database only.
+  10-skanyxx.sh: |
+    #!/bin/sh
+    set -eu
+    psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d postgres \
+      -v app="$SKANYXX_PASSWORD" -v identity="$IDENTITY_PASSWORD" -v kagent="$KAGENT_PASSWORD" <<'SQL'
+    CREATE ROLE skanyxx LOGIN PASSWORD :'app';
+    CREATE ROLE skanyxx_identity LOGIN PASSWORD :'identity';
+    CREATE ROLE kagent LOGIN PASSWORD :'kagent';
+    CREATE DATABASE skanyxx OWNER skanyxx;
+    CREATE DATABASE skanyxx_identity OWNER skanyxx_identity;
+    CREATE DATABASE kagent OWNER kagent;
+    REVOKE CONNECT, TEMPORARY ON DATABASE skanyxx, skanyxx_identity, kagent FROM PUBLIC;
+    REVOKE CONNECT, TEMPORARY ON DATABASE postgres FROM PUBLIC;
+    GRANT CONNECT ON DATABASE skanyxx TO skanyxx;
+    GRANT CONNECT ON DATABASE skanyxx_identity TO skanyxx_identity;
+    GRANT CONNECT ON DATABASE kagent TO kagent;
+    SQL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  selector:
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  serviceName: {{ $name }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skanyxx.labels" . | nindent 8 }}
+        {{- include "skanyxx.selectorLabels" $sel | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 70
+        runAsGroup: 70
+        fsGroup: 70
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: {{ include "skanyxx.image" (dict "image" .Values.postgresql.image) | quote }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            - name: POSTGRES_USER
+              value: postgres
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: postgres-password}}
+            - name: SKANYXX_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: skanyxx-password}}
+            - name: IDENTITY_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: identity-password}}
+            - name: KAGENT_PASSWORD
+              valueFrom: {secretKeyRef: {name: {{ $secret }}, key: kagent-password}}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: [pg_isready, -U, postgres, -h, 127.0.0.1]
+            periodSeconds: 5
+          # Crash recovery of a large WAL can take minutes: the startup probe covers it (5 min), not the liveness one.
+          startupProbe:
+            exec:
+              command: [pg_isready, -U, postgres, -h, 127.0.0.1]
+            periodSeconds: 5
+            failureThreshold: 60
+          livenessProbe:
+            exec:
+              command: [pg_isready, -U, postgres, -h, 127.0.0.1]
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: init
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: init
+          configMap:
+            name: {{ $name }}-init
+            defaultMode: 0555
+        - name: run
+          emptyDir:
+            sizeLimit: 16Mi
+        - name: tmp
+          emptyDir:
+            sizeLimit: 256Mi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- with .Values.postgresql.storageClassName }}
+        storageClassName: {{ . }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgresql.storage }}
+{{- end }}

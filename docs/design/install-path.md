@@ -69,3 +69,32 @@ So the desktop app may include UI + a local process, but:
 Configure kagent URL **and** the Skanyxx/memory URL(s), like today — just don’t put the company bank in `%APPDATA%`.
 
 
+
+## As built (slice 4, 2026-10-06)
+
+The bring-your-cluster path exists: **`deploy/helm/skanyxx`**, one Helm umbrella (README "Install with Helm";
+D130–D146). Shown on kind (install → `/health` → owner → `/Model` → seed → upgrade unchanged → uninstall).
+
+| In the chart | How | Off / their own (D061) |
+|---|---|---|
+| Skanyxx API + UI | `Dockerfile` image (Host + every module, non-root, read-only fs), env-only config | — |
+| kagent 0.10.2 (+ CRDs) | official OCI chart as a dependency; samples off, UI 0 replicas; **no `default-model-config`** — the owner's `/Model` creates it (D131) | `kagent.enabled=false` + `skanyxx.kagent.url` |
+| Postgres | own StatefulSet, roles/databases `skanyxx_identity`, `skanyxx`, `kagent` | `postgresql.enabled=false` + a connection-strings Secret |
+| MinIO | own StatefulSet, image `pgsty/minio` (MinIO's own images are gone, D132) | `minio.enabled=false` + `external.objectStore` |
+| Git | own Gitea StatefulSet (SQLite volume, admin from a Secret) | `gitea.enabled=false` + `external.git` |
+| Dragonfly (one) | official OCI chart, in-memory, password from a Secret | `dragonfly.enabled=false` + `external.redis` |
+| AX | **not installed**: `ax.enabled` (default false) points the sandboxes module at an AX you run (D134) | — |
+
+- Default one-click is as designed above: all URLs in-cluster, people see only the Skanyxx URL (Ingress allow-list
+  on the UI/API port; `/mcp/memory` served only on its own port 8081 that no Ingress targets; a default-deny namespace
+  — D133, D137, D138).
+- **With the bundled kagent: one install per cluster** (kagent's CRDs are cluster-wide and owned by the release; its
+  RBAC is namespaced, D136). Several customers on one cluster = `kagent.enabled=false` + a shared or per-namespace
+  kagent of their own.
+- Generated credentials survive `helm uninstall` with the PVCs; GitOps installs name every Secret (`existingSecret`,
+  D139).
+- **Skanyxx in the cluster is the source of truth** for users, org, grants and cards (they are in the chart's
+  Postgres). The Host is unchanged: run elsewhere (desktop, `dotnet run`) it is a console with its own database
+  unless pointed at the cluster's (D134). A real thin client is later work.
+- **Appliance: not built.** Hidden k3s + this chart waits on D069 (AX off in the appliance) being locked.
+- The seed is a post-bootstrap step (`scripts/helm/seed-agent.sh`), not a release object (D131).

@@ -1,0 +1,13 @@
+# Allow-list: the image is built from global.json and src/ only.
+*
+!global.json
+!src/
+**/bin/
+**/obj/
+src/Skanyxx.Host/modules/
+src/Skanyxx.Host/appsettings*.json
+src/Skanyxx.Host/*.db*
+**/*.user
+**/*.pfx
+**/secrets.json
+**/.env

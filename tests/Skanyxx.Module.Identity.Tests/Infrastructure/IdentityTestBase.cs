@@ -6,11 +6,11 @@ public abstract class IdentityTestBase(PostgresFixture postgres) : IAsyncLifetim
     protected PostgresFixture Postgres { get; } = postgres;
     protected IdentityApp App { get; private set; } = null!;
 
-    public virtual async Task InitializeAsync()
+    public virtual async ValueTask InitializeAsync()
     {
         await Postgres.ResetAsync();
         App = await IdentityApp.StartAsync(Postgres.ConnectionString);
     }
 
-    public async Task DisposeAsync() => await App.DisposeAsync();
+    public async ValueTask DisposeAsync() => await App.DisposeAsync();
 }

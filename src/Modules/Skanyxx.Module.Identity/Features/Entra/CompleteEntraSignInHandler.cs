@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Accounts;
+using Skanyxx.Module.Identity.Audit;
 using Skanyxx.Module.Identity.Entra;
 
 namespace Skanyxx.Module.Identity.Features.Entra;
@@ -17,7 +18,7 @@ namespace Skanyxx.Module.Identity.Features.Entra;
 /// </summary>
 internal sealed class CompleteEntraSignInHandler(
     ExternalLogins logins, EntraSettingsCache cache, EntraMapper mapper, EntraAccounts accounts, UserManager<IdentityUser> users,
-    SessionIssuer sessions, ClientAddress client, ILogger<CompleteEntraSignInHandler> logger)
+    SessionIssuer sessions, IdentityAudit audit, ClientAddress client, ILogger<CompleteEntraSignInHandler> logger)
     : IRequestHandler<CompleteEntraSignInCommand, Outcome<SignedIn>>
 {
     public async Task<Outcome<SignedIn>> Handle(CompleteEntraSignInCommand command, CancellationToken ct)
@@ -37,6 +38,7 @@ internal sealed class CompleteEntraSignInHandler(
         {
             logger.LogWarning("Microsoft sign-in {Key} from {RemoteIp} refused: it is linked to the owner, who signs in with a password only",
                 info.ProviderKey, client.Current);
+            await audit.WriteAsync(AuditActions.EntraSignInRefused, null, existing.Id, new { key = info.ProviderKey, reason = "linked to the owner" }, ct);
             return Outcome<SignedIn>.Forbidden(EntraAccounts.OwnerStaysLocal);
         }
         if (!mapping.GrantsAccess)
@@ -44,7 +46,10 @@ internal sealed class CompleteEntraSignInHandler(
             if (existing is not null)
                 await accounts.RefuseAsync(existing.Id, info.ProviderKey, mapping.RefusalReason, ct);
             else
+            {
                 logger.LogWarning("Microsoft sign-in {Key} from {RemoteIp} refused: {Reason}", info.ProviderKey, client.Current, mapping.RefusalReason);
+                await audit.WriteAsync(AuditActions.EntraSignInRefused, null, null, new { key = info.ProviderKey, reason = mapping.RefusalReason }, ct);
+            }
             return Outcome<SignedIn>.Forbidden(EntraSignInMessages.NoAccess);
         }
 

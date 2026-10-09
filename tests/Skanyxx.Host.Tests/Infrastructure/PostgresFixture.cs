@@ -12,7 +12,7 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public HostApp Host { get; private set; } = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await _container.StartAsync();
         Host = await HostApp.StartAsync(ConnectionString);
@@ -43,7 +43,7 @@ public sealed class PostgresFixture : IAsyncLifetime
         }
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         await Host.DisposeAsync();
         await _container.DisposeAsync();

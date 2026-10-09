@@ -151,12 +151,18 @@ public sealed class IdentityApp : IAsyncDisposable
     public Task<HttpResponseMessage> CreateInviteAsync(string ownerBearer, string email, params string[] roles) =>
         Client(bearer: ownerBearer).PostAsJsonAsync("/api/identity/invites", new { email, roles });
 
-    /// <summary>Creates an invite and returns its token (from the link, the only place it appears).</summary>
+    /// <summary>
+    /// Creates an invite and returns its token: from the link, or — when a <see cref="FakeEmailSender"/> is configured and
+    /// the invite was emailed instead (D151) — from that email.
+    /// </summary>
     public async Task<string> InviteAsync(string ownerBearer, string email = MemberEmail, params string[] roles)
     {
         var response = await CreateInviteAsync(ownerBearer, email, roles.Length == 0 ? [SkanyxxRoles.Builder] : roles);
         Assert.Equal(HttpStatusCode.Created, response.StatusCode);
-        return TokenOf((await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("link").GetString()!);
+        var link = (await response.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("link").GetString();
+        return link is not null
+            ? TokenOf(link)
+            : FakeEmailSender.TokenIn(await ((FakeEmailSender)Services.GetRequiredService<Skanyxx.Core.Platform.Email.IEmailSender>()).NextAsync(FakeEmailSender.Invite));
     }
 
     public static string TokenOf(string link) => Uri.UnescapeDataString(new Uri(link).Query.Split("token=")[1]);

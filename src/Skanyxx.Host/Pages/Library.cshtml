@@ -1,0 +1,130 @@
+@page
+@model LibraryModel
+@using Skanyxx.Core.Platform.Memory
+@{
+    ViewData["Title"] = "Library";
+}
+@if (Model.Error is not null)
+{
+    <p class="text-error" role="alert">@Model.Error</p>
+}
+@if (Model.Message is not null)
+{
+    <p class="text-success" role="status">@Model.Message</p>
+}
+<p class="text-muted">
+    Company knowledge as cards: what was decided and why. You see published <code>company</code> cards, your personal
+    cards and your teams' and departments' cards. Lifting copies a card up a level; the original stays.
+</p>
+
+<div class="card mb-3">
+    <form method="get" class="flex gap-2 items-center" role="search">
+        <input name="q" value="@Model.Q" placeholder="Search, e.g. refund window" maxlength="@CardFormat.MaxQueryLength" aria-label="Search" autocomplete="off" />
+        <select name="filter" aria-label="Scope">
+            <option value="">All scopes I can read</option>
+            @foreach (var scope in Model.Shelf.Scopes)
+            {
+                <option value="@scope" selected="@(scope == Model.Filter)">@Model.ScopeLabel(scope)</option>
+            }
+        </select>
+        <button type="submit" class="btn btn-primary">Search</button>
+    </form>
+</div>
+
+@if (Model.Opened is { } opened)
+{
+    var card = opened.Card;
+    <div class="card mb-3" id="card">
+        <div class="card-header">
+            <h3 class="card-title">@card.What</h3>
+            <span class="text-muted">@Model.ScopeLabel(card.Scope) / <code>@card.Key</code> · v@(card.Version)</span>
+        </div>
+        <p>
+            <span class="badge badge-info">@card.Type</span>
+            @if (card.Status != "published")
+            {
+                <span class="badge badge-warning">@card.Status</span>
+            }
+        </p>
+        <p><strong>Why:</strong> @card.Why</p>
+        <p class="text-muted">By @Model.WhoLabel(card.Who), updated @card.UpdatedAt.ToString("u")</p>
+        @if (opened.LiftedFrom is not null)
+        {
+            <p class="text-muted">Lifted from <code>@opened.LiftedFrom</code></p>
+        }
+        else if (card.LiftedFromId is not null)
+        {
+            <p class="text-muted">Lifted from a card you cannot open.</p>
+        }
+        @if (card.Body is not null)
+        {
+            <h4>Body</h4>
+            <pre class="card-body">@card.Body</pre>
+        }
+        @if (card.Source is not null)
+        {
+            <p><strong>Source:</strong> <code>@card.Source</code></p>
+        }
+
+        @if (opened.LiftTargets.Count > 0)
+        {
+            <div class="flex gap-2 items-center">
+                <span>Lift a copy to:</span>
+                @foreach (var target in opened.LiftTargets)
+                {
+                    <form method="post" asp-page-handler="Lift" asp-route-scope="@card.Scope" asp-route-key="@card.Key"
+                          asp-route-q="@Model.Q" asp-route-filter="@Model.Filter">
+                        <input type="hidden" name="target" value="@target" />
+                        <button type="submit" class="btn btn-secondary" data-lift="@target">@Model.ScopeLabel(target)</button>
+                    </form>
+                }
+            </div>
+        }
+        @if (opened.CanRename)
+        {
+            <form method="post" asp-page-handler="Rename" asp-route-scope="@card.Scope" asp-route-key="@card.Key"
+                  asp-route-q="@Model.Q" asp-route-filter="@Model.Filter" class="flex gap-2 items-center">
+                <input type="hidden" name="version" value="@card.Version" />
+                <input name="newKey" value="@card.Key" required maxlength="@CardFormat.MaxKeyLength" pattern="@CardFormat.KeyPattern" aria-label="New key" autocomplete="off" />
+                <button type="submit" class="btn btn-ghost" data-rename="@card.Key">Rename key</button>
+            </form>
+        }
+    </div>
+}
+
+<div class="table-container card mb-3">
+    <table>
+        <thead>
+            <tr><th>What</th><th>Why</th><th>Key</th><th>Scope</th><th>Type</th><th>Who</th><th>Updated</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var entry in Model.Shelf.Cards)
+            {
+                <tr>
+                    <td><a asp-page="/Library" asp-route-scope="@entry.Scope" asp-route-key="@entry.Key"
+                           asp-route-q="@Model.Q" asp-route-filter="@Model.Filter" asp-fragment="card">@entry.What</a></td>
+                    <td>@entry.Why</td>
+                    <td><code>@entry.Key</code></td>
+                    <td>@Model.ScopeLabel(entry.Scope)</td>
+                    <td>
+                        @entry.Type
+                        @if (entry.Status != "published")
+                        {
+                            <span class="badge badge-warning">@entry.Status</span>
+                        }
+                    </td>
+                    <td>@Model.WhoLabel(entry.Who)</td>
+                    <td>@entry.UpdatedAt.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+    @if (Model.Shelf.Cards.Count == 0)
+    {
+        <p class="text-muted">No cards found.</p>
+    }
+    else if (Model.Shelf.Cards.Count == LibraryShelf.Limit)
+    {
+        <p class="text-muted">Showing the first @LibraryShelf.Limit; narrow the search to see others.</p>
+    }
+</div>

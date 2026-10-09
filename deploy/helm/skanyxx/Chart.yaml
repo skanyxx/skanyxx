@@ -1,0 +1,22 @@
+apiVersion: v2
+name: skanyxx
+description: >-
+  Skanyxx umbrella (D060): the Skanyxx API/UI, kagent, and the bundled data plane — Postgres, MinIO, Gitea and one
+  Dragonfly (D061, D068). Each bundled piece can be turned off and pointed at the customer's own.
+type: application
+version: 0.1.0
+appVersion: "dev"
+dependencies:
+  # kagent's CRDs are templates of their own chart (not crds/), so the umbrella installs and upgrades them.
+  - name: kagent-crds
+    version: 0.10.2
+    repository: oci://ghcr.io/kagent-dev/kagent/helm
+    condition: kagent.enabled
+  - name: kagent
+    version: 0.10.2
+    repository: oci://ghcr.io/kagent-dev/kagent/helm
+    condition: kagent.enabled
+  - name: dragonfly
+    version: v2.0.0
+    repository: oci://ghcr.io/dragonflydb/dragonfly/helm
+    condition: dragonfly.enabled

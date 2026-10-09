@@ -17,7 +17,7 @@ namespace Skanyxx.Module.Identity.Data.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.11")
+                .HasAnnotation("ProductVersion", "10.0.12")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -268,6 +268,50 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                     b.ToTable("identity_user_tokens", (string)null);
                 });
 
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.AuditEntry", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ActorId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("AtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("RemoteIp")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("TargetId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorId");
+
+                    b.HasIndex("AtUtc");
+
+                    b.HasIndex("TargetId");
+
+                    b.HasIndex("Action", "Id");
+
+                    b.ToTable("identity_audit", (string)null);
+                });
+
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.EntraGroupMap", b =>
                 {
                     b.Property<string>("GroupId")
@@ -278,11 +322,11 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<string[]>("Roles")
+                    b.PrimitiveCollection<string[]>("Roles")
                         .IsRequired()
                         .HasColumnType("text[]");
 
-                    b.Property<string[]>("Teams")
+                    b.PrimitiveCollection<string[]>("Teams")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -368,7 +412,7 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                     b.Property<DateTimeOffset?>("RevokedUtc")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<string[]>("Roles")
+                    b.PrimitiveCollection<string[]>("Roles")
                         .IsRequired()
                         .HasColumnType("text[]");
 
@@ -378,6 +422,8 @@ namespace Skanyxx.Module.Identity.Data.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("AcceptedUserId");
+
                     b.HasIndex("NormalizedEmail")
                         .IsUnique()
                         .HasFilter("\"AcceptedUtc\" IS NULL AND \"RevokedUtc\" IS NULL");
@@ -386,6 +432,20 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("identity_invites", (string)null);
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.JobRun", b =>
+                {
+                    b.Property<string>("Name")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("LastRunUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Name");
+
+                    b.ToTable("identity_job_runs", (string)null);
                 });
 
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.OrgDepartment", b =>
@@ -469,6 +529,48 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("identity_org_team_members", (string)null);
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.PasswordReset", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasMaxLength(36)
+                        .HasColumnType("character varying(36)");
+
+                    b.Property<string>("CreatedBy")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("ExpiresUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("RevokedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<DateTimeOffset?>("UsedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("\"UsedUtc\" IS NULL AND \"RevokedUtc\" IS NULL");
+
+                    b.ToTable("identity_password_resets", (string)null);
                 });
 
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.PendingRevocation", b =>
@@ -563,6 +665,14 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.Invite", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
+                        .WithMany()
+                        .HasForeignKey("AcceptedUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+                });
+
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.OrgTeam", b =>
                 {
                     b.HasOne("Skanyxx.Module.Identity.Data.OrgDepartment", null)
@@ -580,6 +690,15 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.PasswordReset", b =>
+                {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
                         .WithMany()
                         .HasForeignKey("UserId")

@@ -48,10 +48,10 @@ public abstract class EntraHostTestBase(PostgresFixture fixture, MockIdentityPro
     /// </summary>
     protected string? IssuerOverride { get; set; }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         ConnectionString = await fixture.NewDatabaseAsync();
-        Host = await HostApp.StartAsync(ConnectionString, services: services =>
+        Host = await HostApp.StartAsync(ConnectionString, HostApp.WithoutSandboxes, services: services =>
         {
             services.Configure<OpenIdConnectOptions>("entra", o =>
             {
@@ -75,7 +75,7 @@ public abstract class EntraHostTestBase(PostgresFixture fixture, MockIdentityPro
         await PostAsync("/api/identity/org/teams", new { slug = "platform", name = "Platform", department = "finance" });
     }
 
-    public async Task DisposeAsync() => await Host.DisposeAsync();
+    public async ValueTask DisposeAsync() => await Host.DisposeAsync();
 
     protected static object Map(string groupId, string[] roles, string[]? teams = null) => new { groupId, roles, teams = teams ?? [] };
 

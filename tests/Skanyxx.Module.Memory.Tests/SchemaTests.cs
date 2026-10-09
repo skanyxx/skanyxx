@@ -12,9 +12,9 @@ public sealed class SchemaTests(PostgresFixture postgres)
     {
         await using var db = postgres.CreateDbContext();
 
-        await db.Database.MigrateAsync();
+        await db.Database.MigrateAsync(cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Empty(await db.Database.GetPendingMigrationsAsync());
+        Assert.Empty(await db.Database.GetPendingMigrationsAsync(cancellationToken: TestContext.Current.CancellationToken));
         Assert.False(db.Database.HasPendingModelChanges());
     }
 
@@ -29,17 +29,17 @@ public sealed class SchemaTests(PostgresFixture postgres)
                 Scope = "company", Key = "race", Version = 1, Type = CardType.Fact,
                 What = "w", Why = "y", Who = "t", UpdatedAt = DateTime.UtcNow, Status = CardStatus.Published
             });
-            await seed.SaveChangesAsync();
+            await seed.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
         await using var first = postgres.CreateDbContext();
         await using var second = postgres.CreateDbContext();
-        var a = await first.Cards.SingleAsync(c => c.Key == "race");
-        var b = await second.Cards.SingleAsync(c => c.Key == "race");
+        var a = await first.Cards.SingleAsync(c => c.Key == "race", cancellationToken: TestContext.Current.CancellationToken);
+        var b = await second.Cards.SingleAsync(c => c.Key == "race", cancellationToken: TestContext.Current.CancellationToken);
         a.What = "first"; a.Version++;
         b.What = "second"; b.Version++;
 
-        await first.SaveChangesAsync();
-        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync());
+        await first.SaveChangesAsync(TestContext.Current.CancellationToken);
+        await Assert.ThrowsAsync<DbUpdateConcurrencyException>(() => second.SaveChangesAsync(TestContext.Current.CancellationToken));
     }
 }

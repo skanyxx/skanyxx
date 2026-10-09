@@ -22,7 +22,7 @@ public sealed class OptionsTests(PostgresFixture postgres)
             [key] = value
         });
 
-        await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
+        await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync(TestContext.Current.CancellationToken));
     }
 
     /// <summary>
@@ -55,7 +55,7 @@ public sealed class OptionsTests(PostgresFixture postgres)
             ["Identity:PublicBaseUrl"] = publicBaseUrl
         }, environment);
 
-        var error = await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
+        var error = await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync(TestContext.Current.CancellationToken));
         Assert.Contains("Identity:PublicBaseUrl", error.Message);
     }
 
@@ -77,8 +77,8 @@ public sealed class OptionsTests(PostgresFixture postgres)
             ["Identity:PublicBaseUrl"] = publicBaseUrl
         }, environment);
 
-        await app.StartAsync();
-        await app.StopAsync();
+        await app.StartAsync(TestContext.Current.CancellationToken);
+        await app.StopAsync(TestContext.Current.CancellationToken);
     }
 
     [Fact]
@@ -86,6 +86,6 @@ public sealed class OptionsTests(PostgresFixture postgres)
     {
         await using var app = IdentityApp.Build(new Dictionary<string, string?>());
 
-        await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync());
+        await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync(TestContext.Current.CancellationToken));
     }
 }

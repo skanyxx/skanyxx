@@ -20,10 +20,10 @@ public sealed class StaleRoleTests(PostgresFixture postgres)
     {
         await using var app = await StartAsync();
         var (owner, member, memberId) = await MemberAsync(app);
-        var before = await app.Client(bearer: member.AccessToken).GetAsync(IdentityApp.ProbePath);
+        var before = await app.Client(bearer: member.AccessToken).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
 
         await ChangeAsync(app, owner, memberId, change);
-        var after = await app.Client(bearer: member.AccessToken).GetAsync(IdentityApp.ProbePath);
+        var after = await app.Client(bearer: member.AccessToken).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
@@ -54,10 +54,10 @@ public sealed class StaleRoleTests(PostgresFixture postgres)
         await using var app = await StartAsync(clock);
         var (owner, _, memberId) = await MemberAsync(app);
         var cookie = SetCookie.AuthHeader(await app.SignInAsync(IdentityApp.MemberEmail, IdentityApp.MemberPassword, useCookie: true));
-        var before = await app.Client(cookie: cookie).GetAsync(IdentityApp.ProbePath);
+        var before = await app.Client(cookie: cookie).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
 
         await ChangeAsync(app, owner, memberId, change);
-        var after = await app.Client(cookie: cookie).GetAsync(IdentityApp.ProbePath);
+        var after = await app.Client(cookie: cookie).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
@@ -80,7 +80,7 @@ public sealed class StaleRoleTests(PostgresFixture postgres)
         race.BeforeCookie = () => ChangeAsync(app, owner, memberId, "disable");
 
         var signIn = await app.SignInAsync(IdentityApp.MemberEmail, IdentityApp.MemberPassword, useCookie: true);
-        var next = await app.Client(cookie: SetCookie.AuthHeader(signIn)).GetAsync(IdentityApp.ProbePath);
+        var next = await app.Client(cookie: SetCookie.AuthHeader(signIn)).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, signIn.StatusCode);
         Assert.True(race.Ran);
@@ -94,8 +94,8 @@ public sealed class StaleRoleTests(PostgresFixture postgres)
         await using var app = await StartAsync();
         var tokens = await app.SignInBearerAsync();
 
-        await app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null);
-        var after = await app.Client(bearer: tokens.AccessToken).GetAsync("/api/identity/me");
+        await app.Client(bearer: tokens.AccessToken).PostAsync("/api/identity/sign-out", null, TestContext.Current.CancellationToken);
+        var after = await app.Client(bearer: tokens.AccessToken).GetAsync("/api/identity/me", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
     }
@@ -106,8 +106,8 @@ public sealed class StaleRoleTests(PostgresFixture postgres)
         await using var app = await StartAsync();
         var (owner, member, memberId) = await MemberAsync(app);
 
-        await app.Client(bearer: owner).PutAsJsonAsync($"/api/identity/people/{memberId}/roles", new { roles = new[] { "builder" } });
-        var after = await app.Client(bearer: member.AccessToken).GetAsync(IdentityApp.ProbePath);
+        await app.Client(bearer: owner).PutAsJsonAsync($"/api/identity/people/{memberId}/roles", new { roles = new[] { "builder" } }, cancellationToken: TestContext.Current.CancellationToken);
+        var after = await app.Client(bearer: member.AccessToken).GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, after.StatusCode);
     }

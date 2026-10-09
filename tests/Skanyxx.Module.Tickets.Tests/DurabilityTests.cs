@@ -39,7 +39,7 @@ public sealed class DurabilityTests(PostgresFixture postgres) : TicketsTestBase(
 
         await App.DisposeAsync();
         App = await TicketsApp.StartAsync(Postgres.ConnectionString, KAgent.Url);
-        await Task.Delay(1500); // a full poll: the worker must leave a waiting run alone
+        await Task.Delay(1500, TestContext.Current.CancellationToken); // a full poll: the worker must leave a waiting run alone
         var stillWaiting = await App.GetRunAsync(run.Id);
         await App.DecideAsync(run.Id, "approve");
         var done = await App.WaitForAsync(run.Id, RunState.Succeeded);
@@ -57,7 +57,7 @@ public sealed class DurabilityTests(PostgresFixture postgres) : TicketsTestBase(
         await using var second = await TicketsApp.StartAsync(Postgres.ConnectionString, KAgent.Url);
         var run = await App.StartRunAsync();
 
-        await Task.Delay(2500); // two polls of the second replica, while the first is inside the planner call
+        await Task.Delay(2500, TestContext.Current.CancellationToken); // two polls of the second replica, while the first is inside the planner call
         release.SetResult();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
@@ -140,13 +140,13 @@ public sealed class DurabilityTests(PostgresFixture postgres) : TicketsTestBase(
     {
         await using var probe = await OpenProbeAsync();
         await using (var hold = new NpgsqlCommand($"SELECT pg_advisory_lock({TicketsMigrator.MigrateLockKey})", probe))
-            await hold.ExecuteScalarAsync();
+            await hold.ExecuteScalarAsync(TestContext.Current.CancellationToken);
 
         var starting = TicketsApp.StartAsync(Replica("replica-b"), KAgent.Url);
-        await Task.Delay(2000);
+        await Task.Delay(2000, TestContext.Current.CancellationToken);
         var waited = !starting.IsCompleted;
         await using (var release = new NpgsqlCommand($"SELECT pg_advisory_unlock({TicketsMigrator.MigrateLockKey})", probe))
-            await release.ExecuteScalarAsync();
+            await release.ExecuteScalarAsync(TestContext.Current.CancellationToken);
         await using var second = await starting;
 
         Assert.True(waited, "the migrator did not wait for the migration lock");

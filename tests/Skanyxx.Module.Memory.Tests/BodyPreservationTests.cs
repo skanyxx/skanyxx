@@ -40,10 +40,10 @@ public sealed class BodyPreservationTests(PostgresFixture postgres) : MemoryTest
         {
             ["key"] = "refund-window", ["type"] = "decision", ["what"] = "We refund within 30 days",
             ["why"] = "Policy changed", ["version"] = 1, ["scope"] = "company"
-        });
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotEqual(true, result.IsError);
-        var card = await (await boss.GetAsync("/api/memory/cards/company/refund-window")).CardAsync();
+        var card = await (await boss.GetAsync("/api/memory/cards/company/refund-window", TestContext.Current.CancellationToken)).CardAsync();
         Assert.Equal(2, card.Version);
         Assert.Equal("long explanation", card.Body);
         Assert.Equal("s3://docs/policy.pdf", card.Source);

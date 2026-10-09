@@ -1,0 +1,43 @@
+Skanyxx {{ .Chart.Version }} in namespace {{ .Release.Namespace }}.
+
+{{- $svc := include "skanyxx.fullname" . }}
+{{- $url := include "skanyxx.publicUrl" . }}
+
+1. Open it:
+{{- if .Values.ingress.enabled }}
+   {{ $url }}
+{{- else }}
+   kubectl -n {{ .Release.Namespace }} port-forward svc/{{ $svc }} 8080:{{ .Values.skanyxx.service.port }}
+   then http://localhost:8080{{ if not $url }} (set skanyxx.publicUrl=http://localhost:8080 for invites and Chat){{ end }}
+{{- end }}
+
+2. Create the owner on /Setup with the bootstrap token:
+   kubectl -n {{ .Release.Namespace }} get secret {{ include "skanyxx.bootstrapSecret" . }} -o jsonpath='{.data.{{ .Values.skanyxx.bootstrapToken.key }}}' | base64 -d
+
+3. /Model: the owner sets the model. kagent's default-model-config is created there, not by this chart, so upgrades
+   never overwrite it (D099).
+{{- if .Values.kagent.enabled }}
+
+4. The seed agent (after step 2):
+   RELEASE={{ .Release.Name }} NAMESPACE={{ .Release.Namespace }} OWNER_EMAIL=… OWNER_PASSWORD=… scripts/helm/seed-agent.sh
+{{- if and (or (not .Values.postgresql.enabled) .Values.postgresql.existingSecret) (not (lookup "v1" "Secret" .Release.Namespace "kagent-postgres-url")) }}
+
+WARNING: kagent's controller reads its database URL from the Secret kagent-postgres-url (key url), which is not in
+{{ .Release.Namespace }}; this chart creates it only for the bundled Postgres with generated passwords. Create it, or
+kagent will not start.
+{{- end }}
+{{- end }}
+
+{{- if and .Values.networkPolicy.enabled (not .Values.kagent.enabled) (not .Values.networkPolicy.mcpFrom) }}
+
+WARNING: nothing may reach /mcp/memory: the NetworkPolicy admits no one on port {{ .Values.skanyxx.service.mcpPort }}, and with kagent.enabled=false
+your kagent is not admitted by itself. Name it in networkPolicy.mcpFrom (e.g. a namespaceSelector for its namespace),
+or memory is unavailable to every agent.
+{{- end }}
+
+/mcp is never on the ingress: /mcp/memory is served on port {{ .Values.skanyxx.service.mcpPort }} only (which serves nothing else), for kagent in-cluster.
+Generated Secrets are kept on `helm uninstall` (helm.sh/resource-policy: keep), so a reinstall finds the same
+credentials as the kept volumes; delete them yourself with the PVCs to start over.
+{{- if .Values.ax.enabled }}
+AX (experimental): Skanyxx's sandboxes module is on and points at {{ .Values.ax.address }}; this chart does not install AX.
+{{- end }}

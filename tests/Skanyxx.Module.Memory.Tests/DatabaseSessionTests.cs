@@ -15,7 +15,7 @@ public sealed class DatabaseSessionTests(PostgresFixture postgres) : MemoryTestB
         await using var scope = App.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<MemoryDbContext>();
 
-        var name = await db.Database.SqlQuery<string>($"SELECT current_setting('application_name') AS \"Value\"").SingleAsync();
+        var name = await db.Database.SqlQuery<string>($"SELECT current_setting('application_name') AS \"Value\"").SingleAsync(cancellationToken: TestContext.Current.CancellationToken);
         var settings = new NpgsqlConnectionStringBuilder(db.Database.GetConnectionString());
 
         Assert.Equal("skanyxx-memory", name);
@@ -42,7 +42,7 @@ public sealed class DatabaseSessionTests(PostgresFixture postgres) : MemoryTestB
         await using var scope = App.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<MemoryDbContext>();
 
-        await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlRawAsync("SELECT * FROM no_such_table"));
+        await Assert.ThrowsAsync<PostgresException>(() => db.Database.ExecuteSqlRawAsync("SELECT * FROM no_such_table", cancellationToken: TestContext.Current.CancellationToken));
 
         Assert.Contains(App.Errors, e => e.Contains("no_such_table"));
     }

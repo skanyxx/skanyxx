@@ -13,10 +13,15 @@ A sandbox runs caller-chosen code. Skanyxx's `/mcp/memory` trusts the `X-User-Id
 Apply: set the placeholder namespaces and labels (`skanyxx`, `ax-system`, `ax-sandboxes`, `app.kubernetes.io/name`)
 to your install, then `kubectl apply -k deploy/sandboxes`.
 
-**Unverified:** nobody has run these on a real Substrate cluster. Whether a Kubernetes NetworkPolicy applies to
-Substrate sandboxes (gVisor/microVM) depends on the runtime and CNI, and the task metadata endpoint
-(`AX_METADATA_URL`) may need an extra egress rule. Test it from inside a sandbox (e.g. `curl` Skanyxx, ax-server
-and `169.254.169.254`, all must fail) before relying on it.
+**Verified on kind + gVisor (2026-10-08, D178), not yet on GKE or micro-VMs.** Substrate runs a sandbox INSIDE a
+WorkerPool pod, so the egress policies belong in **the WorkerPool's namespace** (`ax-sandboxes` above is that
+placeholder), not in a namespace of their own. Measured from inside a sandbox: with no policy it reached the
+internet, `ax-server` (no auth), Substrate's API and the Skanyxx Host on the developer's machine; with
+`sandbox-egress-deny.yaml` every one of those timed out, and Substrate kept working (new tasks start, run, stop;
+`ax ssh` still works; Substrate's own per-pool policy admits ingress from `atenet-router`).
+The cloud metadata address was unreachable even without the policy on kind; on GKE, test it again.
+Repeat the test on every new runtime (`curl`/`wget` Skanyxx, ax-server and `169.254.169.254` from a sandbox; all
+must fail) before relying on it.
 
 Skanyxx refuses to start with a non-empty `Sandboxes:AllowedImages` until `Sandboxes:NetworkIsolationConfirmed=true`.
 Set it only after that test passes. `Sandboxes:MemoryMcpUrl` must stay empty until the token-only sandbox listener

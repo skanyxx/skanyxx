@@ -1,0 +1,48 @@
+# Bring-your-own (D061): every bundled store and kagent off, the customer's own named instead. Rendered by
+# scripts/helm/validate.sh; the Secrets named here are created by the operator, never by the chart.
+skanyxx:
+  image:
+    repository: registry.example.com/skanyxx
+    tag: "1.0.0"
+  bootstrapToken:
+    existingSecret: skanyxx-bootstrap
+  database:
+    existingSecret: skanyxx-connection-strings
+  dataProtection:
+    certificateSecret: skanyxx-data-protection
+  kagent:
+    url: http://kagent-controller.kagent.svc:8083
+ingress:
+  enabled: true
+  className: nginx
+  hosts: [skanyxx.example.com]
+  tls:
+    - secretName: skanyxx-tls
+      hosts: [skanyxx.example.com]
+postgresql:
+  enabled: false
+minio:
+  enabled: false
+gitea:
+  enabled: false
+dragonfly:
+  enabled: false
+kagent:
+  enabled: false
+external:
+  objectStore:
+    endpoint: https://s3.eu-west-1.amazonaws.com
+    bucket: acme-skanyxx
+    existingSecret: skanyxx-s3
+  git:
+    url: https://github.com/acme
+    existingSecret: skanyxx-github
+  redis:
+    address: redis.data.svc:6379
+    existingSecret: skanyxx-redis
+networkPolicy:
+  # The customer's kagent (its controller and agent pods) reaches /mcp/memory on the mcp port (D147).
+  mcpFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kagent

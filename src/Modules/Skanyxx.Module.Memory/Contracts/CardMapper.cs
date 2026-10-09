@@ -1,4 +1,5 @@
 using Riok.Mapperly.Abstractions;
+using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Contracts;

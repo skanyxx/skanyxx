@@ -10,6 +10,7 @@ public class Agent
     public string Namespace { get; set; } = "kagent";
     public bool Ready { get; set; }
     public bool Accepted { get; set; }
+    public Dictionary<string, string> Labels { get; set; } = [];
     public int TasksToday { get; set; }
     public int AvgResponseMs { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

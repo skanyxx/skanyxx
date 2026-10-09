@@ -1,11 +1,10 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Skanyxx.Core;
-using Skanyxx.Core.Interfaces;
-using Skanyxx.Module.Chat.Services;
 
 namespace Skanyxx.Module.Chat;
 
+/// <summary>People talk to merged kagent agents here (D017): <c>GET api/chat/agents</c>, <c>POST api/chat</c>.</summary>
 public class ChatModule : IModule
 {
     public string ModuleId => "chat";
@@ -15,7 +14,6 @@ public class ChatModule : IModule
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
-        services.AddSingleton<IChatService, KAgentChatService>();
     }
 
     public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;

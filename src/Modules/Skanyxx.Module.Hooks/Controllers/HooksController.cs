@@ -1,9 +1,12 @@
+using Skanyxx.Core.Platform;
+using Microsoft.AspNetCore.Authorization;
 using Skanyxx.Core.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Skanyxx.Core.Models;
 
 namespace Skanyxx.Module.Hooks.Controllers;
 
+// D116: what changes kagent, the cluster or runs a process on the Host is the owner's alone, like D109.
 [ApiController]
 [Route("api/[controller]")]
 public class HooksController : ControllerBase
@@ -44,6 +47,7 @@ public class HooksController : ControllerBase
         });
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost]
     public async Task<ActionResult<Hook>> Create([FromBody] Hook hook)
     {
@@ -59,6 +63,7 @@ public class HooksController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPut("{id}")]
     public async Task<ActionResult> Update(string id, [FromBody] Hook updated)
     {
@@ -74,6 +79,7 @@ public class HooksController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("{id}/enable")]
     public async Task<ActionResult> Enable(string id)
     {
@@ -89,6 +95,7 @@ public class HooksController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("{id}/disable")]
     public async Task<ActionResult> Disable(string id)
     {
@@ -104,6 +111,7 @@ public class HooksController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpPost("{id}/test")]
     public async Task<ActionResult> Test(string id)
     {
@@ -118,6 +126,7 @@ public class HooksController : ControllerBase
         }
     }
 
+    [Authorize(Roles = SkanyxxRoles.Owner)]
     [HttpDelete("{id}")]
     public async Task<ActionResult> Delete(string id)
     {

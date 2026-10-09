@@ -1,8 +1,10 @@
+using Skanyxx.Core.Platform.Email;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Endpoints;
 using Skanyxx.Module.Identity.Entra;
 using Skanyxx.Module.Identity.Features.Refresh;
 using Skanyxx.Module.Identity.Features.Unlock;
+using Skanyxx.Module.Identity.Passwords;
 
 namespace Skanyxx.Module.Identity.Tests;
 
@@ -20,13 +22,20 @@ public sealed class SecretRecordTests
     {
         new AcceptInviteCommand(Secret, Secret, "Bea", UseCookie: true),
         new CreateInviteCommand("actor", Email, ["builder"]),
-        new InviteIssued("invite-1", "https://skanyxx.example/Invite?token=" + Secret, DateTimeOffset.UnixEpoch),
+        new InviteIssued("invite-1", "https://skanyxx.example/Invite?token=" + Secret, DateTimeOffset.UnixEpoch, Emailed: false),
         new InviteStatusQuery(Secret),
         new SignInCommand(Email, Secret, UseCookie: false, Secret),
         new BootstrapOwnerCommand(Email, Secret, "Owner", Secret, FromLoopback: false),
         new RefreshCommand(Secret),
         new UnlockOwnerCommand(Email, Secret),
-        new InviteCreatedResponse("invite-1", "https://skanyxx.example/Invite?token=" + Secret, DateTimeOffset.UnixEpoch),
+        new InviteCreatedResponse("invite-1", "https://skanyxx.example/Invite?token=" + Secret, DateTimeOffset.UnixEpoch, Emailed: false),
+        // D150/D156: the reset flow's records, and an email (its body carries the one-time link).
+        new RequestPasswordResetCommand(Email),
+        new PasswordResetStatusQuery(Secret),
+        new CompletePasswordResetCommand(Secret, Secret),
+        new PasswordResetIssued("https://skanyxx.example/ResetPassword?token=" + Secret, DateTimeOffset.UnixEpoch, Emailed: false),
+        new EmailMessage(Email, "Reset your Skanyxx password", "Open https://skanyxx.example/ResetPassword?token=" + Secret),
+        new ResetRequest(Email, "127.0.0.1", "https://skanyxx.example"),
         new SaveEntraSettingsCommand("actor", true, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", Secret, []),
         new EntraChallengeQuery("/Account?handler=Linked", "user-1", Secret),
         new EntraConfig(true, "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", Secret,

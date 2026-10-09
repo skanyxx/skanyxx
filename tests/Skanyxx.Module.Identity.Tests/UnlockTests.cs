@@ -9,7 +9,7 @@ public sealed class UnlockTests(PostgresFixture postgres) : IAsyncLifetime
 {
     private IdentityApp _app = null!;
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         await postgres.ResetAsync();
         _app = await IdentityApp.StartAsync(postgres.ConnectionString, s => s["Identity:BootstrapToken"] = IdentityApp.BootstrapToken);
@@ -18,7 +18,7 @@ public sealed class UnlockTests(PostgresFixture postgres) : IAsyncLifetime
             await _app.SignInAsync(password: "wrong password " + i);
     }
 
-    public async Task DisposeAsync() => await _app.DisposeAsync();
+    public async ValueTask DisposeAsync() => await _app.DisposeAsync();
 
     [Fact]
     public async Task RightToken_UnlocksTheOwner()
@@ -83,7 +83,7 @@ public sealed class UnlockTests(PostgresFixture postgres) : IAsyncLifetime
         };
         request.Headers.Add("X-Bootstrap-Token", IdentityApp.BootstrapToken);
 
-        var response = await _app.Client().SendAsync(request);
+        var response = await _app.Client().SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }

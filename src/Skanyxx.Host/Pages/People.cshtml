@@ -20,6 +20,13 @@
         <p class="text-muted">The link points at <strong>@(new Uri(Model.InviteLinkOnce).Authority)</strong>: the person must be able to reach that address (Identity:PublicBaseUrl).</p>
     </div>
 }
+@if (Model.ResetLinkOnce is not null)
+{
+    <div class="card mb-3">
+        <label for="resetLink">Password-reset link (single use, short-lived; give it to the person yourself)</label>
+        <input id="resetLink" readonly value="@Model.ResetLinkOnce" onclick="this.select()" style="width: 100%" />
+    </div>
+}
 
 <div class="card mb-3">
     <div class="card-header"><h3 class="card-title">Invite someone</h3></div>
@@ -83,6 +90,12 @@
                             <form method="post" asp-page-handler="@(person.Disabled ? "Enable" : "Disable")" asp-route-id="@person.Id">
                                 <button type="submit" class="btn btn-ghost">@(person.Disabled ? "Enable" : "Disable")</button>
                             </form>
+                            @if (!person.Disabled)
+                            {
+                                <form method="post" asp-page-handler="Reset" asp-route-id="@person.Id">
+                                    <button type="submit" class="btn btn-ghost" title="A single-use link to choose a new password: emailed when SMTP is set, otherwise shown here once">Password reset link</button>
+                                </form>
+                            }
                         }
                     </td>
                 </tr>

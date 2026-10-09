@@ -1,0 +1,246 @@
+{{- $name := include "skanyxx.fullname" . }}
+{{- $sel := dict "ctx" . "name" "skanyxx" }}
+{{- $v := .Values.skanyxx }}
+{{- $publicUrl := include "skanyxx.publicUrl" . }}
+{{- if and .Values.ax.enabled (not .Values.ax.address) }}
+{{- fail "ax.enabled=true needs ax.address (this chart does not install AX; see values.yaml)" }}
+{{- end }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  selector:
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $v.service.port }}
+      targetPort: http
+    # /mcp/memory and nothing else (Memory:McpPort): in-cluster, for kagent; no Ingress ever targets it.
+    - name: mcp
+      port: {{ $v.service.mcpPort }}
+      targetPort: mcp
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  replicas: {{ $v.replicas }}
+  selector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" $sel | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skanyxx.labels" . | nindent 8 }}
+        {{- include "skanyxx.selectorLabels" $sel | nindent 8 }}
+      {{- /*
+      Rolls the pod on `helm upgrade` after a BYO Secret it reads changed (lookup; empty under `helm template`).
+      Generated Secrets never change (lookup keeps them), and hashing them would roll the pod on the first upgrade:
+      their install-time render is a different random draw from the stored values. extraEnvFrom sources are not seen:
+      `kubectl rollout restart` after changing one.
+      */}}
+      {{- $byo := compact (list $v.database.existingSecret $v.bootstrapToken.existingSecret $v.kagent.tokenSecret $v.dataProtection.certificateSecret) }}
+      {{- if $byo }}
+      {{- $data := "" }}
+      {{- range $byo }}
+      {{- $data = print $data (toJson (dig "data" dict (lookup "v1" "Secret" $.Release.Namespace . | default dict))) }}
+      {{- end }}
+      annotations:
+        checksum/byo-secrets: {{ sha256sum $data }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ $name }}
+      automountServiceAccountToken: false
+      {{- with $v.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $v.podSecurityContext | nindent 8 }}
+      {{- if .Values.postgresql.enabled }}
+      # The Host exits 1 when its first migration cannot reach Postgres (D135/D146); waiting for the bundled database
+      # keeps a normal first start from spending a few restarts on that race.
+      initContainers:
+        - name: wait-for-postgres
+          image: {{ include "skanyxx.image" (dict "image" .Values.postgresql.image) | quote }}
+          imagePullPolicy: {{ .Values.postgresql.image.pullPolicy }}
+          command: [sh, -c, 'until pg_isready -q -h "$PGHOST" -p 5432 -U postgres -d postgres; do sleep 2; done']
+          env:
+            - name: PGHOST
+              value: {{ printf "%s.%s.svc" (include "skanyxx.component" (dict "ctx" . "name" "postgres")) .Release.Namespace }}
+          securityContext:
+            {{- toYaml $v.securityContext | nindent 12 }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+      {{- end }}
+      containers:
+        - name: skanyxx
+          image: {{ include "skanyxx.image" (dict "image" $v.image "tag" .Chart.AppVersion) | quote }}
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          securityContext:
+            {{- toYaml $v.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: mcp
+              containerPort: {{ $v.service.mcpPort }}
+          envFrom:
+            # ConnectionStrings__Identity / __Memory / __Tickets
+            - secretRef:
+                name: {{ include "skanyxx.dbSecret" . }}
+            {{- with $v.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            - name: ASPNETCORE_ENVIRONMENT
+              value: Production
+            # Two listeners: the UI/API on 8080, the mcp port serving /mcp/memory and nothing else (D138).
+            - name: ASPNETCORE_HTTP_PORTS
+              value: {{ printf "8080;%v" $v.service.mcpPort | quote }}
+            - name: Memory__McpPort
+              value: {{ $v.service.mcpPort | quote }}
+            - name: AllowedHosts
+              value: {{ include "skanyxx.allowedHosts" . | quote }}
+            {{- with $publicUrl }}
+            - name: Identity__PublicBaseUrl
+              value: {{ . | quote }}
+            {{- end }}
+            {{- range $i, $origin := $v.allowedOrigins }}
+            - name: Skanyxx__AllowedOrigins__{{ $i }}
+              value: {{ $origin | quote }}
+            {{- end }}
+            - name: Identity__BootstrapToken
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "skanyxx.bootstrapSecret" . }}
+                  key: {{ $v.bootstrapToken.key }}
+            {{- with $v.dataProtection.certificateSecret }}
+            - name: Identity__DataProtectionCertificatePath
+              value: /etc/skanyxx/data-protection/certificate.pfx
+            - name: Identity__DataProtectionCertificatePassword
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: password
+            {{- end }}
+            # KAgent:IngressUrl is the controller's full URL (it wins over BaseUrl/Port/Protocol).
+            - name: KAgent__IngressUrl
+              value: {{ include "skanyxx.kagentUrl" . | quote }}
+            - name: KAgent__ModelConfig
+              value: {{ default (printf "%s/default-model-config" .Release.Namespace) $v.kagent.modelConfig | quote }}
+            - name: KAgent__ChatTimeoutSeconds
+              value: {{ $v.kagent.chatTimeoutSeconds | quote }}
+            {{- with $v.kagent.tokenSecret }}
+            - name: KAgent__Token
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: token
+            {{- end }}
+            - name: Tickets__Source
+              value: {{ $v.tickets.source | quote }}
+            - name: Sandboxes__Enabled
+              value: {{ .Values.ax.enabled | quote }}
+            {{- if .Values.ax.enabled }}
+            - name: Sandboxes__Address
+              value: {{ .Values.ax.address | quote }}
+            - name: Sandboxes__Atespace
+              value: {{ .Values.ax.atespace | quote }}
+            - name: Sandboxes__NetworkIsolationConfirmed
+              value: {{ .Values.ax.networkIsolationConfirmed | quote }}
+            {{- range $i, $image := .Values.ax.allowedImages }}
+            - name: Sandboxes__AllowedImages__{{ $i }}
+              value: {{ $image | quote }}
+            {{- end }}
+            {{- end }}
+            {{- range $module, $on := $v.modules }}
+            - name: Modules__Enabled__{{ $module }}
+              value: {{ $on | quote }}
+            {{- end }}
+            {{- with $v.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # Host filtering answers 400 to a Host it does not list, and the kubelet sends the pod IP: probes name localhost.
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 5
+            failureThreshold: 36
+          # /health includes the Postgres checks: a database outage takes the pod out of the Service, not restarts it.
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 10
+            timeoutSeconds: 6
+          livenessProbe:
+            tcpSocket:
+              port: http
+            periodSeconds: 20
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp
+            {{- if $v.dataProtection.certificateSecret }}
+            - name: data-protection
+              mountPath: /etc/skanyxx/data-protection
+              readOnly: true
+            {{- end }}
+      volumes:
+        # The leftover SQLite file (Dockerfile); company data is in Postgres.
+        - name: data
+          emptyDir:
+            sizeLimit: {{ $v.dataSizeLimit }}
+        - name: tmp
+          emptyDir:
+            sizeLimit: {{ $v.tmpSizeLimit }}
+        {{- with $v.dataProtection.certificateSecret }}
+        - name: data-protection
+          secret:
+            secretName: {{ . }}
+            items:
+              - key: certificate.pfx
+                path: certificate.pfx
+        {{- end }}
+      {{- with $v.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

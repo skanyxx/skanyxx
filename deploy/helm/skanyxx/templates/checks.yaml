@@ -1,0 +1,31 @@
+{{- /* Refusals that are not about one template's own objects. Renders nothing. */ -}}
+{{- if .Values.kagent.enabled }}
+{{- /* D136: kagent's RBAC and watch must stay in this namespace; empty would make it cluster-wide (every Secret). */ -}}
+{{- if not (has .Release.Namespace .Values.kagent.rbac.namespaces) }}
+{{- fail (printf "kagent.rbac.namespaces must include the release namespace %q (e.g. --set 'kagent.rbac.namespaces={%s}'); otherwise kagent's controller gets cluster-wide access to every Secret and watches every namespace" .Release.Namespace .Release.Namespace) }}
+{{- end }}
+{{- with .Values.kagent.controller.watchNamespaces }}
+{{- if not (has $.Release.Namespace .) }}
+{{- fail "kagent.controller.watchNamespaces must include the release namespace (or stay unset: it follows kagent.rbac.namespaces)" }}
+{{- end }}
+{{- end }}
+{{- /* D142 (verifier G4): with providers set, kagent's chart renders default-model-config and Helm would own the owner's model. */ -}}
+{{- if .Values.kagent.providers }}
+{{- fail "kagent.providers must stay false: the chart would then own default-model-config and every upgrade would overwrite the model the owner saved in /Model (D099, D131). Set the model in Skanyxx's /Model." }}
+{{- end }}
+{{- else if not .Values.kagent.confirmCrdRemoval }}
+{{- /* D141: kagent on → off on an upgrade deletes its CRDs, and with them every Agent and ModelConfig in the cluster. */ -}}
+{{- $crd := lookup "apiextensions.k8s.io/v1" "CustomResourceDefinition" "" "agents.kagent.dev" }}
+{{- if and $crd (eq (dig "metadata" "annotations" "meta.helm.sh/release-name" "" $crd) .Release.Name) (eq (dig "metadata" "annotations" "meta.helm.sh/release-namespace" "" $crd) .Release.Namespace) }}
+{{- fail "kagent.enabled=false would delete kagent's CRDs, which this release installed, and with them every Agent and ModelConfig in the cluster. Set kagent.confirmCrdRemoval=true to do it anyway (README, Install with Helm)." }}
+{{- end }}
+{{- end }}
+{{- if and .Values.postgresql.enabled .Values.postgresql.existingSecret (not .Values.skanyxx.database.existingSecret) }}
+{{- fail "postgresql.existingSecret needs skanyxx.database.existingSecret too: the chart cannot read your passwords to build the connection strings (D139)" }}
+{{- end }}
+{{- if eq (int .Values.skanyxx.service.mcpPort) 8080 }}
+{{- fail "skanyxx.service.mcpPort must not be 8080 (the UI/API port)" }}
+{{- end }}
+{{- if eq (int .Values.skanyxx.service.port) (int .Values.skanyxx.service.mcpPort) }}
+{{- fail "skanyxx.service.port and skanyxx.service.mcpPort must differ: one Service cannot expose the same port twice, and the mcp port serves /mcp/memory only" }}
+{{- end }}
