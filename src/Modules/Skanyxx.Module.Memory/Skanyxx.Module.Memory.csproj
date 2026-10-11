@@ -8,6 +8,7 @@
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <ProjectReference Include="..\..\Skanyxx.Core\Skanyxx.Core.csproj" />
   </ItemGroup>
+  <Import Project="..\..\AwsSdk.props" />
   <!-- Runtime copies come from the Host (see PluginLoadContext shared list); the module ships only its own dll. -->
   <ItemGroup>
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />

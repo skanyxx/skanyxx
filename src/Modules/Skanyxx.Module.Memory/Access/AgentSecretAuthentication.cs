@@ -17,7 +17,8 @@ namespace Skanyxx.Module.Memory.Access;
 /// Anything else — no header, another scheme, a user's token, an unknown or revoked secret — is a 401 before MCP runs.
 /// </summary>
 internal sealed class AgentSecretAuthentication(
-    IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, MemoryDbContext db)
+    IOptionsMonitor<AuthenticationSchemeOptions> options, ILoggerFactory logger, UrlEncoder encoder, MemoryDbContext db,
+    IOptions<MemoryOptions> memory)
     : AuthenticationHandler<AuthenticationSchemeOptions>(options, logger, encoder)
 {
     public const string SchemeName = AgentPrincipal.SchemeName;
@@ -26,8 +27,13 @@ internal sealed class AgentSecretAuthentication(
     public const string ActsForUsersClaim = AgentPrincipal.ActsForUsersClaim;
     private const string Bearer = "Bearer ";
 
+    /// <summary>D077: the sandbox listener accepts sandbox tokens only, so an agent secret is worth nothing there.</summary>
+    private bool OnSandboxListener => memory.Value.SandboxMcpPort is int port && Context.Connection.LocalPort == port;
+
     protected override async Task<AuthenticateResult> HandleAuthenticateAsync()
     {
+        if (OnSandboxListener)
+            return AuthenticateResult.NoResult();
         string? header = Request.Headers.Authorization;
         if (header is null || !header.StartsWith(Bearer, StringComparison.OrdinalIgnoreCase))
             return AuthenticateResult.NoResult();
@@ -55,8 +61,13 @@ internal sealed class AgentSecretAuthentication(
 
     protected override Task HandleChallengeAsync(AuthenticationProperties properties)
     {
+        if (OnSandboxListener)
+            return Task.CompletedTask;
         Response.Headers.WWWAuthenticate = "Bearer";
         return Results.Problem("An agent secret is required: Authorization: Bearer <secret>.",
             statusCode: StatusCodes.Status401Unauthorized).ExecuteAsync(Context);
     }
+
+    protected override Task HandleForbiddenAsync(AuthenticationProperties properties) =>
+        OnSandboxListener ? Task.CompletedTask : base.HandleForbiddenAsync(properties);
 }

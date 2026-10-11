@@ -2,7 +2,7 @@ using System.Text.RegularExpressions;
 
 namespace Skanyxx.Module.Sandboxes;
 
-/// <summary>AX names (tasks, workspaces, atespaces) must be RFC 1123 labels: lowercase alphanumerics and '-', at most 63.</summary>
+/// <summary>AX names (sandboxes, workspaces, atespaces) must be RFC 1123 labels: lowercase alphanumerics and '-', at most 63.</summary>
 internal static partial class DnsLabel
 {
     // \z, not $: in .NET, $ also matches before a trailing "\n".

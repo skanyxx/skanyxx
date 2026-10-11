@@ -1,0 +1,24 @@
+# The appliance's values (D057, D195): the umbrella chart on the machine's own k3s. install.sh adds the per-machine
+# settings on every run (ingress.hosts, ingress.tls, skanyxx.image) from /etc/skanyxx/appliance.env, so a re-run is an
+# upgrade with the same values. Everything else is the chart's default: bundled Postgres, MinIO, Gitea and Dragonfly,
+# kagent, generated Secrets kept across upgrades (D139), the default-deny namespace (D137).
+
+# D069 (locked 2026-10-08): no AX and no Substrate in the appliance.
+ax:
+  enabled: false
+  install: false
+
+# "The browser URL is the product": k3s's own Traefik (klipper-lb binds 80/443 on the machine) terminates TLS. The app
+# sets Secure cookies outside Development, so it is https only; http is redirected and HSTS set by the two Traefik
+# Middlewares install.sh applies (deploy/appliance/traefik.yaml, D196).
+ingress:
+  enabled: true
+  className: traefik
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: skanyxx-https-redirect@kubernetescrd,skanyxx-hsts@kubernetescrd
+  # /health (status per check, no details, anonymous) is published too, for an uptime monitor (D197).
+  exactPaths: ["/", "/health"]
+
+networkPolicy:
+  # Traefik runs in kube-system on k3s.
+  ingressNamespaces: [kube-system]

@@ -162,7 +162,7 @@ AX v0.3.1 does not match D064/D067/D068 as written: see `ax-integration.md` (D06
 4. ~~Per-agent secret for the memory MCP~~ (D080) — **built** (D083): supervisors issue/rotate/revoke, `/mcp/memory`
    answers only `Authorization: Bearer <agent secret>`, `X-Agent-Id` is gone. Left over from it:
    - **Sandbox memory credential:** a per-task credential (and sandbox-facing listener) so AX tasks can attach memory
-     (README "AX Tasks"); today attach is refused at startup and would need a secret no sandbox should hold.
+     (README "Sandboxes on Google AX"); today attach is refused at startup and would need a secret no sandbox should hold.
    - **End user over MCP:** `X-User-Id` is vouched for by the agent and only as good as kagent's `auth.mode`; since
      D084 it is honoured only for agents the owner lets act for users, and only as a user GUID. A signed user
      assertion (kagent STS / token exchange) would remove the remaining trust.
@@ -200,3 +200,13 @@ AX v0.3.1 does not match D064/D067/D068 as written: see `ax-integration.md` (D06
   landing (`history.replaceState`) is not done.
 - **The audit is append-only against updates and TRUNCATE (D169), not deletes**: whoever holds the identity database
   role can delete rows (the retention job needs `DELETE`) or, as table owner, disable the triggers. A separate role for the purge, or shipping rows out (SIEM), would close that.
+
+## Desktop launcher and the chart (D200–D204, 2026-10-11)
+
+- **No release publishes the server.** `release.yml` builds the desktop launchers only; the Skanyxx image and the
+  `deploy/helm/skanyxx` chart are built locally (`scripts/helm/build-image.sh`, `helm dependency build`) and published
+  nowhere (no registry push, no OCI chart). A separate item.
+- **Moving a laptop's data into the workspace is not built (D204).** An upgraded desktop install keeps its own Postgres
+  (people, org, cards) as a dev console; there is no export/import into the chart's databases.
+- **The launcher is a redirect, not a window.** A native shell around the company URL (D203) is not built; the
+  Windows wizard page and `[Code]` were written without a Windows machine to compile them (`ISCC` runs in CI only).

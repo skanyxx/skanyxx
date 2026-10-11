@@ -8,11 +8,11 @@ namespace Skanyxx.Module.Sandboxes.Tests;
 public sealed class EnabledTests : SandboxesTestBase
 {
     [Theory]
-    [InlineData("GET", "/api/sandboxes/tasks")]
-    [InlineData("GET", "/api/sandboxes/tasks/fix-42")]
-    [InlineData("PUT", "/api/sandboxes/tasks/fix-42")]
-    [InlineData("POST", "/api/sandboxes/tasks/fix-42/stop")]
-    [InlineData("GET", "/api/sandboxes/tasks/fix-42/watch")]
+    [InlineData("GET", "/api/sandboxes")]
+    [InlineData("GET", "/api/sandboxes/fix-42")]
+    [InlineData("PUT", "/api/sandboxes/fix-42")]
+    [InlineData("POST", "/api/sandboxes/fix-42/stop")]
+    [InlineData("GET", "/api/sandboxes/fix-42/watch")]
     [InlineData("GET", "/api/sandboxes/models")]
     [InlineData("GET", "/api/sandboxes/workspaces")]
     [InlineData("PUT", "/api/sandboxes/workspaces/ws")]
@@ -36,5 +36,5 @@ public sealed class EnabledTests : SandboxesTestBase
 
     [Fact]
     public async Task Enabled_ServesTheRoutes() =>
-        Assert.Equal(HttpStatusCode.OK, (await App.Client().GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await App.Client().GetAsync("/api/sandboxes", TestContext.Current.CancellationToken)).StatusCode);
 }

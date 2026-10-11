@@ -34,4 +34,23 @@ public sealed class OptionsTests
 
         Assert.Equal(5, options.SearchTopK);
     }
+
+    // D076/D077: a sandbox listener needs a signing key, and must not be the agents' mcp port.
+    [Theory]
+    [InlineData("9100", null, null)]
+    [InlineData("9100", "too-short", null)]
+    [InlineData("9100", "a-sandbox-token-key-of-at-least-32-characters", "9100")]
+    [InlineData("0", "a-sandbox-token-key-of-at-least-32-characters", null)]
+    public async Task ABadSandboxListener_StopsStartup(string port, string? key, string? mcpPort)
+    {
+        await using var app = MemoryApp.Build(new Dictionary<string, string?>
+        {
+            ["ConnectionStrings:Memory"] = "Host=localhost",
+            ["Memory:SandboxMcpPort"] = port,
+            ["Memory:SandboxTokenKey"] = key,
+            ["Memory:McpPort"] = mcpPort
+        });
+
+        await Assert.ThrowsAsync<OptionsValidationException>(() => app.StartAsync(TestContext.Current.CancellationToken));
+    }
 }

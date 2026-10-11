@@ -29,12 +29,28 @@ if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
         echo "  \"BootstrapToken\": \"\"." >&2
         exit 1
     fi
+    # A fresh install is the desktop launcher (D200): Remote mode opens the company's Skanyxx, the server is the
+    # Helm chart. Same verify-or-remove rule as the token.
+    sed -i 's/"Mode": "Server"/"Mode": "Remote"/' "$CONFIG"
+    if ! grep -q '"Mode": "Remote"' "$CONFIG"; then
+        rm -f "$CONFIG"
+        echo "Skanyxx: could not write Skanyxx:Mode into $CONFIG; the template no longer has \"Mode\": \"Server\"." >&2
+        exit 1
+    fi
 elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
     # An upgrade from a config written before accounts existed: never edited, only pointed out.
     NEEDS_TOKEN=1
 fi
+REMOTE=""
+DEV_CONSOLE=""
+if grep -q '"Mode": *"Remote"' "$CONFIG" 2>/dev/null; then
+    REMOTE=1
+elif [[ -f "$CONFIG" ]] && ! grep -q '"Mode": *"' "$CONFIG"; then
+    # An upgrade from a config written before modes existed: it stays a full Host (Server mode, D204), never edited.
+    DEV_CONSOLE=1
+fi
 NEEDS_PUBLIC_URL=""
-if [[ -f "$CONFIG" ]] && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
+if [[ -z "$REMOTE" ]] && [[ -f "$CONFIG" ]] && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
     # An upgrade from a config written before invites existed: the app starts, invites wait for the setting.
     NEEDS_PUBLIC_URL=1
 fi
@@ -45,9 +61,19 @@ if command -v systemctl >/dev/null 2>&1; then
 fi
 
 echo "Skanyxx installed."
-echo ""
-echo "  Before starting, add your Anthropic API key:"
-echo "    $CONFIG"
+if [[ -n "$REMOTE" ]]; then
+    echo ""
+    echo "  This is the desktop launcher: it opens your company's Skanyxx. The server is the Helm chart."
+    echo "  Set Skanyxx:RemoteUrl to your company's Skanyxx address (ask its owner), e.g."
+    echo "    \"RemoteUrl\": \"https://skanyxx.example.com\""
+    echo "  in $CONFIG"
+fi
+if [[ -n "$DEV_CONSOLE" ]]; then
+    echo ""
+    echo "  $CONFIG has no Skanyxx:Mode, so this machine runs a full Skanyxx with its own data: a dev"
+    echo "  console, not your company's workspace (D059). To open the company's Skanyxx instead, set"
+    echo "  \"Mode\": \"Remote\" and \"RemoteUrl\" under \"Skanyxx\". Data kept here is not moved anywhere."
+fi
 echo ""
 echo "  Start manually:"
 echo "    skanyxx"
@@ -57,7 +83,10 @@ echo "    sudo systemctl enable skanyxx"
 echo "    sudo systemctl start skanyxx"
 echo ""
 echo "  Open in browser: http://localhost:5282"
-if [[ -n "$BOOTSTRAP_TOKEN" ]]; then
+if [[ -z "$REMOTE" ]]; then
+    echo "  The model and its API key are set in the app, on the owner's /Model page."
+fi
+if [[ -n "$BOOTSTRAP_TOKEN" ]] && [[ -z "$REMOTE" ]]; then
     echo ""
     echo "  First run: /Setup asks for this bootstrap token to create the owner account"
     echo "  (also the owner's break-glass token; kept in $CONFIG as Identity:BootstrapToken):"

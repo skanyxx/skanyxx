@@ -47,9 +47,9 @@ public sealed class SmokeTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task SandboxTasks_AxUnreachable_Is502()
+    public async Task Sandboxes_AxUnreachable_Is502()
     {
-        var response = await (await fixture.Host.OwnerAsync()).GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken);
+        var response = await (await fixture.Host.OwnerAsync()).GetAsync("/api/sandboxes", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
     }
@@ -61,7 +61,7 @@ public sealed class SmokeTests(PostgresFixture fixture)
         await using var host = await HostApp.StartAsync(fixture.ConnectionString, s => s.Remove("Sandboxes:Enabled"));
 
         // Same database, so the same key ring and owner: the fixture host's token works here.
-        var response = await host.Client(owner.DefaultRequestHeaders.Authorization!.Parameter).GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken);
+        var response = await host.Client(owner.DefaultRequestHeaders.Authorization!.Parameter).GetAsync("/api/sandboxes", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

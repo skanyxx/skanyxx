@@ -9,15 +9,15 @@ namespace Skanyxx.Module.Sandboxes.Tests;
 
 public sealed class WatchTests : SandboxesTestBase
 {
-    private async Task<(HttpResponseMessage Response, List<(string Event, SandboxTaskEvent Data)> Frames)> WatchAsync(string name, SandboxesApp? app = null)
+    private async Task<(HttpResponseMessage Response, List<(string Event, SandboxEvent Data)> Frames)> WatchAsync(string name, SandboxesApp? app = null)
     {
-        var response = await (app ?? App).Client().GetAsync($"/api/sandboxes/tasks/{name}/watch");
+        var response = await (app ?? App).Client().GetAsync($"/api/sandboxes/{name}/watch");
         var body = await response.Content.ReadAsStringAsync();
         var frames = body.Split("\n\n", StringSplitOptions.RemoveEmptyEntries)
             .Where(block => !block.StartsWith(':'))
             .Select(block => block.Split('\n'))
             .Select(lines => (lines[0]["event: ".Length..],
-                JsonSerializer.Deserialize<SandboxTaskEvent>(lines[1]["data: ".Length..], SandboxesApp.Json)!))
+                JsonSerializer.Deserialize<SandboxEvent>(lines[1]["data: ".Length..], SandboxesApp.Json)!))
             .ToList();
         return (response, frames);
     }
@@ -31,12 +31,24 @@ public sealed class WatchTests : SandboxesTestBase
 
         Assert.Equal("text/event-stream", response.Content.Headers.ContentType!.MediaType);
         Assert.Equal(["initial", "modified", "final"], frames.Select(f => f.Event));
-        Assert.Equal(["Pending", "Running", "Running"], frames.Select(f => f.Data.Task!.Phase));
+        Assert.Equal(["Pending", "Running", "Running"], frames.Select(f => f.Data.Sandbox!.Phase));
         Assert.All(frames, f => Assert.Equal(f.Event, f.Data.Kind));
     }
 
     [Fact]
-    public async Task Watch_EndsWithGone_WhenTheTaskWasDeletedMeanwhile()
+    public async Task Watch_KeepsTheTaskFieldOnTheWire()
+    {
+        Ax.Seed("fix-43", "ana", phase: "Pending");
+
+        var body = await App.Client().GetStringAsync("/api/sandboxes/fix-43/watch", TestContext.Current.CancellationToken);
+
+        // The page reads data.task: the frame's JSON name did not change with the rename (D179).
+        Assert.Contains("\"task\":{", body);
+        Assert.DoesNotContain("\"sandbox\":", body);
+    }
+
+    [Fact]
+    public async Task Watch_EndsWithGone_WhenTheSandboxWasDeletedMeanwhile()
     {
         Ax.Seed("fix-42", "ana", phase: "Pending");
         Ax.WatchHangs = true;
@@ -47,7 +59,7 @@ public sealed class WatchTests : SandboxesTestBase
         var (_, frames) = await watch;
 
         Assert.Equal(["initial", "gone"], frames.Select(f => f.Event));
-        Assert.Null(frames[^1].Data.Task);
+        Assert.Null(frames[^1].Data.Sandbox);
     }
 
     [Fact]
@@ -72,7 +84,7 @@ public sealed class WatchTests : SandboxesTestBase
         Ax.Seed("fix-42", "ana", phase: "Pending");
         Ax.WatchFailsWith = status;
 
-        var response = await App.Client().GetAsync("/api/sandboxes/tasks/fix-42/watch", TestContext.Current.CancellationToken);
+        var response = await App.Client().GetAsync("/api/sandboxes/fix-42/watch", TestContext.Current.CancellationToken);
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -82,7 +94,7 @@ public sealed class WatchTests : SandboxesTestBase
         Assert.DoesNotContain("10.1.2.3", body);
     }
 
-    private const string Url = "/api/sandboxes/tasks/fix-42/watch";
+    private const string Url = "/api/sandboxes/fix-42/watch";
 
     // CR test gap: a closed browser tab must end the AX stream now, not when the window runs out, and log nothing.
     [Fact]

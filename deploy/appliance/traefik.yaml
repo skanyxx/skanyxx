@@ -1,0 +1,20 @@
+# The appliance's two Traefik Middlewares (D196), named by the Ingress annotation in values.yaml. A RedirectScheme
+# only redirects a request whose scheme differs, so the same router serves https and sends http there.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: https-redirect
+  namespace: skanyxx
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: hsts
+  namespace: skanyxx
+spec:
+  headers:
+    stsSeconds: 31536000

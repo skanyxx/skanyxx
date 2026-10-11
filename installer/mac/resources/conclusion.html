@@ -17,10 +17,13 @@
 
   <h3>Next steps</h3>
 
+  <p>This is the <b>desktop launcher</b>: it opens your company's Skanyxx. The Skanyxx server itself is installed
+  with the Helm chart, not on this Mac.</p>
+
   <div class="step"><span class="num">1.</span>
-    <span>Add your Anthropic API key:<br>
-    <code>/usr/local/share/skanyxx/appsettings.json</code><br>
-    Set <code>"ApiKey": "sk-ant-..."</code></span>
+    <span>Set your company's Skanyxx address (ask its owner) in
+    <code>/usr/local/share/skanyxx/appsettings.json</code> (edit it with <code>sudo</code>):<br>
+    <code>"Skanyxx": { "Mode": "Remote", "RemoteUrl": "https://skanyxx.example.com", … }</code></span>
   </div>
 
   <div class="step"><span class="num">2.</span>
@@ -29,19 +32,16 @@
   </div>
 
   <div class="step"><span class="num">3.</span>
-    <span>Open in your browser:<br>
-    <a href="http://localhost:5282">http://localhost:5282</a></span>
+    <span>Open <a href="http://localhost:5282">http://localhost:5282</a>: it takes you to your company's Skanyxx,
+    where you sign in.</span>
   </div>
 
-  <div class="step"><span class="num">4.</span>
-    <span>Create the owner account: the setup page asks for the bootstrap token that was generated for you. It is
-    <code>"Identity": { "BootstrapToken": … }</code> in the same <code>appsettings.json</code>. Keep it: it is also
-    the owner's way back in when the account is locked. The file is readable by administrator accounts only; edit it
-    with <code>sudo</code>.<br>
-    Upgrading from a version without accounts? Your existing <code>appsettings.json</code> is left as it was and has
-    no token: set <code>Identity:BootstrapToken</code> there yourself (a random string of at least 32 characters,
-    e.g. <code>openssl rand -hex 24</code>).</span>
-  </div>
+  <h3>Upgrading?</h3>
+  <p>An existing <code>appsettings.json</code> is left as it was. Without <code>"Mode"</code> it keeps running a full
+  Skanyxx with its own data on this Mac: a dev console, not your company's workspace. Set <code>"Mode": "Remote"</code>
+  and <code>"RemoteUrl"</code> to open the company's Skanyxx instead. In that full mode, <code>/Setup</code> asks for
+  <code>Identity:BootstrapToken</code> from the same file (a random string of at least 32 characters, e.g.
+  <code>openssl rand -hex 24</code>), and the model and its key are set on the owner's <code>/Model</code> page.</p>
 
   <h3>To uninstall</h3>
   <pre>sudo rm -rf /usr/local/share/skanyxx

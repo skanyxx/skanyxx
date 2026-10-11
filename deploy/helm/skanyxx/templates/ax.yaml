@@ -1,0 +1,292 @@
+{{- /*
+AX v0.3.1's control plane (D186), from google/ax deploy/ax-server.yaml + ax-controller.yaml at v0.3.1 (D075), in the
+release namespace. Changes from upstream: Redis = the bundled Dragonfly with its password (D185), else external.redis, else AX's own (D189);
+AX_SNAPSHOTS_BUCKET is a value (D187); no ClusterRole — v0.3.1's controller never calls the Kubernetes API except an
+optional Gemini-key Secret read, so its pods get no API token at all (only the projected Substrate token); non-root,
+read-only root filesystem; NetworkPolicies below (D072). Substrate, its WorkerPool and AX's base ActorTemplate are
+not created here (values.yaml ax.template).
+*/ -}}
+{{- if .Values.ax.install }}
+{{- $ax := .Values.ax }}
+{{- $server := include "skanyxx.component" (dict "ctx" . "name" "ax-server") }}
+{{- $controller := include "skanyxx.component" (dict "ctx" . "name" "ax-controller") }}
+{{- $redis := include "skanyxx.axRedis" . | fromYaml }}
+{{- $podSecurity := dict "runAsNonRoot" true "runAsUser" 65532 "runAsGroup" 65532 "seccompProfile" (dict "type" "RuntimeDefault") }}
+{{- $securityContext := dict "allowPrivilegeEscalation" false "readOnlyRootFilesystem" true "capabilities" (dict "drop" (list "ALL")) }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $server }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ $controller }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+automountServiceAccountToken: false
+---
+# AX's gRPC API (h2c, no auth: AX issue #376). Only Skanyxx may reach it (networkpolicy.yaml, D072).
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $server }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-server") | nindent 4 }}
+spec:
+  selector:
+    {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-server") | nindent 4 }}
+  ports:
+    - name: grpc
+      port: 8080
+      targetPort: grpc
+      appProtocol: kubernetes.io/h2c
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $server }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-server") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-server") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skanyxx.labels" . | nindent 8 }}
+        {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-server") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $server }}
+      automountServiceAccountToken: false
+      {{- with $ax.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $podSecurity | nindent 8 }}
+      containers:
+        - name: ax-server
+          image: {{ include "skanyxx.axImage" (dict "image" $ax.server.image "what" "ax.server.image") | quote }}
+          imagePullPolicy: {{ $ax.server.image.pullPolicy }}
+          args:
+            - --addr=:8080
+            - --redis-addr={{ $redis.address }}
+          {{- if $redis.secret }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $redis.secret }}
+                  key: {{ $redis.key }}
+          {{- end }}
+          ports:
+            - name: grpc
+              containerPort: 8080
+          securityContext:
+            {{- toYaml $securityContext | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: grpc
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: grpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml $ax.server.resources | nindent 12 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $controller }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-controller") | nindent 4 }}
+spec:
+  # One consumer of AX's task stream; v0.3.1 has no leader election.
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-controller") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skanyxx.labels" . | nindent 8 }}
+        {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-controller") | nindent 8 }}
+    spec:
+      serviceAccountName: {{ $controller }}
+      automountServiceAccountToken: false
+      {{- with $ax.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml $podSecurity | nindent 8 }}
+      containers:
+        - name: controller
+          image: {{ include "skanyxx.axImage" (dict "image" $ax.controller.image "what" "ax.controller.image") | quote }}
+          imagePullPolicy: {{ $ax.controller.image.pullPolicy }}
+          args:
+            - --redis-addr={{ $redis.address }}
+            - --substrate-endpoint={{ $ax.substrate.endpoint }}
+            - --substrate-authority={{ $ax.substrate.authority }}
+            - --substrate-token-file=/var/run/secrets/ateapi/token
+            - --substrate-ca-file=/run/servicedns-ca/trust-bundle.pem
+            - --template={{ $ax.template }}
+            - --template-atespace={{ $ax.templateAtespace }}
+          env:
+            - name: ATENET_ROUTER_ADDR
+              value: {{ $ax.substrate.routerAddress | quote }}
+            - name: AX_SNAPSHOTS_BUCKET
+              value: {{ $ax.snapshotsBucket | quote }}
+            {{- if $redis.secret }}
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $redis.secret }}
+                  key: {{ $redis.key }}
+            {{- end }}
+          securityContext:
+            {{- toYaml $securityContext | nindent 12 }}
+          resources:
+            {{- toYaml $ax.controller.resources | nindent 12 }}
+          volumeMounts:
+            - name: ate-token
+              mountPath: /var/run/secrets/ateapi
+              readOnly: true
+            - name: servicedns-ca
+              mountPath: /run/servicedns-ca
+              readOnly: true
+      volumes:
+        # Substrate authenticates AX by this ServiceAccount token (audience = its authority).
+        - name: ate-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: {{ $ax.substrate.authority }}
+                  expirationSeconds: 7200
+                  path: token
+        - name: servicedns-ca
+          projected:
+            sources:
+              - clusterTrustBundle:
+                  signerName: {{ $ax.substrate.trustBundle.signerName }}
+                  {{- with $ax.substrate.trustBundle.labelSelector }}
+                  labelSelector:
+                    matchLabels:
+                      {{- toYaml . | nindent 22 }}
+                  {{- end }}
+                  path: trust-bundle.pem
+{{- if eq ($redis.pod | default "") "ax-redis" }}
+{{- $name := include "skanyxx.component" (dict "ctx" . "name" "ax-redis") }}
+{{- /* maxmemory at 80% of the container limit: noeviction only refuses writes once maxmemory is set; without it Redis
+grows into the OOM kill and AX loses its task index. */ -}}
+{{- $limit := toString (dig "limits" "memory" "" $ax.redis.resources) }}
+{{- $mi := 0 }}
+{{- if hasSuffix "Gi" $limit }}
+{{- $mi = mul (trimSuffix "Gi" $limit | int) 1024 }}
+{{- else if hasSuffix "Mi" $limit }}
+{{- $mi = trimSuffix "Mi" $limit | int }}
+{{- end }}
+{{- if lt (int $mi) 16 }}
+{{- fail "ax.redis.resources.limits.memory must be set in Mi or Gi (at least 16Mi): Redis's maxmemory is 80% of it" }}
+{{- end }}
+---
+# AX's own Redis (google/ax deploy/redis.yaml at v0.3.1), only with dragonfly.enabled=false and no external.redis (D189).
+# Unlike upstream it has a password (generated, kept across upgrades), so a CNI that does not enforce its NetworkPolicy
+# still leaves the queue closed. In memory only, like Dragonfly.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+  {{- include "skanyxx.keepSecret" . | nindent 2 }}
+type: Opaque
+stringData:
+  password: {{ include "skanyxx.secretValue" (dict "ctx" . "secret" $name "key" "password" "length" 32) | quote }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-redis") | nindent 4 }}
+spec:
+  selector:
+    {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-redis") | nindent 4 }}
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-redis") | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-redis") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skanyxx.labels" . | nindent 8 }}
+        {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "ax-redis") | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: redis
+          image: {{ include "skanyxx.axImage" (dict "image" $ax.redis.image "what" "ax.redis.image") | quote }}
+          imagePullPolicy: {{ $ax.redis.image.pullPolicy }}
+          # AX's queue must never be evicted: noeviction under a maxmemory below the limit, so a full Redis refuses writes
+          # instead of being OOM-killed. No snapshots, no AOF. $(REDIS_PASSWORD) is expanded by the kubelet.
+          args: [--save, "", --appendonly, "no", --maxmemory, "{{ div (mul $mi 4) 5 }}mb", --maxmemory-policy, noeviction,
+                 --requirepass, "$(REDIS_PASSWORD)"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $name }}
+                  key: password
+          ports:
+            - name: redis
+              containerPort: 6379
+          securityContext:
+            {{- toYaml $securityContext | nindent 12 }}
+          readinessProbe:
+            tcpSocket:
+              port: redis
+            periodSeconds: 5
+          resources:
+            {{- toYaml $ax.redis.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          emptyDir: {}
+{{- end }}
+{{- end }}

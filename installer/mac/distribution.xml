@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="1">
 
-    <title>Skanyxx SRE Platform</title>
+    <title>Skanyxx</title>
     <background file="background.png" alignment="bottomleft" scaling="proportional"/>
     <welcome    file="welcome.html"   mime-type="text/html"/>
     <readme     file="readme.html"    mime-type="text/html"/>
@@ -28,8 +28,8 @@
 
     <choice id="com.skanyxx.app"
             visible="false"
-            title="Skanyxx SRE Platform"
-            description="Installs the Skanyxx SRE Platform to /usr/local/share/skanyxx.">
+            title="Skanyxx"
+            description="Installs the Skanyxx desktop launcher to /usr/local/share/skanyxx.">
         <pkg-ref id="com.skanyxx.app"/>
     </choice>
 

@@ -7,9 +7,12 @@ namespace Skanyxx.Module.Memory.Contracts;
 [Mapper(EnumMappingStrategy = EnumMappingStrategy.ByName, EnumNamingStrategy = EnumNamingStrategy.CamelCase)]
 public static partial class CardMapper
 {
+    public static CardDto ToDto(this Card card) => card.ToDtoFields() with { BodyStored = BodyPointer.IsPointer(card.Source) };
+
     [MapperIgnoreSource(nameof(Card.Id))]
     [MapperIgnoreSource(nameof(Card.Search))]
-    public static partial CardDto ToDto(this Card card);
+    [MapperIgnoreTarget(nameof(CardDto.BodyStored))]
+    private static partial CardDto ToDtoFields(this Card card);
 
     [MapperIgnoreSource(nameof(Card.Id))]
     [MapperIgnoreSource(nameof(Card.Search))]

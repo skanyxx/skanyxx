@@ -33,7 +33,7 @@ public sealed class WorkspaceTests : SandboxesTestBase
         Assert.Equal(1, sent.Spec.Git[0].Depth);
     }
 
-    // The attach path is kept for D076/D077, but no configuration reaches it today (MemoryMcpUrl must be empty).
+    // The mapping alone; MemoryAttachTests covers attach end to end with the sandbox listener configured (D077).
     [Fact]
     public void AttachMemory_AddsTheSkanyxxMemoryServer_WhenAUrlIsGiven()
     {
@@ -87,7 +87,7 @@ public sealed class WorkspaceTests : SandboxesTestBase
     }
 
     [Fact]
-    public async Task AttachMemory_Is400_WhileNoMemoryUrlCanBeConfigured()
+    public async Task AttachMemory_Is400_WithoutAMemoryUrl()
     {
         var response = await SaveAsync("ws", new { attachMemory = true });
 

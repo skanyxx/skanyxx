@@ -16,7 +16,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     [InlineData("/api/memory/grants/some-agent")]
     [InlineData("/api/tickets/pipelines")]
     [InlineData("/api/tickets/runs")]
-    [InlineData("/api/sandboxes/tasks")]
+    [InlineData("/api/sandboxes")]
     [InlineData("/api/identity/me")]
     [InlineData("/api/hooks")] // a legacy controller
     [InlineData("/api/no-such-route")]
@@ -31,7 +31,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     [Theory]
     [InlineData("/api/memory/cards?q=x")]
     [InlineData("/api/tickets/pipelines")]
-    [InlineData("/api/sandboxes/tasks")]
+    [InlineData("/api/sandboxes")]
     public async Task UserIdHeader_Alone_Is401(string path)
     {
         var client = fixture.Host.Client();

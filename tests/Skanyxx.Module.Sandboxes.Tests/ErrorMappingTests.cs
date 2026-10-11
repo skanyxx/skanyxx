@@ -11,8 +11,8 @@ public sealed class ErrorMappingTests : SandboxesTestBase
     {
         { StatusCode.InvalidArgument, HttpStatusCode.BadRequest, "AX rejected the request." },
         { StatusCode.AlreadyExists, HttpStatusCode.Conflict, "Already exists in AX." },
-        { StatusCode.FailedPrecondition, HttpStatusCode.Conflict, "AX refused the change in the task's current state." },
-        { StatusCode.Aborted, HttpStatusCode.Conflict, "AX refused the change in the task's current state." },
+        { StatusCode.FailedPrecondition, HttpStatusCode.Conflict, "AX refused the change in the sandbox's current state." },
+        { StatusCode.Aborted, HttpStatusCode.Conflict, "AX refused the change in the sandbox's current state." },
         { StatusCode.Unavailable, HttpStatusCode.BadGateway, "AX unreachable." },
         { StatusCode.DeadlineExceeded, HttpStatusCode.BadGateway, "AX unreachable." },
         { StatusCode.Internal, HttpStatusCode.BadGateway, "AX request failed." },
@@ -27,8 +27,8 @@ public sealed class ErrorMappingTests : SandboxesTestBase
 
         foreach (var response in new[]
         {
-            await App.Client().GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken),
-            await App.Client().GetAsync("/api/sandboxes/tasks/fix-42", TestContext.Current.CancellationToken),
+            await App.Client().GetAsync("/api/sandboxes", TestContext.Current.CancellationToken),
+            await App.Client().GetAsync("/api/sandboxes/fix-42", TestContext.Current.CancellationToken),
             await App.Client().GetAsync("/api/sandboxes/workspaces", TestContext.Current.CancellationToken),
             await App.Client().GetAsync("/api/sandboxes/models", TestContext.Current.CancellationToken),
             await RunAsync("fix-42")
@@ -55,7 +55,7 @@ public sealed class ErrorMappingTests : SandboxesTestBase
     {
         await using var app = await SandboxesApp.StartAsync("http://127.0.0.1:1");
 
-        var response = await app.Client().GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken);
+        var response = await app.Client().GetAsync("/api/sandboxes", TestContext.Current.CancellationToken);
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
@@ -67,12 +67,12 @@ public sealed class ErrorMappingTests : SandboxesTestBase
     public async Task EveryCall_UsesTheConfiguredAtespace()
     {
         await RunAsync("fix-42");
-        await App.Client().GetAsync("/api/sandboxes/tasks/fix-42", TestContext.Current.CancellationToken);
-        await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/suspend", null, TestContext.Current.CancellationToken);
+        await App.Client().GetAsync("/api/sandboxes/fix-42", TestContext.Current.CancellationToken);
+        await App.Client().PostAsync("/api/sandboxes/fix-42/suspend", null, TestContext.Current.CancellationToken);
         await App.Client().GetAsync("/api/sandboxes/workspaces", TestContext.Current.CancellationToken);
         await App.Client().GetAsync("/api/sandboxes/models", TestContext.Current.CancellationToken);
         await App.Client(SandboxesApp.Supervisor).PutAsJsonAsync("/api/sandboxes/workspaces/ws", new { }, cancellationToken: TestContext.Current.CancellationToken);
-        await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/stop", null, TestContext.Current.CancellationToken);
+        await App.Client().PostAsync("/api/sandboxes/fix-42/stop", null, TestContext.Current.CancellationToken);
 
         Assert.NotEmpty(Ax.Atespaces);
         Assert.All(Ax.Atespaces, a => Assert.Equal(SandboxesApp.Atespace, a));
@@ -86,12 +86,12 @@ public sealed class ErrorMappingTests : SandboxesTestBase
         Ax.HoldUpdates = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         using var cancel = new CancellationTokenSource();
 
-        var run = App.Client().PutAsJsonAsync("/api/sandboxes/tasks/fix-42", RunBody(), cancel.Token);
+        var run = App.Client().PutAsJsonAsync("/api/sandboxes/fix-42", RunBody(), cancel.Token);
         await Ax.UpdateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
         await cancel.CancelAsync();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
-        await App.Logs.WaitForRequestFinishedAsync("/api/sandboxes/tasks/fix-42");
+        await App.Logs.WaitForRequestFinishedAsync("/api/sandboxes/fix-42");
         Assert.Empty(App.Logs.Warnings);
         Assert.DoesNotContain(App.Logs.Entries, e => e.Message.StartsWith("Request finished") && e.Message.Contains(" - 502"));
     }

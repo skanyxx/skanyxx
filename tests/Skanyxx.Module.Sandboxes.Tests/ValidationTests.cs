@@ -18,8 +18,8 @@ public sealed class ValidationTests : SandboxesTestBase
     public async Task NonDnsLabelNames_Are400_AndNeverReachAx(string name)
     {
         var run = await RunAsync(name);
-        var get = await App.Client().GetAsync($"/api/sandboxes/tasks/{name}", TestContext.Current.CancellationToken);
-        var stop = await App.Client().PostAsync($"/api/sandboxes/tasks/{name}/stop", null, TestContext.Current.CancellationToken);
+        var get = await App.Client().GetAsync($"/api/sandboxes/{name}", TestContext.Current.CancellationToken);
+        var stop = await App.Client().PostAsync($"/api/sandboxes/{name}/stop", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, run.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, get.StatusCode);
@@ -42,6 +42,21 @@ public sealed class ValidationTests : SandboxesTestBase
         var response = await RunAsync("fix-42", body: RunBody(env: new Dictionary<string, string> { [key] = "boss" }));
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Empty(Ax.Updates);
+    }
+
+    // D179: GET /api/sandboxes/workspaces is the workspace list, so a sandbox with that name could never be read back.
+    [Theory]
+    [InlineData("workspaces")]
+    [InlineData("models")]
+    [InlineData("tasks")] // the pre-D179 list route: a sandbox by that name would answer an old client with the wrong shape
+    public async Task ReservedNames_AreRefused_WithAClearMessage(string name)
+    {
+        var response = await RunAsync(name);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("'workspaces', 'models', 'tasks' are reserved", body);
         Assert.Empty(Ax.Updates);
     }
 
@@ -72,7 +87,7 @@ public sealed class ValidationTests : SandboxesTestBase
     [Fact]
     public async Task UnknownFields_LikeDebug_AreIgnored()
     {
-        await App.Client().PutAsJsonAsync("/api/sandboxes/tasks/fix-42", new { image = "ghcr.io/acme/img", debug = true }, cancellationToken: TestContext.Current.CancellationToken);
+        await App.Client().PutAsJsonAsync("/api/sandboxes/fix-42", new { image = "ghcr.io/acme/img", debug = true }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.False(Assert.Single(Ax.Updates).Task.Spec.Debug);
     }
@@ -80,19 +95,19 @@ public sealed class ValidationTests : SandboxesTestBase
     [Fact]
     public async Task QueryString_CannotRetargetTheRoute()
     {
-        await App.Client().PutAsJsonAsync("/api/sandboxes/tasks/fix-42?name=other", new { image = "ghcr.io/acme/img" }, cancellationToken: TestContext.Current.CancellationToken);
+        await App.Client().PutAsJsonAsync("/api/sandboxes/fix-42?name=other", new { image = "ghcr.io/acme/img" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal("fix-42", Assert.Single(Ax.Updates).Task.Metadata.Name);
     }
 
     [Theory]
-    [InlineData("GET", "/api/sandboxes/tasks")]
-    [InlineData("GET", "/api/sandboxes/tasks/fix-42")]
-    [InlineData("PUT", "/api/sandboxes/tasks/fix-42")]
-    [InlineData("POST", "/api/sandboxes/tasks/fix-42/stop")]
-    [InlineData("POST", "/api/sandboxes/tasks/fix-42/suspend")]
-    [InlineData("POST", "/api/sandboxes/tasks/fix-42/resume")]
-    [InlineData("GET", "/api/sandboxes/tasks/fix-42/watch")]
+    [InlineData("GET", "/api/sandboxes")]
+    [InlineData("GET", "/api/sandboxes/fix-42")]
+    [InlineData("PUT", "/api/sandboxes/fix-42")]
+    [InlineData("POST", "/api/sandboxes/fix-42/stop")]
+    [InlineData("POST", "/api/sandboxes/fix-42/suspend")]
+    [InlineData("POST", "/api/sandboxes/fix-42/resume")]
+    [InlineData("GET", "/api/sandboxes/fix-42/watch")]
     [InlineData("GET", "/api/sandboxes/workspaces")]
     [InlineData("PUT", "/api/sandboxes/workspaces/ws")]
     [InlineData("GET", "/api/sandboxes/models")]
@@ -119,7 +134,7 @@ public sealed class ValidationTests : SandboxesTestBase
     [Fact]
     public async Task Cors_IsOff()
     {
-        var request = new HttpRequestMessage(HttpMethod.Get, "/api/sandboxes/tasks");
+        var request = new HttpRequestMessage(HttpMethod.Get, "/api/sandboxes");
         request.Headers.Add("Origin", "https://evil.example");
 
         var response = await App.Client().SendAsync(request, TestContext.Current.CancellationToken);
@@ -134,7 +149,7 @@ public sealed class ValidationTests : SandboxesTestBase
         var huge = new { image = "ghcr.io/acme/img", command = new[] { new string('a', 3 * 1024 * 1024) } };
         // Expect: 100-continue with a Content-Length: Kestrel refuses on the headers and the client never uploads the body.
         // Uploading it anyway races the 413, and under load the client then sees a connection reset instead.
-        var request = new HttpRequestMessage(HttpMethod.Put, "/api/sandboxes/tasks/fix-42")
+        var request = new HttpRequestMessage(HttpMethod.Put, "/api/sandboxes/fix-42")
         {
             Content = new ByteArrayContent(JsonSerializer.SerializeToUtf8Bytes(huge)) { Headers = { ContentType = new("application/json") } }
         };

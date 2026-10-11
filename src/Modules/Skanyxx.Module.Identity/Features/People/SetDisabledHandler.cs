@@ -17,7 +17,7 @@ namespace Skanyxx.Module.Identity.Features.People;
 /// (<see cref="PrivilegeRevocation"/>); enabling does not bring them back. A disable marks the revocation as owed in its
 /// transaction (D13): a failed publish is retried by the next disable, enable, role save or Microsoft sign-in. Each is
 /// audited in its transaction (D152); a disable also revokes the person's open password-reset links in it (D165) and
-/// stops the person's sandbox tasks through that publish (D154). When that publish fails the change stays saved and
+/// stops the person's sandboxes through that publish (D154). When that publish fails the change stays saved and
 /// the <see cref="RevocationFailedException"/> says what did not happen and that disabling again retries (D162).
 /// </summary>
 internal sealed class SetDisabledHandler(

@@ -60,6 +60,13 @@ public partial class Program
             .Enrich.FromLogContext()
             .WriteTo.Console(new RenderedCompactJsonFormatter()));
 
+        // Remote mode (D201): the desktop launcher. Nothing below runs — no database, no modules, no sign-in.
+        if (HostModes.Read(builder.Configuration) == HostMode.Remote)
+        {
+            await RemoteClient.RunAsync(builder);
+            return;
+        }
+
         var telemetry = builder.Services.AddOpenTelemetry()
             .ConfigureResource(r => r.AddService("skanyxx"))
             .WithTracing(t => t.AddAspNetCoreInstrumentation().AddHttpClientInstrumentation().AddNpgsql())
@@ -186,6 +193,10 @@ public partial class Program
 
         var app = builder.Build();
 
+        if (app.Environment.IsProduction() && IsOnThisMachine(builder.Configuration.GetConnectionString("Identity")))
+            Log.Warning("ConnectionStrings:Identity is a database on this machine: company data on this machine makes this Host a " +
+                "dev console, not the workspace (D059, D200). The workspace is the Helm chart; desktop installs run in Remote mode");
+
         // Ensure database is created
         using (var scope = app.Services.CreateScope())
         {
@@ -232,5 +243,23 @@ public partial class Program
         app.UseSkanyxxPlatform(moduleLoader.GetModules());
 
         await app.RunAsync();
+    }
+
+    /// <summary>Every host in the connection string is loopback or a Unix socket path.</summary>
+    private static bool IsOnThisMachine(string? connectionString)
+    {
+        var hosts = new NpgsqlConnectionStringBuilder(connectionString).Host?
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
+        return hosts.Length > 0 && hosts.All(IsLocalHost);
+    }
+
+    private static bool IsLocalHost(string host)
+    {
+        if (host.StartsWith('/') || host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            return true;
+        if (System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var ip))
+            return System.Net.IPAddress.IsLoopback(ip);
+        var port = host.LastIndexOf(':'); // host:port
+        return port > 0 && IsLocalHost(host[..port]);
     }
 }

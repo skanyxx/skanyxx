@@ -85,6 +85,16 @@ public sealed class FakeAx : AX.AXBase
 
     public void Remove(string name) => _tasks.TryRemove(name, out _);
 
+    /// <summary>A workspace as a supervisor saved it; with <paramref name="memoryUrl"/>, memory is attached.</summary>
+    public void SeedWorkspace(string name, string? memoryUrl)
+    {
+        var workspace = new Workspace { ApiVersion = "ax.io/v1alpha1", Kind = "Workspace", Metadata = new ObjectMeta { Name = name, Atespace = "skanyxx" },
+            Spec = new WorkspaceSpec { Mcp = new MCPConfig() } };
+        if (memoryUrl is not null)
+            workspace.Spec.Mcp.Servers.Add(new MCPServer { Name = "skanyxx-memory", Endpoint = memoryUrl });
+        _workspaces[name] = workspace;
+    }
+
     public AxTask? Stored(string name) => _tasks.TryGetValue(name, out var t) ? t : null;
 
     private void Enter(string atespace)

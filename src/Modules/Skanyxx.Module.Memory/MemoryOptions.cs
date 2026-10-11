@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Npgsql;
+using Skanyxx.Core.Platform.Memory;
 
 namespace Skanyxx.Module.Memory;
 
@@ -34,6 +35,32 @@ public sealed class MemoryOptions
     /// </summary>
     [Range(1, 65_535)]
     public int? McpPort { get; set; }
+
+    /// <summary>
+    /// D077: a Kestrel port that serves <c>/mcp/memory</c> to sandboxes and nothing else. A request there is identified
+    /// only by its sandbox token (D076): agent secrets, <c>X-Agent-Id</c> and <c>X-User-Id</c> mean nothing on it.
+    /// Unset: no sandbox listener, and no sandbox token is accepted anywhere.
+    /// </summary>
+    [Range(1, 65_535)]
+    public int? SandboxMcpPort { get; set; }
+
+    /// <summary>D076: the HMAC-SHA256 key sandbox tokens are signed with (UTF-8, at least 32 characters). Changing it voids every token.</summary>
+    public string SandboxTokenKey { get; set; } = "";
+
+    /// <summary>How long a sandbox token lives; a sandbox running longer gets a new one when its owner re-runs it.</summary>
+    [Range(1, 720)]
+    public int SandboxTokenHours { get; set; } = 24;
+
+    internal const int MinTokenKeyChars = SandboxMemory.MinTokenKeyChars;
+
+    /// <summary>Sandbox tokens can be issued and checked: a listener and a key.</summary>
+    internal bool SandboxTokensOn => SandboxMcpPort is not null && SandboxTokenKey is { Length: >= MinTokenKeyChars };
+
+    /// <summary>The ports <c>/mcp/memory</c> is restricted to, or empty when it is on every port (no McpPort).</summary>
+    internal IReadOnlyList<int> McpOnlyPorts => McpPort is int mcp ? SandboxMcpPort is int sandbox ? [mcp, sandbox] : [mcp] : [];
+
+    /// <summary>Where bodies larger than the card go (D180); off unless an endpoint is set.</summary>
+    public ObjectStoreOptions ObjectStore { get; set; } = new();
 
     /// <summary>
     /// The configured string with this module's pool settings. Npgsql keys pools by connection string, so the

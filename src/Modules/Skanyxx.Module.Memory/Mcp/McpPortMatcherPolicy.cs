@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Routing.Matching;
 namespace Skanyxx.Module.Memory.Mcp;
 
 /// <summary>
-/// Drops endpoints carrying <see cref="McpPortMetadata"/> unless the connection arrived on that port, so they answer
+/// Drops endpoints carrying <see cref="McpPortMetadata"/> unless the connection arrived on one of its ports, so they answer
 /// 404 on every other listener. It matches the socket's local port, not the Host header: <c>RequireHost("*:port")</c>
 /// would let any caller of the public port reach /mcp by sending <c>Host: x:port</c>.
 /// </summary>
@@ -20,7 +20,7 @@ internal sealed class McpPortMatcherPolicy : MatcherPolicy, IEndpointSelectorPol
     {
         for (var i = 0; i < candidates.Count; i++)
         {
-            if (candidates[i].Endpoint?.Metadata.GetMetadata<McpPortMetadata>() is { } only && only.Port != httpContext.Connection.LocalPort)
+            if (candidates[i].Endpoint?.Metadata.GetMetadata<McpPortMetadata>() is { } only && !only.Ports.Contains(httpContext.Connection.LocalPort))
                 candidates.SetValidity(i, false);
         }
         return Task.CompletedTask;

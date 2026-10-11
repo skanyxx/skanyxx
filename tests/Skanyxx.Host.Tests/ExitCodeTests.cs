@@ -31,7 +31,8 @@ public sealed class ExitCodeTests(PostgresFixture fixture)
         Assert.Contains(log.Split('\n'), line => line.Contains("\"@l\":\"Fatal\""));
     }
 
-    private static async Task<(int ExitCode, string Log, TimeSpan Elapsed)> RunEntryPointAsync(
+    /// <summary>The real entry point (Main), as a process would run it; RemoteModeTests uses it too.</summary>
+    internal static async Task<(int ExitCode, string Log, TimeSpan Elapsed)> RunEntryPointAsync(
         string connectionString, Action<Dictionary<string, string>> configure)
     {
         var contentRoot = TempContentRoot.Create();

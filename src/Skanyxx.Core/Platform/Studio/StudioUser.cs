@@ -45,8 +45,7 @@ public sealed record StudioUser
 
     public static StudioUser From(ClaimsPrincipal principal)
     {
-        if (principal.Identities.Any(i => i.AuthenticationType == AgentPrincipal.SchemeName)
-            || principal.HasClaim(c => c.Type == AgentPrincipal.ActsForUsersClaim))
+        if (AgentPrincipal.IsAgent(principal))
             throw new InvalidOperationException("An agent is not a person: studio requests need a signed-in user.");
         var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.Identity?.Name ?? "";
         var name = principal.FindFirstValue(SkanyxxClaims.DisplayName) is { Length: > 0 } display ? display : email;

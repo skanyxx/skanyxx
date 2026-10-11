@@ -3,15 +3,17 @@ using AxClient = Ax.V1Alpha1.AX.AXClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
+using MediatR;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Sandboxes.Features;
 using Skanyxx.Module.Sandboxes.Gateway;
 
 namespace Skanyxx.Module.Sandboxes;
 
 /// <summary>
-/// Experimental: run container tasks in Google AX (v0.3.1) sandboxes. AX is the only source of truth for task state —
-/// there is no local run table; the creator is recorded on the AX task itself (see <see cref="TaskEnv"/>).
+/// Experimental: run containers in Google AX (v0.3.1) sandboxes. AX is the only source of truth for sandbox state —
+/// there is no local run table; the creator is recorded on the sandbox itself (see <see cref="SandboxEnv"/>).
 /// </summary>
 public sealed class SandboxesModule : IModule
 {
@@ -26,6 +28,7 @@ public sealed class SandboxesModule : IModule
         // answers 404 on the same setting.
         services.AddSingleton<KeyedLock>();
         services.AddSingleton<WatchLimiter>();
+        services.AddTransient<MemoryAccess>();
 
         // MediatR registers the handlers either way, and Development's ValidateOnBuild resolves them.
         if (!SandboxesOptions.IsEnabled(configuration))
@@ -38,9 +41,10 @@ public sealed class SandboxesModule : IModule
             .Bind(configuration.GetSection(SandboxesOptions.Section))
             .ValidateDataAnnotations()
             .Validate(o => SandboxesOptions.IsHttpUrl(o.Address), "Sandboxes:Address must be an absolute http(s) URL.")
-            .Validate(o => o.MemoryMcpUrl.Length == 0,
-                "Sandboxes:MemoryMcpUrl must be empty: /mcp/memory needs an agent secret, and a sandbox has no per-task credential yet. "
-                + "It can be set once the sandbox listener with signed tokens exists (D076/D077, docs/design/ax-integration.md).")
+            .Validate(o => o.MemoryMcpUrl.Length == 0 || SandboxesOptions.IsSandboxListener(o.MemoryMcpUrl, configuration),
+                "Sandboxes:MemoryMcpUrl must be empty or the sandbox listener's /mcp/memory: http(s)://<host>:<Memory:SandboxMcpPort>/mcp/memory "
+                + $"(no credentials, query or fragment), with Memory:SandboxTokenKey set ({SandboxMemory.MinTokenKeyChars}+ characters). "
+                + "Any other port serves agent secrets or the whole API, and a sandbox must reach neither (D076/D077, docs/design/ax-integration.md).")
             .Validate(o => o.AllowedImages.Length == 0 || o.NetworkIsolationConfirmed,
                 "Sandboxes:AllowedImages needs Sandboxes:NetworkIsolationConfirmed=true: apply deploy/sandboxes/ (or equivalent) "
                 + "first, so sandbox code cannot reach Skanyxx, ax-server or the cluster.")
@@ -56,5 +60,15 @@ public sealed class SandboxesModule : IModule
         services.AddTransient<AxGateway>();
     }
 
-    public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;
+    /// <summary>Memory attach needs memory to sign the tokens: fail startup, not the first run, when it is not loaded.</summary>
+    public Task InitializeAsync(IServiceProvider serviceProvider)
+    {
+        var configuration = serviceProvider.GetRequiredService<IConfiguration>();
+        var memoryOn = SandboxesOptions.IsEnabled(configuration)
+            && !string.IsNullOrEmpty(configuration[$"{SandboxesOptions.Section}:{nameof(SandboxesOptions.MemoryMcpUrl)}"]);
+        return memoryOn && !serviceProvider.GetRequiredService<IServiceProviderIsService>()
+                .IsService(typeof(IRequestHandler<IssueSandboxMemoryTokenCommand, Outcome<SandboxMemoryToken>>))
+            ? throw new InvalidOperationException("Sandboxes:MemoryMcpUrl is set but the memory module, which signs sandbox tokens, is not loaded.")
+            : Task.CompletedTask;
+    }
 }

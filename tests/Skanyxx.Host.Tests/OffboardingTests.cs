@@ -93,7 +93,7 @@ public sealed class OffboardingTests(PostgresFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);
         Assert.Equal(HttpStatusCode.InternalServerError, disable.StatusCode);
-        Assert.Equal("Account disabled. Its sandbox tasks could not be stopped (AX unavailable) — disable again to retry.",
+        Assert.Equal("Account disabled. Its sandboxes could not be stopped (AX unavailable) — disable again to retry.",
             body.GetProperty("detail").GetString());
         Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
     }
@@ -109,7 +109,9 @@ public sealed class OffboardingTests(PostgresFixture fixture)
             .Select(h => new NotificationHandlerExecutor(h, (_, _) => Task.CompletedTask));
         var names = AllHandlersPublisher.Ordered(order).Select(e => e.HandlerInstance.GetType().Name).ToList();
 
-        Assert.Equal(["RevokeSecretsOnPrivilegesRevoked", "StopTasksOnPrivilegesRevoked"], names);
+        // Memory's local revocations (agent secrets, and the person's sandbox tokens, D076) before anything that calls AX.
+        Assert.Equal(["RevokeSandboxTokensOnPrivilegesRevoked", "RevokeSecretsOnPrivilegesRevoked"], names[..2].Order());
+        Assert.Equal(["StopSandboxesOnPrivilegesRevoked"], names[2..]);
     }
 
     private static Task<HttpResponseMessage> WithCookie(HostApp host, string cookie, HttpMethod method, string path)

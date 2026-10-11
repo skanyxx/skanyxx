@@ -11,7 +11,7 @@ namespace Skanyxx.Module.Sandboxes.Gateway;
 /// <summary>The AX client pinned to the configured atespace, with a deadline on every unary call.</summary>
 internal sealed class AxGateway(AX.AXClient client, IOptions<SandboxesOptions> options)
 {
-    /// <summary>A page for the active-task count; counting gives up at <see cref="MaxCounted"/> tasks.</summary>
+    /// <summary>A page for the active-sandbox count; counting gives up at <see cref="MaxCounted"/> sandboxes.</summary>
     private const int PageSize = 100;
     public const int MaxCounted = 10_000;
 
@@ -20,7 +20,7 @@ internal sealed class AxGateway(AX.AXClient client, IOptions<SandboxesOptions> o
     private DateTime Deadline => DateTime.UtcNow.AddSeconds(options.Value.TimeoutSeconds);
 
     /// <summary>Null when AX says NotFound.</summary>
-    public async Task<AxTask?> FindTaskAsync(string name, CancellationToken ct)
+    public async Task<AxTask?> FindSandboxAsync(string name, CancellationToken ct)
     {
         try
         {
@@ -32,50 +32,50 @@ internal sealed class AxGateway(AX.AXClient client, IOptions<SandboxesOptions> o
         }
     }
 
-    public async Task<IReadOnlyList<AxTask>> ListTasksAsync(int limit, int offset, CancellationToken ct) =>
+    public async Task<IReadOnlyList<AxTask>> ListSandboxesAsync(int limit, int offset, CancellationToken ct) =>
         (await client.ListTasksAsync(new ListTasksRequest { Atespace = Atespace, Limit = limit, Offset = offset },
             deadline: Deadline, cancellationToken: ct)).Tasks;
 
     /// <summary>
     /// Pages through the atespace until an empty page — AX drops unreadable records, so a short page is not the end.
-    /// Null when it holds more than <see cref="MaxCounted"/> tasks (or AX ignores the offset): a partial count would
+    /// Null when it holds more than <see cref="MaxCounted"/> sandboxes (or AX ignores the offset): a partial count would
     /// undercount, so the caller must refuse. Offset paging over an index AX re-orders on every save is approximate:
-    /// a task saved between pages can be missed — AX offers nothing better.
+    /// a sandbox saved between pages can be missed — AX offers nothing better.
     /// </summary>
-    public async Task<ActiveTaskCount?> CountActiveAsync(string user, CancellationToken ct)
+    public async Task<ActiveSandboxCount?> CountActiveAsync(string user, CancellationToken ct)
     {
         var (mine, all) = (0, 0);
         for (var offset = 0; ; offset += PageSize)
         {
-            var page = await ListTasksAsync(PageSize, offset, ct);
+            var page = await ListSandboxesAsync(PageSize, offset, ct);
             if (page.Count == 0)
-                return new ActiveTaskCount(mine, all);
+                return new ActiveSandboxCount(mine, all);
             if (offset == MaxCounted)
                 return null;
-            foreach (var task in page.Where(t => TaskPhases.IsActive(t.Status?.Phase ?? "")))
+            foreach (var sandbox in page.Where(t => SandboxPhases.IsActive(t.Status?.Phase ?? "")))
             {
                 all++;
-                if (TaskEnv.Read(task, TaskEnv.Owner) == user)
+                if (SandboxEnv.Read(sandbox, SandboxEnv.Owner) == user)
                     mine++;
             }
         }
     }
 
-    public async Task<AxTask> UpdateTaskAsync(AxTask task, CancellationToken ct)
+    public async Task<AxTask> UpdateSandboxAsync(AxTask sandbox, CancellationToken ct)
     {
-        task.Metadata.Atespace = Atespace;
-        return await client.UpdateTaskAsync(new UpdateTaskRequest { Task = task }, deadline: Deadline, cancellationToken: ct);
+        sandbox.Metadata.Atespace = Atespace;
+        return await client.UpdateTaskAsync(new UpdateTaskRequest { Task = sandbox }, deadline: Deadline, cancellationToken: ct);
     }
 
-    public async Task DeleteTaskAsync(string name, CancellationToken ct) =>
+    public async Task DeleteSandboxAsync(string name, CancellationToken ct) =>
         await client.DeleteTaskAsync(new DeleteTaskRequest { Atespace = Atespace, Name = name }, deadline: Deadline, cancellationToken: ct);
 
     public async Task<AxTask> SetSuspendedAsync(string name, bool suspend, CancellationToken ct) => suspend
         ? await client.SuspendTaskAsync(new SuspendTaskRequest { Atespace = Atespace, Name = name }, deadline: Deadline, cancellationToken: ct)
         : await client.ResumeTaskAsync(new ResumeTaskRequest { Atespace = Atespace, Name = name }, deadline: Deadline, cancellationToken: ct);
 
-    /// <summary>AX closes the stream once the task is Running, Failed or Completed; the caller's token bounds it otherwise.</summary>
-    public async IAsyncEnumerable<WatchTaskResponse> WatchTaskAsync(string name, [EnumeratorCancellation] CancellationToken ct)
+    /// <summary>AX closes the stream once the sandbox is Running, Failed or Completed; the caller's token bounds it otherwise.</summary>
+    public async IAsyncEnumerable<WatchTaskResponse> WatchSandboxAsync(string name, [EnumeratorCancellation] CancellationToken ct)
     {
         using var call = client.WatchTask(new WatchTaskRequest { Atespace = Atespace, Name = name }, cancellationToken: ct);
         await foreach (var response in call.ResponseStream.ReadAllAsync(ct))

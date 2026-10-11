@@ -208,7 +208,7 @@ internal sealed class EntraAccounts(
     /// re-maps it exactly as a sign-in would (a role change ends its sessions) and clears an earlier refusal; one that
     /// grants nothing — no mapped group any more, or the user is gone from the tenant — is a refused sign-in (D2): roles
     /// and teams removed, the account kept. The first such refusal (<see cref="EntraRefusal"/>, D161) also ends every
-    /// session whether or not roles or teams changed, and owes a revocation that stops the person's sandbox tasks
+    /// session whether or not roles or teams changed, and owes a revocation that stops the person's sandboxes
     /// (<c>AccessRemoved</c>). Nothing changes for an account that is disabled, the owner, or no longer has that login,
     /// and nothing is written when the mapping already holds. An owed revocation (this change's or an earlier one) is
     /// published after the commit; a failure there leaves it owed (logged at Error), and the next re-check retries it.
@@ -236,7 +236,7 @@ internal sealed class EntraAccounts(
             {
                 await audit.WriteAsync(granted ? AuditActions.EntraRecheckRemapped : AuditActions.EntraRecheckRefused, EntraScheme.Actor, user.Id,
                     fresh ? new { key, addedRoles = changes!.AddedRoles, removedRoles = changes.RemovedRoles, addedTeams = changes.AddedTeams,
-                        removedTeams = changes.RemovedTeams, effect = "sessions ended, sandbox tasks stopped" } : Details(key, changes!), ct);
+                        removedTeams = changes.RemovedTeams, effect = "sessions ended, sandboxes stopped" } : Details(key, changes!), ct);
                 if (changes!.RolesChanged || !granted)
                     await sessions.EndAllAsync(user, ct);
                 lost = await RecordSupervisorAsync(user, granted ? mapping : NoGroups, changes, ct);

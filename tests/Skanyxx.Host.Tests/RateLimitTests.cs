@@ -18,7 +18,7 @@ public sealed class RateLimitTests(PostgresFixture fixture)
 
         var first = await client.GetAsync("/api/tickets/pipelines", TestContext.Current.CancellationToken);
         var second = await client.GetAsync("/api/memory/cards?q=x", TestContext.Current.CancellationToken);
-        var third = await client.GetAsync("/api/sandboxes/tasks", TestContext.Current.CancellationToken);
+        var third = await client.GetAsync("/api/sandboxes", TestContext.Current.CancellationToken);
         var mcp = await client.PostAsync("/mcp/memory", new StringContent("{}"), TestContext.Current.CancellationToken);
         var chat = await client.PostAsync("/api/chat", new StringContent("{}"), TestContext.Current.CancellationToken);
         var model = await client.GetAsync("/api/model", TestContext.Current.CancellationToken);

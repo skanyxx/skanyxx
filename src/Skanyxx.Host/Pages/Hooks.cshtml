@@ -258,7 +258,7 @@
                 : '<button class="btn btn-primary btn-enable" data-id="' + hook.id + '">Enable</button>';
 
             html += '<tr data-id="' + hook.id + '">';
-            html += '<td><div class="hook-name"><span class="nav-icon">&#x2922;</span>' + (hook.name || 'Unnamed') + '</div></td>';
+            html += '<td><div class="hook-name"><span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-link"/></svg></span>' + (hook.name || 'Unnamed') + '</div></td>';
             html += '<td><code>' + (hook.trigger || hook.event || '-') + '</code></td>';
             html += '<td>' + (hook.target || hook.url || '-') + '</td>';
             html += '<td>' + formatTime(hook.lastTriggered) + '</td>';

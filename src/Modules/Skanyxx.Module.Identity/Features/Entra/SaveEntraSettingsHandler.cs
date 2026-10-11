@@ -23,7 +23,7 @@ namespace Skanyxx.Module.Identity.Features.Entra;
 /// same transaction (D15): a password session opened while it was off must not outlive D8. A save that leaves Microsoft
 /// sign-in unusable (off, or no group mapped) or changes the tenant clears every re-check refusal in the same transaction
 /// (<see cref="EntraRefusal"/>, D161): those people may sign in with their password again, so a later revocation must
-/// not stop their sandbox tasks as if their access were gone.
+/// not stop their sandboxes as if their access were gone.
 /// </summary>
 internal sealed class SaveEntraSettingsHandler(
     AccountsDbContext db, EntraSettingsCache cache, EntraRedirectUri redirect, EntraKeyRing keyRing, IdentityAudit audit, ClientAddress client,

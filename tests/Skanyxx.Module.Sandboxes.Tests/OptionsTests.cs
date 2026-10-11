@@ -66,15 +66,65 @@ public sealed class OptionsTests
         Assert.Contains("NetworkIsolationConfirmed", error.Message);
     }
 
-    // CR M2: memory attach stays unreachable until D076/D077.
+    private const string TokenKey = "a-sandbox-token-key-of-at-least-32-characters";
+
+    // CR M2, kept by D077: no sandbox listener configured, so no URL is acceptable.
     [Theory]
     [InlineData("http://skanyxx.skanyxx.svc:8080/mcp/memory")]
     [InlineData("skanyxx/mcp/memory")]
-    public void AnyMemoryMcpUrl_StopsStartup(string url)
+    public void AnyMemoryMcpUrl_WithoutTheSandboxListener_StopsStartup(string url)
     {
         var error = Assert.Throws<OptionsValidationException>(() => Resolve(new() { ["Sandboxes:MemoryMcpUrl"] = url }));
 
         Assert.Contains("D076/D077", error.Message);
+    }
+
+    // D077: lifted only for the sandbox listener's /mcp/memory, and only with the signing key in place.
+    [Theory]
+    [InlineData("http://skanyxx-sandbox-mcp.skanyxx.svc:8082/mcp/memory")]
+    [InlineData("https://skanyxx-sandbox-mcp.skanyxx.svc:8082/mcp/memory")]
+    public void TheSandboxListenersUrl_IsAccepted(string url) =>
+        Assert.Equal(url, Resolve(new()
+        {
+            ["Sandboxes:MemoryMcpUrl"] = url, ["Memory:SandboxMcpPort"] = "8082", ["Memory:SandboxTokenKey"] = TokenKey
+        }).MemoryMcpUrl);
+
+    [Theory]
+    [InlineData("http://skanyxx.skanyxx.svc:8080/mcp/memory", "8082", TokenKey)]        // the UI/API port
+    [InlineData("http://skanyxx.skanyxx.svc:8081/mcp/memory", "8082", TokenKey)]        // the agents' mcp port
+    [InlineData("http://skanyxx.skanyxx.svc/mcp/memory", "8082", TokenKey)]             // port 80
+    [InlineData("http://skanyxx.skanyxx.svc:8082/api/memory", "8082", TokenKey)]
+    [InlineData("http://skanyxx.skanyxx.svc:8082/mcp/memory/", "8082", TokenKey)]
+    [InlineData("http://skanyxx.skanyxx.svc:8082/mcp/memory?agent=x", "8082", TokenKey)]
+    [InlineData("http://user:pw@skanyxx.skanyxx.svc:8082/mcp/memory", "8082", TokenKey)]
+    [InlineData("ftp://skanyxx.skanyxx.svc:8082/mcp/memory", "8082", TokenKey)]
+    [InlineData("http://skanyxx.skanyxx.svc:8082/mcp/memory", "8082", null)]             // no key
+    [InlineData("http://skanyxx.skanyxx.svc:8082/mcp/memory", "8082", "short")]
+    [InlineData("http://skanyxx.skanyxx.svc:8082/mcp/memory", "not-a-port", TokenKey)]
+    public void AnyOtherMemoryMcpUrl_StillStopsStartup(string url, string port, string? key)
+    {
+        var error = Assert.Throws<OptionsValidationException>(() => Resolve(new()
+        {
+            ["Sandboxes:MemoryMcpUrl"] = url, ["Memory:SandboxMcpPort"] = port, ["Memory:SandboxTokenKey"] = key
+        }));
+
+        Assert.Contains("D076/D077", error.Message);
+    }
+
+    [Fact]
+    public async Task MemoryAttach_WithoutTheMemoryModule_FailsStartup()
+    {
+        var settings = new Dictionary<string, string?> { ["Sandboxes:Enabled"] = "true" };
+        Infrastructure.FakeMemoryTokens.Configure(settings);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(settings).Build();
+        var services = new ServiceCollection().AddSingleton<IConfiguration>(configuration);
+        new SandboxesModule().RegisterServices(services, configuration);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => new SandboxesModule().InitializeAsync(services.BuildServiceProvider()));
+        Assert.Contains("memory module", error.Message);
+
+        new Infrastructure.FakeMemoryTokens().Register(services);
+        await new SandboxesModule().InitializeAsync(services.BuildServiceProvider());
     }
 
     [Theory]

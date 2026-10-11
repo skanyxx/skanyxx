@@ -10,27 +10,27 @@ internal static class AxMapper
     public const string ApiVersion = "ax.io/v1alpha1";
     public const string MemoryServerName = "skanyxx-memory";
 
-    public static SandboxTask ToSandboxTask(AxTask task) => new(
-        task.Metadata?.Name ?? "",
-        TaskEnv.Read(task, TaskEnv.Owner),
-        TaskEnv.Read(task, TaskEnv.AgentId),
-        task.Spec?.Image ?? "",
-        [.. task.Spec?.Command ?? []],
-        [.. task.Spec?.Env.Select(e => e.Name) ?? []],
-        [.. task.Spec?.Workspaces.Select(w => new WorkspaceMount(w.Name, NullIfEmpty(w.Path), NullIfEmpty(w.Goal))) ?? []],
-        task.Spec?.Resources is { } r ? new SandboxResources(ToQuantity(r.Requests), ToQuantity(r.Limits)) : null,
-        task.Spec?.Suspend ?? false,
-        task.Status?.Phase ?? "",
-        [.. task.Status?.Conditions.Select(c => new SandboxCondition(c.Type, c.Status, c.Reason, c.LastTransitionTime?.ToDateTime())) ?? []],
-        task.Metadata?.CreationTimestamp?.ToDateTime());
+    public static Sandbox ToSandbox(AxTask sandbox) => new(
+        sandbox.Metadata?.Name ?? "",
+        SandboxEnv.Read(sandbox, SandboxEnv.Owner),
+        SandboxEnv.Read(sandbox, SandboxEnv.AgentId),
+        sandbox.Spec?.Image ?? "",
+        [.. sandbox.Spec?.Command ?? []],
+        [.. sandbox.Spec?.Env.Select(e => e.Name) ?? []],
+        [.. sandbox.Spec?.Workspaces.Select(w => new WorkspaceMount(w.Name, NullIfEmpty(w.Path), NullIfEmpty(w.Goal))) ?? []],
+        sandbox.Spec?.Resources is { } r ? new SandboxResources(ToQuantity(r.Requests), ToQuantity(r.Limits)) : null,
+        sandbox.Spec?.Suspend ?? false,
+        sandbox.Status?.Phase ?? "",
+        [.. sandbox.Status?.Conditions.Select(c => new SandboxCondition(c.Type, c.Status, c.Reason, c.LastTransitionTime?.ToDateTime())) ?? []],
+        sandbox.Metadata?.CreationTimestamp?.ToDateTime());
 
     public static AxTask ToAxTask(
         string name, string owner, string agentId, string image, IReadOnlyList<string> command, IReadOnlyDictionary<string, string> env,
-        IReadOnlyList<WorkspaceMount> workspaces, SandboxResources resources, bool suspend)
+        IReadOnlyList<WorkspaceMount> workspaces, SandboxResources resources, bool suspend, (string Url, string Token)? memory = null)
     {
         var spec = new TaskSpec { Image = image, Suspend = suspend, Command = { command } };
         spec.Env.AddRange(env.Select(e => new EnvVar { Name = e.Key, Value = e.Value }));
-        spec.Env.AddRange(TaskEnv.For(owner, agentId));
+        spec.Env.AddRange(SandboxEnv.For(owner, agentId, memory));
         spec.Workspaces.AddRange(workspaces.Select(w => new WorkspaceRef { Name = w.Name, Path = w.Path ?? "", Goal = w.Goal ?? "" }));
         spec.Resources = new ResourceReqs { Requests = ToList(resources.Requests), Limits = ToList(resources.Limits) };
         return new AxTask { ApiVersion = ApiVersion, Kind = "Task", Metadata = new ObjectMeta { Name = name }, Spec = spec };

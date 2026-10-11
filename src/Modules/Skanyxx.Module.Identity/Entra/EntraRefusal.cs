@@ -7,7 +7,7 @@ namespace Skanyxx.Module.Identity.Entra;
 /// <summary>
 /// D161: the account was refused by the Entra group re-check (no mapped group left, or gone from the tenant). A row in
 /// <c>identity_user_tokens</c> (provider <c>entra</c>, never part of a principal) marks it, so the refusal acts once —
-/// sessions ended, sandbox tasks stopped — and a retried revocation still knows the person's access is gone. Cleared when
+/// sessions ended, sandboxes stopped — and a retried revocation still knows the person's access is gone. Cleared when
 /// the mapping grants access again or the Microsoft login is removed (under the account lock), and for every account when
 /// a settings save leaves Microsoft sign-in unusable or changes the tenant (under the save lock). Honoured only while
 /// Microsoft sign-in can be used: with it off the person signs in with a password again (D8).

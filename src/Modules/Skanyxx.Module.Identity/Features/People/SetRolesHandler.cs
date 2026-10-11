@@ -17,7 +17,7 @@ namespace Skanyxx.Module.Identity.Features.People;
 /// also marks the revocation as owed in the same transaction (D13), so a failed publish is retried by the next save or
 /// Microsoft sign-in of the account without supervisor. A save that leaves supervisor on drops any owed revocation (D17).
 /// A real change is audited in the same transaction (D152). When the publish fails (a disabled or Entra-refused
-/// account's sandbox tasks with AX down) the roles stay saved and the <see cref="RevocationFailedException"/> says so
+/// account's sandboxes with AX down) the roles stay saved and the <see cref="RevocationFailedException"/> says so
 /// and that saving again retries, as a disable does (D162).
 /// </summary>
 internal sealed class SetRolesHandler(

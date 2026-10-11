@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using ArchUnitNET.Domain;
 using ArchUnitNET.Loader;
 using ArchUnitNET.xUnitV3;
@@ -43,10 +44,17 @@ public sealed class ArchitectureTests
     public void Module_DoesNotReferenceOtherModules() =>
         Assert.DoesNotContain(Module.GetReferencedAssemblies(), a => a.Name!.StartsWith("Skanyxx.Module.") || a.Name == "Skanyxx.Host");
 
+    /// <summary>
+    /// D071/D179: the module's noun is the sandbox. AX's generated types (its own API) and compiler-generated types are
+    /// the only ones whose names may say "Task".
+    /// </summary>
     [Fact]
-    public void NoDomainTypeIsCalledTask() =>
-        Assert.DoesNotContain(Module.GetTypes(), t => t.Namespace?.StartsWith("Skanyxx.") == true
-            && t.Name is "Task" or "KAgentTask" or "Run");
+    public void NoModuleTypeNameSaysTask() =>
+        Assert.Empty(Module.GetTypes()
+            .Where(t => t.Namespace?.StartsWith("Ax.V1Alpha1", StringComparison.Ordinal) != true
+                && !t.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
+                && (t.Name.Contains("Task", StringComparison.OrdinalIgnoreCase) || t.Name == "Run"))
+            .Select(t => t.FullName));
 
     [Fact]
     public void Module_HasNoFastEndpointsValidators() =>

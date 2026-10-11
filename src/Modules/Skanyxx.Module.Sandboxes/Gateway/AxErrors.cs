@@ -15,7 +15,7 @@ internal static class AxErrors
 {
     public const string Unreachable = "AX unreachable.";
     public const string Failed = "AX request failed.";
-    public const string Refused = "AX refused the change in the task's current state.";
+    public const string Refused = "AX refused the change in the sandbox's current state.";
 
     public static async Task<Outcome<T>> Guard<T>(ILogger logger, CancellationToken ct, Func<Task<Outcome<T>>> call)
     {

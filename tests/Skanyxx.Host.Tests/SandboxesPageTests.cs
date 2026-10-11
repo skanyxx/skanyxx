@@ -45,7 +45,9 @@ public sealed class SandboxesPageTests(PostgresFixture fixture) : IAsyncLifetime
             Assert.Contains("<input id=\"run-image\" required list=\"allowed-images\" autocomplete=\"off\" />", html);
             // Browsers compile pattern with the v flag; an unescaped "-" in a class makes it invalid and unenforced.
             Assert.Contains("pattern=\"[a-z0-9]([a-z0-9\\-]*[a-z0-9])?\"", html);
-            Assert.Contains("'/api/sandboxes/tasks'", html);
+            Assert.Contains("'/api/sandboxes'", html);
+            Assert.DoesNotContain("/api/sandboxes/tasks", html);
+            Assert.Contains("Run a sandbox", html);
             Assert.DoesNotContain("sandboxes-off", html);
             // API values are written with textContent only.
             Assert.DoesNotContain("innerHTML", html);

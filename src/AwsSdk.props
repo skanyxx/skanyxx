@@ -1,0 +1,7 @@
+<Project>
+  <!-- One AWSSDK version for the Host and the memory module (D180): the module loads the Host's copy at run time
+       (PluginLoadContext.SharedAssemblies), so a module built against a newer one would fail with MissingMethodException. -->
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.S3" Version="4.0.104.2" />
+  </ItemGroup>
+</Project>

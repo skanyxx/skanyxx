@@ -67,3 +67,8 @@ TestResults/
 
 # Plugin module binaries: build output, produced by `dotnet build` (CopyToModules)
 src/Skanyxx.Host/modules/
+
+# MSBuild output written under a literal "*Undefined*" folder when $(SolutionDir) is unset (never commit)
+*Undefined*/
+# Appliance bundles (deploy/appliance/bundle.sh)
+dist/

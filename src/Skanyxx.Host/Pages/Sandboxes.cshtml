@@ -5,16 +5,15 @@
 }
 <p class="text-muted">
     <span class="badge badge-warning">Experimental</span>
-    Run a container task in a sandbox on Google AX, watch it start and stop it. AX is pre-1.0 and may change or break.
+    Run a container in a sandbox on Google AX, watch it start and stop it. AX is pre-1.0 and may change or break.
 </p>
-<p class="text-muted">On AX v0.3.1 a suspended task that names its own image does not resume (it ends Failed): suspend only what
-    you can run again.</p>
+<p class="text-muted">Resume is unreliable on AX v0.3.1: if a resumed sandbox ends Failed, stop it and run it again.</p>
 
 @if (!Model.Enabled)
 {
     <div class="card" id="sandboxes-off">
         <p>Sandboxes are off. Set <code>Sandboxes:Enabled</code> to <code>true</code> and point <code>Sandboxes:Address</code>
-            at an AX server (README, "AX Tasks (Experimental)").</p>
+            at an AX server (README, "Sandboxes on Google AX (Experimental)").</p>
     </div>
 }
 else
@@ -24,7 +23,7 @@ else
         <p id="sandboxes-status" class="text-success" role="status" hidden></p>
 
         <div class="card mb-3">
-            <div class="card-header"><h3 class="card-title">Run a task</h3></div>
+            <div class="card-header"><h3 class="card-title">Run a sandbox</h3></div>
             <form id="run-form" class="flex flex-col gap-2">
                 <label for="run-name">Name (lowercase letters, digits and <code>-</code>)</label>
                 @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
@@ -47,17 +46,17 @@ echo hello from a sandbox; sleep 300</textarea>
 
         <div class="card mb-3">
             <div class="card-header flex items-center gap-2">
-                <h3 class="card-title">Tasks</h3>
+                <h3 class="card-title">Sandboxes</h3>
                 <button type="button" class="btn btn-ghost" id="refresh">Refresh</button>
             </div>
             <div class="table-container">
                 <table>
                     <thead><tr><th scope="col">Name</th><th scope="col">Owner</th><th scope="col">Image</th><th scope="col">Phase</th><th scope="col" aria-label="Actions"></th></tr></thead>
-                    <tbody id="tasks"></tbody>
+                    <tbody id="sandbox-rows"></tbody>
                 </table>
             </div>
-            <p id="tasks-empty" class="text-muted" hidden>No tasks.</p>
-            <p id="tasks-capped" class="text-muted" hidden></p>
+            <p id="sandboxes-empty" class="text-muted" hidden>No sandboxes.</p>
+            <p id="sandboxes-capped" class="text-muted" hidden></p>
         </div>
 
         <div class="card" id="watch-card" hidden>
@@ -71,7 +70,7 @@ echo hello from a sandbox; sleep 300</textarea>
         const me = document.getElementById('sandboxes').dataset.me;
         const errorBox = document.getElementById('sandboxes-error');
         const statusBox = document.getElementById('sandboxes-status');
-        const base = '/api/sandboxes/tasks';
+        const base = '/api/sandboxes';
         // The API pages its list (at most 100 a page); a full page says so rather than passing for the whole list.
         const listLimit = 100;
         let watching = null;
@@ -118,29 +117,29 @@ echo hello from a sandbox; sleep 300</textarea>
 
         async function load() {
             try {
-                const tasks = await call('GET', `${base}?limit=${listLimit}`);
-                const body = document.getElementById('tasks');
+                const sandboxes = await call('GET', `${base}?limit=${listLimit}`);
+                const body = document.getElementById('sandbox-rows');
                 body.replaceChildren();
-                for (const t of tasks) {
+                for (const s of sandboxes) {
                     const row = document.createElement('tr');
-                    row.dataset.task = t.name; // a hook for browser tests
-                    cell(row, t.name);
-                    cell(row, t.owner === me ? 'you' : (t.owner ?? '—'));
-                    cell(row, t.image);
-                    cell(row, t.suspended ? `${t.phase} (suspended)` : t.phase);
+                    row.dataset.sandbox = s.name; // a hook for browser tests
+                    cell(row, s.name);
+                    cell(row, s.owner === me ? 'you' : (s.owner ?? '—'));
+                    cell(row, s.image);
+                    cell(row, s.suspended ? `${s.phase} (suspended)` : s.phase);
                     const actions = cell(row, '');
-                    actions.appendChild(button('Watch', t.name, () => watch(t.name)));
-                    if ((t.phase === 'Pending' || t.phase === 'Running') && !t.suspended) actions.appendChild(button('Suspend', t.name, () => act(t.name, 'suspend')));
-                    if (t.phase === 'Suspended') actions.appendChild(button('Resume', t.name, () => act(t.name, 'resume')));
-                    if (t.phase !== 'Terminating') actions.appendChild(button('Stop', t.name, () => {
-                        if (confirm(`Stop ${t.name}? AX deletes the task.`)) act(t.name, 'stop');
+                    actions.appendChild(button('Watch', s.name, () => watch(s.name)));
+                    if ((s.phase === 'Pending' || s.phase === 'Running') && !s.suspended) actions.appendChild(button('Suspend', s.name, () => act(s.name, 'suspend')));
+                    if (s.phase === 'Suspended') actions.appendChild(button('Resume', s.name, () => act(s.name, 'resume')));
+                    if (s.phase !== 'Terminating') actions.appendChild(button('Stop', s.name, () => {
+                        if (confirm(`Stop ${s.name}? AX deletes the sandbox.`)) act(s.name, 'stop');
                     }));
                     body.appendChild(row);
                 }
-                document.getElementById('tasks-empty').hidden = tasks.length > 0;
-                const capped = document.getElementById('tasks-capped');
-                capped.textContent = `Showing the first ${listLimit} tasks.`;
-                capped.hidden = tasks.length < listLimit;
+                document.getElementById('sandboxes-empty').hidden = sandboxes.length > 0;
+                const capped = document.getElementById('sandboxes-capped');
+                capped.textContent = `Showing the first ${listLimit} sandboxes.`;
+                capped.hidden = sandboxes.length < listLimit;
             } catch (e) {
                 fail(e.message);
             }
@@ -168,8 +167,8 @@ echo hello from a sandbox; sleep 300</textarea>
             watching = source;
             const frame = kind => event => {
                 const data = JSON.parse(event.data);
-                const t = data.task;
-                line(t ? `${kind}: ${t.phase}${t.suspended ? ' (suspended)' : ''}` : `${kind}${data.error ? ': ' + data.error : ''}`);
+                const s = data.task; // the frame's field keeps its pre-D179 name
+                line(s ? `${kind}: ${s.phase}${s.suspended ? ' (suspended)' : ''}` : `${kind}${data.error ? ': ' + data.error : ''}`);
                 if (kind !== 'initial' && kind !== 'modified') {
                     source.close();
                     load();
@@ -177,7 +176,7 @@ echo hello from a sandbox; sleep 300</textarea>
             };
             for (const kind of ['initial', 'modified', 'final', 'gone']) source.addEventListener(kind, frame(kind));
             // A server "error" frame carries data. A refused watch (404, 429 too many watches) gives EventSource no status
-            // or body, so the task itself is asked for the reason.
+            // or body, so the sandbox itself is asked for the reason.
             let drops = 0;
             source.addEventListener('error', async event => {
                 if (event.data) return frame('error')(event);

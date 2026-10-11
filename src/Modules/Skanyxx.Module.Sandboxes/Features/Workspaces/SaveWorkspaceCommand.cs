@@ -5,8 +5,8 @@ using Skanyxx.Module.Sandboxes.Domain;
 namespace Skanyxx.Module.Sandboxes.Features.Workspaces;
 
 /// <summary>
-/// Create-or-replace (AX <c>UpdateWorkspace</c>). Supervisors only: workspaces are shared by every task that binds
-/// them, so a repo or MCP endpoint changed here reaches other people's tasks. <c>AttachMemory</c> adds Skanyxx's
+/// Create-or-replace (AX <c>UpdateWorkspace</c>). Supervisors only: workspaces are shared by every sandbox that binds
+/// them, so a repo or MCP endpoint changed here reaches other people's sandboxes. <c>AttachMemory</c> adds Skanyxx's
 /// memory MCP server as <c>skanyxx-memory</c>.
 /// </summary>
 public sealed record SaveWorkspaceCommand(

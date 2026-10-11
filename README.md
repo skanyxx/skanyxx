@@ -25,6 +25,17 @@ generate one for you. See Identity and security model.
 
 Swagger UI is available at http://localhost:5282/swagger in Development mode.
 
+This full Host (`Skanyxx:Mode` `Server`, the default) is a **dev console** when it runs outside the cluster: its
+people, org and cards are its own, not the company's. The company's Skanyxx is the Helm chart (Install with Helm).
+The desktop installers run the same binary in **Remote mode**, a launcher that sends the browser to the company's
+Skanyxx and holds nothing (D200, D201):
+
+```bash
+dotnet run --project src/Skanyxx.Host -- --Skanyxx:Mode=Remote --Skanyxx:RemoteUrl=https://skanyxx.example.com
+# GET/HEAD on any path → 302 to the RemoteUrl itself; /health → {"mode":"remote"}; anything else → 404.
+# No database, no modules, no sign-in. Empty RemoteUrl: / explains where to set it.
+```
+
 ## First hour (local three-plane run)
 
 The first hour (`docs/design/first-hour.md`): `/Setup` creates the owner → the owner sets the model (`/Model`) → Chat
@@ -124,8 +135,10 @@ scripts/dev/first-hour.sh host                    # then /Setup → /Model → s
 
 The product is one chart, `deploy/helm/skanyxx` (D060): the Skanyxx API/UI, **kagent 0.10.2**, and the bundled data
 plane — **Postgres**, **MinIO**, **Gitea** (git) and **one Dragonfly** (D061, D068). Here Skanyxx runs **in the
-cluster** and is the source of truth for people, org and cards; a desktop or `dotnet run` Host is a console that
-points at it (D059). One install per customer, in one namespace (some names are fixed: `kagent-*`, `dragonfly`) —
+cluster** and is the source of truth for people, org and cards. People reach it at its URL — in the browser, or
+through the desktop launcher (Remote mode, D200/D201), which only redirects there. A full Host outside the cluster
+(`dotnet run`, an upgraded desktop install) is a dev console with its own data and must not be pointed at the
+chart's databases (D202). One install per customer, in one namespace (some names are fixed: `kagent-*`, `dragonfly`) —
 and with the bundled kagent **one install per cluster**: kagent's CRDs are cluster-wide and owned by the release
 (D136). With `kagent.enabled=false` (your own kagent) several installs can share a cluster. Installing into a
 namespace other than `skanyxx` needs `--set 'kagent.rbac.namespaces={<ns>}'` (the chart refuses otherwise).
@@ -139,7 +152,7 @@ kubectl -n skanyxx port-forward svc/skanyxx 8080:8080       # UI/API only; /mcp/
 kubectl -n skanyxx get secret skanyxx -o jsonpath='{.data.bootstrap-token}' | base64 -d   # for /Setup
 # browser: http://localhost:8080/Setup → owner → /Model (save) → /Chat
 OWNER_EMAIL=… OWNER_PASSWORD=… scripts/helm/seed-agent.sh   # the seed agent + its memory secret; again to rotate
-scripts/helm/validate.sh                           # helm lint + kubeconform -strict: default, BYO, AX + 18 refusals
+scripts/helm/validate.sh                           # helm lint + kubeconform -strict: default, BYO, AX, AX installed + 50 refusals (each checked for its reason)
 ```
 
 - **Image** (`Dockerfile`): .NET 10, multi-stage; the Host plus all 16 module DLLs in `/app/modules`; runs as the
@@ -176,7 +189,9 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
 - **`/mcp/memory` has its own port** (8081, `skanyxx.service.mcpPort` → `Memory:McpPort`): the Host serves it there
   only (by the connection's local port, not the Host header) and not at all on the UI/API port 8080, which is the only
   one the Ingress targets (D138); and that port serves nothing else — the UI, the API, `/health` and static files
-  answer 404 there. The Host logs a warning at startup when `Memory:McpPort` is none of the ports it listens on. The **Ingress is also an allow-list** of path prefixes (`ingress.prefixPaths`, the
+  answer 404 there. The Host logs a warning at startup when `Memory:McpPort` is none of the ports it listens on. With
+  `ax.sandboxes.memory.enabled` a third port (8082, `Memory:SandboxMcpPort`) serves `/mcp/memory` to sandboxes only,
+  by their signed token (D190–D194; see "Sandboxes and memory"). The **Ingress is also an allow-list** of path prefixes (`ingress.prefixPaths`, the
   product pages only — not the leftover SRE pages): the chart refuses `/`, any path under `/mcp` in any case, anything
   but plain path segments, and the nginx `use-regex` / `rewrite-target` / `*-snippet` annotations. Prefix matching is
   case-sensitive, so a new page must be listed with the casing it links to. TLS ends at the ingress: set **HSTS there**;
@@ -191,7 +206,7 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   and only DNS out. Skanyxx's UI/API port answers its namespace and, with the ingress on,
   `networkPolicy.ingressNamespaces` (`ingress-nginx`); its mcp port only kagent's controller and agent pods (plus
   `networkPolicy.mcpFrom`); kagent's controller its namespace; agent pods only the controller (A2A); Postgres, MinIO, Gitea and Dragonfly only Skanyxx
-  (+ kagent → Postgres, + `ax.namespace` → Dragonfly when AX is on). Egress: Skanyxx and kagent's controller anywhere
+  (+ kagent → Postgres, + Dragonfly → AX: the chart's `ax-server`/`ax-controller` with `ax.install`, else `ax.namespace`). Egress: Skanyxx and kagent's controller anywhere
   (Jira, Entra, the Kubernetes API); agent pods only kagent's controller, Skanyxx's mcp port (never its UI/API) and
   `networkPolicy.modelEgress` (the internet on 443 minus `networkPolicy.clusterCidrs`; a local model such as Ollama or
   a tool server you add needs a rule in `modelEgress.extra`) (D148); the stores DNS only. `clusterCidrs` defaults to
@@ -209,8 +224,10 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   never re-pulls a mutable tag, so ship a new tag or a digest (D140).
 - **Bring your own (D061):** `postgresql.enabled=false` + `skanyxx.database.existingSecret` (keys
   `ConnectionStrings__Identity`, `__Memory`, `__Tickets`); `kagent.enabled=false` + `skanyxx.kagent.url`;
-  `minio.enabled` / `gitea.enabled` / `dragonfly.enabled=false` + `external.objectStore|git|redis`. Skanyxx reads no S3,
-  git or Redis yet: where each store is lands in the ConfigMap `<release>-stores` for the slices that will.
+  `minio.enabled` / `gitea.enabled` / `dragonfly.enabled=false` + `external.objectStore|git|redis`. Memory reads the
+  object store (card bodies, below); git and Redis are not read yet: where each store is lands in the ConfigMap
+  `<release>-stores` for the slices that will. A BYO object store needs `external.objectStore.endpoint`, `.bucket` and
+  `.existingSecret` (keys `access-key`, `secret-key`; the chart refuses an endpoint without them), plus `.region` for AWS.
   With BYO Postgres (or `postgresql.existingSecret`) and the bundled kagent, create the Secret `kagent-postgres-url`
   (key `url`) yourself; NOTES warns when it is missing. **With BYO kagent, admit it to the mcp port:** the namespace is
   default-deny and only the bundled kagent is admitted by itself, so set `networkPolicy.mcpFrom` to your kagent's
@@ -219,11 +236,72 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   `http://<release>.<ns>.svc:8081/mcp/memory` — port 8081, not 8080. NOTES warns when nothing is admitted.
   Example: `deploy/helm/skanyxx/ci/byo-values.yaml`.
 - **AX** (`ax.enabled`, default **false**): D069 (locked 2026-10-08) keeps it off in the appliance and on-by-flag for BYO clusters that meet Substrate's prerequisites.
-  The chart does not install AX; `ax.enabled` turns the sandboxes module on and points it at your AX (`ax.address`).
+  Two ways (see "Sandboxes on Google AX (Experimental)" → "Install AX with the chart"): `ax.enabled` + `ax.address` points the sandboxes
+  module at an AX you run; `ax.enabled` + **`ax.install`** (D186) also installs AX v0.3.1's `ax-server` + `ax-controller`
+  in the release namespace, on the bundled Dragonfly (D185), and points the module at it. The chart never installs
+  Agent Substrate, its WorkerPool or AX's base ActorTemplate. Example: `deploy/helm/skanyxx/ci/ax-install-values.yaml`.
+- **Card bodies in the object store (D180–D184):** with the bundled MinIO (or a BYO object store) the chart sets
+  `Memory__ObjectStore__*` on Skanyxx: endpoint, bucket (`minio.bucket`, default `skanyxx-memory`), the keys from the
+  MinIO Secret (or `external.objectStore.existingSecret`), `skanyxx.memoryBodies.thresholdBytes` (4096) and
+  `.maxBodyBytes` (1 MiB, at most 8 MiB: each upsert is buffered whole). Skanyxx creates the bucket on the first stored
+  body — no init job (outside us-east-1 it passes `external.objectStore.region` as the location). An external endpoint
+  must be `http(s)://…` and needs `minio.enabled=false` (both refused otherwise). With `minio.enabled=false`
+  and no external endpoint, nothing is set and bodies stay in Postgres. The NetworkPolicy already admits Skanyxx → MinIO. The chart wiring is template-validated
+  only (the app side is tested against a real MinIO).
 - **MinIO image:** MinIO's own images are gone (Docker Hub repo removed, quay `401`, GitHub archived); the default is
   the community fork `pgsty/minio` (D132). `minio.image.*` takes another.
-- **Not built:** the appliance (hidden k3s + this chart, D057) — D069 is locked (2026-10-08), so it is no longer blocked on that. Shown on kind (evidence:
-  task `2026-10-06_0900_skanyxx-helm`, evidence/e2e.md and e2e-qa1.md); no real ingress or cloud cluster yet.
+- **Shown on kind** (evidence: task `2026-10-06_0900_skanyxx-helm`, evidence/e2e.md and e2e-qa1.md) and, as the
+  appliance below, on k3s; no cloud cluster yet.
+
+## Install as an appliance
+
+For a customer without Kubernetes (D057): one Linux machine (VM or bare metal, amd64 or arm64, systemd, internet
+access), one script, a URL. The script installs k3s and Helm and the chart above; nobody runs `kubectl`.
+**Machine:** 2 vCPU, 4 GiB RAM, 20 GiB disk at least (8 GiB RAM once agents run); a DNS name people can type that
+points at it; ports 80 and 443 reachable.
+
+```bash
+# On a build machine (Docker + Helm): the bundle — install.sh, values.yaml, traefik.yaml, the packaged chart and the image.
+deploy/appliance/bundle.sh                         # PLATFORM=linux/amd64 for another CPU; TAG defaults to <UTC time>-<commit>
+# On the machine, as root:
+tar -xzf skanyxx-appliance-<tag>-<arch>.tar.gz
+sudo ./skanyxx-appliance/install.sh --host skanyxx.acme.internal [--tls-cert cert.pem --tls-key key.pem]
+#   → https://skanyxx.acme.internal and the owner's bootstrap token (printed once) → /Setup → /Model → /Chat
+sudo ./skanyxx-appliance/install.sh status          # k3s, release, pods, /health; prints no secret
+sudo ./skanyxx-appliance/install.sh token           # the bootstrap token again, if the first print was lost
+sudo ./skanyxx-appliance/install.sh                 # again, or with a newer bundle: an upgrade, same settings, data kept
+sudo ./skanyxx-appliance/install.sh uninstall       # removes the release; data + Secrets stay for the next install
+sudo ./skanyxx-appliance/install.sh uninstall --purge   # k3s and ALL data (asks you to type 'erase')
+```
+
+- **What it installs** (D195): k3s **v1.36.5+k3s1** (that release's own install script, sha256-pinned in install.sh and
+  verified before it runs; it then checks the binary) with
+  `secrets-encryption` and a 0600 kubeconfig, Helm **v4.3.0** in `/opt/skanyxx/bin` (sha256-pinned in the script),
+  then `helm upgrade --install skanyxx` with `deploy/appliance/values.yaml` (AX and Substrate **off**, D069; every
+  bundled store on) plus the host, image and TLS saved in `/etc/skanyxx/appliance.env` (0700/0600). It waits for the
+  pods, for `https://<host>/health`, and for `http://<host>/` to redirect to https.
+- **Re-running is safe:** the same values every time; the chart keeps its generated Secrets (D139), the volumes keep
+  the data; the self-signed certificate is regenerated only for a new host or when it has under 30 days left; the token
+  is printed only on the first run that could read it. A new bundle carries a new
+  image tag, so only the Skanyxx pod rolls (a reused tag would never be re-read, D140). `--image <registry ref>`
+  pulls from a registry instead of the bundled tarball.
+- **The front door** (D196): k3s's Traefik on 80/443 with TLS from `--tls-cert/--tls-key`, else a self-signed
+  certificate for the host (browsers warn until you give a real one: re-run with the two flags). http redirects to
+  https, HSTS is set; the app signs people in only over https. The Ingress is the chart's allow-list plus `/health`
+  (for an uptime monitor, D197). The host must be a DNS name (`--host`, else `hostname -f` when it has a dot); an IP
+  address answers 404.
+- **Kubernetes stays inside** (D198): the k3s API (6443), the kubelet (10250) and flannel's VXLAN (8472/udp) are
+  dropped unless they come from the machine itself or its pods (`/opt/skanyxx/bin/skanyxx-firewall`, run before k3s on
+  every start; if it cannot apply the rules, k3s does not start — `systemctl status k3s` says why). `status` shows where
+  the `SKANYXX-FW` jump sits in INPUT and warns when anything other than k3s's own `KUBE-*` rules is above it.
+  **ufw / firewalld:** both add their own chains to INPUT; if one of them lands above `SKANYXX-FW` and accepts
+  6443/10250/8472, those ports are open whatever the appliance does. Either leave them off on this machine, or deny
+  those ports in them too (e.g. `ufw deny 6443/tcp`, `ufw deny 10250/tcp`, `ufw deny 8472/udp`, keeping `cni0` and
+  `lo` allowed), and check `install.sh status` afterwards.
+- **Not yet** (D199): air-gapped installs (images are pulled from their registries), backups (the data is the volumes
+  under `/var/lib/rancher/k3s/storage`), HA, ACME certificates, the seed agent (`scripts/helm/seed-agent.sh` needs kubectl and jq,
+  and the appliance's API is firewalled: it is not wired into `install.sh` yet). Shown on an OrbStack Ubuntu 24.04 arm64 machine; amd64 is
+  supported by the script but was not run.
 
 ## Project Structure
 
@@ -245,7 +323,7 @@ Skanyxx.sln
 │       ├── Skanyxx.Module.Identity/   # Accounts, owner bootstrap, sign-in (ASP.NET Core Identity)
 │       ├── Skanyxx.Module.Investigate/
 │       ├── Skanyxx.Module.Memory/     # Memory engine (Postgres cards + MCP)
-│       ├── Skanyxx.Module.Sandboxes/  # AX Tasks (experimental, off by default)
+│       ├── Skanyxx.Module.Sandboxes/  # Sandboxes on Google AX (experimental, off by default)
 │       ├── Skanyxx.Module.Sessions/
 │       ├── Skanyxx.Module.Settings/
 │       ├── Skanyxx.Module.Tickets/    # Ticket pipelines over kagent
@@ -305,7 +383,7 @@ Edit `src/Skanyxx.Host/appsettings.json`:
 ```
 
 Set any module to `false` and its API routes will not be registered. You can also simply remove the DLL from the `modules/` directory.
-`sandboxes` is the exception: it is **off unless enabled** here (see AX Tasks).
+`sandboxes` is the exception: it is **off unless enabled** here (see Sandboxes on Google AX).
 
 **Disabling a module that another enabled module depends on stops startup** (`Module '<id>' needs module '<dep>'…`), and so
 does a dependency whose DLL is missing or fails to load: disable the dependents too. Current dependencies (each module's
@@ -385,6 +463,8 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | Section | Description |
 |---|---|
 | `AllowedHosts` | Explicit host list (`skanyxx.example.com;localhost`). The Host refuses to start with `*` outside Development (DNS-rebinding guard) |
+| `Skanyxx:Mode` | `Server` (default when absent or empty) = the full Host; `Remote` = the desktop launcher: no database, modules or sign-in, every `GET`/`HEAD` → 302 to `Skanyxx:RemoteUrl`, `/health` → `{"mode":"remote"}`, other methods → 404 (D201). Anything else stops startup. Read by the Host only; modules never see it. A Server Host in Production whose `ConnectionStrings:Identity` is on this machine logs that it is a dev console (D200) |
+| `Skanyxx:RemoteUrl` | Remote mode only: the company's Skanyxx address, e.g. `https://skanyxx.example.com`. Written exactly — absolute `https://` (`http://` only to a loopback host), no spaces, backslashes, query, fragment or user info — else startup stops. The redirect always goes to this address, never to the requested path. Empty: `/` shows where to set it |
 | `Skanyxx:AllowedOrigins` | Browser origins allowed to send unsafe requests (POST/PUT/PATCH/DELETE) to **any** route on the Host, plus every request to `/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity`, `/api/chat`, `/api/model` and `/mcp` (default `[]`). The origin of `Identity:PublicBaseUrl` is allowed too (D108), so the Chat page's `POST /api/chat` works from the public address without listing it; any other address the page is opened under must be listed (`first-hour.sh host` lists the bind address). Outside Development, neither set logs a startup warning (Chat would get `403`). On routes outside those prefixes, the Host's own origin (Origin host:port equal to the Host header) is also allowed, so the app's own forms and fetches work without listing it. Any other `Origin` gets `403`; requests without `Origin` (non-browser clients) pass |
 | `Skanyxx:RateLimit` | Per client address (IPv6 grouped per /64), on the guarded prefixes only (`/api/memory`, `/api/tickets`, `/api/sandboxes`, `/api/identity`, `/api/chat`, `/api/model`, `/mcp`); legacy controllers, pages and static files are not limited: `PermitLimit` (200) per `WindowSeconds` (10) → `429`. Behind a proxy the partition is the proxy's IP (ForwardedHeaders not configured) |
 | `Skanyxx:SignInRateLimit` | Stricter window, per client address (IPv6 per /64), over the credential posts only — sign-in, bootstrap, unlock, `/Login`, `/Setup`, "forgot your password?" (`POST /api/identity/password/forgot`, `/ForgotPassword`): `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Sign-out and refresh are outside it |
@@ -398,10 +478,10 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | `ConnectionStrings:Identity` | Postgres for accounts, roles and the Data Protection key ring (required). **Use a separate database role (or database) from the other modules** — whoever can read the key ring can mint sessions |
 | `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `MaxPoolSize` (20), `InviteDays` (7, 1–30), `PublicBaseUrl` (where people reach Skanyxx, e.g. `https://skanyxx.example.com`; invite links are built on it. Optional for startup: **unset outside Development, the app starts and logs a warning, and creating an invite is refused (`409`) until it is set**; Development without it uses the request's scheme and host. When set it must be written exactly — no leading or trailing spaces, backslashes, query, fragment or user info — and absolute `https://`, except a loopback host such as the desktop installs' `http://localhost:5282`, whose links never leave the machine; anything else stops startup. The template ships `http://localhost:5282`, so a server install must change it: a loopback value while Skanyxx listens on a non-loopback address is warned about at startup, and the People page shows the host each new link points at). Validated at startup. (`SecurityStampValidationSeconds` is gone: cookies are checked on every request, and the key is ignored.) `PasswordResetMinutes` (60, 5–1440; how long a reset link works), `AuditRetentionDays` (365, 1–3650; audit rows and finished invites older than this are deleted), `EntraRecheckMinutes` (60, 5–1440; the Graph re-check interval while Microsoft sign-in is on), `Smtp` (outgoing email; `Host` empty = off — see "Email" below) |
 | `ConnectionStrings:Memory` | Postgres for the memory engine (required; startup fails without it) |
-| `Memory` | `SearchTopK` (5), `UpsertsPerMinute` (30, per caller), `UpsertsPerMinuteTotal` (300, all callers), `MaxPoolSize` (40), `McpPort` (unset; set: `/mcp/memory` is served on that Kestrel port only and is absent from every other, and every other path answers 404 on it, as the Helm chart does with 8081 — the Host must also listen there, e.g. `ASPNETCORE_HTTP_PORTS=8080;8081`). Supervisors (write/lift into `company`, set agent grants) are users with role `owner` or `supervisor` |
+| `Memory` | `SearchTopK` (5), `UpsertsPerMinute` (30, per caller), `UpsertsPerMinuteTotal` (300, all callers), `MaxPoolSize` (40), `SandboxMcpPort` (unset; set: the sandbox listener — `/mcp/memory` for sandbox tokens only, every other path 404, agent secrets and identity headers ignored; needs `SandboxTokenKey`, ≥ 32 characters, from a secret store; D190), `SandboxTokenHours` (24, 1–720; D191), `McpPort` (unset; set: `/mcp/memory` is served on that Kestrel port only and is absent from every other, and every other path answers 404 on it, as the Helm chart does with 8081 — the Host must also listen there, e.g. `ASPNETCORE_HTTP_PORTS=8080;8081`). Supervisors (write/lift into `company`, set agent grants) are users with role `owner` or `supervisor` |
 | `ConnectionStrings:Tickets` | Postgres for ticket pipelines (required; may be the same database as memory) |
 | `Tickets` | `Source` (`jira` \| `local`), `LocalPath` (JSON file, required when `local`), `Jira` (`Site` — https only, `Email`, `ApiToken`, `Project` or `Jql` (overrides `Project`), `TimeoutSeconds` (20)), `KAgentUserId` (`skanyxx-tickets`; the kagent user that owns every stage session), `StageTimeoutSeconds` (600), `PollSeconds` (5), `MaxTicketChars` (20000), `MaxPromptChars` (96000), `MaxAnswerChars` (100000), `MaxStageAttemptsPerRun` (30), `MaxActiveRunsPerUser` (5), `MaxActiveRuns` (20, all users), `MaxPoolSize` (40), `AllowedAgents` (`namespace/name`; empty = the five ticket agents; a list replaces that default). Editing and deleting pipelines needs role `owner` or `supervisor` |
-| `Sandboxes` | `Address` (AX gRPC, h2c; `http://ax-server.ax-system.svc:8080`), `Atespace` (`default`), `AllowedImages` (`[]`; registry/repo prefixes, empty = nothing runs, a configured list replaces the default), `RequireDigest` (`false`; on = image must be `@sha256:`), `MaxCpu` (`4`), `MaxMemory` (`8Gi`), `DefaultCpuRequest` (`250m`), `DefaultMemoryRequest` (`256Mi`), `DefaultCpuLimit` (`1`), `DefaultMemoryLimit` (`1Gi`), `MaxActiveTasksPerUser` (`3`), `MaxActiveTasks` (`50`, whole atespace), `CountBudgetSeconds` (`30`), `NetworkIsolationConfirmed` (`false`; must be `true` for a non-empty `AllowedImages`), `MemoryMcpUrl` (`""`; a non-empty value is **refused at startup** until a sandbox-facing listener exists, see AX Tasks), `TimeoutSeconds` (`15`), `WatchSeconds` (`120`), `KeepAliveSeconds` (`15`), `MaxWatchesPerUser` (`2`), `MaxWatches` (`50`) |
+| `Sandboxes` | `Address` (AX gRPC, h2c; `http://ax-server.ax-system.svc:8080`), `Atespace` (`default`), `AllowedImages` (`[]`; registry/repo prefixes, empty = nothing runs, a configured list replaces the default), `RequireDigest` (`false`; on = image must be `@sha256:`), `MaxCpu` (`4`), `MaxMemory` (`8Gi`), `DefaultCpuRequest` (`250m`), `DefaultMemoryRequest` (`256Mi`), `DefaultCpuLimit` (`1`), `DefaultMemoryLimit` (`1Gi`), `MaxActiveTasksPerUser` (`3`), `MaxActiveTasks` (`50`, whole atespace), `CountBudgetSeconds` (`30`), `NetworkIsolationConfirmed` (`false`; must be `true` for a non-empty `AllowedImages`), `MemoryMcpUrl` (`""` = memory attach off; startup refuses any value but the sandbox listener's `/mcp/memory` — its port must be `Memory:SandboxMcpPort`, with `Memory:SandboxTokenKey` set; D193, see "Sandboxes and memory"), `TimeoutSeconds` (`15`), `WatchSeconds` (`120`), `KeepAliveSeconds` (`15`), `MaxWatchesPerUser` (`2`), `MaxWatches` (`50`) |
 
 ## API Endpoints
 
@@ -421,7 +501,7 @@ Each module exposes REST endpoints under `/api/`:
 | Investigate | `/api/investigate` |
 | Memory | `/api/memory/cards`, `/api/memory/grants`, `/api/memory/agents/{agentId}/secret` (+ MCP at `/mcp/memory`, agent secret) |
 | Tickets | `/api/tickets/issues`, `/api/tickets/pipelines`, `/api/tickets/runs` |
-| Sandboxes (experimental) | `/api/sandboxes/tasks`, `/api/sandboxes/workspaces`, `/api/sandboxes/models` |
+| Sandboxes (experimental) | `/api/sandboxes`, `/api/sandboxes/{name}`, `/api/sandboxes/workspaces`, `/api/sandboxes/models` |
 | Sessions | `/api/sessions` |
 | Settings | `/api/settings` (owner only, except `GET /api/settings/theme`; connection tokens are write-only), `/api/model` (owner: kagent ModelConfig) |
 | ToolServers | `/api/toolservers` |
@@ -576,11 +656,11 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   is already saved, the call answers `500` and an Error is logged naming the person and the actor: **save the same
   roles (or disable) again** — that re-runs the revocation, and it is harmless when there is nothing left to revoke.
   By hand: `GET /api/memory/agents/{agentId}/secret` shows `createdBy`, and `DELETE` on the same path revokes. Enabling
-  someone again does not restore anything. **Disabling also stops the person's active sandbox tasks** (D154; with
-  sandboxes on): their Pending, Running and Suspended AX tasks are deleted, each logged at Warning; workspaces stay, and
-  losing `supervisor` alone stops nothing. If AX cannot be reached or a task will not stop, the disable is saved, the
-  call answers `500` with `detail` "Account disabled. Its sandbox tasks could not be stopped (AX unavailable) — disable
-  again to retry." (the People page shows the same line, D162; Error log) and disabling again retries. A task someone
+  someone again does not restore anything. **Disabling also stops the person's active sandboxes** (D154; with
+  sandboxes on): their Pending, Running and Suspended sandboxes are deleted in AX, each logged at Warning; workspaces stay, and
+  losing `supervisor` alone stops nothing. If AX cannot be reached or a sandbox will not stop, the disable is saved, the
+  call answers `500` with `detail` "Account disabled. Its sandboxes could not be stopped (AX unavailable) — disable
+  again to retry." (the People page shows the same line, D162; Error log) and disabling again retries. A sandbox someone
   else deleted meanwhile counts as stopped (D163). Every handler of the announcement runs even when another fails
   (D153), and memory's revocation runs first (D160), so an AX outage never keeps memory from revoking the secrets. A
   disable also revokes the person's open password-reset links (D165).
@@ -795,7 +875,7 @@ What a Microsoft sign-in does:
   `GroupMember.Read.All`, the mapped ids only) about every managed account except the owner and disabled ones, and
   applies the answer like a sign-in: re-mapped (a role change ends its sessions), or — **no mapped group left, or the
   user deleted from the tenant — refused**: roles and teams removed, the account kept, a lost `supervisor` revoked, and —
-  the first time, even when there was no role or team to remove — every session ended and the person's **sandbox tasks
+  the first time, even when there was no role or team to remove — every session ended and the person's **sandboxes
   stopped** (D161; a failed stop is retried by the next sweep). Back in a mapped group, the refusal is cleared; so is every
   refusal when Microsoft sign-in is turned off (or left with no mapped group) or the tenant changes, and a refusal only
   counts while sign-in is usable — with it off the person signs in with a password again. Graph
@@ -833,7 +913,7 @@ ignored on `/api/*`. Supervisor = role `owner` or `supervisor`; the `*:Superviso
 ignored).
 
 **User ids are GUIDs.** A user id is the account's lowercase GUID everywhere: memory cards' `who`, personal scopes
-(`personal:<guid>`), and `CreatedBy` / `DecidedBy` / owner on runs, pipelines and sandbox tasks. kagent must forward
+(`personal:<guid>`), and `CreatedBy` / `DecidedBy` / owner on runs, pipelines and sandboxes. kagent must forward
 that GUID in `X-User-Id` over MCP to reach a user's personal cards (anything else in that header counts as no user). Data written in development under the old
 free-form ids (`personal:ana`, `CreatedBy: ana`) is orphaned; nothing migrates it.
 
@@ -950,8 +1030,26 @@ dotnet test tests/Skanyxx.Module.Memory.Tests   # needs Docker (Testcontainers)
 - `POST …/{scope}/{key}/lift` copies a card up (personal → team → department → company); the original stays. Into `company` needs a supervisor; into a team or department, membership of it (the org tree, see "Teams and departments").
 - Team and department scopes follow the org tree: members read, search and write their teams and departments; owner and supervisors read all of them but write only where they are members. Only the owner grants an agent a team or department scope.
 - kagent reaches the bank over MCP at `/mcp/memory` (`memory_search`, `memory_upsert`) with a per-agent secret: `POST /api/memory/agents/{agentId}/secret` as a supervisor, then give the agent's `RemoteMCPServer` an `Authorization: Bearer <secret>` header from a Kubernetes Secret (`deploy/kagent/memory/`). Agents without grants search `company` + the calling user's personal scope and may upsert only that personal scope (needs `X-User-Id`, honoured only for an agent whose secret the owner issued with `actsForUsers: true`); `PUT /api/memory/grants/{agentId}` replaces the default with explicit search/upsert per scope (at least one entry; revoke an agent with a single grant that has `canSearch` and `canUpsert` false).
-- **Identity:** `/api/memory` acts as the signed-in user; on MCP the agent is the owner of the presented secret and the user is the `X-User-Id` the agent vouches for, if it may act for users (see Identity and security model).
+- **Identity:** `/api/memory` acts as the signed-in user; on MCP the agent is the owner of the presented secret and the user is the `X-User-Id` the agent vouches for, if it may act for users (see Identity and security model). On the sandbox listener (`Memory:SandboxMcpPort`) the caller is the sandbox's signed token alone — its agent id acting for its owner, headers ignored (D190–D192, "Sandboxes and memory").
 
+- **Bodies larger than the card (D180–D184):** set `Memory:ObjectStore` (`Endpoint`, `Bucket` default
+  `skanyxx-memory`, `AccessKey`, `SecretKey`, `Region` default `us-east-1`, `ThresholdBytes` default 4096,
+  `MaxBodyBytes` default 1 MiB; env `Memory__ObjectStore__*`, keys from a secret store, never `appsettings.json`) to an
+  S3 endpoint (MinIO in the chart). Then a body over the threshold (UTF-8 bytes) is written to the bucket as
+  `cards/sha256/<hex>` (the SHA-256 of its bytes), the card keeps its first 500 characters in `body` and the pointer
+  `s3://<bucket>/cards/sha256/<hex>` in `source`, and the body cap is `MaxBodyBytes` (the upsert's request limit grows
+  with it). `GET /api/memory/cards/{scope}/{key}/body` streams the full body as `text/plain` (nosniff, sandbox CSP) to
+  whoever may open the card — the same `AccessPolicy` as `GET …/{scope}/{key}` — and returns an inline body as is.
+  MCP and search return neither the body, its excerpt nor the pointer (D014). Lift copies the pointer (one object,
+  both cards); rename and versions keep working (a new body is a new object; old ones stay). Only memory writes a
+  pointer: a `source` of that shape is refused, a large body cannot replace a card's own link silently (send
+  `source: ""` to drop it), and writing back the excerpt + pointer you read changes nothing. `bodyStored: true` on a
+  card says `body` is only the excerpt: writing back an **edited** excerpt with the pointer is a `400` (it would replace
+  the stored body) — edit the full text from `/body`, or send `source: ""` to replace it with a short body on purpose.
+  `/body` is `Cache-Control: private, no-store`. A body with an unpaired surrogate is a `400` (it has no UTF-8 form). A
+  store that does not answer — unreachable, wrong keys, a 5xx, or no reply within 15 s (2 retries) — is a `502` and
+  nothing is saved. **Off by default:** without an endpoint every body stays in Postgres (at most
+  20,000 characters), exactly as before.
 - `POST …/{scope}/{key}/rename {newKey, version}` renames a key (D038), for people only (MCP has no rename): allowed where you may write the scope; a stale version or a key already taken in the scope is a `409` with the current card and `reason` `stale` or `taken`; copies lifted from it keep their link (it is by id). Logged at Warning with the actor. Counts against the write rate limit only when it writes (D104).
 
 The host refuses to start if the memory database is unreachable. If a local database has an older migration history, reset it with `docker compose down -v`.
@@ -967,7 +1065,8 @@ module: every rule is memory's `AccessPolicy`, reached through the same commands
   that holds cards). Without text it lists the newest cards. At most 50 rows.
 - **What is listed:** `company` shows **published** cards only; personal, team and department scopes show every status,
   with a badge on `candidate`/`stale`. No folder tree.
-- **Open a card:** what, why, who, version, status, body and source (shown as text; nothing is fetched). A lifted copy
+- **Open a card:** what, why, who, version, status, body and source (shown as text). A body in the object store shows
+  its excerpt and an **Open the full body** link (the memory API's `/body`, with your sign-in; D183). A lifted copy
   names its source only if you may open it. An unpublished `company` card opens only for supervisors and its author;
   anyone else gets the missing-card `404`, here and on `GET /api/memory/cards/company/{key}` (D103).
 - **Lift:** one button per higher scope you may write (your teams and departments; `company` for supervisors), only on a
@@ -975,8 +1074,8 @@ module: every rule is memory's `AccessPolicy`, reached through the same commands
 - **Rename key:** shown only where you may write the card's scope; posts the version you saw.
 - A successful lift or rename redirects to the card (a refresh re-sends nothing).
 - Forms carry antiforgery tokens and the origin guard applies, like the other pages.
-- Not built: MinIO/S3 pointers for large bodies (the `source` field is the pointer; the bank stores no blobs), display
-  names for `who` (user ids are shown, "you" for yourself).
+- Not built: display names for `who` (user ids are shown, "you" for yourself); attaching files (PDFs, recordings) —
+  only text bodies go to the object store.
 
 ## Studio (agents as pull requests)
 
@@ -1106,18 +1205,67 @@ dotnet test tests/Skanyxx.Module.Tickets.Tests     # needs Docker; kagent is fak
   and per-agent provider/model overrides (the model is the kagent
   agent's `ModelConfig`, so dataset rows name the agent, not the model).
 
-## AX Tasks (Experimental)
+## Sandboxes on Google AX (Experimental)
 
-Runs container tasks in [Google AX](https://github.com/google/ax) sandboxes (Agent Substrate). Pinned to AX
+Runs containers in [Google AX](https://github.com/google/ax) sandboxes (Agent Substrate); each sandbox is one AX `Task`,
+but Skanyxx's code, routes and page say *sandbox* throughout (D071, D179). Pinned to AX
 **v0.3.1** — the client is generated from its vendored `ax.proto` (`src/Modules/Skanyxx.Module.Sandboxes/Protos/`);
 AX is pre-1.0 and rewrote its API in v0.3.0, so re-vendor deliberately. Shown on a **real** AX v0.3.1 on Agent Substrate (local kind cluster, arm64, gVisor) on 2026-10-08: list, run
 (Pending → Running), watch (SSE `initial` / `modified` / `final`), get, stop and suspend all worked through
-`/api/sandboxes` as the owner on the owner's own tasks; **resume failed** for both tasks Skanyxx started — see
-"Local AX on kind" below.
+`/api/sandboxes` as the owner on the owner's own sandboxes; **resume** failed on the first day and worked on the second —
+see "Local AX on kind" below.
 
 ```bash
 dotnet test tests/Skanyxx.Module.Sandboxes.Tests   # no Docker needed; AX is faked
 ```
+
+### Install AX with the chart (`ax.install`)
+
+On a cluster that **already runs Agent Substrate** (D186):
+
+```bash
+helm upgrade --install skanyxx deploy/helm/skanyxx -n skanyxx \
+  --set ax.enabled=true --set ax.install=true \
+  --set ax.server.image.repository=<registry>/ax-server     --set ax.server.image.digest=sha256:… \
+  --set ax.controller.image.repository=<registry>/ax-controller --set ax.controller.image.digest=sha256:… \
+  --set ax.substrate.endpoint=api.ate-system.svc.cluster.local:443 \
+  --set ax.snapshotsBucket=gs://<your-bucket>/ax/ \
+  --set ax.sandboxes.namespace=<the WorkerPool's namespace> \
+  --set 'ax.allowedImages={ghcr.io/acme/}'
+```
+
+- **Images:** AX publishes none. Build them from `google/ax@v0.3.1` (`ko build ./cmd/ax-server ./cmd/ax-controller`)
+  and pin each by digest: with `ax.install` a digest is required for both (a tag alone is refused). AX's own Redis
+  image is pinned by digest in `values.yaml`.
+- **What the chart creates:** `<release>-ax-server` (Service, gRPC h2c on 8080) and `<release>-ax-controller`, no
+  ClusterRole and no Kubernetes API token (the controller authenticates to Substrate with a projected token, audience
+  `ax.substrate.authority`, and trusts Substrate's ClusterTrustBundle `ax.substrate.trustBundle`). `Sandboxes:Address`
+  is set to the in-chart `ax-server`; `ax.address` must stay empty.
+- **AX's Redis:** the bundled Dragonfly with its password (D185 — AX v0.3.1 smoke-tested on it). With
+  `dragonfly.enabled=false`: `external.redis` (address + `existingSecret`, key `password`), else AX's own Redis
+  (`<release>-ax-redis`, reachable only from `ax-server`/`ax-controller`, with a generated password in the kept Secret
+  `<release>-ax-redis` and `maxmemory` = 80% of `ax.redis.resources.limits.memory` with `noeviction`; D189).
+  `external.redis.address` must be `host:port`. All three are in memory only: a restart forgets AX's task index while
+  Substrate keeps the sandboxes running.
+- **What it cannot create — do it yourself first:** Substrate, a **WorkerPool**, and AX's base ActorTemplate
+  `ax.templateAtespace`/`ax.template` (default `ax-system/default-template`) selecting it, with `kubectl-ate create
+  actor-template`. ActorTemplates live in Substrate's API, not in Kubernetes, so no chart manifest can make one.
+  Without them every task fails with `no free workers available`.
+- **`ax.snapshotsBucket`** (`AX_SNAPSHOTS_BUCKET`, suspend/resume) is required; upstream's default — a developer's
+  personal bucket — is refused (D187). kind + Substrate's local store: `gs://ate-snapshots/ax/`.
+- **Network (D072, D188):** `ax-server` answers only Skanyxx's pods; `ax-controller` answers nobody and sends only to
+  its Redis, `ax.substrate.namespace` and the WorkerPool's namespace. With `ax.sandboxes.namespace` the chart renders
+  `deploy/sandboxes`' egress policies **in the WorkerPool's namespace** (D178): DNS only (`ax.sandboxes.dnsPeer`,
+  default `kube-system` pods `k8s-app=kube-dns`; a list of `key=value`, so an override replaces it), plus the internet
+  minus `networkPolicy.clusterCidrs` with `ax.sandboxes.internet`. Both fence policies carry
+  `helm.sh/resource-policy: keep`: `helm uninstall` leaves them, because sandboxes may still be running — delete them
+  by hand once the WorkerPool is gone. `ax.networkIsolationConfirmed=true` is refused without
+  that namespace or with `networkPolicy.enabled=false`, and still means the egress test in `deploy/sandboxes/README.md`
+  passed from inside a sandbox on **this** cluster.
+- Shown on kind-ate (2026-10-11): installed beside an existing `ax-system` AX, one task through `/api/sandboxes` ran
+  Pending → Running → stopped on the chart's AX, `ax-server` was unreachable from another namespace; after `helm
+  uninstall` the existing AX still ran a task. The `ax-redis` and `external.redis` fallbacks are template-validated only, and that run used the
+  pre-rename `/api/sandboxes/tasks` routes.
 
 ### Local AX on kind (dev only)
 
@@ -1139,36 +1287,42 @@ Then the Host with `Sandboxes__Enabled=true Sandboxes__Address=http://127.0.0.1:
 --address 127.0.0.1` to `ax-server`: AX has no auth, never bind it wider), `Sandboxes__AllowedImages__0=<that image>`
 and `Sandboxes__NetworkIsolationConfirmed=true` only after the egress test in `deploy/sandboxes/README.md` passed.
 
-**Resume failed** for both tasks Skanyxx started in the spike: AX v0.3.1 gives a task that names its own image a per-task ActorTemplate,
-and resuming it asks Substrate for that template's golden snapshot, which does not exist (`FailedPrecondition … a
-Golden data resume requires the ActorTemplate golden snapshot`). A task on the default template suspends and resumes
-fine. Skanyxx always sends `image`, so suspend works and resume leaves the task `Failed` — an upstream limit, not
-fixed here.
+**Resume is unreliable on AX v0.3.1.** On 2026-10-08 it failed for both sandboxes Skanyxx started (`FailedPrecondition …
+a Golden data resume requires the ActorTemplate golden snapshot`: a sandbox that names its own image gets a per-sandbox
+ActorTemplate, and Substrate had no golden snapshot for it); on 2026-10-09, after the AX control plane had been
+restarted, it worked 3 of 3 times for sandboxes that name their own image (through the page, resumed at once, and after 60 s);
+on 2026-10-11 it failed again (1 of 1, a supervisor resuming an employee's sandbox). The cause is not established. If a
+resume ends `Failed`, stop the sandbox and run it again.
 
-**Page:** `/Sandboxes` (owner and supervisor; in their nav, labelled Experimental) — run a task (name, an allowed image,
+**Page:** `/Sandboxes` (owner and supervisor; in their nav, labelled Experimental) — run a sandbox (name, an allowed image,
 command), watch it start (live, the same SSE stream), list, suspend / resume / stop. The page holds no rule: its script
 calls `/api/sandboxes` with the person's cookie, so the module's checks are the only ones, and an API refusal is shown as
 its text. While the module is off the page says how to turn it on and calls nothing.
 
 **Off unless enabled.** Turn it on with `Sandboxes:Enabled: true`; while off the module registers nothing and every
 `/api/sandboxes` route answers `404`. Startup refuses a non-empty `AllowedImages` unless `Sandboxes:NetworkIsolationConfirmed=true` (set it only
-after the NetworkPolicies below are applied and verified), and refuses any non-empty `MemoryMcpUrl`.
+after the NetworkPolicies below are applied and verified), and refuses any `MemoryMcpUrl` other than the sandbox
+listener's (D193, "Sandboxes and memory" at the end of this section).
 
-- `GET /api/sandboxes/tasks?limit=&offset=` · `GET …/tasks/{name}` · `PUT …/tasks/{name}` (run = AX `UpdateTask`,
+- `GET /api/sandboxes?limit=&offset=` · `GET /api/sandboxes/{name}` · `PUT /api/sandboxes/{name}` (run = AX `UpdateTask`,
   create-or-update; body `{image, command[], env{}, workspaces[{name, path?, goal?}], resources?{requests, limits}}`;
-  new → `202`, update → `200`) · `POST …/tasks/{name}/stop` (AX `DeleteTask`; async, `202`) ·
-  `POST …/tasks/{name}/suspend` (only a Pending/Running task) · `POST …/tasks/{name}/resume` (only a Suspended
-  task); anything else is `409` — a Failed/Terminating task is re-run with `PUT`, which is counted against the caps.
-- `GET …/tasks/{name}/watch` is `text/event-stream`: AX's `initial`/`modified` frames, then one `final` (a fresh
-  `GET`), `gone` or `error` frame. AX closes its watch once the task is Running/Failed, so poll `GET` afterwards.
+  new → `202`, update → `200`) · `POST …/{name}/stop` (AX `DeleteTask`; async, `202`) ·
+  `POST …/{name}/suspend` (only a Pending/Running sandbox) · `POST …/{name}/resume` (only a Suspended
+  sandbox); anything else is `409` — a Failed/Terminating sandbox is re-run with `PUT`, which is counted against the caps.
+  The routes were `/api/sandboxes/tasks/…` until D179; those now answer `404`.
+- `GET …/{name}/watch` is `text/event-stream`: AX's `initial`/`modified` frames, then one `final` (a fresh
+  `GET`), `gone` or `error` frame (the sandbox travels in the frame's `task` field). AX closes its watch once the
+  sandbox is Running/Failed, so poll `GET` afterwards.
 - `GET /api/sandboxes/workspaces` · `PUT …/workspaces/{name}` `{git[{repo, branch?, dir?, depth?}], mcpServers[{name,
-  endpoint}], attachMemory}` (supervisors only: a workspace is shared by every task that binds it) ·
+  endpoint}], attachMemory}` (supervisors only: a workspace is shared by every sandbox that binds it) ·
   `GET /api/sandboxes/models`.
-- Names are AX's: DNS labels (lowercase, `-`, ≤ 63). There is **no local run table** — AX is the source of truth.
-- Owner: AX v0.3.1 has no labels, so the creator is stored in the task's env as `SKANYXX_OWNER`. Every `SKANYXX_*`
-  env name is reserved (`400` if a caller sets one). Only the creator may run/replace a task; stop/suspend/resume
+- Names are AX's: DNS labels (lowercase, `-`, ≤ 63). `workspaces` and `models` are **reserved** (`400` on run): they are
+  the literal routes beside `/api/sandboxes/{name}`, so such a sandbox could never be read back (D179). There is
+  **no local run table** — AX is the source of truth.
+- Owner: AX v0.3.1 has no labels, so the creator is stored in the sandbox's env as `SKANYXX_OWNER`. Every `SKANYXX_*`
+  env name is reserved (`400` if a caller sets one). Only the creator may run/replace a sandbox; stop/suspend/resume
   is for the creator or a supervisor (role `owner` or `supervisor`; `403` otherwise). Supervisors cannot replace another
-  user's task. Tasks created outside Skanyxx are supervisors' only.
+  user's sandbox. Sandboxes created outside Skanyxx (AX tasks made directly) are supervisors' only.
 - What may run: `image` must match an `AllowedImages` prefix (empty list = every run is `400`). A prefix matches
   only at a boundary: `/`, `@`, or a `:` that starts a tag (no `/` after it), so `ghcr.io` does not admit the
   registry port `ghcr.io:5000/…`. End prefixes in `/` (`ghcr.io/acme/`). `RequireDigest` also demands `@sha256:`. `requests`/`limits` above `MaxCpu`/`MaxMemory` (default `4` / `8Gi`) are `400`; missing
@@ -1194,15 +1348,11 @@ after the NetworkPolicies below are applied and verified), and refuses any non-e
   `Unavailable`/`DeadlineExceeded` → `502 "AX unreachable."`, anything else → `502 "AX request failed."`. AX's own
   error text and condition messages are logged, never returned (conditions carry type/status/reason/time only).
 - **Memory wiring.** `attachMemory: true` adds the MCP entry `{name: "skanyxx-memory", endpoint:
-  Sandboxes:MemoryMcpUrl}` (off: a non-empty `MemoryMcpUrl` is refused at startup, see below). Each time a task becomes
-  active it gets a fresh agent id `ax-<name>-<nonce>` (`SKANYXX_AGENT_ID`, also the run response's `agentId`; the
-  owner replacing a still-active task keeps it) and `SKANYXX_USER_ID=<owner>`, so a reused task name never
-  inherits old grants. AX has
-  no MCP headers field and its default runner does not materialise MCP config, so **the task image must read
-  `AX_WORKSPACES_YAML` (or its metadata URL) and call `/mcp/memory` itself**. Since D080 that endpoint answers only
-  an agent secret (`Authorization: Bearer`) and ignores `X-Agent-Id`, and Sandboxes issues none, so memory attach
-  does not work end to end until the per-task credential below exists. Modules do not call each other, so
-  Sandboxes never writes grants or secrets itself.
+  Sandboxes:MemoryMcpUrl}` (refused while the URL is empty). Each time a sandbox becomes active it gets a fresh agent
+  id `ax-<name>-<nonce>` (`SKANYXX_AGENT_ID`, also the run response's `agentId`; the owner replacing a still-active
+  sandbox keeps it), so a reused name never inherits old grants. A run that binds a workspace with memory attached
+  also gets `SKANYXX_MEMORY_URL` and its own signed `SKANYXX_MEMORY_TOKEN` — see "Sandboxes and memory" at the end of this section.
+  Modules do not call each other, so Sandboxes never writes grants; memory signs and revokes tokens through MediatR.
 
 **Deployment prerequisites (security).** AX has no authentication (google/ax#376); these are not optional.
 NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-server-ingress.yaml`,
@@ -1216,11 +1366,11 @@ NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-ser
   `atenet-router` (its metadata path serves other tasks' env) and every Skanyxx port. A Kubernetes NetworkPolicy
   does apply to gVisor sandboxes on kind when it targets the Substrate WorkerPool's namespace (D178); micro-VM and GKE
   are unverified — confirm on the target cluster before relying on it.
-- **Sandboxes must not reach Skanyxx at all; `MemoryMcpUrl` stays empty (enforced at startup).** A separate memory port is **not
-  implemented**: `/mcp/memory` is mapped on the main pipeline, so any extra Kestrel port/Service serves the whole
-  API (`/api/sandboxes/*`, `/api/memory/*`, Tickets, kagent proxies) — and `/mcp/memory` believes whatever `X-User-Id`
-  a sandbox sends, so it could write any user's memory. A NetworkPolicy filters ports,
-  not paths.
+- **Sandboxes reach no Skanyxx port but the sandbox listener** (D077, D190): the UI/API port serves the whole API
+  and the agents' mcp port honours `X-User-Id` for `actsForUsers` secrets, so neither may be reachable from a sandbox.
+  With sandbox memory off (the default) sandboxes reach no Skanyxx port at all; on, only `Memory:SandboxMcpPort`
+  (the chart's `<release>-sandbox-egress-memory` policy, or `deploy/sandboxes/sandbox-egress-memory.yaml`). A
+  NetworkPolicy filters ports, not paths — which is why that port serves `/mcp/memory` and nothing else.
 - AX injects `GEMINI_API_KEY` into **every** task. Run Skanyxx's atespace in a namespace without the platform
   key (no `gemini-api-secret`, none in the controller env), or use a dedicated quota-capped key.
 - Env is plaintext in AX and visible via task metadata — never put secrets in env.
@@ -1237,20 +1387,53 @@ NetworkPolicy manifests for both rules below are in `deploy/sandboxes/` (`ax-ser
 - If AX cannot build a task's own template it falls back to its default image, which `AllowedImages` does not see.
 - The startup checks trust the operator's `NetworkIsolationConfirmed`; nothing in Skanyxx can see whether the NetworkPolicies actually apply to Substrate sandboxes.
 
-- Memory attach is not safe yet. `/mcp/memory` now needs an agent secret (D080), but a secret handed to a sandbox is
-  readable by whatever it runs, and the sandbox still chooses the `X-User-Id` it sends, so it could act as any user
-  within that agent's grants. The image does not bound this — `command` is
-  arbitrary for every caller, so an allow-listed image with a shell runs anything — and neither does
-  `attachMemory`, which only declares the entry; what a sandbox reaches is decided by the network. Memory attach
-  becomes safe only with both pieces of future work: a **dedicated sandbox-facing listener** that serves
-  `/mcp/memory` and nothing else, and a **Skanyxx-signed per-task token** (HMAC in reserved env) from which that
-  listener derives identity for **every** request — not only `ax-*` agent ids, or a sandbox would just send a
-  non-`ax-` id.
+- Memory attach (D190–D194) is as safe as the network fence: the sandbox listener derives identity from the signed
+  token alone, but whatever runs in the sandbox holds that token (`command` is arbitrary), so it can do whatever the
+  sandbox's agent id may — its owner's personal scope, company search, explicit grants — until stop or expiry, and
+  from outside the sandbox too if internet egress is on. Keep grants for sandbox agent ids narrow.
 - The global watch cap (50) can be filled by one caller under made-up user ids, locking others out of watching;
   polling `GET` still works.
 - Non-owners can fill a task's lock queue (16) with stop/suspend/resume requests that end in `403`, so the owner's
   own actions on that task can get `429` while AX is slow.
 - Workspace writers (supervisors) influence other users' tasks: a task binding a workspace runs its git content and
-  MCP endpoints under the task owner's `SKANYXX_USER_ID` memory identity.
+  MCP endpoints under the task owner's memory identity (the token's owner; D192 keeps it to that one person).
 - Caller identity is the signed-in user (cookie or bearer); supervisors are users with role `owner` or `supervisor`.
   Until invites exist the owner is the only user, so every task belongs to the owner.
+
+### Sandboxes and memory (D076/D077, D190–D194)
+
+A sandbox gets memory only through the **sandbox listener**, a Kestrel port of its own (`Memory:SandboxMcpPort`; the
+chart: `ax.sandboxes.memory.enabled`, port 8082 on Service `<release>-skanyxx-sandbox-mcp`). It serves `/mcp/memory`
+and answers 404 to every other path (UI, API, `/health`, pages). There **every request is identified only by its
+sandbox token**: `X-Agent-Id` / `X-User-Id` are ignored, an agent secret is a 401, a request without a valid token is
+a 401 whatever it names; and a sandbox token is a 401 on every other port.
+
+- **Turn it on (without the chart):** `Memory:SandboxMcpPort` (also in `ASPNETCORE_HTTP_PORTS` / `urls`),
+  `Memory:SandboxTokenKey` (≥ 32 characters, from a secret store; rotating it voids every token),
+  optional `Memory:SandboxTokenHours` (24), and `Sandboxes:MemoryMcpUrl=http(s)://<host>:<SandboxMcpPort>/mcp/memory` —
+  startup refuses any other URL, and refuses the URL while the memory module is off. Then a supervisor saves a
+  workspace with `attachMemory: true`.
+- **What a sandbox gets:** a run that binds such a workspace gets `SKANYXX_MEMORY_URL` (the listener) and
+  `SKANYXX_MEMORY_TOKEN`: `skx_sbx_<claims>.<HMAC-SHA256>` signed by Skanyxx, binding the sandbox name, its agent id
+  (`SKANYXX_AGENT_ID`), its owner and an expiry. Runs without one get no token. Never an agent secret.
+- **The task-image contract (D073):** call `$SKANYXX_MEMORY_URL` (MCP Streamable HTTP; tools `memory_search`,
+  `memory_upsert`) with `Authorization: Bearer $SKANYXX_MEMORY_TOKEN` on **every** request, `initialize` included.
+  AX's default runner does not do this; the image must.
+- **Whose memory:** the sandbox's agent id acting for **its owner only** (D192). Without grants it searches `company`
+  + the owner's personal scope and writes the owner's personal scope; a supervisor widens it with
+  `PUT /api/memory/grants/<SKANYXX_AGENT_ID>`. There is no acts-for-users for sandboxes.
+- **Lifetime (D191):** one live token per activation (a row in `memory_sandbox_tokens`, SHA-256 only). Stopping the
+  sandbox revokes it before AX deletes it; re-running issues a new one and kills the old; a re-run that no longer binds
+  a memory workspace revokes it; disabling the owner revokes all of theirs. It expires `SandboxTokenHours` after it
+  was issued, and **resuming** a suspended sandbox issues a fresh one (same agent id, saved into its env before AX
+  resumes it), so a sandbox suspended past the expiry wakes up with memory. A sandbox that simply *runs* longer than
+  `SandboxTokenHours` gets 401 from then on (AX cannot change a running pod's env); its owner re-runs it, or
+  suspends and resumes it, to renew. A stop or replace whose revoke cannot reach memory's database is refused with
+  `502` (the sandbox keeps running, the token stays live; retry), and a `SKANYXX_AGENT_ID` that is not
+  `ax-<name>-<nonce>` (a sandbox made outside Skanyxx) never had a token, so nothing is revoked for it.
+- **Several replicas:** the per-sandbox lock is in-process. Two replicas replacing (or resuming) the same sandbox at
+  the same moment can leave the env holding the token that lost the race in Postgres; that sandbox gets 401 until its
+  next run or resume. It fails closed; it is not taken under a Postgres advisory lock (D191).
+- **Known exposure:** AX stores env in plaintext (its Redis, task metadata), so the token is as private as AX's env —
+  both are fenced from sandboxes by the NetworkPolicies above ("Deployment prerequisites"). Anyone who can `get pods`
+  in the WorkerPool namespace, or read AX tasks, can read it: treat RBAC on that namespace as access to sandbox memory.

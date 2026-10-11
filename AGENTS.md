@@ -16,6 +16,7 @@ If the human asks to **test or run only**, do not add, edit, or “clean up” p
 - AX is **Tasks / sandboxes**, not a second Agents chat (D063). Module and routes: `sandboxes`, never `task`.
 - Company knowledge is **cards** in Postgres (`scope`+`key`+`version`), via `/mcp/memory`. Not transcripts, not Redis/Dragonfly, not Joicy, not kagent TTL memory.
 - One customer = one install. We ship the stack (eventually Helm). Today’s fat local Host is a **dev console**, not the company source of truth (D060).
+- Host modes (D200–D202): `Skanyxx:Mode` `Server` (default) = full Host; `Remote` = desktop launcher, a 302 to `Skanyxx:RemoteUrl` with no DB/modules/auth. Read in the Host only, never in Core options or modules. A Host outside the cluster never uses the cluster's databases.
 
 ## Code shape
 
@@ -39,6 +40,6 @@ If the human asks to **test or run only**, do not add, edit, or “clean up” p
 
 ## Defaults that bite
 
-- `sandboxes` is **off** unless enabled. `Sandboxes:MemoryMcpUrl` non-empty is refused until a sandbox-only MCP listener exists. Do not “fix” that by putting an agent secret in a sandbox env.
+- `sandboxes` is **off** unless enabled. `Sandboxes:MemoryMcpUrl` is refused unless it is the sandbox listener (`Memory:SandboxMcpPort` + `Memory:SandboxTokenKey`, D190–D194). Never put an agent secret in a sandbox env; a sandbox's memory identity is only its signed `SKANYXX_MEMORY_TOKEN`.
 - Seed agent YAML: `deploy/kagent/memory/`. Do not apply kagent sample packs (D019).
-- `/mcp/memory` = bearer agent secret; `X-User-Id` only if the owner issued `actsForUsers: true`.
+- `/mcp/memory` = bearer agent secret; `X-User-Id` only if the owner issued `actsForUsers: true`. On the sandbox listener: the sandbox token only, no headers, acting for the sandbox's owner.

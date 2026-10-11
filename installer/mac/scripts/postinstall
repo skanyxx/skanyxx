@@ -36,15 +36,31 @@ if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
         echo "  \"BootstrapToken\": \"\"." >&2
         exit 1
     fi
+    # A fresh install is the desktop launcher (D200): Remote mode opens the company's Skanyxx, the server is the
+    # Helm chart. Same verify-or-remove rule as the token.
+    sed -i '' 's/"Mode": "Server"/"Mode": "Remote"/' "$CONFIG"
+    if ! grep -q '"Mode": "Remote"' "$CONFIG"; then
+        rm -f "$CONFIG"
+        echo "Skanyxx: could not write Skanyxx:Mode into $CONFIG; the template no longer has \"Mode\": \"Server\"." >&2
+        exit 1
+    fi
     chgrp admin "$CONFIG"
     chmod 640 "$CONFIG"
+    echo "Skanyxx: set Skanyxx:RemoteUrl in $CONFIG to your company's Skanyxx address (ask its owner),"
+    echo "  e.g. \"RemoteUrl\": \"https://skanyxx.example.com\"."
 elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
     # An upgrade from a config written before accounts existed: never edited, only pointed out (also on the
     # conclusion page).
     echo "Skanyxx: set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
     echo "  the first-run setup page asks for it to create the owner account."
 fi
-if [[ -f "$CONFIG" ]] && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
+if [[ -f "$CONFIG" ]] && ! grep -q '"Mode": *"' "$CONFIG"; then
+    # An upgrade from a config written before modes existed: it stays a full Host (Server mode, D204), never edited.
+    echo "Skanyxx: $CONFIG has no Skanyxx:Mode, so this Mac runs a full Skanyxx with its own data: a dev console,"
+    echo "  not your company's workspace (D059). To open the company's Skanyxx instead, set \"Mode\": \"Remote\" and"
+    echo "  \"RemoteUrl\" under \"Skanyxx\". Data kept here is not moved anywhere."
+fi
+if [[ -f "$CONFIG" ]] && ! grep -q '"Mode": *"Remote"' "$CONFIG" && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
     # An upgrade from a config written before invites existed: never edited, only pointed out. The app starts;
     # inviting people waits for the setting.
     echo "Skanyxx: to invite people, set Identity:PublicBaseUrl in $CONFIG to the address they use to reach"

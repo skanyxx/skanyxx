@@ -6,7 +6,7 @@ using Skanyxx.Core.Platform;
 namespace Skanyxx.Host.Pages;
 
 /// <summary>
-/// Sandboxes on Google AX (Experimental, D063/D064): supervisors list, run, watch and stop sandbox tasks. The page holds
+/// Sandboxes on Google AX (Experimental, D063/D064): supervisors list, run, watch and stop sandboxes. The page holds
 /// no rule and never talks to AX: its script calls <c>api/sandboxes</c> with the person's cookie (as Chat calls
 /// <c>api/chat</c>), so the module's checks (allowed images, caps, creator-or-supervisor) are the only ones (D070, D072).
 /// </summary>

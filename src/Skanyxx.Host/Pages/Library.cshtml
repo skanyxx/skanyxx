@@ -60,6 +60,11 @@
         {
             <h4>Body</h4>
             <pre class="card-body">@card.Body</pre>
+            @if (card.BodyStored)
+            {
+                @* The excerpt Postgres keeps; the full text is streamed from the object store by the memory API (D183). *@
+                <p><a href="@Url.Content($"~/api/memory/cards/{Uri.EscapeDataString(card.Scope)}/{Uri.EscapeDataString(card.Key)}/body")" target="_blank" rel="noopener" data-full-body>Open the full body</a></p>
+            }
         }
         @if (card.Source is not null)
         {

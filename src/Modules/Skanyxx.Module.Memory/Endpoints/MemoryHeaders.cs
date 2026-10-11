@@ -9,7 +9,9 @@ namespace Skanyxx.Module.Memory.Endpoints;
 /// Identity on <c>/mcp/memory</c>. The agent is the owner of the secret the request authenticated with (D080). The user
 /// is <c>X-User-Id</c>, which the agent vouches for (kagent forwards it with <c>allowedHeaders</c>) — honoured only when
 /// the owner let that agent act for users, and only when it is a Skanyxx user id (a lowercase GUID); otherwise the call
-/// has no user and so no personal scope (D084). REST never reads these.
+/// has no user and so no personal scope (D084). A sandbox (D076) is its token's agent id acting for its token's owner,
+/// and reads no header at all: on the sandbox listener <c>X-User-Id</c> (like <c>X-Agent-Id</c>) is ignored. REST never
+/// reads these.
 /// </summary>
 public static class MemoryHeaders
 {
@@ -19,6 +21,8 @@ public static class MemoryHeaders
     {
         var agentId = context.User.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? throw new InvalidOperationException("/mcp/memory reached without an authenticated agent.");
+        if (context.User.Identity?.AuthenticationType == SandboxTokenAuthentication.SchemeName)
+            return new(context.User.FindFirstValue(SandboxTokenAuthentication.OwnerClaim), agentId);
         var actsForUsers = context.User.HasClaim(AgentSecretAuthentication.ActsForUsersClaim, "true");
         return new(actsForUsers ? SkanyxxUserId(context.Request.Headers[UserId]) : null, agentId);
     }

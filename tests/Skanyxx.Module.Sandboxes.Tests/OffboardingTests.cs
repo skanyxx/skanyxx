@@ -8,15 +8,15 @@ using Skanyxx.Module.Sandboxes.Tests.Infrastructure;
 namespace Skanyxx.Module.Sandboxes.Tests;
 
 /// <summary>
-/// D154: when identity announces that a person's account is disabled, their active sandbox tasks stop (AX delete);
-/// nobody else's, none already ending, and nothing for a supervisor demotion alone. A task AX would not stop, or AX
+/// D154: when identity announces that a person's account is disabled, their active sandboxes stop (AX delete);
+/// nobody else's, none already ending, and nothing for a supervisor demotion alone. A sandbox AX would not stop, or AX
 /// itself unreachable, fails the publish after the rest were tried (identity answers 500; disabling again retries).
 /// With sandboxes off, nothing is asked of AX.
 /// </summary>
 public sealed class OffboardingTests : SandboxesTestBase
 {
     [Fact]
-    public async Task ADisabledPersonsActiveTasks_Stop_AndNobodyElses()
+    public async Task ADisabledPersonsActiveSandboxes_Stop_AndNobodyElses()
     {
         Ax.Seed("ana-running", SandboxesApp.User, phase: "Running");
         Ax.Seed("ana-pending", SandboxesApp.User, phase: "Pending");
@@ -35,7 +35,7 @@ public sealed class OffboardingTests : SandboxesTestBase
         Assert.Equal(3, App.Logs.Warnings.Count(w => w.Contains("stopped: account disabled")));
     }
 
-    /// <summary>Losing supervisor is not a disable: the person's own tasks stay theirs (Ownership decides per request).</summary>
+    /// <summary>Losing supervisor is not a disable: the person's own sandboxes stay theirs (Ownership decides per request).</summary>
     [Fact]
     public async Task ASupervisorDemotion_StopsNothing()
     {
@@ -48,7 +48,7 @@ public sealed class OffboardingTests : SandboxesTestBase
     }
 
     [Fact]
-    public async Task ATaskThatWillNotStop_FailsThePublish_AfterTheOthersStopped()
+    public async Task ASandboxThatWillNotStop_FailsThePublish_AfterTheOthersStopped()
     {
         Ax.Seed("ana-a", SandboxesApp.User, phase: "Running");
         Ax.Seed("ana-b", SandboxesApp.User, phase: "Running");
@@ -57,7 +57,7 @@ public sealed class OffboardingTests : SandboxesTestBase
         var failure = await Assert.ThrowsAsync<RevocationFailedException>(() =>
             PublishAsync(new PrivilegesRevoked(SandboxesApp.User, "account disabled", AccountDisabled: true)));
 
-        Assert.Contains("1 of its 2 sandbox tasks could not be stopped", failure.Message);
+        Assert.Contains("1 of its 2 sandboxes could not be stopped", failure.Message);
         Assert.DoesNotContain(FakeAx.SecretDetail, failure.Message);
         Assert.Equal("Running", Ax.Stored("ana-a")!.Status.Phase);
         Assert.Equal("Terminating", Ax.Stored("ana-b")!.Status.Phase);
@@ -73,14 +73,14 @@ public sealed class OffboardingTests : SandboxesTestBase
         var failure = await Assert.ThrowsAsync<RevocationFailedException>(() =>
             PublishAsync(new PrivilegesRevoked(SandboxesApp.User, "account disabled", AccountDisabled: true)));
 
-        Assert.Equal(StopTasksOnPrivilegesRevoked.Unreachable + ".", failure.Message); // the owner's words (D162)
+        Assert.Equal(StopSandboxesOnPrivilegesRevoked.Unreachable + ".", failure.Message); // the owner's words (D162)
         Assert.IsType<Grpc.Core.RpcException>(failure.InnerException);
         Assert.Equal(0, Ax.DeleteCalls);
     }
 
-    /// <summary>CR L5: a task deleted by someone else between the read and the delete is stopped, not a failure.</summary>
+    /// <summary>CR L5: a sandbox deleted by someone else between the read and the delete is stopped, not a failure.</summary>
     [Fact]
-    public async Task ATaskGoneBeforeItsDelete_CountsAsStopped()
+    public async Task ASandboxGoneBeforeItsDelete_CountsAsStopped()
     {
         Ax.Seed("ana-a", SandboxesApp.User, phase: "Running");
         Ax.Seed("ana-b", SandboxesApp.User, phase: "Running");
@@ -92,9 +92,9 @@ public sealed class OffboardingTests : SandboxesTestBase
         Assert.Equal(2, App.Logs.Warnings.Count(w => w.Contains("stopped: account disabled")));
     }
 
-    /// <summary>D161: a person the Entra re-check refused (not disabled) loses their running tasks the same way.</summary>
+    /// <summary>D161: a person the Entra re-check refused (not disabled) loses their running sandboxes the same way.</summary>
     [Fact]
-    public async Task AccessRemovedByEntra_StopsTheTasks_LikeADisable()
+    public async Task AccessRemovedByEntra_StopsTheSandboxes_LikeADisable()
     {
         Ax.Seed("ana-running", SandboxesApp.User, phase: "Running");
 
@@ -107,7 +107,7 @@ public sealed class OffboardingTests : SandboxesTestBase
     [Fact]
     public void TheStop_RunsAfterLocalRevocations()
     {
-        Assert.Equal(NotificationOrderAttribute.External, AllHandlersPublisher.OrderOf(typeof(StopTasksOnPrivilegesRevoked)));
+        Assert.Equal(NotificationOrderAttribute.External, AllHandlersPublisher.OrderOf(typeof(StopSandboxesOnPrivilegesRevoked)));
     }
 
     [Fact]

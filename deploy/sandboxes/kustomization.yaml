@@ -4,3 +4,4 @@ resources:
   - ax-server-ingress.yaml
   - sandbox-egress-deny.yaml
   # - sandbox-egress-internet.yaml # opt in: public internet only, no private ranges
+  # - sandbox-egress-memory.yaml # opt in with sandbox memory: Skanyxx's sandbox listener only (D077)

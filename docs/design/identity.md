@@ -133,7 +133,7 @@ notification runs even if another fails, so an AX outage cannot block memory's s
 
 **QA round 1 repairs (D160–D169).** Memory's revocation runs before the sandbox stop (declared handler order), and a
 cancelled publish stays cancellation. An Entra re-check refusal now also ends sessions when nothing else changed and stops
-the person's sandbox tasks (`PrivilegesRevoked.AccessRemoved`, once per refusal). A failed stop answers `500` with "…
+the person's sandboxes (`PrivilegesRevoked.AccessRemoved`, once per refusal). A failed stop answers `500` with "…
 disable again to retry" on the API and the People page. Reset links die with a disable and when refused at use. The
 managed-password refusal writes the same row for a right and a wrong password. Anonymous-origin refusals are sampled to
 one row a minute per kind. The sweep runs once per interval across replicas (`identity_job_runs`), Graph 403/400 are
@@ -142,6 +142,6 @@ TRUNCATE, has an `(Action, Id)` index, and is purged in batches.
 
 **QA round 2 repairs (amending D160–D167).** Turning Microsoft sign-in off, leaving it with no mapped group, or changing
 the tenant clears every re-check refusal in the save, and a refusal only counts while sign-in is usable, so a person back
-on their password keeps their sandbox tasks. A roles save whose stop failed says "Roles saved. … — save again to retry".
+on their password keeps their sandboxes. A roles save whose stop failed says "Roles saved. … — save again to retry".
 Owner-route refusals are sampled per route and person. The managed-password refusal logs the same Warning either way.
 The sweep claim uses the database's clock. A cancellation after a handler failure keeps the failure (an aggregate).

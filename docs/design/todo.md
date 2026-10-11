@@ -8,7 +8,7 @@ Locked product: `spine.md`, `three-planes.md`, `first-hour.md`, `decisions.md`. 
 
 **Shipped as slices (keep; do not rewrite):** identity (owner, invite, roles, org, Entra), memory engine (cards, lift, grants, MCP + agent secrets), tickets (kagent stage runs), sandboxes module (AX v0.3.1, experimental, **off**).
 
-**Not the product yet:** ~~first-hour still stops at `/Setup`. No kagent, no seed chat,~~ (2026-10-05: slice 1 done — `/Setup` → `/Model` → Chat with the seed) ~~no library page,~~ (2026-10-05: slice 2 done — `/Library`) ~~no studio/PR,~~ (2026-10-06: slice 3 done — `/Studio`, PRs in `skanyxx-agents`) no Helm umbrella. Nav is still the SRE console (Dashboard, Investigate, Alerts, Hooks, Cloud Tools).
+**Not the product yet:** ~~first-hour still stops at `/Setup`. No kagent, no seed chat,~~ (2026-10-05: slice 1 done — `/Setup` → `/Model` → Chat with the seed) ~~no library page,~~ (2026-10-05: slice 2 done — `/Library`) ~~no studio/PR,~~ (2026-10-06: slice 3 done — `/Studio`, PRs in `skanyxx-agents`) ~~no Helm umbrella.~~ (2026-10-06: slice 4 — the umbrella chart `deploy/helm/skanyxx`; 2026-10-11: the desktop installers are a remote launcher of it, D200) Nav is still the SRE console (Dashboard, Investigate, Alerts, Hooks, Cloud Tools).
 
 ## How to take a slice
 
@@ -55,14 +55,21 @@ Design: `memory-card.md`, `memory-hierarchy.md`, `memory-how.md`, D009, D038, D0
 
 - [x] Library page (or equivalent) over existing `/api/memory/cards`. API already exists — this is UI + grants/lift affordances, not a new store.
 - [x] Human may rename `key` (D038). Agents still propose keys.
-- [ ] Bodies/blobs: Postgres card first; MinIO pointers (`source`) when a body is more than the card. Do not inline blobs into prompts (D014).
+- [x] Bodies/blobs: Postgres card first; MinIO pointers (`source`) when a body is more than the card. Do not inline blobs into prompts (D014).
+  **2026-10-11 — built (D180–D184, decided 2026-10-09).** `Memory:ObjectStore` (off by default = today's
+  behaviour): a body over `ThresholdBytes` goes to the bucket as `cards/sha256/<hex>`, the card keeps a 500-character
+  excerpt and `source = s3://<bucket>/cards/sha256/<hex>`; MCP/search never carry body, excerpt or pointer; the Library
+  links the full body (`GET /api/memory/cards/{scope}/{key}/body`, same AccessPolicy). Lift shares the pointer, rename
+  and versions unchanged. Chart: `Memory__ObjectStore__*` from the bundled MinIO (or `external.objectStore`), bucket
+  created by the app. Tests on MinIO (`pgsty/minio`, Testcontainers); helm validate green (50 refusals, each checked for its expected message). Text bodies only —
+  file attachments are not built.
 
 **2026-10-05 — slice 2 built (D102).** `/Library` (in everyone's nav): search + scope filter + card view (body and
 source shown as text) + lift buttons only for higher scopes the person may write + rename key where they may write
 (`POST /api/memory/cards/{scope}/{key}/rename`). All rules are memory's `AccessPolicy`, reached through
 `Skanyxx.Core.Platform.Memory` commands; no new store. Bodies live on the Postgres card; `source` is a pointer shown
-as text and never sent to agents (D014). **Open:** MinIO/S3 pointers for bodies larger than the card (third box stays
-open), display names for `who`. Done-when verified on a real host (task evidence `e2e.md`). The status line above
+as text and never sent to agents (D014). **Open:** display names for `who`. (MinIO/S3 pointers for bodies larger than
+the card: built 2026-10-11, D180–D184, third box.) Done-when verified on a real host (task evidence `e2e.md`). The status line above
 ("no library page") predates this: the library page is built (slice 2). Unpublished `company` cards open only for
 supervisors and their author (D103); QA round-1 refinements in D104.
 
@@ -99,9 +106,19 @@ Design: `install-path.md`, D056–D061, D067–D068.
 **Done when:** one chart installs Skanyxx API + kagent + memory + Postgres + MinIO + git + one Dragonfly. Browser URL is the product. Local fat Host is no longer the source of truth.
 
 - [x] Umbrella chart; values turn kagent / AX / bundled stores off and point at BYO (D061).
-- [ ] Appliance = that chart on hidden k3s (they never `kubectl`). BYO = same chart on their cluster.
-- [ ] Thin today’s Host toward a **client** of the in-cluster API (D060, D059). Company users/org/cards must not live only in `%APPDATA%` or a laptop SQLite.
-- [ ] AX **on by default in the chart** is D067; appliance default-off is D069 (locked 2026-10-08, so the appliance path is unblocked). Do not pretend Substrate fits a tiny k3s VM.
+- [x] Appliance = that chart on hidden k3s (they never `kubectl`). BYO = same chart on their cluster.
+  **2026-10-11:** `deploy/appliance/install.sh` (D195–D199): one root script installs pinned k3s v1.36.5+k3s1 + Helm v4.3.0,
+  loads the image from the bundle (`deploy/appliance/bundle.sh`), installs the chart (AX off, D069) behind k3s's Traefik with
+  https, an http redirect and HSTS, firewalls the k3s API/kubelet/VXLAN, prints the URL and the bootstrap token once;
+  re-run = upgrade with the same values; `status`, `token`, `uninstall [--purge]`. Shown on an OrbStack Ubuntu 24.04 arm64
+  machine: `/health` 200 and `/Setup` from the Mac, owner bootstrap with the printed token, re-run changes nothing but the
+  Helm revision, a new-image bundle rolls only the Skanyxx pod and keeps the owner, uninstall → install keeps the data,
+  the firewall holds across a restart. Limits (D199): needs the internet, single node, no backups, self-signed TLS until a
+  certificate is given, amd64 not run.
+- [x] Thin today’s Host toward a **client** of the in-cluster API (D060, D059). Company users/org/cards must not live only in `%APPDATA%` or a laptop SQLite.
+  **2026-10-11:** done as a **remote launcher** (D200–D204): `Skanyxx:Mode` = `Remote` (fresh desktop installs; Windows asks for the address) starts the Host with no database, modules or sign-in and 302s every `GET`/`HEAD` to `Skanyxx:RemoteUrl` — the root only, no path forwarding; `/health` says `remote`. `Server` (default) outside the cluster is a dev console and must not use the cluster's databases (D202); upgraded desktop configs stay `Server` (D204). Tests `RemoteModeTests`; shown live against a running Host. Not built: moving a laptop's data into the cluster, publishing the image/chart from `release.yml` (open.md).
+- [x] AX **on by default in the chart** is D067; appliance default-off is D069 (locked 2026-10-08, so the appliance path is unblocked). Do not pretend Substrate fits a tiny k3s VM.
+  **2026-10-11:** done as a flag, not a default (D069): `ax.install` installs AX v0.3.1's control plane on the bundled Dragonfly (D074 smoke test passed, D185; D186–D189). The chart cannot install Substrate, its WorkerPool or AX's base ActorTemplate — those stay the operator's. Shown on kind-ate (one task through `/api/sandboxes`, uninstall leaves the existing AX working).
 
 **2026-10-06 — slice 4 (branch `slice4-helm`): the umbrella chart is built (D130–D135).** `deploy/helm/skanyxx`:
 Skanyxx (new `Dockerfile`, `scripts/helm/build-image.sh`) + kagent 0.10.2 + Postgres + MinIO + Gitea + one Dragonfly;
@@ -112,7 +129,7 @@ install → pods Ready → `/health` 200 → owner bootstrap → stores reachabl
 changes nothing (manifest, Secrets, resourceVersions, pods, the owner's ModelConfig) → uninstall (task
 `2026-10-06_0900_skanyxx-helm`, evidence/e2e.md). **Box 2:** BYO = this chart on their cluster (done); the appliance
 (hidden k3s) is **not built** — waits on D069. **Box 3:** the in-cluster Skanyxx is the source of truth for users, org
-and cards; the Host itself is unchanged (no thin client yet, D134). **Box 4:** `ax.enabled` exists, default **false**,
+and cards; the Host itself is unchanged (no thin client yet, D134; 2026-10-11: superseded — remote launcher, D200–D204). **Box 4:** `ax.enabled` exists, default **false**,
 and installs no AX (points the sandboxes module at one you run) until D067/D069 is locked (D134). MinIO's own images
 are gone; the default image is the `pgsty/minio` fork (D132).
 QA round 1 (same day, D136–D146): kagent's RBAC namespaced (one bundled-kagent install per **cluster**); the
@@ -128,17 +145,27 @@ Design: `ax-tasks.md`, `ax-integration.md`, D063–D064, D069–D077 (locked 202
 **Done when:** a supervisor can list/run/watch/stop a sandbox against a real AX, labeled Experimental. No Task-studio, no Task preview-chat.
 
 - [x] Lock or drop proposed D069–D077 in `decisions.md` before more AX product work. **2026-10-08:** all nine locked as written.
-- [ ] Dedicated sandbox-facing `/mcp/memory` listener + per-task token (D076/D077). Do **not** hand an agent secret to a sandbox.
-- [ ] Code/routes stay **Sandboxes**, never “Task” (name clash with kagent A2A and Tickets).
+- [x] Dedicated sandbox-facing `/mcp/memory` listener + per-task token (D076/D077). Do **not** hand an agent secret to a sandbox.
+  **2026-10-11:** done (D190–D194) — `Memory:SandboxMcpPort` serves `/mcp/memory` only, identified by a Skanyxx-signed
+  per-sandbox token (`SKANYXX_MEMORY_TOKEN`, HMAC; headers and agent secrets ignored there, the token worthless
+  elsewhere); one live token per activation in Postgres, revoked on stop / re-run / owner offboarding, 24 h expiry, renewed on resume;
+  the sandbox acts for its owner only; `Sandboxes:MemoryMcpUrl` accepted for that listener only; chart
+  `ax.sandboxes.memory` (Service, port, key Secret, both NetworkPolicies; validate.sh S1 + 6 refusals). Tests only:
+  not shown from inside a real gVisor sandbox.
+- [x] Code/routes stay **Sandboxes**, never “Task” (name clash with kagent A2A and Tickets). **2026-10-09:** done (D179) —
+  routes `/api/sandboxes[/{name}[/stop|suspend|resume|watch]]` (the experimental `/api/sandboxes/tasks/*` are gone),
+  `workspaces`/`models` reserved names, every module type/folder/test and the `/Sandboxes` page renamed; an architecture
+  test fails on any module type named `*Task*` outside AX's generated proto.
 - [ ] No second run engine. AX is source of truth for sandboxes; Tickets stays kagent.
 
 **2026-10-08/09 — a real AX and the page.** D069–D077 locked. Real AX v0.3.1 on Substrate (kind, arm64, gVisor) ran
-list / run / watch / stop / suspend through `/api/sandboxes` (resume fails for image-named tasks: AX v0.3.1 limit;
+list / run / watch / stop / suspend through `/api/sandboxes` (resume unreliable on AX v0.3.1: failed 2/2 on 10-08, worked 3/3 on 10-09, failed 1/1 on 10-11;
 README "Local AX on kind"). Sandbox egress-deny verified on the WorkerPool's namespace (D178). `/Sandboxes` page (owner +
 supervisor, Experimental) clicked through in a real browser against that AX: run → live Pending/Running → stop, and an
-API refusal shown. **Done-when not yet fully met:** only the owner was exercised against the real AX (a supervisor
-acting on another person's task: module tests against the fake only); D076/D077 listener open; D071 rename open
-(routes and ~25 types still say "Task").
+API refusal shown. **2026-10-11:** a supervisor on the real AX listed, suspended and stopped an employee's sandbox (its
+resume was accepted but the sandbox ended Failed — the AX v0.3.1 resume issue); another employee got 403 for stop / suspend / replace; the per-person cap refused a third sandbox (task
+`2026-10-09_1130_skanyxx-fix-partials`, W4/supervisor-real-ax.txt). D071 rename done 2026-10-09 (D179). The
+D076/D077 listener is built (box above, D190–D194); it is not yet shown from inside a real gVisor sandbox.
 
 ## 6. Later (do not start while 1–3 are open)
 

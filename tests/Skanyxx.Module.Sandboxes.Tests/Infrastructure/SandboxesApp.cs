@@ -37,7 +37,9 @@ public sealed class SandboxesApp : IAsyncDisposable
 
     private Uri BaseAddress => new(_app.Urls.First());
 
-    public static async Task<SandboxesApp> StartAsync(string axAddress, Action<Dictionary<string, string?>>? configure = null)
+    /// <param name="services">Test services added after the module's own (e.g. <see cref="FakeMemoryTokens"/>).</param>
+    public static async Task<SandboxesApp> StartAsync(
+        string axAddress, Action<Dictionary<string, string?>>? configure = null, Action<IServiceCollection>? services = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
@@ -72,6 +74,7 @@ public sealed class SandboxesApp : IAsyncDisposable
         // The Host's fallback: every endpoint without its own rule needs a signed-in user (e.g. /mcp/memory must opt out).
         builder.Services.AddAuthorization(o => o.FallbackPolicy = new AuthorizationPolicyBuilder().RequireAuthenticatedUser().Build());
         builder.Services.AddCors(o => o.AddPolicy(AllowAll, p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+        services?.Invoke(builder.Services);
 
         var app = builder.Build();
         app.UseSkanyxxErrorHandling("/Error");

@@ -4,9 +4,9 @@ namespace Skanyxx.Module.Sandboxes.Features;
 
 /// <summary>
 /// One <see cref="SemaphoreSlim"/> per key, alive only while someone holds or waits for it. Run, stop, suspend and
-/// resume hold the task's key (so a run cannot undo a suspend it raced); a run that activates a task then also holds
-/// <see cref="Atespace"/> for count → upsert, so parallel runs cannot all pass the caps. Always task before atespace,
-/// and nothing takes a second task key: no cycles. Within one replica only; AX has no conditional write, so across
+/// resume hold the sandbox's key (so a run cannot undo a suspend it raced); a run that activates a sandbox then also holds
+/// <see cref="Atespace"/> for count → upsert, so parallel runs cannot all pass the caps. Always sandbox before atespace,
+/// and nothing takes a second sandbox key: no cycles. Within one replica only; AX has no conditional write, so across
 /// replicas this is best-effort.
 /// </summary>
 internal sealed class KeyedLock
@@ -18,7 +18,7 @@ internal sealed class KeyedLock
 
     public const string Atespace = "atespace";
 
-    public static string ForTask(string name) => "task:" + name;
+    public static string ForSandbox(string name) => "sandbox:" + name;
 
     /// <summary>Keys currently held or waited for.</summary>
     public int Count
@@ -34,7 +34,7 @@ internal sealed class KeyedLock
     {
         var gate = Join(key);
         if (gate is null)
-            return Outcome<T>.RateLimited("Too many requests for this task, or task starts, are in flight; try again shortly.");
+            return Outcome<T>.RateLimited("Too many requests for this sandbox, or sandbox starts, are in flight; try again shortly.");
         try
         {
             await gate.WaitAsync(ct);

@@ -121,9 +121,21 @@ html, body {
 }
 
 .nav-icon {
-  font-size: 16px;
   width: 20px;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-icon svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .nav-label {
@@ -468,9 +480,18 @@ tr:hover {
 
   .sidebar-logo-text,
   .sidebar-subtitle,
-  .nav-section-title,
-  .nav-label {
+  .nav-section-title {
     display: none;
+  }
+
+  /* Hidden from sight only: the label stays the link's accessible name while the icon is aria-hidden. */
+  .nav-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
   }
 
   .nav-item {
@@ -478,8 +499,9 @@ tr:hover {
     justify-content: center;
   }
 
-  .nav-icon {
-    font-size: 20px;
+  .nav-icon svg {
+    width: 20px;
+    height: 20px;
   }
 
   .main-content {

@@ -110,7 +110,7 @@ public sealed class EntraRecheckTests(PostgresFixture postgres) : IAsyncLifetime
 
     /// <summary>
     /// CR L2 + D161: a person whose mapping granted no roles or teams, removed from every mapped group, still loses their
-    /// sessions and their sandbox tasks — the first refusal acts even when there is nothing to take away.
+    /// sessions and their sandboxes — the first refusal acts even when there is nothing to take away.
     /// </summary>
     [Fact]
     public async Task ARefusedAccount_WithNothingToRemove_StillLosesItsSessionsAndTasks()
@@ -129,7 +129,7 @@ public sealed class EntraRecheckTests(PostgresFixture postgres) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, (await Member().GetAsync(IdentityApp.ProbePath, TestContext.Current.CancellationToken)).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await _app.RefreshAsync(_member.RefreshToken)).StatusCode);
         Assert.True(Assert.Single(_revoked.Received).AccessRemoved);
-        Assert.Contains("sandbox tasks stopped", Assert.Single(await postgres.AuditAsync(AuditActions.EntraRecheckRefused)).Details);
+        Assert.Contains("sandboxes stopped", Assert.Single(await postgres.AuditAsync(AuditActions.EntraRecheckRefused)).Details);
     }
 
     /// <summary>D161: back in a mapped group clears the refusal, so a later removal acts again.</summary>
@@ -172,7 +172,7 @@ public sealed class EntraRecheckTests(PostgresFixture postgres) : IAsyncLifetime
 
     /// <summary>
     /// QA-2 L2: turning Microsoft sign-in off clears every re-check refusal in the save, so the person — who signs in
-    /// with a password again (D8) — keeps their sandbox tasks when a later save takes supervisor away.
+    /// with a password again (D8) — keeps their sandboxes when a later save takes supervisor away.
     /// </summary>
     [Fact]
     public async Task TurningSignInOff_ClearsTheRefusal_SoALaterRevocationLeavesTheTasks()
@@ -417,7 +417,7 @@ public sealed class EntraRecheckTests(PostgresFixture postgres) : IAsyncLifetime
             if (FailNext)
             {
                 FailNext = false;
-                throw new RevocationFailedException("Its sandbox tasks could not be stopped (AX unavailable).");
+                throw new RevocationFailedException("Its sandboxes could not be stopped (AX unavailable).");
             }
             _received.Enqueue(notification);
             return Task.CompletedTask;

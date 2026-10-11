@@ -94,6 +94,15 @@ skanyxx:
     readOnlyRootFilesystem: true
     capabilities:
       drop: [ALL]
+  # Card bodies larger than the card (D180-D184): with an object store (the bundled MinIO, or external.objectStore), a
+  # body over thresholdBytes (UTF-8) goes to the bucket and the card keeps an excerpt + an s3:// pointer in `source`;
+  # agents never see either (D014). Without one, bodies stay in Postgres (max 20000 characters).
+  memoryBodies:
+    thresholdBytes: 4096
+    # The largest body a write may carry while the store is on; at most 8 MiB (8388608). The upsert request cap is about
+    # 6x this (JSON may escape every byte) and each request is buffered whole, so it is memory per in-flight write.
+    maxBodyBytes: 1048576
+
   # Size caps of the writable emptyDirs (/data: the leftover SQLite file; /tmp).
   dataSizeLimit: 256Mi
   tmpSizeLimit: 256Mi
@@ -174,16 +183,92 @@ networkPolicy:
     cidrs: ["0.0.0.0/0", "::/0"]
     extra: []
 
-# AX Tasks (experimental, D063/D064). D069 (locked 2026-10-08) keeps AX + Substrate off in the appliance and on-by-flag
-# for BYO clusters that meet Substrate's prerequisites. This chart does NOT install AX or Substrate (no upstream chart):
-# `enabled` turns Skanyxx's sandboxes module on and points it at an AX you run (BYO). Default off.
+# AX Tasks (experimental, D063/D064). D069 (locked 2026-10-08): off by default, off in the appliance, on-by-flag for BYO
+# clusters that already run Agent Substrate. The chart never installs Substrate. Two ways to turn AX on (README "AX Tasks"):
+#   - `enabled` + `address`: Skanyxx's sandboxes module points at an AX you run;
+#   - `enabled` + `install` (D186): the chart also installs AX v0.3.1's control plane (ax-server + ax-controller) in the
+#     release namespace, with the bundled Dragonfly as its Redis (D185), and points the module at it.
 ax:
   enabled: false
-  address: ""                      # Sandboxes:Address, e.g. http://ax-server.ax-system.svc:8080
+  address: ""                      # Sandboxes:Address of an AX you run, e.g. http://ax-server.ax-system.svc:8080 (empty with install)
   atespace: default
   allowedImages: []                # Sandboxes:AllowedImages (empty = nothing runs)
-  networkIsolationConfirmed: false # Sandboxes:NetworkIsolationConfirmed — only after deploy/sandboxes/ is verified
-  namespace: ax-system             # may reach the bundled Dragonfly (AX's Redis, D068)
+  # Sandboxes:NetworkIsolationConfirmed. The chart refuses true unless it renders the sandbox egress policies
+  # (sandboxes.namespace, with networkPolicy.enabled). Set it only after the egress test in deploy/sandboxes/README.md
+  # passed from inside a sandbox on this cluster (D178, D188).
+  networkIsolationConfirmed: false
+  namespace: ax-system             # the namespace of an AX you run: it may reach the bundled Dragonfly (D068)
+
+  # The chart installs AX's control plane (D186). Needs `enabled`, Substrate already running (substrate.endpoint), both
+  # images WITH a digest, snapshotsBucket and networkPolicy.enabled; the chart refuses otherwise. AX publishes no images:
+  # build them from google/ax v0.3.1 (D075; `ko build ./cmd/ax-server ./cmd/ax-controller`) and pin each by digest.
+  install: false
+  imagePullSecrets: []
+  server:
+    image: {repository: "", tag: "", digest: "", pullPolicy: IfNotPresent}
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 512Mi}
+  controller:
+    image: {repository: "", tag: "", digest: "", pullPolicy: IfNotPresent}
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 512Mi}
+  # AX's own Redis (upstream deploy/redis.yaml), rendered only when dragonfly.enabled=false and external.redis.address
+  # is empty (D189). A generated password (Secret <release>-ax-redis, kept on uninstall), fenced by a NetworkPolicy to
+  # ax-server + ax-controller; in memory only, maxmemory = 80% of limits.memory (Mi or Gi) with noeviction.
+  redis:
+    image:
+      repository: docker.io/library/redis
+      tag: 7.4-alpine
+      digest: sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499   # multi-arch index, 2026-10-11
+      pullPolicy: IfNotPresent
+    resources:
+      requests: {cpu: 50m, memory: 64Mi}
+      limits: {memory: 512Mi}
+  # Where Substrate runs (Substrate's own install, not this chart).
+  substrate:
+    endpoint: ""                       # its control API, e.g. api.ate-system.svc.cluster.local:443
+    authority: api.ate-system.svc      # TLS server name, and the audience of the projected token AX presents
+    namespace: ate-system              # ax-controller may send to this namespace (the API and atenet-router) only
+    routerAddress: atenet-router.ate-system.svc.cluster.local:80   # ATENET_ROUTER_ADDR (workspace readiness checks)
+    # Substrate's service CA: a ClusterTrustBundle projected into ax-controller (upstream's selector).
+    trustBundle:
+      signerName: servicedns.podcert.ate.dev/identity
+      labelSelector: {podcert.ate.dev/canarying: live}
+  # AX's base ActorTemplate <templateAtespace>/<template>. The chart CANNOT create it, nor the WorkerPool it selects:
+  # ActorTemplates live in Substrate's API, not in Kubernetes (README "AX Tasks"). Without them every task fails with
+  # "no free workers available".
+  template: default-template
+  templateAtespace: ax-system
+  # AX_SNAPSHOTS_BUCKET (suspend/resume snapshots). Required with install; upstream's default is a developer's personal
+  # GCS bucket, which the chart refuses (D187). kind + Substrate's local store: gs://ate-snapshots/ax/
+  snapshotsBucket: ""
+  # The sandbox fence (D077, D178). With `namespace` set — the Substrate WorkerPool's namespace: Substrate runs every
+  # sandbox inside a WorkerPool pod — the chart renders deploy/sandboxes' egress policies THERE: DNS only, plus the
+  # public internet minus networkPolicy.clusterCidrs when `internet` is true. Needs networkPolicy.enabled.
+  # The fence policies are kept on `helm uninstall` (sandboxes may still run); delete them by hand afterwards.
+  sandboxes:
+    namespace: ""
+    internet: false
+    # The only peer a sandbox may send to (UDP/TCP 53): the cluster DNS pods. Change it where DNS is not
+    # kube-system/k8s-app=kube-dns (OpenShift: openshift-dns + dns.operator.openshift.io/daemonset-dns=default).
+    # podLabels is a list of key=value so an override replaces the default instead of merging into it. NodeLocal
+    # DNSCache (hostNetwork) is not a pod a policy can select: point the sandboxes at the cluster DNS instead.
+    dnsPeer:
+      namespace: kube-system
+      podLabels: [k8s-app=kube-dns]
+    # Memory for sandboxes (D076/D077, D190-D194). On: a third Skanyxx port (`port`, Memory:SandboxMcpPort) serves
+    # /mcp/memory and nothing else, and accepts only the per-sandbox token Skanyxx signs (HMAC, Memory:SandboxTokenKey)
+    # and puts in the env of a sandbox that binds a workspace with memory attached. The chart sets
+    # Sandboxes:MemoryMcpUrl to that listener's own Service (<release>-skanyxx-sandbox-mcp), admits the WorkerPool's
+    # namespace to that port only, and lets the sandboxes send to it and nothing else in the cluster. Needs `enabled`,
+    # sandboxes.namespace and networkPolicy.enabled. The task image must honour the contract (README "Sandboxes and memory").
+    memory:
+      enabled: false
+      port: 8082                     # container port = Service port: the URL's port is what the listener keys on
+      tokenHours: 24                 # Memory:SandboxTokenHours; a longer sandbox gets a new token when its owner re-runs it
+      existingSecret: ""             # BYO signing key: a Secret with key `token-key` (32+ characters); empty = generated, kept
 
 # Bundled Postgres (D053): one StatefulSet, separate roles/databases for identity (skanyxx_identity), memory+tickets
 # (skanyxx) and kagent (kagent). Off = BYO: set skanyxx.database.existingSecret and kagent's database (see below).
@@ -212,9 +297,11 @@ postgresql:
       memory: 384Mi
 
 # Bundled S3 (D053). MinIO's own images are gone (Docker Hub repo removed, quay 401, GitHub archived); the default is
-# the community fork pgsty/minio (same binary and S3 API). Nothing in Skanyxx reads S3 yet (slice 2, box 3).
+# the community fork pgsty/minio (same binary and S3 API). Memory keeps large card bodies here (skanyxx.memoryBodies).
 minio:
   enabled: true
+  # Created by Skanyxx on the first stored body (D184).
+  bucket: skanyxx-memory
   image:
     repository: pgsty/minio
     tag: RELEASE.2026-08-04T00-00-00Z
@@ -259,22 +346,25 @@ gitea:
     limits:
       memory: 384Mi
 
-# Where each store lives when its bundled copy is off (D061). Nothing in Skanyxx reads S3, git or Redis yet: these
-# land in the ConfigMap <release>-stores, next to the bundled ones, for the slices that will.
+# Where each store lives when its bundled copy is off (D061). Memory reads the object store (card bodies, D180); git
+# and Redis are not read yet: they land in the ConfigMap <release>-stores, next to the bundled ones, for later slices.
 external:
   objectStore:
-    endpoint: ""        # https://s3.eu-west-1.amazonaws.com, an Azure Blob / GCS S3 endpoint, ...
-    bucket: ""
-    existingSecret: ""  # keys: access-key, secret-key
+    endpoint: ""        # http(s)://…, e.g. https://s3.eu-west-1.amazonaws.com. Needs minio.enabled=false (refused otherwise). Empty (and minio off): bodies stay in Postgres.
+    bucket: ""          # required with an endpoint; create it yourself if the key may not create buckets
+    region: ""          # the bucket's region (AWS); empty = us-east-1
+    existingSecret: ""  # keys: access-key, secret-key (required with an endpoint)
   git:
     url: ""             # https://github.com/acme (GitHub / GitLab / an existing server)
     existingSecret: ""  # key: token
   redis:
-    address: ""         # host:port of their Redis/Dragonfly
+    address: ""         # host:port of their Redis/Dragonfly (the port is required: AX and its NetworkPolicy need it)
     existingSecret: ""  # key: password
 
-# One Dragonfly (D068): AX's Redis when AX is on, memory's cache/locks later. Cards stay in Postgres (D042).
-# Official chart; not in cache mode, so nothing is evicted (AX needs noeviction, README "AX Tasks").
+# One Dragonfly (D068): AX's Redis when the chart installs AX (ax.install; D185: AX v0.3.1 smoke-tested on it), memory's
+# cache/locks later. Cards stay in Postgres (D042). Official chart; not in cache mode, so nothing is evicted (AX needs
+# noeviction). Off with ax.install: AX uses external.redis (address + existingSecret, key `password`), else AX's own
+# Redis (ax.redis, D189).
 dragonfly:
   enabled: true
   fullnameOverride: dragonfly
@@ -292,8 +382,9 @@ dragonfly:
     existingSecret:
       name: dragonfly-auth
       key: password
-  # In memory only: no snapshots (the root filesystem is read-only and there is no volume). To keep data across
-  # restarts (AX's queue, later), set storage.enabled=true and drop --dbfilename.
+  # In memory only: no snapshots (the root filesystem is read-only and there is no volume). A restart therefore forgets
+  # AX's task index while Substrate keeps the sandboxes running (orphans to stop by hand); to keep it, set
+  # storage.enabled=true and drop --dbfilename.
   extraArgs:
     - --proactor_threads=1
     - --maxmemory=256mb

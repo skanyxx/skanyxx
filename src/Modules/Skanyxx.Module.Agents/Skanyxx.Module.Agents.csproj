@@ -16,7 +16,7 @@
     <InternalsVisibleTo Include="Skanyxx.Host.Tests" />
   </ItemGroup>
   <Target Name="CopyToModules" AfterTargets="Build">
-    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SolutionDir)src\Skanyxx.Host\modules\" />
-    <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(SolutionDir)src\Skanyxx.Host\modules\" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(MSBuildThisFileDirectory)..\..\Skanyxx.Host\modules\" />
+    <Copy SourceFiles="$(TargetDir)$(TargetName).deps.json" DestinationFolder="$(MSBuildThisFileDirectory)..\..\Skanyxx.Host\modules\" />
   </Target>
 </Project>

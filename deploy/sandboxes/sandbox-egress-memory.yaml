@@ -1,0 +1,24 @@
+# D077 (D190-D194): opt in only with sandbox memory on (Memory:SandboxMcpPort + Sandboxes:MemoryMcpUrl). Lets every
+# sandbox reach Skanyxx's sandbox listener and nothing else of Skanyxx: that port serves /mcp/memory only and accepts
+# only the per-sandbox token Skanyxx signs (D076). Never widen it to Skanyxx's UI/API port (8080) or the agents' mcp
+# port (8081). Skanyxx's own ingress policy must admit this namespace on the same port.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress-skanyxx-memory
+  namespace: ax-sandboxes # SET: the namespace of the Substrate WorkerPool that runs the sandboxes (D178)
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: skanyxx # SET: Skanyxx's namespace
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: skanyxx # SET: Skanyxx's pod labels
+      ports:
+        - protocol: TCP
+          port: 8082 # SET: Memory:SandboxMcpPort

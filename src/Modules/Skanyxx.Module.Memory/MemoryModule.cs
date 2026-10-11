@@ -16,6 +16,7 @@ using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Access;
+using Skanyxx.Module.Memory.Bodies;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Endpoints;
 using Skanyxx.Module.Memory.Features;
@@ -42,6 +43,13 @@ public sealed class MemoryModule : IModule, IEndpointModule
             .Bind(configuration.GetSection(MemoryOptions.Section))
             .Configure(o => o.ConnectionString = configuration.GetConnectionString("Memory") ?? "")
             .ValidateDataAnnotations()
+            .Validate(o => o.ObjectStore.IsValid(),
+                "Memory:ObjectStore with an Endpoint (http/https) needs Bucket (an S3 bucket name), AccessKey and SecretKey, " +
+                "ThresholdBytes 1-20000 and MaxBodyBytes above it.")
+            .Validate(o => o.SandboxMcpPort is null || o.SandboxTokenKey is { Length: >= MemoryOptions.MinTokenKeyChars },
+                $"Memory:SandboxMcpPort needs Memory:SandboxTokenKey (at least {MemoryOptions.MinTokenKeyChars} characters): sandbox tokens are signed with it (D076).")
+            .Validate(o => o.SandboxMcpPort is null || o.SandboxMcpPort != o.McpPort,
+                "Memory:SandboxMcpPort must differ from Memory:McpPort: the sandbox listener accepts sandbox tokens only, the mcp port agent secrets only (D077).")
             .ValidateOnStart();
 
         services.AddDbContext<MemoryDbContext>((sp, o) => o
@@ -51,6 +59,7 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddScoped<AccessPolicy>();
         services.AddScoped<ClientAddress>();
         services.AddSingleton<UpsertRateLimiter>();
+        services.AddSingleton<CardBodies>();
         services.AddSingleton<IStudioReconcileLock, StudioReconcileLock>();
 
         services.AddHealthChecks().AddNpgSql(
@@ -59,7 +68,8 @@ public sealed class MemoryModule : IModule, IEndpointModule
             tags: ["memory"]);
 
         services.AddAuthentication()
-            .AddScheme<AuthenticationSchemeOptions, AgentSecretAuthentication>(AgentSecretAuthentication.SchemeName, null);
+            .AddScheme<AuthenticationSchemeOptions, AgentSecretAuthentication>(AgentSecretAuthentication.SchemeName, null)
+            .AddScheme<AuthenticationSchemeOptions, SandboxTokenAuthentication>(SandboxTokenAuthentication.SchemeName, null);
         services.AddHttpContextAccessor();
         services.AddMcpServer()
             .WithHttpTransport(o => o.Stateless = true)
@@ -76,20 +86,23 @@ public sealed class MemoryModule : IModule, IEndpointModule
             : throw new InvalidOperationException("The memory module needs IOrgMembership (the identity module) to decide team and department access; enable the identity module.");
 
     // kagent has no signed-in user, so the MCP route does not use the Host's user schemes: it requires an agent secret
-    // (D080) and nothing else, and the agent is whoever owns that secret. The 401 comes from authorization, before MCP
-    // parses anything. CORS stays off (no web page should drive it) and the body is capped. With Memory:McpPort set, the
-    // route exists on that port only, so whatever publishes the main port (an ingress) cannot publish /mcp with it, and
-    // the port serves nothing else (McpPortOnlyFilter).
+    // (D080) or, on the sandbox listener only, a sandbox token (D076) — each scheme authenticates on its own port(s) and
+    // nowhere else — and the caller is whoever owns that credential. The 401 comes from authorization, before MCP parses
+    // anything. CORS stays off (no web page should drive it) and the body is capped. With Memory:McpPort set, the route
+    // exists on that port (and the sandbox listener) only, so whatever publishes the main port (an ingress) cannot
+    // publish /mcp with it, and those ports serve nothing else (McpPortOnlyFilter).
     public void MapEndpoints(IEndpointRouteBuilder endpoints)
     {
         var mcp = endpoints.MapGroup(McpPath)
-            .RequireAuthorization(p => p.AddAuthenticationSchemes(AgentSecretAuthentication.SchemeName).RequireAuthenticatedUser())
+            .RequireAuthorization(p => p
+                .AddAuthenticationSchemes(AgentSecretAuthentication.SchemeName, SandboxTokenAuthentication.SchemeName)
+                .RequireAuthenticatedUser())
             .WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MemoryGroup.MaxBodyBytes));
         // Read raw: resolving IOptions here would validate MemoryOptions while mapping, before ValidateOnStart reports it.
-        var port = endpoints.ServiceProvider.GetRequiredService<IConfiguration>()
-            .GetValue<int?>($"{MemoryOptions.Section}:{nameof(MemoryOptions.McpPort)}");
-        if (port is not null)
-            mcp.WithMetadata(new McpPortMetadata(port.Value));
+        var settings = new MemoryOptions();
+        endpoints.ServiceProvider.GetRequiredService<IConfiguration>().GetSection(MemoryOptions.Section).Bind(settings);
+        if (settings.McpOnlyPorts.Count > 0)
+            mcp.WithMetadata(new McpPortMetadata(settings.McpOnlyPorts));
         mcp.MapMcp();
         // Stateless MCP maps POST only. Clients (kagent's go-sdk) still open the standalone SSE stream (GET) and end the
         // session (DELETE); unmapped, any other verb falls to the framework's 405 endpoint, which has no authorization

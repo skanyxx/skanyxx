@@ -2,8 +2,17 @@
 {{- $sel := dict "ctx" . "name" "skanyxx" }}
 {{- $v := .Values.skanyxx }}
 {{- $publicUrl := include "skanyxx.publicUrl" . }}
-{{- if and .Values.ax.enabled (not .Values.ax.address) }}
-{{- fail "ax.enabled=true needs ax.address (this chart does not install AX; see values.yaml)" }}
+{{- $store := .Values.external.objectStore }}
+{{- if and .Values.minio.enabled $store.endpoint }}
+{{- fail "external.objectStore.endpoint is set while minio.enabled=true: card bodies would go to the bundled MinIO and the endpoint would be ignored; set minio.enabled=false to use it" }}
+{{- end }}
+{{- $sbxMem := include "skanyxx.sandboxMemory" . }}
+{{- $sbxPort := .Values.ax.sandboxes.memory.port }}
+{{- if and (not .Values.minio.enabled) $store.endpoint (or (not $store.bucket) (not $store.existingSecret)) }}
+{{- fail "external.objectStore.endpoint needs external.objectStore.bucket and external.objectStore.existingSecret (keys access-key, secret-key)" }}
+{{- end }}
+{{- if le (int $v.memoryBodies.maxBodyBytes) (int $v.memoryBodies.thresholdBytes) }}
+{{- fail "skanyxx.memoryBodies.maxBodyBytes must be above thresholdBytes" }}
 {{- end }}
 apiVersion: v1
 kind: ServiceAccount
@@ -31,6 +40,25 @@ spec:
     - name: mcp
       port: {{ $v.service.mcpPort }}
       targetPort: mcp
+{{- if $sbxMem }}
+---
+# D077: the sandbox listener on a Service of its own, so the sandboxes' URL names nothing else. Same port number as the
+# container: Sandboxes:MemoryMcpUrl is checked against Memory:SandboxMcpPort.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}-sandbox-mcp
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+spec:
+  selector:
+    {{- include "skanyxx.selectorLabels" $sel | nindent 4 }}
+  ports:
+    - name: sandbox-mcp
+      port: {{ $sbxPort }}
+      targetPort: sandbox-mcp
+{{- end }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -55,7 +83,8 @@ spec:
       their install-time render is a different random draw from the stored values. extraEnvFrom sources are not seen:
       `kubectl rollout restart` after changing one.
       */}}
-      {{- $byo := compact (list $v.database.existingSecret $v.bootstrapToken.existingSecret $v.kagent.tokenSecret $v.dataProtection.certificateSecret) }}
+      {{- $s3 := ternary .Values.minio.existingSecret .Values.external.objectStore.existingSecret .Values.minio.enabled }}
+      {{- $byo := compact (list $v.database.existingSecret $v.bootstrapToken.existingSecret $v.kagent.tokenSecret $v.dataProtection.certificateSecret $s3 (ternary .Values.ax.sandboxes.memory.existingSecret "" (eq $sbxMem "true"))) }}
       {{- if $byo }}
       {{- $data := "" }}
       {{- range $byo }}
@@ -104,6 +133,10 @@ spec:
               containerPort: 8080
             - name: mcp
               containerPort: {{ $v.service.mcpPort }}
+            {{- if $sbxMem }}
+            - name: sandbox-mcp
+              containerPort: {{ $sbxPort }}
+            {{- end }}
           envFrom:
             # ConnectionStrings__Identity / __Memory / __Tickets
             - secretRef:
@@ -114,11 +147,20 @@ spec:
           env:
             - name: ASPNETCORE_ENVIRONMENT
               value: Production
-            # Two listeners: the UI/API on 8080, the mcp port serving /mcp/memory and nothing else (D138).
+            # The UI/API on 8080, the mcp port serving /mcp/memory and nothing else (D138), and with sandbox memory the
+            # sandbox listener: /mcp/memory for sandbox tokens only (D077).
             - name: ASPNETCORE_HTTP_PORTS
-              value: {{ printf "8080;%v" $v.service.mcpPort | quote }}
+              value: {{ ternary (printf "8080;%v;%v" $v.service.mcpPort $sbxPort) (printf "8080;%v" $v.service.mcpPort) (eq $sbxMem "true") | quote }}
             - name: Memory__McpPort
               value: {{ $v.service.mcpPort | quote }}
+            {{- if $sbxMem }}
+            - name: Memory__SandboxMcpPort
+              value: {{ $sbxPort | quote }}
+            - name: Memory__SandboxTokenHours
+              value: {{ .Values.ax.sandboxes.memory.tokenHours | quote }}
+            - name: Memory__SandboxTokenKey
+              valueFrom: {secretKeyRef: {name: {{ include "skanyxx.sandboxTokenSecret" . }}, key: token-key}}
+            {{- end }}
             - name: AllowedHosts
               value: {{ include "skanyxx.allowedHosts" . | quote }}
             {{- with $publicUrl }}
@@ -157,13 +199,33 @@ spec:
                   name: {{ . }}
                   key: token
             {{- end }}
+            {{- if or .Values.minio.enabled $store.endpoint }}
+            # Card bodies over the threshold go to this bucket (D180-D184); the app creates it on first use.
+            {{- $s3secret := ternary (include "skanyxx.minioSecret" .) $store.existingSecret .Values.minio.enabled }}
+            - name: Memory__ObjectStore__Endpoint
+              value: {{ ternary (printf "http://%s.%s.svc:9000" (include "skanyxx.component" (dict "ctx" . "name" "minio")) .Release.Namespace) $store.endpoint .Values.minio.enabled | quote }}
+            - name: Memory__ObjectStore__Bucket
+              value: {{ ternary .Values.minio.bucket $store.bucket .Values.minio.enabled | quote }}
+            {{- if and (not .Values.minio.enabled) $store.region }}
+            - name: Memory__ObjectStore__Region
+              value: {{ $store.region | quote }}
+            {{- end }}
+            - name: Memory__ObjectStore__AccessKey
+              valueFrom: {secretKeyRef: {name: {{ $s3secret }}, key: access-key}}
+            - name: Memory__ObjectStore__SecretKey
+              valueFrom: {secretKeyRef: {name: {{ $s3secret }}, key: secret-key}}
+            - name: Memory__ObjectStore__ThresholdBytes
+              value: {{ $v.memoryBodies.thresholdBytes | int | quote }}
+            - name: Memory__ObjectStore__MaxBodyBytes
+              value: {{ $v.memoryBodies.maxBodyBytes | int | quote }}
+            {{- end }}
             - name: Tickets__Source
               value: {{ $v.tickets.source | quote }}
             - name: Sandboxes__Enabled
               value: {{ .Values.ax.enabled | quote }}
             {{- if .Values.ax.enabled }}
             - name: Sandboxes__Address
-              value: {{ .Values.ax.address | quote }}
+              value: {{ include "skanyxx.axAddress" . | quote }}
             - name: Sandboxes__Atespace
               value: {{ .Values.ax.atespace | quote }}
             - name: Sandboxes__NetworkIsolationConfirmed
@@ -171,6 +233,11 @@ spec:
             {{- range $i, $image := .Values.ax.allowedImages }}
             - name: Sandboxes__AllowedImages__{{ $i }}
               value: {{ $image | quote }}
+            {{- end }}
+            {{- if $sbxMem }}
+            # Memory attach (D073): workspaces get this URL, sandboxes that bind one get it + their token in their env.
+            - name: Sandboxes__MemoryMcpUrl
+              value: {{ printf "http://%s-sandbox-mcp.%s.svc:%v/mcp/memory" $name .Release.Namespace $sbxPort | quote }}
             {{- end }}
             {{- end }}
             {{- range $module, $on := $v.modules }}

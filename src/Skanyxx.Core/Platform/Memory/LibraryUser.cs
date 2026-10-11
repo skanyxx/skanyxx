@@ -28,8 +28,7 @@ public sealed record LibraryUser
     /// </summary>
     public static LibraryUser From(ClaimsPrincipal principal)
     {
-        if (principal.Identities.Any(i => i.AuthenticationType == AgentPrincipal.SchemeName)
-            || principal.HasClaim(c => c.Type == AgentPrincipal.ActsForUsersClaim))
+        if (AgentPrincipal.IsAgent(principal))
             throw new InvalidOperationException("An agent is not a person: library requests need a signed-in user.");
         return new(Caller.UserId(principal), Caller.IsSupervisor(principal), Caller.IsOwner(principal));
     }

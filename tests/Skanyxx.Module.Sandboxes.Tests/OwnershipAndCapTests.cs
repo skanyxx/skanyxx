@@ -12,11 +12,11 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     [InlineData("stop")]
     [InlineData("suspend")]
     [InlineData("resume")]
-    public async Task AnotherUser_CannotManageTheTask(string action)
+    public async Task AnotherUser_CannotManageTheSandbox(string action)
     {
         await RunAsync("fix-42");
 
-        var response = await App.Client(SandboxesApp.Other).PostAsync($"/api/sandboxes/tasks/fix-42/{action}", null, TestContext.Current.CancellationToken);
+        var response = await App.Client(SandboxesApp.Other).PostAsync($"/api/sandboxes/fix-42/{action}", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, Ax.DeleteCalls);
@@ -34,15 +34,15 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     {
         await RunAsync("fix-42");
         if (action == "resume")
-            await App.Client().PostAsync("/api/sandboxes/tasks/fix-42/suspend", null, TestContext.Current.CancellationToken);
+            await App.Client().PostAsync("/api/sandboxes/fix-42/suspend", null, TestContext.Current.CancellationToken);
 
-        var response = await App.Client(user).PostAsync($"/api/sandboxes/tasks/fix-42/{action}", null, TestContext.Current.CancellationToken);
+        var response = await App.Client(user).PostAsync($"/api/sandboxes/fix-42/{action}", null, TestContext.Current.CancellationToken);
 
         Assert.True(response.IsSuccessStatusCode, $"{user} {action}: {response.StatusCode}");
     }
 
     [Fact]
-    public async Task AnotherUser_CannotOverwriteTheTask()
+    public async Task AnotherUser_CannotOverwriteTheSandbox()
     {
         await RunAsync("fix-42");
 
@@ -54,19 +54,19 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     }
 
     [Fact]
-    public async Task ATaskMadeOutsideSkanyxx_IsSupervisorsOnly()
+    public async Task ASandboxMadeOutsideSkanyxx_IsSupervisorsOnly()
     {
         Ax.Seed("cli-made", owner: null);
 
-        var user = await App.Client().PostAsync("/api/sandboxes/tasks/cli-made/stop", null, TestContext.Current.CancellationToken);
-        var supervisor = await App.Client(SandboxesApp.Supervisor).PostAsync("/api/sandboxes/tasks/cli-made/stop", null, TestContext.Current.CancellationToken);
+        var user = await App.Client().PostAsync("/api/sandboxes/cli-made/stop", null, TestContext.Current.CancellationToken);
+        var supervisor = await App.Client(SandboxesApp.Supervisor).PostAsync("/api/sandboxes/cli-made/stop", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, user.StatusCode);
         Assert.Equal(HttpStatusCode.Accepted, supervisor.StatusCode);
     }
 
     [Fact]
-    public async Task Cap_CountsOnlyTheCallersActiveTasks()
+    public async Task Cap_CountsOnlyTheCallersActiveSandboxes()
     {
         Ax.Seed("old-failed", "ana", phase: "Failed");
         Ax.Seed("going", "ana", phase: "Terminating");
@@ -109,7 +109,7 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     }
 
     [Fact]
-    public async Task Cap_DoesNotApplyToUpdatingYourOwnTask()
+    public async Task Cap_DoesNotApplyToUpdatingYourOwnSandbox()
     {
         await RunAsync("t-1");
         await RunAsync("t-2");
@@ -126,9 +126,9 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
         Assert.Equal(4, responses.Count(r => r.StatusCode == HttpStatusCode.TooManyRequests));
     }
 
-    // SEC M3: a replace runs new code under the task's memory identity, so nobody replaces someone else's task.
+    // SEC M3: a replace runs new code under the sandbox's memory identity, so nobody replaces someone else's sandbox.
     [Fact]
-    public async Task ASupervisor_CannotReplaceSomeoneElsesTask()
+    public async Task ASupervisor_CannotReplaceSomeoneElsesSandbox()
     {
         await RunAsync("fix-42");
 
@@ -140,7 +140,7 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     }
 
     [Fact]
-    public async Task AnOwnerlessTask_IsReplacedOnlyByASupervisor_WhoThenOwnsIt()
+    public async Task AnOwnerlessSandbox_IsReplacedOnlyByASupervisor_WhoThenOwnsIt()
     {
         Ax.Seed("cli-made", owner: null);
 
@@ -155,12 +155,12 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
         Assert.Matches(@"^ax-cli-made-[0-9a-f]{8}\z", env["SKANYXX_AGENT_ID"]);
     }
 
-    // SEC M2: re-running your own failed tasks used to skip the cap.
+    // SEC M2: re-running your own failed sandboxes used to skip the cap.
     [Theory]
     [InlineData("Failed")]
     [InlineData("Completed")]
     [InlineData("Terminating")]
-    public async Task Cap_AppliesWhenARunReactivatesAnInactiveTask(string phase)
+    public async Task Cap_AppliesWhenARunReactivatesAnInactiveSandbox(string phase)
     {
         Ax.Seed("live-1", "ana");
         Ax.Seed("live-2", "ana");
@@ -175,7 +175,7 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
 
     // SEC H1: the per-user cap trusts a spoofable header; the atespace ceiling does not.
     [Fact]
-    public async Task GlobalCap_CountsEveryonesActiveTasks()
+    public async Task GlobalCap_CountsEveryonesActiveSandboxes()
     {
         await using var app = await StartAppAsync(s => s["Sandboxes:MaxActiveTasks"] = "3");
         Ax.Seed("dans", "dan");
@@ -221,7 +221,7 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
         Assert.Equal(3, Ax.Updates.Count);
     }
 
-    // SEC2 N1: suspend/resume never brings back an inactive task — that goes through the counted PUT.
+    // SEC2 N1: suspend/resume never brings back an inactive sandbox — that goes through the counted PUT.
     [Theory]
     [InlineData("resume", "Failed")]
     [InlineData("resume", "Terminating")]
@@ -230,11 +230,11 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     [InlineData("suspend", "Failed")]
     [InlineData("suspend", "Terminating")]
     [InlineData("suspend", "Suspended")]
-    public async Task SuspendOrResume_OfATaskItWouldNotKeepActive_Is409(string action, string phase)
+    public async Task SuspendOrResume_OfASandboxItWouldNotKeepActive_Is409(string action, string phase)
     {
         Ax.Seed("dead", "ana", phase);
 
-        var response = await App.Client().PostAsync($"/api/sandboxes/tasks/dead/{action}", null, TestContext.Current.CancellationToken);
+        var response = await App.Client().PostAsync($"/api/sandboxes/dead/{action}", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
         Assert.Equal(phase, Ax.Stored("dead")!.Status.Phase);
@@ -268,7 +268,7 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
 
         var run = RunAsync("fix-42");
         await Ax.UpdateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
-        var suspend = App.Client(SandboxesApp.Supervisor).PostAsync("/api/sandboxes/tasks/fix-42/suspend", null, TestContext.Current.CancellationToken);
+        var suspend = App.Client(SandboxesApp.Supervisor).PostAsync("/api/sandboxes/fix-42/suspend", null, TestContext.Current.CancellationToken);
         await Task.WhenAny(suspend, Task.Delay(500, TestContext.Current.CancellationToken));
         var suspendWaited = !suspend.IsCompleted;
         Ax.HoldUpdates.SetResult();
@@ -279,27 +279,27 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
         Assert.True(Ax.Stored("fix-42")!.Spec.Suspend);
     }
 
-    // SEC M4: a memory identity belongs to one run, never to a later task reusing the name.
+    // SEC M4: a memory identity belongs to one run, never to a later sandbox reusing the name.
     [Fact]
     public async Task AReusedName_GetsAFreshAgentId()
     {
-        var first = await (await RunAsync("build")).Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
-        await App.Client().PostAsync("/api/sandboxes/tasks/build/stop", null, TestContext.Current.CancellationToken);
+        var first = await (await RunAsync("build")).Content.ReadFromJsonAsync<Sandbox>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        await App.Client().PostAsync("/api/sandboxes/build/stop", null, TestContext.Current.CancellationToken);
         Ax.Remove("build");
 
-        var second = await (await RunAsync("build", SandboxesApp.Other)).Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        var second = await (await RunAsync("build", SandboxesApp.Other)).Content.ReadFromJsonAsync<Sandbox>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Matches(@"^ax-build-[0-9a-f]{8}\z", second!.AgentId);
         Assert.NotEqual(first!.AgentId, second.AgentId);
     }
 
     [Fact]
-    public async Task ReactivatingAFailedTask_GetsAFreshAgentId()
+    public async Task ReactivatingAFailedSandbox_GetsAFreshAgentId()
     {
-        var first = await (await RunAsync("fix-42")).Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        var first = await (await RunAsync("fix-42")).Content.ReadFromJsonAsync<Sandbox>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
         Ax.Stored("fix-42")!.Status.Phase = "Failed";
 
-        var again = await (await RunAsync("fix-42")).Content.ReadFromJsonAsync<SandboxTask>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        var again = await (await RunAsync("fix-42")).Content.ReadFromJsonAsync<Sandbox>(SandboxesApp.Json, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.NotEqual(first!.AgentId, again!.AgentId);
     }

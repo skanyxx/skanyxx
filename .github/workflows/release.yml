@@ -103,9 +103,12 @@ jobs:
           path: TestResults/
           retention-days: 7
 
+  # ── Desktop launchers (D200): a fresh install runs in Remote mode and opens the company's Skanyxx. The server is
+  # the Helm chart (deploy/helm/skanyxx), which this workflow does not publish yet (docs/design/open.md).
+
   # ── Windows: InnoSetup .exe installer wizard ────────────────────
   build-windows:
-    name: Windows installer (.exe)
+    name: Windows desktop launcher (.exe)
     needs: [meta, test]
     runs-on: windows-latest
     steps:
@@ -163,7 +166,7 @@ jobs:
 
   # ── macOS: .pkg installer wizard (arm64 + x64) ──────────────────
   build-macos:
-    name: macOS installer (.pkg) — ${{ matrix.label }}
+    name: macOS desktop launcher (.pkg) — ${{ matrix.label }}
     needs: [meta, test]
     runs-on: macos-latest
     strategy:
@@ -263,7 +266,7 @@ jobs:
 
   # ── Linux: .deb package ─────────────────────────────────────────
   build-linux:
-    name: Linux installer (.deb)
+    name: Linux desktop launcher (.deb)
     needs: [meta, test]
     runs-on: ubuntu-latest
     steps:
@@ -367,20 +370,25 @@ jobs:
           name:       ${{ needs.meta.outputs.name }}
           prerelease: ${{ needs.meta.outputs.prerelease == 'true' }}
           body: |
-            ## Skanyxx SRE Platform — ${{ needs.meta.outputs.name }}
+            ## Skanyxx — ${{ needs.meta.outputs.name }}
+
+            These are the **desktop launcher (remote mode)**: installed on a person's machine, `http://localhost:5282`
+            opens your company's Skanyxx. **The server is the Helm chart** (`deploy/helm/skanyxx`, README "Install with
+            Helm"), not these installers.
 
             ### Downloads
 
             | Platform | Installer | Notes |
             |----------|-----------|-------|
-            | **Windows (x64)** | `Skanyxx-Setup-${{ needs.meta.outputs.version }}-windows-x64.exe` | Native installer wizard |
-            | **macOS (Apple Silicon / M1+)** | `Skanyxx-${{ needs.meta.outputs.version }}-macos-arm64.pkg` | Native .pkg installer wizard |
-            | **macOS (Intel)** | `Skanyxx-${{ needs.meta.outputs.version }}-macos-x64.pkg` | Native .pkg installer wizard |
-            | **Linux (x64)** | `skanyxx_${{ needs.meta.outputs.version }}_amd64.deb` | Debian/Ubuntu package |
+            | **Windows (x64)** | `Skanyxx-Setup-${{ needs.meta.outputs.version }}-windows-x64.exe` | Desktop launcher (remote mode), installer wizard |
+            | **macOS (Apple Silicon / M1+)** | `Skanyxx-${{ needs.meta.outputs.version }}-macos-arm64.pkg` | Desktop launcher (remote mode), .pkg wizard |
+            | **macOS (Intel)** | `Skanyxx-${{ needs.meta.outputs.version }}-macos-x64.pkg` | Desktop launcher (remote mode), .pkg wizard |
+            | **Linux (x64)** | `skanyxx_${{ needs.meta.outputs.version }}_amd64.deb` | Desktop launcher (remote mode), Debian/Ubuntu package |
 
             ### Installation
 
-            **Windows** — double-click the `.exe` and follow the installer wizard.
+            **Windows** — double-click the `.exe`; the wizard asks for your company's Skanyxx address
+            (silent: `/VERYSILENT /REMOTEURL=https://skanyxx.example.com`).
 
             **macOS** — double-click the `.pkg` and follow the installer wizard.
             > If macOS says "damaged" or "unidentified developer", run once in Terminal:
@@ -395,9 +403,13 @@ jobs:
 
             ### First Run
 
-            1. Edit `appsettings.json` and add your **Anthropic API key**
+            1. macOS/Linux: set `Skanyxx:RemoteUrl` in `appsettings.json` to your company's Skanyxx address (ask its owner)
             2. Start the app: run `skanyxx` in Terminal (macOS/Linux) or use the Start Menu shortcut (Windows)
-            3. Open **http://localhost:5282** in your browser
+            3. Open **http://localhost:5282**: it takes you to your company's Skanyxx, where you sign in
+
+            **Upgrading:** an existing `appsettings.json` is kept. Without `Skanyxx:Mode` it keeps running a full Skanyxx
+            with its own data on that machine — a dev console, not the company's workspace. Set `"Mode": "Remote"` and
+            `"RemoteUrl"` to switch.
 
             ---
             Built from commit `${{ github.sha }}`

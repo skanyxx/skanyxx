@@ -15,6 +15,7 @@
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
 <body>
+    <partial name="_NavIcons" />
     <div class="app-container">
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
@@ -30,100 +31,100 @@
             <nav class="sidebar-nav">
                 <div class="nav-section">
                     <div class="nav-section-title">Overview</div>
-                    <a href="/Dashboard" class="nav-item @(currentPage == "/Dashboard" ? "active" : "")">
-                        <span class="nav-icon">&#x229F;</span>
+                    <a href="/Dashboard" class="nav-item @(currentPage == "/Dashboard" ? "active" : "")" title="Dashboard">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-dashboard"/></svg></span>
                         <span class="nav-label">Dashboard</span>
                     </a>
-                    <a href="/Investigate" class="nav-item @(currentPage == "/Investigate" ? "active" : "")">
-                        <span class="nav-icon">&#x25CE;</span>
+                    <a href="/Investigate" class="nav-item @(currentPage == "/Investigate" ? "active" : "")" title="Investigate">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-search"/></svg></span>
                         <span class="nav-label">Investigate</span>
                     </a>
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">AI & Agents</div>
-                    <a href="/Agents" class="nav-item @(currentPage == "/Agents" ? "active" : "")">
-                        <span class="nav-icon">&#x2B21;</span>
+                    <a href="/Agents" class="nav-item @(currentPage == "/Agents" ? "active" : "")" title="Agents">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-bot"/></svg></span>
                         <span class="nav-label">Agents</span>
                     </a>
-                    <a href="/Chat" class="nav-item @(currentPage == "/Chat" ? "active" : "")">
-                        <span class="nav-icon">&#x25F1;</span>
+                    <a href="/Chat" class="nav-item @(currentPage == "/Chat" ? "active" : "")" title="Chat">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-chat"/></svg></span>
                         <span class="nav-label">Chat</span>
                     </a>
-                    <a href="/Library" class="nav-item @(currentPage == "/Library" ? "active" : "")">
-                        <span class="nav-icon">&#x2261;</span>
+                    <a href="/Library" class="nav-item @(currentPage == "/Library" ? "active" : "")" title="Library">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-library"/></svg></span>
                         <span class="nav-label">Library</span>
                     </a>
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Builder))
                     {
-                        <a href="/Studio" class="nav-item @(currentPage == "/Studio" ? "active" : "")">
-                            <span class="nav-icon">&#x2692;</span>
+                        <a href="/Studio" class="nav-item @(currentPage == "/Studio" ? "active" : "")" title="Studio">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-studio"/></svg></span>
                             <span class="nav-label">Studio</span>
                         </a>
                     }
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor))
                     {
-                        <a href="/Sandboxes" class="nav-item @(currentPage == "/Sandboxes" ? "active" : "")">
-                            <span class="nav-icon">&#x25A3;</span>
+                        <a href="/Sandboxes" class="nav-item @(currentPage == "/Sandboxes" ? "active" : "")" title="Sandboxes">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-sandbox"/></svg></span>
                             <span class="nav-label">Sandboxes</span>
                         </a>
                     }
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Infrastructure</div>
-                    <a href="/CloudTools" class="nav-item @(currentPage == "/CloudTools" ? "active" : "")">
-                        <span class="nav-icon">&#x25CC;</span>
+                    <a href="/CloudTools" class="nav-item @(currentPage == "/CloudTools" ? "active" : "")" title="Cloud Tools">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cloud"/></svg></span>
                         <span class="nav-label">Cloud Tools</span>
                     </a>
-                    <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")">
-                        <span class="nav-icon">&#x25A6;</span>
+                    <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")" title="Tool Servers">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-server"/></svg></span>
                         <span class="nav-label">Tool Servers</span>
                     </a>
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Insights</div>
-                    <a href="/Analytics" class="nav-item @(currentPage == "/Analytics" ? "active" : "")">
-                        <span class="nav-icon">&#x25E7;</span>
+                    <a href="/Analytics" class="nav-item @(currentPage == "/Analytics" ? "active" : "")" title="Analytics">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-chart"/></svg></span>
                         <span class="nav-label">Analytics</span>
                     </a>
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">System</div>
-                    <a href="/Alerts" class="nav-item @(currentPage == "/Alerts" ? "active" : "")">
-                        <span class="nav-icon">&#x25B3;</span>
+                    <a href="/Alerts" class="nav-item @(currentPage == "/Alerts" ? "active" : "")" title="Alerts">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-bell"/></svg></span>
                         <span class="nav-label">Alerts</span>
                     </a>
-                    <a href="/Hooks" class="nav-item @(currentPage == "/Hooks" ? "active" : "")">
-                        <span class="nav-icon">&#x2922;</span>
+                    <a href="/Hooks" class="nav-item @(currentPage == "/Hooks" ? "active" : "")" title="Hooks">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-link"/></svg></span>
                         <span class="nav-label">Hooks</span>
                     </a>
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner))
                     {
-                        <a href="/Debug" class="nav-item @(currentPage == "/Debug" ? "active" : "")">
-                            <span class="nav-icon">&#x27E9;</span>
+                        <a href="/Debug" class="nav-item @(currentPage == "/Debug" ? "active" : "")" title="Debug">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-terminal"/></svg></span>
                             <span class="nav-label">Debug</span>
                         </a>
-                        <a href="/Settings" class="nav-item @(currentPage == "/Settings" ? "active" : "")">
-                            <span class="nav-icon">&#x2699;</span>
+                        <a href="/Settings" class="nav-item @(currentPage == "/Settings" ? "active" : "")" title="Settings">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg></span>
                             <span class="nav-label">Settings</span>
                         </a>
-                        <a href="/Model" class="nav-item @(currentPage == "/Model" ? "active" : "")">
-                            <span class="nav-icon">&#x2699;</span>
+                        <a href="/Model" class="nav-item @(currentPage == "/Model" ? "active" : "")" title="Model">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cpu"/></svg></span>
                             <span class="nav-label">Model</span>
                         </a>
-                        <a href="/People" class="nav-item @(currentPage == "/People" ? "active" : "")">
-                            <span class="nav-icon">&#x263A;</span>
+                        <a href="/People" class="nav-item @(currentPage == "/People" ? "active" : "")" title="People">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-users"/></svg></span>
                             <span class="nav-label">People</span>
                         </a>
-                        <a href="/Org" class="nav-item @(currentPage == "/Org" ? "active" : "")">
-                            <span class="nav-icon">&#x2637;</span>
+                        <a href="/Org" class="nav-item @(currentPage == "/Org" ? "active" : "")" title="Org">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-org"/></svg></span>
                             <span class="nav-label">Org</span>
                         </a>
-                        <a href="/Entra" class="nav-item @(currentPage == "/Entra" ? "active" : "")">
-                            <span class="nav-icon">&#x229E;</span>
+                        <a href="/Entra" class="nav-item @(currentPage == "/Entra" ? "active" : "")" title="Microsoft sign-in">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-signin"/></svg></span>
                             <span class="nav-label">Microsoft sign-in</span>
                         </a>
-                        <a href="/Audit" class="nav-item @(currentPage == "/Audit" ? "active" : "")">
-                            <span class="nav-icon">&#x2630;</span>
+                        <a href="/Audit" class="nav-item @(currentPage == "/Audit" ? "active" : "")" title="Audit">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-audit"/></svg></span>
                             <span class="nav-label">Audit</span>
                         </a>
                     }

@@ -3,12 +3,13 @@
 #   scripts/helm/build-image.sh                 → skanyxx:dev
 #   IMAGE=registry.example.com/skanyxx TAG=1.2.3 scripts/helm/build-image.sh
 #   KIND_CLUSTER=skanyxx-helm scripts/helm/build-image.sh   also loads it into that kind cluster
+#   PLATFORM=linux/amd64 scripts/helm/build-image.sh        another CPU than the Docker engine's (the appliance bundle)
 set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 IMAGE=${IMAGE:-skanyxx}
 TAG=${TAG:-dev}
 
-docker build -t "$IMAGE:$TAG" "$ROOT"
+docker build ${PLATFORM:+--platform "$PLATFORM"} -t "$IMAGE:$TAG" "$ROOT"
 if [[ -n ${KIND_CLUSTER:-} ]]; then
   kind load docker-image "$IMAGE:$TAG" --name "$KIND_CLUSTER"
 fi

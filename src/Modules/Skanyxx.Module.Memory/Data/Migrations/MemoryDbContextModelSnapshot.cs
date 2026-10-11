@@ -198,6 +198,53 @@ namespace Skanyxx.Module.Memory.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Skanyxx.Module.Memory.Domain.SandboxToken", b =>
+                {
+                    b.Property<string>("AgentId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("agent_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("OwnerId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("SandboxName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("sandbox_name");
+
+                    b.Property<byte[]>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("bytea")
+                        .HasColumnName("token_hash");
+
+                    b.HasKey("AgentId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("memory_sandbox_tokens", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_memory_sandbox_tokens_agent", "agent_id ~ '^[a-z0-9][a-z0-9._@-]{0,127}$'");
+
+                            t.HasCheckConstraint("ck_memory_sandbox_tokens_hash", "octet_length(token_hash) = 32");
+                        });
+                });
+
             modelBuilder.Entity("Skanyxx.Module.Memory.Domain.StudioAgent", b =>
                 {
                     b.Property<string>("AgentId")

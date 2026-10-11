@@ -1,8 +1,8 @@
 # How a customer gets in
 
-The **product** is a **Helm umbrella** (D060). Today’s fat local Skanyxx thins to a **client**.
+The **product** is a **Helm umbrella** (D060). The desktop installers are a **remote launcher** that opens it (D200, D201); a full Host outside the cluster is a dev console.
 
-Umbrella subcharts: Skanyxx API · **kagent (on)** · **AX + Substrate (on)** · **Dragonfly (on, shared)** · memory · **Postgres · MinIO · git (on by default)**. Same install as kagent (D067–D068). Turn a runtime or data store off via values (D061). Appliance = that chart on hidden k3s. BYO cluster = same chart on theirs.
+Umbrella subcharts: Skanyxx API · **kagent (on)** · **AX (off by default; `ax.install` for a BYO cluster that already runs Substrate — D069, D186)** · **Dragonfly (on, shared)** · memory · **Postgres · MinIO · git (on by default)**. Same install as kagent (D067–D068). Turn a runtime or data store off via values (D061). Appliance = that chart on hidden k3s. BYO cluster = same chart on theirs.
 
 ## Bundled vs their own (D061)
 
@@ -42,7 +42,7 @@ Same as today: **Skanyxx is not kagent.** Owner (or Helm values) sets **controll
 
 | Piece | Runs where | Config |
 |---|---|---|
-| **Skanyxx** UI + users + org + library + studio/git | In the cluster **or** outside (VM, IIS, laptop for admin) | `KAgent` URL, memory MCP URL |
+| **Skanyxx** UI + users + org + library + studio/git | In the cluster (the chart, or the appliance's hidden k3s). A full Host outside it is a dev console with its own data, never pointed at the cluster's databases (D200, D202) | `KAgent` URL, memory MCP URL |
 | **kagent** | Kubernetes (theirs or hidden k3s) | Models, Agent CRs |
 | **Memory engine** | Next to data (usually cluster) | Postgres, MinIO |
 
@@ -56,7 +56,7 @@ No problem with a downloadable app that has its own UI and talks to the **kagent
 
 The problem is only if that app’s **local backend is the company source of truth**.
 
-Today one person runs Skanyxx on a laptop → local SQLite/users/memory. That is an **operator console**. If 50 employees each do that, you get 50 brains — the private-chat problem again.
+A full Host on a laptop keeps its own users, org and cards (in whatever Postgres it is given, plus a leftover SQLite file). That is a **dev console**. If 50 employees each do that, you get 50 brains — the private-chat problem again.
 
 So the desktop app may include UI + a local process, but:
 
@@ -67,6 +67,10 @@ So the desktop app may include UI + a local process, but:
 | | Skanyxx API (users, roles, org, grants, git/PRs) |
 
 Configure kagent URL **and** the Skanyxx/memory URL(s), like today — just don’t put the company bank in `%APPDATA%`.
+
+**As built (2026-10-11, D201/D203):** the desktop app is configured with **one** URL, the company's Skanyxx
+(`Skanyxx:RemoteUrl`), and only redirects the browser there. It never talks to kagent's controller or `/mcp/memory`:
+both stay cluster-private (D099, D133, D137). No local window, cache or draft chat is built.
 
 
 
@@ -94,7 +98,35 @@ D130–D146). Shown on kind (install → `/health` → owner → `/Model` → se
 - Generated credentials survive `helm uninstall` with the PVCs; GitOps installs name every Secret (`existingSecret`,
   D139).
 - **Skanyxx in the cluster is the source of truth** for users, org, grants and cards (they are in the chart's
-  Postgres). The Host is unchanged: run elsewhere (desktop, `dotnet run`) it is a console with its own database
-  unless pointed at the cluster's (D134). A real thin client is later work.
+  Postgres). ~~The Host is unchanged … unless pointed at the cluster's (D134). A real thin client is later work.~~
+  **2026-10-11 (D200–D204):** the desktop installers write `Skanyxx:Mode` = `Remote` into a fresh config: the Host
+  then starts with no database, modules or sign-in and answers every `GET`/`HEAD` with a 302 to `Skanyxx:RemoteUrl`
+  (the company's Skanyxx). A full Host (`Server`, the default) outside the cluster is a dev console and must not use
+  the cluster's databases (D202). Upgraded desktop configs stay `Server` (D204).
 - **Appliance: not built.** Hidden k3s + this chart waits on D069 (AX off in the appliance) being locked.
 - The seed is a post-bootstrap step (`scripts/helm/seed-agent.sh`), not a release object (D131).
+
+## As built (appliance, 2026-10-11)
+
+The appliance path exists: **`deploy/appliance/`** (README "Install as an appliance"; D195–D199). Same chart, on a k3s
+the script installs and hides.
+
+```
+build machine:  deploy/appliance/bundle.sh   → skanyxx-appliance-<tag>-<arch>.tar.gz
+                (install.sh, values.yaml, traefik.yaml, the packaged chart, skanyxx-image.tar)
+the machine:    sudo ./skanyxx-appliance/install.sh --host skanyxx.acme.internal
+                → k3s v1.36.5+k3s1 + Helm v4.3.0 (pinned) → image imported → chart installed (AX off, D069)
+                → https://skanyxx.acme.internal (Traefik, TLS, http→https, HSTS) → bootstrap token printed once
+later:          same command with a newer bundle = upgrade, same values, data and Secrets kept
+                install.sh status | token | uninstall [--purge]
+```
+
+| Concern | Appliance answer |
+|---|---|
+| Ingress / TLS | k3s's own Traefik on 80/443; the operator's certificate or a self-signed one generated once (D196) |
+| Kubernetes API | firewalled to the machine and its pods (6443, 10250, 8472/udp; D198); kubeconfig 0600; Secrets encrypted at rest |
+| Secrets | generated by the chart once and kept (D139); settings in `/etc/skanyxx` (0700/0600); only the bootstrap token is printed, once |
+| Data | three local-path volumes (Postgres, MinIO, Gitea) under `/var/lib/rancher/k3s/storage`; survive upgrades and `uninstall` |
+| AX / Substrate | off (D069) |
+
+Not yet (D199): air-gapped install, backups, HA, ACME certificates, the seed agent from the script, an amd64 run.

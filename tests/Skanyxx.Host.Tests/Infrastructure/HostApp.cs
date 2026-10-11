@@ -30,7 +30,7 @@ public sealed class HostApp : IAsyncDisposable
     private string? _ownerToken;
 
     /// <summary>
-    /// For tests that disable people: with sandboxes on, a disable stops the person's AX tasks (D154), and the default
+    /// For tests that disable people: with sandboxes on, a disable stops the person's sandboxes (D154), and the default
     /// test AX is unreachable, so the disable would answer 500 (<c>DisableTests</c> shows that path).
     /// </summary>
     public static void WithoutSandboxes(Dictionary<string, string> settings) => settings.Remove("Sandboxes:Enabled");

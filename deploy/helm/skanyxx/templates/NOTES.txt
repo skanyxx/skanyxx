@@ -39,5 +39,22 @@ or memory is unavailable to every agent.
 Generated Secrets are kept on `helm uninstall` (helm.sh/resource-policy: keep), so a reinstall finds the same
 credentials as the kept volumes; delete them yourself with the PVCs to start over.
 {{- if .Values.ax.enabled }}
+{{- if .Values.ax.install }}
+AX (experimental): this release runs AX v0.3.1's ax-server and ax-controller ({{ include "skanyxx.axAddress" . }}), on
+Redis {{ (include "skanyxx.axRedis" . | fromYaml).address }}. Substrate must already run, with a WorkerPool and AX's base ActorTemplate
+{{ .Values.ax.templateAtespace }}/{{ .Values.ax.template }} selecting it (kubectl-ate create actor-template; the chart cannot create either).
+Without them every task fails with "no free workers available".
+{{- else }}
 AX (experimental): Skanyxx's sandboxes module is on and points at {{ .Values.ax.address }}; this chart does not install AX.
+{{- end }}
+{{- if not .Values.ax.sandboxes.namespace }}
+No sandbox egress policy is rendered (ax.sandboxes.namespace is empty): apply deploy/sandboxes/ to the WorkerPool's
+namespace yourself before anything runs.
+{{- end }}
+{{- if include "skanyxx.sandboxMemory" . }}
+Sandbox memory (D076/D077): sandboxes that bind a workspace with memory attached get SKANYXX_MEMORY_URL
+(http://{{ include "skanyxx.fullname" . }}-sandbox-mcp.{{ .Release.Namespace }}.svc:{{ .Values.ax.sandboxes.memory.port }}/mcp/memory) and SKANYXX_MEMORY_TOKEN;
+their image must send `Authorization: Bearer $SKANYXX_MEMORY_TOKEN`. A supervisor grants scopes to the sandbox's
+agent id (PUT /api/memory/grants/<SKANYXX_AGENT_ID>); without grants it reads company + its owner's personal memory.
+{{- end }}
 {{- end }}

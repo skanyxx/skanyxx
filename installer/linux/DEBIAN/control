@@ -8,10 +8,8 @@ Recommends: curl
 Section: utils
 Priority: optional
 Homepage: https://github.com/skanyxx/skanyxx
-Description: Skanyxx SRE Platform
- Skanyxx is a modular SRE platform for Kubernetes management,
- agent orchestration, and monitoring. It runs as a local web
- application on http://localhost:5282.
- .
- Features: Kubernetes management, AI agent orchestration,
- real-time monitoring, analytics, alerting, and more.
+Description: Skanyxx desktop launcher
+ Opens your company's Skanyxx agent workspace from http://localhost:5282
+ (Skanyxx:Mode Remote, Skanyxx:RemoteUrl). The Skanyxx server itself is
+ installed with the Helm chart; a full local Skanyxx (Mode Server) is a
+ dev console only.

@@ -9,11 +9,12 @@
 </style>
 </head>
 <body>
-  <h2>Welcome to Skanyxx SRE Platform</h2>
+  <h2>Welcome to Skanyxx</h2>
   <p>
-    Skanyxx is a modular SRE platform for Kubernetes management,
-    agent orchestration, and monitoring. It runs as a local web
-    application on <code>http://localhost:5282</code>.
+    Skanyxx is your company's agent workspace. This installs the
+    <strong>desktop launcher</strong>: <code>http://localhost:5282</code> on this Mac
+    opens your company's Skanyxx. The Skanyxx server itself is installed with the
+    Helm chart, not here.
   </p>
   <p>
     This installer will place Skanyxx in
@@ -21,8 +22,8 @@
     launcher at <code>/usr/local/bin/skanyxx</code>.
   </p>
   <p>
-    After installation, open <code>/usr/local/share/skanyxx/appsettings.json</code>
-    and add your <strong>Anthropic API key</strong> before starting the app.
+    After installation, set your company's Skanyxx address as
+    <code>Skanyxx:RemoteUrl</code> in <code>/usr/local/share/skanyxx/appsettings.json</code>.
   </p>
 </body>
 </html>

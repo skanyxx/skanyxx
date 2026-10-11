@@ -59,7 +59,8 @@ public sealed class MemoryApp : IAsyncDisposable
         // Only these settings: the Host's appsettings.json is copied into this bin by the project reference.
         builder.Configuration.Sources.Clear();
         builder.Configuration.AddInMemoryCollection(settings);
-        builder.WebHost.UseUrls("http://127.0.0.1:0");
+        // A test with a second listener (Memory:McpPort / SandboxMcpPort) names both; the first is BaseAddress.
+        builder.WebHost.UseUrls(settings.TryGetValue("urls", out var urls) && urls is not null ? urls.Split(';') : ["http://127.0.0.1:0"]);
 
         var module = new MemoryModule();
         module.RegisterServices(builder.Services, builder.Configuration);
@@ -88,17 +89,32 @@ public sealed class MemoryApp : IAsyncDisposable
         return app;
     }
 
-    public static async Task<MemoryApp> StartAsync(string connectionString, int upsertsPerMinute = 1000, int upsertsPerMinuteTotal = 10_000)
+    /// <param name="extra">More settings, e.g. <c>Memory:ObjectStore:*</c>.</param>
+    public static Task<MemoryApp> StartAsync(
+        string connectionString, int upsertsPerMinute = 1000, int upsertsPerMinuteTotal = 10_000, IDictionary<string, string?>? extra = null) =>
+        StartAsync(Build(Settings(connectionString, upsertsPerMinute, upsertsPerMinuteTotal, extra)));
+
+    /// <summary>Starts an app made with <see cref="Build"/>.</summary>
+    public static async Task<MemoryApp> StartAsync(WebApplication app)
     {
-        var app = Build(new Dictionary<string, string?>
+        await app.StartAsync();
+        return new MemoryApp(app);
+    }
+
+    /// <summary>The settings <see cref="StartAsync(string, int, int, IDictionary{string, string?}?)"/> builds with.</summary>
+    public static Dictionary<string, string?> Settings(
+        string connectionString, int upsertsPerMinute = 1000, int upsertsPerMinuteTotal = 10_000, IDictionary<string, string?>? extra = null)
+    {
+        var settings = new Dictionary<string, string?>
         {
             ["ConnectionStrings:Memory"] = connectionString,
             ["Memory:SearchTopK"] = "5",
             ["Memory:UpsertsPerMinute"] = upsertsPerMinute.ToString(),
             ["Memory:UpsertsPerMinuteTotal"] = upsertsPerMinuteTotal.ToString()
-        });
-        await app.StartAsync();
-        return new MemoryApp(app);
+        };
+        foreach (var (key, value) in extra ?? new Dictionary<string, string?>())
+            settings[key] = value;
+        return settings;
     }
 
     /// <summary>Signed in as <paramref name="userId"/> with <paramref name="roles"/>; no user means an anonymous client.</summary>
@@ -143,14 +159,18 @@ public sealed class MemoryApp : IAsyncDisposable
         return await McpWithSecretAsync(secret, userId);
     }
 
-    public async Task<McpClient> McpWithSecretAsync(string secret, string? userId = null, IDictionary<string, string>? headers = null)
+    /// <summary>The same loopback host on another port this app listens on (a second listener).</summary>
+    public Uri At(int port) => new UriBuilder(BaseAddress) { Port = port }.Uri;
+
+    public async Task<McpClient> McpWithSecretAsync(
+        string secret, string? userId = null, IDictionary<string, string>? headers = null, int? port = null)
     {
         var all = new Dictionary<string, string>(headers ?? new Dictionary<string, string>()) { ["Authorization"] = $"Bearer {secret}" };
         if (userId is not null) all["X-User-Id"] = userId;
 
         var transport = new HttpClientTransport(new HttpClientTransportOptions
         {
-            Endpoint = new Uri(BaseAddress, MemoryModule.McpPath),
+            Endpoint = new Uri(port is int p ? At(p) : BaseAddress, MemoryModule.McpPath),
             TransportMode = HttpTransportMode.StreamableHttp,
             AdditionalHeaders = all
         }, LoggerFactory.Create(_ => { }));
@@ -158,7 +178,8 @@ public sealed class MemoryApp : IAsyncDisposable
     }
 
     /// <summary>One raw JSON-RPC POST to <c>/mcp/memory</c>, for asserting HTTP-level answers the MCP client hides.</summary>
-    public Task<HttpResponseMessage> PostMcpAsync(string method, string? authorization, string? userId = null)
+    public Task<HttpResponseMessage> PostMcpAsync(
+        string method, string? authorization, string? userId = null, int? port = null, IDictionary<string, string>? headers = null)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, MemoryModule.McpPath)
         {
@@ -173,7 +194,12 @@ public sealed class MemoryApp : IAsyncDisposable
             request.Headers.TryAddWithoutValidation("Authorization", authorization);
         if (userId is not null)
             request.Headers.Add("X-User-Id", userId);
-        return Client().SendAsync(request);
+        foreach (var (name, value) in headers ?? new Dictionary<string, string>())
+            request.Headers.TryAddWithoutValidation(name, value);
+        var client = Client();
+        if (port is int p)
+            client.BaseAddress = At(p);
+        return client.SendAsync(request);
     }
 
     public async ValueTask DisposeAsync()

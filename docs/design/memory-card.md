@@ -49,4 +49,7 @@ Top-k **published** cards from **search-granted** collections. k is small (start
   team and department scopes list every status with a badge. An unpublished `company` card opens only for supervisors
   and its author; to anyone else it is a missing card (D103). The card view shows `body` and `source` (as text). Lift
   buttons appear only for higher scopes you may write, on published cards.
-- `source` is still only a pointer on the card; MinIO/S3 for bodies larger than the card is not built.
+- `source` is still only a pointer on the card. **Since 2026-10-11 (D180–D184):** with an object store configured, a
+  body over the threshold lives in the bucket (`cards/sha256/<hex>`), `body` holds its first 500 characters and `source`
+  the pointer `s3://<bucket>/cards/sha256/<hex>`. Neither reaches a prompt; a person who may open the card reads the
+  full body at `GET /api/memory/cards/{scope}/{key}/body` (the Library links it).

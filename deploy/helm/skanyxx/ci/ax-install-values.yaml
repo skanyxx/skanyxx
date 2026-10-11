@@ -1,0 +1,25 @@
+# The chart installs AX v0.3.1's control plane (ax.install, D186) on a cluster that already runs Agent Substrate; the
+# bundled Dragonfly is AX's Redis (D185). Images and digests are placeholders. Rendered by scripts/helm/validate.sh.
+skanyxx:
+  publicUrl: https://skanyxx.example.com
+ax:
+  enabled: true
+  install: true
+  allowedImages: [ghcr.io/acme/]
+  networkIsolationConfirmed: true
+  server:
+    image:
+      repository: registry.example.com/ax/ax-server
+      digest: sha256:c31177f07092d5c7c83d35ab942332e73780185d2b6553d16690f9ab122ba0d7
+  controller:
+    image:
+      repository: registry.example.com/ax/ax-controller
+      digest: sha256:72985a82e0b078aee93d1309387ad4cda1d27033103409bbca633d7a5fd7db4b
+  substrate:
+    endpoint: api.ate-system.svc.cluster.local:443
+  snapshotsBucket: gs://acme-ax-snapshots/ax/
+  sandboxes:
+    namespace: ax-sandboxes
+    internet: true
+    memory:
+      enabled: true   # the sandbox listener + per-sandbox tokens (D190-D194)

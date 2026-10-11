@@ -3,7 +3,36 @@
   "title": "Skanyxx umbrella values (D145). Our own sections reject unknown keys; kagent and dragonfly pass through to their charts.",
   "type": "object",
   "additionalProperties": false,
+  "allOf": [
+    {
+      "$comment": "D072/D188/D194: the installed ax-server has no auth, and the sandbox fence (and the sandbox memory listener's fence) is a NetworkPolicy: all need networkPolicy.enabled.",
+      "if": {
+        "properties": {"ax": {"anyOf": [
+          {"properties": {"install": {"const": true}}, "required": ["install"]},
+          {"properties": {"networkIsolationConfirmed": {"const": true}}, "required": ["networkIsolationConfirmed"]},
+          {"properties": {"sandboxes": {"properties": {"memory": {"properties": {"enabled": {"const": true}}, "required": ["enabled"]}}, "required": ["memory"]}}, "required": ["sandboxes"]}
+        ]}},
+        "required": ["ax"]
+      },
+      "then": {"required": ["networkPolicy"], "properties": {"networkPolicy": {"required": ["enabled"], "properties": {"enabled": {"const": true}}}}}
+    }
+  ],
   "definitions": {
+    "axComponent": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "image": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "repository": {"type": "string"},
+            "tag": {"type": "string"},
+            "digest": {"type": "string", "pattern": "^(sha256:[a-f0-9]{64})?$"},
+            "pullPolicy": {"enum": ["Always", "IfNotPresent", "Never"]}
+          }
+        },
+        "resources": {"type": "object"}
+      }
+    },
     "image": {
       "type": "object",
       "additionalProperties": false,
@@ -28,7 +57,8 @@
         "resources": {"type": "object"},
         "adminUsername": {"type": "string", "minLength": 1},
         "adminEmail": {"type": "string", "minLength": 1},
-        "rootUrl": {"type": "string"}
+        "rootUrl": {"type": "string"},
+        "bucket": {"type": "string", "pattern": "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"}
       }
     },
     "path": {"type": "string", "pattern": "^/"},
@@ -37,7 +67,8 @@
       "additionalProperties": false,
       "properties": {
         "endpoint": {"type": "string"},
-        "bucket": {"type": "string"},
+        "bucket": {"type": "string", "pattern": "^$|^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"},
+        "region": {"type": "string"},
         "url": {"type": "string"},
         "address": {"type": "string"},
         "existingSecret": {"type": "string"}
@@ -86,6 +117,13 @@
         "resources": {"type": "object"},
         "podSecurityContext": {"type": "object"},
         "securityContext": {"type": "object"},
+        "memoryBodies": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "thresholdBytes": {"type": "integer", "minimum": 1, "maximum": 20000},
+            "maxBodyBytes": {"type": "integer", "minimum": 2, "maximum": 8388608}
+          }
+        },
         "dataSizeLimit": {"type": "string"},
         "tmpSizeLimit": {"type": "string"},
         "nodeSelector": {"type": "object"},
@@ -133,8 +171,78 @@
         "atespace": {"type": "string"},
         "allowedImages": {"type": "array", "items": {"type": "string"}},
         "networkIsolationConfirmed": {"type": "boolean"},
-        "namespace": {"type": "string"}
-      }
+        "namespace": {"type": "string"},
+        "install": {"type": "boolean"},
+        "imagePullSecrets": {"type": "array"},
+        "server": {"$ref": "#/definitions/axComponent"},
+        "controller": {"$ref": "#/definitions/axComponent"},
+        "redis": {"$ref": "#/definitions/axComponent"},
+        "substrate": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "endpoint": {"type": "string", "pattern": "^([a-z0-9.-]+:[0-9]+)?$"},
+            "authority": {"type": "string", "minLength": 1},
+            "namespace": {"type": "string", "minLength": 1},
+            "routerAddress": {"type": "string"},
+            "trustBundle": {
+              "type": "object", "additionalProperties": false, "required": ["signerName"],
+              "properties": {"signerName": {"type": "string", "minLength": 1}, "labelSelector": {"type": "object"}}
+            }
+          }
+        },
+        "template": {"type": "string", "minLength": 1},
+        "templateAtespace": {"type": "string", "minLength": 1},
+        "snapshotsBucket": {"type": "string", "not": {"pattern": "^gs://dberkov-gke-dev3(/|$)"}},
+        "sandboxes": {
+          "type": "object", "additionalProperties": false,
+          "properties": {
+            "namespace": {"type": "string"},
+            "internet": {"type": "boolean"},
+            "dnsPeer": {
+              "type": "object", "additionalProperties": false, "required": ["namespace", "podLabels"],
+              "properties": {
+                "namespace": {"type": "string", "minLength": 1},
+                "podLabels": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Za-z0-9./_-]+=[A-Za-z0-9._-]*$"}}
+              }
+            },
+            "memory": {
+              "type": "object", "additionalProperties": false,
+              "properties": {
+                "enabled": {"type": "boolean"},
+                "port": {"type": "integer", "minimum": 1, "maximum": 65535},
+                "tokenHours": {"type": "integer", "minimum": 1, "maximum": 720},
+                "existingSecret": {"type": "string"}
+              }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "$comment": "D186: installing AX needs the module on, Substrate, both images pinned by digest (D075) and a snapshot bucket; an address would point the module elsewhere.",
+          "if": {"properties": {"install": {"const": true}}, "required": ["install"]},
+          "then": {
+            "properties": {
+              "enabled": {"const": true},
+              "address": {"maxLength": 0},
+              "snapshotsBucket": {"minLength": 1},
+              "substrate": {"required": ["endpoint"], "properties": {"endpoint": {"minLength": 1}}},
+              "server": {"properties": {"image": {"required": ["digest"], "properties": {"repository": {"minLength": 1}, "digest": {"minLength": 1}}}}},
+              "controller": {"properties": {"image": {"required": ["digest"], "properties": {"repository": {"minLength": 1}, "digest": {"minLength": 1}}}}}
+            }
+          }
+        },
+        {
+          "$comment": "D188: NetworkIsolationConfirmed only where the chart renders the sandbox egress policies.",
+          "if": {"properties": {"networkIsolationConfirmed": {"const": true}}, "required": ["networkIsolationConfirmed"]},
+          "then": {"properties": {"sandboxes": {"required": ["namespace"], "properties": {"namespace": {"minLength": 1}}}}}
+        },
+        {
+          "$comment": "D190-D194: sandbox memory needs the module on and the fence's namespace (the listener is admitted from there only).",
+          "if": {"properties": {"sandboxes": {"properties": {"memory": {"properties": {"enabled": {"const": true}}, "required": ["enabled"]}}, "required": ["memory"]}}, "required": ["sandboxes"]},
+          "then": {"properties": {"enabled": {"const": true}, "sandboxes": {"required": ["namespace"], "properties": {"namespace": {"minLength": 1}}}}}
+        }
+      ]
     },
     "postgresql": {"$ref": "#/definitions/store"},
     "minio": {"$ref": "#/definitions/store"},
@@ -143,9 +251,15 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "objectStore": {"$ref": "#/definitions/byo"},
+        "objectStore": {"allOf": [
+          {"$ref": "#/definitions/byo"},
+          {"properties": {"endpoint": {"pattern": "^$|^https?://"}}}
+        ]},
         "git": {"$ref": "#/definitions/byo"},
-        "redis": {"$ref": "#/definitions/byo"}
+        "redis": {"allOf": [
+          {"$ref": "#/definitions/byo"},
+          {"properties": {"address": {"pattern": "^$|^[^:\\s\\[\\]]+:[0-9]{1,5}$|^\\[[0-9a-fA-F:]+\\]:[0-9]{1,5}$"}}}
+        ]}
       }
     },
     "dragonfly": {

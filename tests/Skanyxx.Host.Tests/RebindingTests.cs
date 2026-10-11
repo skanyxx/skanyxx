@@ -18,7 +18,7 @@ public sealed class RebindingTests(PostgresFixture fixture)
     [Theory]
     [InlineData("GET", "/api/memory/cards?q=x")]
     [InlineData("GET", "/api/tickets/pipelines")]
-    [InlineData("GET", "/api/sandboxes/tasks")]
+    [InlineData("GET", "/api/sandboxes")]
     [InlineData("GET", "/api/identity/status")]
     [InlineData("POST", "/api/identity/sign-in")]
     [InlineData("POST", "/mcp/memory")]

@@ -3,12 +3,13 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Skanyxx.Module.Memory.Access;
+using Skanyxx.Module.Memory.Bodies;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Features.Cards;
 
-internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter)
+internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, CardBodies bodies)
     : IRequestHandler<UpsertCardCommand, Outcome<Card>>
 {
     public async Task<Outcome<Card>> Handle(UpsertCardCommand command, CancellationToken ct)
@@ -19,9 +20,16 @@ internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access,
         if (!limiter.TryAcquire(command.Caller.RateLimitKey))
             return Outcome<Card>.RateLimited("Upsert rate limit reached; try again later.");
 
-        return command.Version == 0
-            ? await CreateAsync(command, ct)
-            : await UpdateAsync(command, ct);
+        try
+        {
+            return command.Version == 0
+                ? await CreateAsync(command, ct)
+                : await UpdateAsync(command, ct);
+        }
+        catch (ObjectStoreUnavailableException)
+        {
+            return Outcome<Card>.Unavailable("The object store for card bodies did not answer; the card was not saved.");
+        }
     }
 
     private async Task<Outcome<Card>> CreateAsync(UpsertCardCommand command, CancellationToken ct)
@@ -30,6 +38,7 @@ internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access,
         if (await db.Cards.AnyAsync(c => c.Scope == command.Scope && c.Key == command.Key, ct))
             return await ConflictAsync(command, "Card already exists; read it and update its version.", ct);
 
+        var (body, source) = await bodies.ResolveAsync(null, command.Body, command.Source, ct);
         var card = new Card
         {
             Scope = command.Scope,
@@ -41,8 +50,8 @@ internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access,
             Who = command.Caller.Who,
             UpdatedAt = DateTime.UtcNow,
             Status = CardStatus.Published, // TODO: per-scope publish policy (D011).
-            Body = command.Body,
-            Source = command.Source
+            Body = body,
+            Source = source
         };
         db.Cards.Add(card);
 
@@ -66,12 +75,11 @@ internal sealed class UpsertCardHandler(MemoryDbContext db, AccessPolicy access,
         if (card.Version != command.Version)
             return await ConflictAsync(command, $"Stale version {command.Version}.", ct);
 
+        (card.Body, card.Source) = await bodies.ResolveAsync(card, command.Body, command.Source, ct);
         card.Type = Enum.Parse<CardType>(command.Type, ignoreCase: true);
         card.What = command.What;
         card.Why = command.Why;
         card.Who = command.Caller.Who;
-        card.Body = command.Body ?? card.Body;
-        card.Source = command.Source ?? card.Source;
         card.UpdatedAt = DateTime.UtcNow;
         card.Version++;
 

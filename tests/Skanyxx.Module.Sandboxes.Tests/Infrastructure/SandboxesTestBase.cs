@@ -34,5 +34,5 @@ public abstract class SandboxesTestBase : IAsyncLifetime
     };
 
     protected Task<HttpResponseMessage> RunAsync(string name, string? userId = SandboxesApp.User, object? body = null, SandboxesApp? app = null) =>
-        (app ?? App).Client(userId).PutAsJsonAsync($"/api/sandboxes/tasks/{name}", body ?? RunBody());
+        (app ?? App).Client(userId).PutAsJsonAsync($"/api/sandboxes/{name}", body ?? RunBody());
 }

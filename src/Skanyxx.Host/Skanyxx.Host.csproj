@@ -7,6 +7,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Skanyxx.Core\Skanyxx.Core.csproj" />
   </ItemGroup>
+  <!-- The memory module keeps large card bodies in S3/MinIO (D180); shared so it loads the Host's copy. -->
+  <Import Project="..\AwsSdk.props" />
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="8.0.2" />
     <PackageReference Include="Dapper" Version="2.1.89" />

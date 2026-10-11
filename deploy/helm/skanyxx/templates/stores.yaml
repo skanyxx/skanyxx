@@ -1,6 +1,6 @@
 {{- /*
-Where each data store is — bundled or the customer's own (D061) — and which Secret holds its credential. Skanyxx does
-not read S3, git or Redis yet; the slices that do map these to their configuration. No credential values here.
+Where each data store is — bundled or the customer's own (D061) — and which Secret holds its credential. Skanyxx reads
+the object store (memory's card bodies, env Memory__ObjectStore__*, D180); git and Redis not yet. No credential values here.
 */ -}}
 {{- $ns := .Release.Namespace -}}
 apiVersion: v1
@@ -12,6 +12,7 @@ metadata:
 data:
   {{- if .Values.minio.enabled }}
   objectStore.endpoint: {{ printf "http://%s.%s.svc:9000" (include "skanyxx.component" (dict "ctx" . "name" "minio")) $ns | quote }}
+  objectStore.bucket: {{ .Values.minio.bucket | quote }}
   objectStore.secret: {{ include "skanyxx.minioSecret" . | quote }}
   {{- else }}
   objectStore.endpoint: {{ .Values.external.objectStore.endpoint | quote }}

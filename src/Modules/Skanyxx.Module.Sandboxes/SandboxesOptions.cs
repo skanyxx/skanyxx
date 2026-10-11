@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Configuration;
+using Skanyxx.Core.Platform.Memory;
 
 namespace Skanyxx.Module.Sandboxes;
 
@@ -29,7 +30,7 @@ public sealed class SandboxesOptions
     public string Atespace { get; set; } = "default";
 
     /// <summary>
-    /// Image prefixes a task may run, e.g. <c>ghcr.io/acme/</c>. Empty means no image may run (fail closed). Starts
+    /// Image prefixes a sandbox may run, e.g. <c>ghcr.io/acme/</c>. Empty means no image may run (fail closed). Starts
     /// empty so a configured list replaces it instead of being appended to by the binder.
     /// </summary>
     public string[] AllowedImages { get; set; } = [];
@@ -50,21 +51,22 @@ public sealed class SandboxesOptions
     public string DefaultCpuLimit { get; set; } = "1";
     public string DefaultMemoryLimit { get; set; } = "1Gi";
 
-    /// <summary>A user's AX tasks that have not failed, completed or started terminating (suspended ones count); more is a 429.</summary>
+    /// <summary>A user's sandboxes that have not failed, completed or started terminating (suspended ones count); more is a 429.</summary>
     [Range(1, 1_000)]
     public int MaxActiveTasksPerUser { get; set; } = 3;
 
-    /// <summary>Active tasks in the whole atespace, anyone's; more is a 429. The per-user cap alone does not stop many accounts.</summary>
+    /// <summary>Active sandboxes in the whole atespace, anyone's; more is a 429. The per-user cap alone does not stop many accounts.</summary>
     [Range(1, 10_000)]
     public int MaxActiveTasks { get; set; } = 50;
 
-    /// <summary>Overall deadline for counting active tasks before a run; past it the run is refused.</summary>
+    /// <summary>Overall deadline for counting active sandboxes before a run; past it the run is refused.</summary>
     [Range(1, 600)]
     public int CountBudgetSeconds { get; set; } = 30;
 
     /// <summary>
-    /// Skanyxx's <c>/mcp/memory</c> as reachable from inside a sandbox. Must stay empty: startup refuses any value
-    /// until the sandbox listener with signed tokens exists (D076/D077), because a sandbox would pick its own identity.
+    /// The sandbox listener's <c>/mcp/memory</c> as reachable from inside a sandbox (D077), or empty (memory attach off).
+    /// Startup refuses any other URL: its port must be <c>Memory:SandboxMcpPort</c>, which accepts sandbox tokens only
+    /// (D076), and <c>Memory:SandboxTokenKey</c> must be set. Every other Skanyxx port trusts agent secrets or serves the API.
     /// </summary>
     public string MemoryMcpUrl { get; set; } = "";
 
@@ -72,7 +74,7 @@ public sealed class SandboxesOptions
     [Range(1, 300)]
     public int TimeoutSeconds { get; set; } = 15;
 
-    /// <summary>A watch ends after this long even if AX keeps the stream open (it closes by itself once the task runs or fails).</summary>
+    /// <summary>A watch ends after this long even if AX keeps the stream open (it closes by itself once the sandbox runs or fails).</summary>
     [Range(1, 3_600)]
     public int WatchSeconds { get; set; } = 120;
 
@@ -91,6 +93,18 @@ public sealed class SandboxesOptions
     internal static bool IsHttpUrl(string value) =>
         Uri.TryCreate(value, UriKind.Absolute, out var uri) && (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps)
         && uri.UserInfo.Length == 0;
+
+    /// <summary>
+    /// D077: <paramref name="url"/> is <c>http(s)://host:&lt;Memory:SandboxMcpPort&gt;/mcp/memory</c> and the token key is
+    /// set. The host cannot be checked from here, and a Service must expose the listener on the same port number.
+    /// </summary>
+    internal static bool IsSandboxListener(string url, IConfiguration configuration) =>
+        IsHttpUrl(url) && Uri.TryCreate(url, UriKind.Absolute, out var uri)
+        && uri.AbsolutePath == McpPath && uri.Query.Length == 0 && uri.Fragment.Length == 0
+        && int.TryParse(configuration[SandboxMemory.PortKey], out var port) && uri.Port == port
+        && (configuration[SandboxMemory.TokenKeyKey]?.Length ?? 0) >= SandboxMemory.MinTokenKeyChars;
+
+    private const string McpPath = "/mcp/memory";
 
     /// <summary>Every quantity parses, and default request ≤ default limit ≤ max, per resource.</summary>
     internal bool HasValidResources() =>

@@ -221,6 +221,31 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         Assert.Contains("Draft refund policy", await ownerView.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
+    /// <summary>
+    /// D183: a body in the object store shows its excerpt and a plain link to the memory API, which the browser's cookie
+    /// opens (a navigation sends no Origin). This host has no object store, so the API answers 502, not the excerpt.
+    /// </summary>
+    [Fact]
+    public async Task AStoredBody_ShowsItsExcerpt_AndLinksToTheFullBody()
+    {
+        await using (var db = new NpgsqlConnection(_database))
+        {
+            await db.OpenAsync(TestContext.Current.CancellationToken);
+            await using var stored = new NpgsqlCommand(
+                "UPDATE memory_cards SET body = 'The excerpt', source = 's3://skanyxx-memory/cards/sha256/" + new string('a', 64) + "' WHERE key = 'billing-close'", db);
+            Assert.Equal(1, await stored.ExecuteNonQueryAsync(TestContext.Current.CancellationToken));
+        }
+
+        var card = await HtmlAsync(_mia, "/Library?scope=team:billing&key=billing-close");
+        var inline = await HtmlAsync(_mia, $"/Library?scope=personal:{_miaId}&key=mia-note");
+        var full = await _mia.GetAsync("/api/memory/cards/team%3Abilling/billing-close/body");
+
+        Assert.Contains("The excerpt", card);
+        Assert.Contains("href=\"/api/memory/cards/team%3Abilling/billing-close/body\"", card);
+        Assert.DoesNotContain("data-full-body", inline);
+        Assert.Equal(HttpStatusCode.BadGateway, full.StatusCode);
+    }
+
     [Fact]
     public async Task Posts_NeedAntiforgery_AndTheOwnOrigin_AndASignIn()
     {

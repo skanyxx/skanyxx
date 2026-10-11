@@ -74,6 +74,10 @@ it always prints fresh values.
 {{- with include "skanyxx.publicUrl" . -}}
 {{- $hosts = append $hosts (urlParse .).hostname -}}
 {{- end -}}
+{{- if include "skanyxx.sandboxMemory" . -}}
+{{- /* Sandboxes call the sandbox listener by its own Service name (Sandboxes:MemoryMcpUrl). */ -}}
+{{- $hosts = concat $hosts (list (printf "%s-sandbox-mcp.%s.svc" $svc $ns) (printf "%s-sandbox-mcp.%s.svc.cluster.local" $svc $ns)) -}}
+{{- end -}}
 {{- $hosts | uniq | join ";" -}}
 {{- end -}}
 
@@ -101,9 +105,82 @@ it always prints fresh values.
 
 {{/*
 Generated Secrets outlive the release (helm.sh/resource-policy: keep): the PVCs do, and a reinstall that drew new
-passwords would not match the roles initdb created on the kept volume (D139).
+passwords would not match the roles initdb created on the kept volume (D139). The sandbox fence policies use it too:
+sandboxes may outlive the release.
 */}}
 {{- define "skanyxx.keepSecret" -}}
 annotations:
   helm.sh/resource-policy: keep
+{{- end -}}
+
+{{/*
+An image of the installed AX: repository[:tag][@digest]. (dict "image" … "what" "<values path>"). ax-server and
+ax-controller must carry a digest (values.schema.json, D075: AX publishes no images, so a tag is whatever was pushed
+last); AX's own Redis is pinned by digest in values.yaml.
+*/}}
+{{- define "skanyxx.axImage" -}}
+{{- if not (or .image.tag .image.digest) -}}
+{{- fail (printf "%s needs a digest (or at least a tag)" .what) -}}
+{{- end -}}
+{{- $ref := .image.repository -}}
+{{- with .image.tag -}}{{- $ref = printf "%s:%s" $ref . -}}{{- end -}}
+{{- with .image.digest -}}{{- $ref = printf "%s@%s" $ref . -}}{{- end -}}
+{{- $ref -}}
+{{- end -}}
+
+{{/* Sandboxes:Address: the in-chart ax-server with ax.install (D186), else the AX the operator runs. */}}
+{{- define "skanyxx.axAddress" -}}
+{{- if .Values.ax.install -}}
+{{- printf "http://%s.%s.svc:8080" (include "skanyxx.component" (dict "ctx" . "name" "ax-server")) .Release.Namespace -}}
+{{- else -}}
+{{- required "ax.enabled=true needs ax.address (an AX you run) or ax.install=true (the chart installs AX)" .Values.ax.address -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The installed AX's Redis as YAML {address, secret, key, pod}: the bundled Dragonfly (D185), else external.redis, else
+AX's own Redis (ax.yaml, D189) with a generated password. `pod` names the in-chart pods to fence egress to (empty = a
+BYO host).
+*/}}
+{{- define "skanyxx.axRedis" -}}
+{{- if .Values.dragonfly.enabled -}}
+address: {{ printf "dragonfly.%s.svc:6379" .Release.Namespace }}
+pod: dragonfly
+{{- if .Values.dragonfly.passwordFromSecret.enable }}
+secret: {{ .Values.dragonfly.passwordFromSecret.existingSecret.name }}
+key: {{ .Values.dragonfly.passwordFromSecret.existingSecret.key }}
+{{- end }}
+{{- else if .Values.external.redis.address -}}
+address: {{ .Values.external.redis.address | quote }}
+secret: {{ .Values.external.redis.existingSecret | quote }}
+key: password
+{{- else -}}
+address: {{ printf "%s.%s.svc:6379" (include "skanyxx.component" (dict "ctx" . "name" "ax-redis")) .Release.Namespace }}
+pod: ax-redis
+secret: {{ include "skanyxx.component" (dict "ctx" . "name" "ax-redis") }}
+key: password
+{{- end -}}
+{{- end -}}
+
+{{/* The NetworkPolicy egress rule to the installed AX's Redis: its in-chart pods, else any host on that port. */}}
+{{- define "skanyxx.axRedisEgress" -}}
+{{- $redis := include "skanyxx.axRedis" . | fromYaml -}}
+- ports:
+    - port: {{ last (splitList ":" $redis.address) | int }}
+  {{- with $redis.pod }}
+  to:
+    - podSelector:
+        matchLabels:
+          {{- include "skanyxx.selectorLabels" (dict "ctx" $ "name" .) | nindent 10 }}
+  {{- end }}
+{{- end -}}
+
+{{/* D190-D194: sandbox memory is on (the schema ties it to ax.enabled). Renders "true" or nothing. */}}
+{{- define "skanyxx.sandboxMemory" -}}
+{{- if and .Values.ax.enabled .Values.ax.sandboxes.memory.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{/* The Secret holding the sandbox token signing key (key `token-key`). */}}
+{{- define "skanyxx.sandboxTokenSecret" -}}
+{{- default (printf "%s-sandbox-token" (include "skanyxx.fullname" .)) .Values.ax.sandboxes.memory.existingSecret -}}
 {{- end -}}

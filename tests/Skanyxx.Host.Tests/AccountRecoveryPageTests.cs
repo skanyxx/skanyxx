@@ -9,7 +9,7 @@ namespace Skanyxx.Host.Tests;
 
 /// <summary>
 /// The identity leftovers (section 6) on the real host: "Forgot your password?" and the reset page (D156), the owner's
-/// reset link on People (D157), the Audit page (D152), and a disable that cannot stop the person's sandbox tasks (D154).
+/// reset link on People (D157), the Audit page (D152), and a disable that cannot stop the person's sandboxes (D154).
 /// </summary>
 [Collection(HostCollection.Name)]
 public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : IAsyncLifetime
@@ -120,7 +120,7 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
     /// supervisor asks AX nothing and stays 200.
     /// </summary>
     [Fact]
-    public async Task ADisable_ThatCannotStopTheSandboxTasks_Is500_ButTheAccountIsDisabled()
+    public async Task ADisable_ThatCannotStopTheSandboxes_Is500_ButTheAccountIsDisabled()
     {
         await using var host = await HostApp.StartAsync(await fixture.NewDatabaseAsync());
         var owner = await host.OwnerAsync();
@@ -149,7 +149,7 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
     /// hint, not the generic error page; the account is disabled.
     /// </summary>
     [Fact]
-    public async Task ADisableFromThePage_ThatCannotStopTheSandboxTasks_SaysSoAndHowToRetry()
+    public async Task ADisableFromThePage_ThatCannotStopTheSandboxes_SaysSoAndHowToRetry()
     {
         await using var host = await HostApp.StartAsync(await fixture.NewDatabaseAsync());
         var owner = await OwnerBrowserAsync(host);
@@ -168,11 +168,11 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
     }
 
     /// <summary>
-    /// QA-2 L3 / D162: a roles save on a disabled account whose sandbox tasks cannot be stopped says the roles are saved,
+    /// QA-2 L3 / D162: a roles save on a disabled account whose sandboxes cannot be stopped says the roles are saved,
     /// what did not happen and how to retry — through the API and on the People page.
     /// </summary>
     [Fact]
-    public async Task ARolesSave_OnADisabledAccount_ThatCannotStopTheSandboxTasks_SaysSoAndHowToRetry()
+    public async Task ARolesSave_OnADisabledAccount_ThatCannotStopTheSandboxes_SaysSoAndHowToRetry()
     {
         await using var host = await HostApp.StartAsync(await fixture.NewDatabaseAsync());
         var browser = await OwnerBrowserAsync(host);
@@ -194,9 +194,9 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
             .GetProperty("roles").EnumerateArray().Select(r => r.GetString()));
     }
 
-    private const string RolesRetry = "Roles saved. Its sandbox tasks could not be stopped (AX unavailable) — save again to retry.";
+    private const string RolesRetry = "Roles saved. Its sandboxes could not be stopped (AX unavailable) — save again to retry.";
 
-    private const string DisableRetry = "Account disabled. Its sandbox tasks could not be stopped (AX unavailable) — disable again to retry.";
+    private const string DisableRetry = "Account disabled. Its sandboxes could not be stopped (AX unavailable) — disable again to retry.";
 
     private static async Task<Browser> OwnerBrowserAsync(HostApp host)
     {

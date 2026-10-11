@@ -19,13 +19,18 @@ internal sealed class SandboxesGroup : Group
     /// <summary>64 args × 8k plus 64 env × 8k, JSON-escaped, fits well inside this.</summary>
     public const int MaxBodyBytes = 2 * 1024 * 1024;
 
-    public SandboxesGroup() =>
-        Configure("api/sandboxes", ep =>
-        {
-            ep.Options(b => b
-                .WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MaxBodyBytes))
-                .AddEndpointFilter((context, next) => IsEnabled(context.HttpContext) ? next(context) : ValueTask.FromResult<object?>(Results.NotFound())));
-        });
+    public const string Prefix = "api/sandboxes";
+
+    public SandboxesGroup() => Configure(Prefix, Apply);
+
+    /// <summary>
+    /// Also applied directly by the list endpoint, which sits at the prefix itself: a group route <c>""</c> would come out
+    /// as <c>api/sandboxes/</c> (D179).
+    /// </summary>
+    internal static void Apply(EndpointDefinition ep) =>
+        ep.Options(b => b
+            .WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(MaxBodyBytes))
+            .AddEndpointFilter((context, next) => IsEnabled(context.HttpContext) ? next(context) : ValueTask.FromResult<object?>(Results.NotFound())));
 
     private static bool IsEnabled(HttpContext context) =>
         SandboxesOptions.IsEnabled(context.RequestServices.GetRequiredService<IConfiguration>());

@@ -29,3 +29,14 @@
 {{- if eq (int .Values.skanyxx.service.port) (int .Values.skanyxx.service.mcpPort) }}
 {{- fail "skanyxx.service.port and skanyxx.service.mcpPort must differ: one Service cannot expose the same port twice, and the mcp port serves /mcp/memory only" }}
 {{- end }}
+{{- if include "skanyxx.sandboxMemory" . }}
+{{- $p := int .Values.ax.sandboxes.memory.port }}
+{{- if or (eq $p 8080) (eq $p (int .Values.skanyxx.service.port)) (eq $p (int .Values.skanyxx.service.mcpPort)) }}
+{{- fail "ax.sandboxes.memory.port must differ from 8080, skanyxx.service.port and skanyxx.service.mcpPort: the sandbox listener accepts sandbox tokens only and must be the one Skanyxx port sandboxes reach (D077)" }}
+{{- end }}
+{{- end }}
+{{- with .Values.ax.sandboxes.namespace }}
+{{- if eq . $.Release.Namespace }}
+{{- fail "ax.sandboxes.namespace must be the Substrate WorkerPool's namespace, never the release namespace: sandboxes there would be admitted by every policy that trusts this namespace (Skanyxx's UI/API port, kagent's controller)" }}
+{{- end }}
+{{- end }}
