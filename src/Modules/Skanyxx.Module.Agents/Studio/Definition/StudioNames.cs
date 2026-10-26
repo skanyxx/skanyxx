@@ -16,6 +16,9 @@ internal static partial class StudioNames
     /// <summary>On a preview agent: the pull request it previews (D030). Never together with <see cref="MergedLabel"/>.</summary>
     public const string PreviewLabel = "skanyxx.dev/preview";
 
+    /// <summary>On a plugin server the studio created: the plugin it belongs to (for people reading kagent; kagent's API does not list labels).</summary>
+    public const string PluginLabel = "skanyxx.dev/plugin";
+
     /// <summary>On the factory agent (D5).</summary>
     public const string RoleLabel = "skanyxx.dev/role";
 
@@ -62,6 +65,37 @@ internal static partial class StudioNames
         agent.StartsWith("preview-", StringComparison.Ordinal) && agent.Split('-') is [_, var number, ..]
             && int.TryParse(number, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var n)
             ? n : null;
+
+    public const string PluginsFolder = "plugins";
+
+    public const string PluginFile = "plugin.yaml";
+
+    public const string McpFolder = "mcp";
+
+    /// <summary>
+    /// The longest plugin and plugin server name: a server's Secret in kagent is <c>&lt;server&gt;-&lt;12-hex fingerprint&gt;</c>,
+    /// which must stay a Kubernetes name (63).
+    /// </summary>
+    public const int MaxServerNameLength = 50;
+
+    /// <summary>A plugin's name: lowercase letters, digits and '-', starting with a letter, at most 50.</summary>
+    public static bool IsValidPluginName(string? name) => name is not null && name.Length <= MaxServerNameLength && AgentName().IsMatch(name);
+
+    /// <summary>A plugin server's name: a Kubernetes name of at most 50, never one of the studio's own prefixes.</summary>
+    public static bool IsValidServerName(string? name) =>
+        name is not null && name.Length <= MaxServerNameLength && KubeName().IsMatch(name)
+        && !name.StartsWith("skanyxx-", StringComparison.Ordinal) && !name.StartsWith("preview-", StringComparison.Ordinal);
+
+    public static string PluginFolder(string plugin) => $"{PluginsFolder}/{plugin}";
+
+    public static string PluginManifestPath(string plugin) => $"{PluginFolder(plugin)}/{PluginFile}";
+
+    public static string ServerPath(string plugin, string server) => $"{PluginFolder(plugin)}/{McpFolder}/{server}.yaml";
+
+    /// <summary>The plugin and server of a path <c>plugins/&lt;p&gt;/mcp/&lt;s&gt;.yaml</c>, or null when it is not one.</summary>
+    public static (string Plugin, string Server)? ServerOf(string path) =>
+        path.Split('/') is [PluginsFolder, var plugin, McpFolder, var file] && file.EndsWith(".yaml", StringComparison.Ordinal)
+            ? (plugin, file[..^".yaml".Length]) : null;
 
     public static string Folder(string agent) => $"{AgentsFolder}/{agent}";
 

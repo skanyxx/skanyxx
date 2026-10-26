@@ -4,12 +4,12 @@ namespace Skanyxx.Core.Platform;
 
 /// <summary>
 /// Routes that are origin-guarded for every method and rate limited: the new-module APIs (cookie or bearer), identity,
-/// chat (each turn costs a model run), the model step, the studio (git writes, preview turns), and <c>/mcp</c> (per-agent secrets, D080). Unsafe methods are origin-checked everywhere
+/// chat (each turn costs a model run), the model step, the studio (git writes, preview turns), plugins (git downloads, git writes), and <c>/mcp</c> (per-agent secrets, D080). Unsafe methods are origin-checked everywhere
 /// (<see cref="OriginGuardMiddleware"/>).
 /// </summary>
 public static class GuardedPaths
 {
-    private static readonly PathString[] Prefixes = ["/api/memory", "/api/tickets", "/api/sandboxes", "/api/identity", "/api/chat", "/api/model", "/api/studio", "/mcp"];
+    private static readonly PathString[] Prefixes = ["/api/memory", "/api/tickets", "/api/sandboxes", "/api/identity", "/api/chat", "/api/model", "/api/studio", "/api/plugins", "/mcp"];
 
     /// <summary>
     /// Where Microsoft Entra ID posts the sign-in result (OIDC <c>form_post</c>): a cross-site POST, so its <c>Origin</c>

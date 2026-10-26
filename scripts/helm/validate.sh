@@ -94,6 +94,29 @@ grep -A4 'cidr: "::/0"' <<<"$agents" | grep -q '"2600:1f00::/40"' || die "an add
 if sed -n '/cidr: "0.0.0.0\/0"/,/cidr: "::\/0"/p' <<<"$agents" | grep -q '"2600:'; then die "an IPv6 range under an IPv4 ipBlock"; fi
 if sed -n '/cidr: "::\/0"/,/ports:/p' <<<"$agents" | grep -q '"203\.'; then die "an IPv4 range under an IPv6 ipBlock"; fi
 
+# R4 (D229): kagent's controller egress is open by default (the Kubernetes API's address differs per cluster); with
+# networkPolicy.controllerEgress it is the API, Postgres, Skanyxx's mcp port, the agent pods and the internet minus
+# clusterCidrs on 443 only (plus extra).
+ctrl=$(netpol kagent-controller "$WORK/default.yaml")
+[[ -n $ctrl ]] || die "no kagent-controller NetworkPolicy"
+grep -q -- '- {}' <<<"$ctrl" || die "default: kagent-controller egress is not open (controllerEgress is off by default)"
+CE=(--namespace skanyxx --set networkPolicy.controllerEgress.enabled=true --set 'networkPolicy.controllerEgress.kubeApiCidrs={172.18.0.2/32}'
+  --set-json 'networkPolicy.controllerEgress.extra=[{"to":[{"ipBlock":{"cidr":"10.20.0.5/32"}}],"ports":[{"port":5432}]}]')
+helm lint "$CHART" "${CE[@]}" --strict >"$WORK/lint.txt" || { cat "$WORK/lint.txt"; exit 1; }
+helm template skanyxx "$CHART" "${CE[@]}" >"$WORK/ctrl.yaml"
+kc "$WORK/ctrl.yaml"
+ctrl=$(netpol kagent-controller "$WORK/ctrl.yaml")
+if grep -q -- '- {}' <<<"$ctrl"; then die "controllerEgress: kagent-controller egress is still open"; fi
+if sed -n '/egress:/,$p' <<<"$ctrl" | grep -q 'podSelector: {}'; then die "controllerEgress: the controller may send to every pod in the namespace"; fi
+grep -A3 'cidr: "172.18.0.2/32"' <<<"$ctrl" | grep -q 'port: 6443' || die "controllerEgress: the Kubernetes API (kubeApiCidrs on kubeApiPorts) is not allowed"
+grep -A6 'app.kubernetes.io/name: postgres' <<<"$ctrl" | grep -q -- '- port: postgres' || die "controllerEgress: the controller cannot reach Postgres"
+grep -A6 'app.kubernetes.io/name: skanyxx' <<<"$ctrl" | grep -q -- '- port: mcp' || die "controllerEgress: the controller cannot reach Skanyxx's mcp port"
+if grep -q -- '- port: http$' <<<"$ctrl"; then die "controllerEgress: the controller may reach Skanyxx's UI/API port"; fi
+grep -A6 'key: kagent, operator: Exists' <<<"$ctrl" | grep -q -- '- port: 8080' || die "controllerEgress: the controller cannot reach the agent pods (A2A)"
+grep -A10 'cidr: "0.0.0.0/0"' <<<"$ctrl" | grep -q '"169.254.0.0/16"' || die "controllerEgress: the internet rule does not exclude cloud metadata"
+sed -n '/cidr: "0.0.0.0\/0"/,$p' <<<"$ctrl" | grep -m1 -- '- port:' | grep -q 'port: 443$' || die "controllerEgress: the internet rule is not 443 only"
+grep -B6 'cidr: 10.20.0.5/32' <<<"$ctrl" | grep -q 'port: 5432' || die "controllerEgress: extra is not rendered"
+
 # D180-D184: memory's card bodies go to the bundled MinIO (its Secret) or the BYO bucket (its Secret); with neither,
 # no object store is configured and bodies stay in Postgres.
 grep -A1 'Memory__ObjectStore__Endpoint' "$WORK/default.yaml" | grep -q '"http://skanyxx-minio.skanyxx.svc:9000"' \
@@ -257,5 +280,9 @@ refuse "sandbox memory with networkPolicy.enabled=false" "/networkPolicy/enabled
   --set ax.sandboxes.namespace=ax-sandboxes --set networkPolicy.enabled=false
 refuse "the sandbox port = 8080 (the UI/API)" "ax.sandboxes.memory.port must differ from 8080" "${AXV[@]}" --set ax.sandboxes.memory.port=8080
 refuse "the sandbox port = the agents' mcp port" "ax.sandboxes.memory.port must differ from 8080" "${AXV[@]}" --set ax.sandboxes.memory.port=8081
+refuse "controllerEgress without kubeApiCidrs (would cut the controller off the Kubernetes API)" "networkPolicy.controllerEgress.enabled needs networkPolicy.controllerEgress.kubeApiCidrs" --set networkPolicy.controllerEgress.enabled=true
+refuse "controllerEgress with BYO kagent (nothing to fence here)" "networkPolicy.controllerEgress fences the bundled kagent only" -f "$CHART/ci/byo-values.yaml" --set networkPolicy.controllerEgress.enabled=true --set 'networkPolicy.controllerEgress.kubeApiCidrs={172.18.0.2/32}'
+refuse "a kubeApiCidrs entry that is not a CIDR" "at '/networkPolicy/controllerEgress/kubeApiCidrs/0'" --set networkPolicy.controllerEgress.enabled=true --set 'networkPolicy.controllerEgress.kubeApiCidrs={kubernetes.default}'
+refuse "controllerEgress.kubeApiPorts empty (would open every port)" "at '/networkPolicy/controllerEgress/kubeApiPorts'" --set-json 'networkPolicy.controllerEgress.kubeApiPorts=[]'
 refuse "a sandbox token lifetime over 720 hours" "tokenHours': maximum: got 721, want 720" "${AXV[@]}" --set ax.sandboxes.memory.tokenHours=721
-echo "ok: lint + kubeconform -strict for default, byo, ax, ax-install, appliance; /mcp, ModelConfig, RBAC, keep, default-deny, mcpFrom, agent egress, clusterCidrs, object store and AX (address, Dragonfly/external/own Redis with password + maxmemory, ax-server/controller policies, sandbox fence kept + DNS peer, sandbox memory listener) checks hold; $refusals refusals, each for its expected reason"
+echo "ok: lint + kubeconform -strict for default, byo, ax, ax-install, appliance; /mcp, ModelConfig, RBAC, keep, default-deny, mcpFrom, agent egress, clusterCidrs, controller egress, object store and AX (address, Dragonfly/external/own Redis with password + maxmemory, ax-server/controller policies, sandbox fence kept + DNS peer, sandbox memory listener) checks hold; $refusals refusals, each for its expected reason"

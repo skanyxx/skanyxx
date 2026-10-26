@@ -34,8 +34,8 @@ internal sealed class ProposalQueryHandler(
                     .Select(a => new PreviewAgent(a.Namespace, a.Name, a.Ready)).FirstOrDefault();
             }
             return Outcome<ProposalDetail>.Ok(new ProposalDetail(
-                new ProposalSummary(pull.Number, pull.Title, inspected.Agent, ProposalTrailer.ProposedBy(pull.Body), pull.HeadSha, pull.Mergeable),
-                inspected.Files, inspected.Problems, inspected.NeedsOwner, preview));
+                new ProposalSummary(pull.Number, pull.Title, inspected.Agent, ProposalTrailer.ProposedBy(pull.Body), pull.HeadSha, pull.Mergeable, inspected.Plugin),
+                inspected.Files, inspected.Problems, inspected.NeedsOwner, preview) { Notes = inspected.Notes });
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {

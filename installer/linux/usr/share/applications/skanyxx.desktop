@@ -1,8 +1,9 @@
 [Desktop Entry]
 Name=Skanyxx
 Comment=Open your company's Skanyxx agent workspace
-Exec=bash -c "/usr/share/skanyxx/Skanyxx.Host --urls http://localhost:5282 & sleep 2 && xdg-open http://localhost:5282"
-Icon=skanyxx
+Exec=/usr/share/skanyxx/open-in-browser
+Path=/usr/share/skanyxx
+Icon=utilities-terminal
 Terminal=false
 Type=Application
 Categories=Development;System;Network;

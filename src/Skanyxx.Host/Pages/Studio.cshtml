@@ -35,7 +35,13 @@
         }
         @if (detail.NeedsOwner)
         {
-            <p><span class="badge badge-warning">owner merge</span> It sets or removes a team or department grant: only the owner merges it.</p>
+            <p><span class="badge badge-warning">owner merge</span> @(s.Plugin is null
+                ? "It sets or removes a team or department grant: only the owner merges it."
+                : "It brings a plugin from git or a zip (third-party content): only the owner merges it.")</p>
+        }
+        @foreach (var note in detail.Notes)
+        {
+            <p class="text-muted" data-note>@note</p>
         }
         @foreach (var file in detail.Files)
         {
@@ -154,7 +160,7 @@
             <label asp-for="Skills">Skills (OCI image references, one per line)</label>
             <textarea asp-for="Skills" rows="2"></textarea>
             <fieldset>
-                <legend>MCP tools (allow-listed servers)</legend>
+                <legend>MCP tools (allow-listed and merged plugin servers)</legend>
                 @if (options.McpServers.Count == 0)
                 {
                     <p class="text-muted">None allow-listed (Studio:McpServers).</p>

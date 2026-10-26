@@ -6,18 +6,21 @@ using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Core.Services;
 using Skanyxx.Module.Agents.Studio.Definition;
 using Skanyxx.Module.Agents.Studio.Git;
+using Skanyxx.Module.Agents.Studio.Plugins;
 using Skanyxx.Module.Agents.Studio.Reconcile;
 
 namespace Skanyxx.Module.Agents.Studio.Features;
 
 /// <summary>
 /// Save → PR (D028). The builder's form becomes the agent's two files on a new branch and a pull request; nothing is
-/// applied. One open proposal per agent, so a supervisor never merges two competing versions; an edit is a new PR (D2).
+/// applied. One open proposal per agent (a plugin proposal that carries it counts), so a supervisor never merges two
+/// competing versions; an edit is a new PR (D2).
 /// A name memory holds for someone else is refused here already (D117), and a builder has at most
-/// <see cref="StudioOptions.MaxOpenProposalsPerBuilder"/> open at once.
+/// <see cref="StudioOptions.MaxOpenProposalsPerBuilder"/> open at once. An agent a plugin owns changes only through its
+/// plugin (D222).
 /// </summary>
 internal sealed class ProposeAgentHandler(
-    IAgentRepo repo, StudioRepoGuard guard, StudioReconciler reconciler, KAgentApiClient kagent, IOptions<StudioOptions> options,
+    IAgentRepo repo, StudioRepoGuard guard, StudioReconciler reconciler, PluginRepoReader plugins, KAgentApiClient kagent, IOptions<StudioOptions> options,
     ILogger<ProposeAgentHandler> logger)
     : IRequestHandler<ProposeAgentCommand, Outcome<StudioResult>>
 {
@@ -35,12 +38,19 @@ internal sealed class ProposeAgentHandler(
             var models = await kagent.GetModelConfigRefsAsync(ct);
             if (!models.Contains($"{ns}/{draft.ModelConfig}"))
                 return StudioFailure.Conflict<StudioResult>($"kagent has no model '{draft.ModelConfig}' in {ns}; pick one the owner configured.");
+            var tree = await plugins.ReadAsync(await repo.ListMainAsync(ct), options.Value.Git.Branch, log: false, ct);
+            if (tree.OwnerOf(draft.Name) is { } owner)
+                return StudioFailure.Conflict<StudioResult>(StudioFailure.PluginOwned(draft.Name, owner), "plugin");
             await reconciler.EnsureNotForeignAsync(draft.Name, ct);
             if ((await reconciler.PrincipalAsync(draft.Name, ct)).Taken)
                 return StudioFailure.Conflict<StudioResult>(StudioFailure.NameTaken(draft.Name), "taken");
             var open = await repo.OpenPullsAsync(ct);
             if (open.FirstOrDefault(p => p.Body.StartsWith($"Agent: {draft.Name}\n", StringComparison.Ordinal)) is { } pending)
                 return StudioFailure.Conflict<StudioResult>($"'{draft.Name}' already has an open proposal (#{pending.Number}); a supervisor merges or closes it first.", "pending");
+            foreach (var pluginPull in open.Where(p => ProposalTrailer.PluginOf(p.Body) is not null))
+                if ((await repo.PullFilesAsync(pluginPull.Number, ct)).Any(f => f.Path.StartsWith(StudioNames.Folder(draft.Name) + "/", StringComparison.Ordinal)))
+                    return StudioFailure.Conflict<StudioResult>(
+                        $"'{draft.Name}' is in an open plugin proposal (#{pluginPull.Number}); a supervisor merges or closes it first.", "pending");
             if (open.Count(p => ProposalTrailer.ProposedBy(p.Body) == user.UserId) >= options.Value.MaxOpenProposalsPerBuilder)
                 return StudioFailure.Conflict<StudioResult>(
                     $"You have {options.Value.MaxOpenProposalsPerBuilder} open proposals; close one, or wait for a supervisor, before proposing another.", "too-many");

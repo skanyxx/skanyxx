@@ -33,7 +33,7 @@ internal interface IAgentRepo
     /// <exception cref="Reconcile.StudioRepoException">It is not, or the rule is missing.</exception>
     Task VerifyAsync(RepoInfo repo, CancellationToken ct);
 
-    /// <summary>One commit with every change on a new branch from main, then a pull request into main.</summary>
+    /// <summary>One commit with every change (create, update, delete) on a new branch from main, then a pull request into main.</summary>
     Task<RepoPull> ProposeAsync(string branch, IReadOnlyList<RepoChange> changes, string message, string authorName, string authorEmail,
         string title, string body, CancellationToken ct);
 
@@ -42,7 +42,7 @@ internal interface IAgentRepo
 
     Task<RepoPull?> PullAsync(int number, CancellationToken ct);
 
-    /// <summary>The first 50 changed files (a valid proposal changes two).</summary>
+    /// <summary>The first 50 changed files (an agent proposal changes two, a plugin proposal at most <see cref="StudioOptions.MaxPluginFiles"/>).</summary>
     Task<IReadOnlyList<RepoFileChange>> PullFilesAsync(int number, CancellationToken ct);
 
     /// <summary>The file at a branch or commit, or null when it is not there.</summary>

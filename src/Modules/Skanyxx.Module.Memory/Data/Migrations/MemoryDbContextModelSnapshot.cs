@@ -273,6 +273,66 @@ namespace Skanyxx.Module.Memory.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Skanyxx.Module.Memory.Domain.StudioPluginServer", b =>
+                {
+                    b.Property<string>("Server")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("server");
+
+                    b.Property<bool>("Claimed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("claimed");
+
+                    b.Property<string>("DeployedFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("deployed_fingerprint");
+
+                    b.Property<string>("DeployedSpecHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("deployed_spec_hash");
+
+                    b.Property<string>("Plugin")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("plugin");
+
+                    b.Property<string>("ProtectedValues")
+                        .HasColumnType("text")
+                        .HasColumnName("protected_values");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("ValueAddress")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("value_address");
+
+                    b.Property<string>("ValueFingerprint")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("value_fingerprint");
+
+                    b.PrimitiveCollection<string[]>("ValueNames")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("value_names");
+
+                    b.HasKey("Server");
+
+                    b.ToTable("memory_studio_plugin_servers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_memory_studio_plugin_servers_plugin", "plugin ~ '^[a-z]([-a-z0-9]*[a-z0-9])?$' AND length(plugin) <= 50");
+
+                            t.HasCheckConstraint("ck_memory_studio_plugin_servers_server", "server ~ '^[a-z0-9]([-a-z0-9]*[a-z0-9])?$' AND length(server) <= 50");
+                        });
+                });
+
             modelBuilder.Entity("Skanyxx.Module.Memory.Domain.StudioRepo", b =>
                 {
                     b.Property<int>("Id")

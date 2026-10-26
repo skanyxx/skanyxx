@@ -61,6 +61,7 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddSingleton<UpsertRateLimiter>();
         services.AddSingleton<CardBodies>();
         services.AddSingleton<IStudioReconcileLock, StudioReconcileLock>();
+        services.AddSingleton<PluginServerValueProtector>();
 
         services.AddHealthChecks().AddNpgSql(
             sp => sp.GetRequiredService<IOptions<MemoryOptions>>().Value.ConnectionSettings().ConnectionString,

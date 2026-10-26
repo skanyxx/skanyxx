@@ -1,0 +1,7 @@
+{
+  "name": "microsoft-learn",
+  "version": "1.0.0",
+  "description": "Microsoft Learn's official docs MCP server and an agent that answers Azure, .NET and Microsoft questions from it, with links.",
+  "homepage": "https://learn.microsoft.com/training/support/mcp",
+  "license": "MIT"
+}

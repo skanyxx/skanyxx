@@ -1,6 +1,6 @@
 # Open
 
-AX Tasks pack locked (D063–D066, `ax-tasks.md`). Community paused.
+AX Tasks pack locked (D063–D066, `ax-tasks.md`). Community catalog: recipes as Claude Code plugins (D205–D218); OAuth-only MCP servers and plugin skills/commands/hooks are not supported yet.
 AX v0.3.1 does not match D064/D067/D068 as written: see `ax-integration.md` (D069–D077, locked 2026-10-08, + open questions).
 
 ## Still open on memory UX
@@ -210,3 +210,25 @@ AX v0.3.1 does not match D064/D067/D068 as written: see `ax-integration.md` (D06
   (people, org, cards) as a dev console; there is no export/import into the chart's databases.
 - **The launcher is a redirect, not a window.** A native shell around the company URL (D203) is not built; the
   Windows wizard page and `[Code]` were written without a Windows machine to compile them (`ISCC` runs in CI only).
+- **Left after the installer round (D231, 2026-10-26):**
+  - **The Windows installer and the signing steps have never run here**: ISCC and the certificates exist only in CI.
+  - **GitHub settings are DevOps' part:** create the `signing` and `release` environments with required reviewers and
+    "tags v* only", put the signing secrets in `signing` (not the repository), and add a ruleset that blocks moving or
+    deleting `v*` tags. Until then the first run creates both environments unprotected.
+  - **Signing needs the secrets.** `release.yml` signs and notarizes only when the `MACOS_*`/`APPLE_*` and
+    `WINDOWS_CERT_*` secrets exist; until someone with the Apple Developer ID and a code-signing certificate adds them,
+    Gatekeeper and SmartScreen block the downloads. The signing steps have never run (no certificates here).
+  - **Port 5282 is shared by every account on a machine**, but only the optional fixed address uses it now: the Linux
+    service, the macOS LaunchAgent and an explicit `--urls`. The launchers open `RemoteUrl` directly (D234). A bookmark
+    of `http://127.0.0.1:5282` can still be served by another account that binds the port first, and a dev `RemoteUrl`
+    of `http://localhost:…` is itself a local port.
+  - **Windows `open` shows a console window briefly** (the Host is a console app), and stays open on an error until
+    Enter. Legacy Server-mode installs get no working shortcut: `open` refuses Server mode and says how to start it.
+  - **The Linux unit still runs as root** (hardened, D231), with write access to its own folder: an upgraded
+    Server-mode config is `0600 root` and its `skanyxx.db` sits in `/usr/share/skanyxx`. A service user needs config in
+    `/etc/skanyxx` and state in `/var/lib/skanyxx`, i.e. the Host reading both. Windows `[InstallDelete]` on an
+    admin-chosen folder a standard user can write is not checked for junctions.
+  - **Upgraded Server-mode configs on macOS/Windows** keep `skanyxx.db` in a root-owned (or Program Files) folder,
+    where a user-run Host cannot write it. Remote installs are unaffected.
+  - **Intel Macs with Homebrew** own `/usr/local`, so the pkg refuses to install there (D233). Installing to
+    `/Library/Application Support/Skanyxx` would serve them; it needs an upgrade path from `/usr/local/share/skanyxx`.

@@ -7,6 +7,8 @@ namespace Skanyxx.Host;
 /// Remote mode (D201): the desktop launcher. No database, no modules, no sign-in — a GET or HEAD on any path answers
 /// 302 to <c>Skanyxx:RemoteUrl</c> itself (never the request's path or query, so it cannot be used as an open
 /// redirect), <c>/health</c> says it is remote, everything else is 404. With no RemoteUrl, <c>/</c> explains where to set it.
+/// The launchers no longer start it: they run <see cref="OpenCommand"/> (<c>open</c>, D234). This listener serves the
+/// optional fixed local address (the Linux service, the macOS LaunchAgent, an explicit <c>--urls</c>) and its bookmarks.
 /// </summary>
 public static class RemoteClient
 {

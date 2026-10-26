@@ -69,17 +69,19 @@ internal static class AgentManifest
         [.. grants.Any(g => g.Search) ? [StudioNames.MemorySearch] : Array.Empty<string>(),
             .. grants.Any(g => g.Upsert) ? [StudioNames.MemoryUpsert] : Array.Empty<string>()];
 
-    private static JsonObject McpTool(string server, IEnumerable<string> tools) => new()
+    /// <summary>No tool names is every tool the server lists (kagent's semantics), allowed for a plugin's server only (P7).</summary>
+    private static JsonObject McpTool(string server, IReadOnlyList<string> tools)
     {
-        ["type"] = "McpServer",
-        ["mcpServer"] = new JsonObject
+        var mcpServer = new JsonObject
         {
             ["name"] = server,
             ["kind"] = "RemoteMCPServer",
-            ["apiGroup"] = "kagent.dev",
-            ["toolNames"] = new JsonArray([.. tools.Select(t => (JsonNode)t)])
-        }
-    };
+            ["apiGroup"] = "kagent.dev"
+        };
+        if (tools.Count > 0)
+            mcpServer["toolNames"] = new JsonArray([.. tools.Select(t => (JsonNode)t)]);
+        return new JsonObject { ["type"] = "McpServer", ["mcpServer"] = mcpServer };
+    }
 
     /// <summary>
     /// The form <paramref name="agentYaml"/> and <paramref name="grantsYaml"/> describe, or the reason they are not ours.
@@ -139,6 +141,26 @@ internal static class AgentManifest
         if (!JsonNode.DeepEquals(YamlTree.AsRead(Grants(draft)), grants))
             return (null, "grants.yaml must hold only the agent's name and its grants (scope, search, upsert).");
         return (draft, null);
+    }
+
+    /// <summary>
+    /// The MCP servers <paramref name="agentYaml"/> names (the agent's own memory server left out), whether or not the file
+    /// is a valid studio agent; none when it is not YAML.
+    /// </summary>
+    public static IReadOnlyList<string> McpServers(string folderName, string agentYaml)
+    {
+        JsonNode? agent;
+        try
+        {
+            agent = YamlTree.Read(agentYaml);
+        }
+        catch (YamlDotNet.Core.YamlException)
+        {
+            return [];
+        }
+        var memoryServer = StudioNames.MemoryServer(folderName);
+        return [.. Items(At(At(At(agent, "spec"), "declarative"), "tools")).Select(t => Text(At(At(t, "mcpServer"), "name"))).OfType<string>()
+            .Where(n => n != memoryServer)];
     }
 
     /// <summary>A key of a mapping; null for anything that is not one (the exact comparison then refuses it).</summary>

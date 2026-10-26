@@ -12,6 +12,11 @@
     <!-- Unit tests of the studio's YAML rules (internals); the host under test still loads the module from modules/. -->
     <ProjectReference Include="..\..\src\Modules\Skanyxx.Module.Agents\Skanyxx.Module.Agents.csproj" />
   </ItemGroup>
+  <!-- Claude Code plugins for the plugin reader tests; explicit because the default globs skip .claude-plugin/ and .mcp.json. -->
+  <ItemGroup>
+    <None Remove="Fixtures/**" />
+    <Content Include="Fixtures/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="4.0.1" />
     <PackageReference Include="Testcontainers.PostgreSql" Version="4.15.0" />

@@ -18,8 +18,24 @@ internal static partial class DraftRules
     public const int MaxGrants = 50;
     public const int MaxTtlDays = 365;
 
-    public static IReadOnlyList<string> Check(AgentDraft draft, StudioOptions options)
+    private static readonly Dictionary<string, string> NoPluginServers = [];
+
+    /// <param name="pluginServers">
+    /// The plugin servers an agent may also use (P7), each with the plugin that has it: those declared in main and, for a
+    /// plugin proposal, in its head.
+    /// </param>
+    /// <param name="ownServers">
+    /// The servers of the plugin that owns this agent (none for any other agent). Only these may be used with no tool names
+    /// (= every tool, now and later). Any other agent names its tools on a plugin's (third-party) server, and uses servers
+    /// of at most one plugin, never together with an allow-listed server, memory grants or kagent TTL memory: a third
+    /// party's tool descriptions and results must reach neither company memory nor another credentialed server, which
+    /// could carry private data out through the third party (D219).
+    /// </param>
+    public static IReadOnlyList<string> Check(AgentDraft draft, StudioOptions options, IReadOnlyDictionary<string, string>? pluginServers = null,
+        IReadOnlyCollection<string>? ownServers = null)
     {
+        pluginServers ??= NoPluginServers;
+        ownServers ??= [];
         var problems = new List<string>();
         if (!StudioNames.IsValidName(draft.Name))
             problems.Add($"Name: lowercase letters, digits and '-', at most {StudioNames.MaxNameLength} characters, starting with a letter and ending with a letter or digit.");
@@ -47,10 +63,29 @@ internal static partial class DraftRules
             problems.Add("MCP tools: each server once.");
         foreach (var choice in draft.McpTools)
         {
-            if (!allowed.Contains(choice.Server))
-                problems.Add($"MCP server '{choice.Server}' is not on the allow-list ({(allowed.Count == 0 ? "empty" : string.Join(", ", allowed))}).");
-            if (choice.Tools.Count == 0 || choice.Tools.Any(t => !ToolName().IsMatch(t)) || choice.Tools.Distinct().Count() != choice.Tools.Count)
-                problems.Add($"MCP server '{choice.Server}': name at least one tool, each once.");
+            var plugin = pluginServers.ContainsKey(choice.Server) && !allowed.Contains(choice.Server);
+            var own = plugin && ownServers.Contains(choice.Server);
+            if (!allowed.Contains(choice.Server) && !plugin)
+                problems.Add($"MCP server '{choice.Server}' is not on the allow-list ({(allowed.Count + pluginServers.Count == 0 ? "empty" : string.Join(", ", allowed.Concat(pluginServers.Keys).Order()))}).");
+            if ((choice.Tools.Count == 0 && !own) || choice.Tools.Any(t => !ToolName().IsMatch(t)) || choice.Tools.Distinct().Count() != choice.Tools.Count)
+                problems.Add(own
+                    ? $"MCP server '{choice.Server}': tool names each once (none = every tool)."
+                    : $"MCP server '{choice.Server}': name at least one tool, each once.");
+        }
+        var thirdParty = draft.McpTools.Select(t => t.Server)
+            .Where(s => pluginServers.ContainsKey(s) && !allowed.Contains(s) && !ownServers.Contains(s)).Distinct().Order(StringComparer.Ordinal).ToList();
+        if (thirdParty.Count > 0)
+        {
+            var named = string.Join(", ", thirdParty.Select(s => $"'{s}'"));
+            if (draft.Grants.Count > 0 || draft.MemoryTtlDays is not null)
+                problems.Add($"MCP server {named} is a plugin's (third-party) server: an agent with memory grants or kagent TTL memory never uses one, "
+                    + "so nothing a third party says can reach company memory.");
+            if (thirdParty.Select(s => pluginServers[s]).Distinct().Count() > 1)
+                problems.Add($"MCP servers {named} belong to different plugins: an agent uses third-party servers of one plugin at most, so one party's "
+                    + "content never steers another's credential.");
+            if (draft.McpTools.Select(t => t.Server).Where(allowed.Contains).Order(StringComparer.Ordinal).ToList() is { Count: > 0 } internalServers)
+                problems.Add($"MCP server {named} is a plugin's (third-party) server: an agent never uses one beside an allow-listed server "
+                    + $"({string.Join(", ", internalServers)}), so a third party's content never steers the owner's tools.");
         }
 
         if (draft.Grants.Count > MaxGrants || draft.Grants.Select(g => g.Scope).Distinct().Count() != draft.Grants.Count)
@@ -81,7 +116,7 @@ internal static partial class DraftRules
     /// Control characters, and Unicode format characters (bidi overrides, zero-width): those make the review page show
     /// a supervisor something other than what the agent is told (I4, as for display names).
     /// </summary>
-    private static bool HasControl(string text, bool allowNewlines) =>
+    internal static bool HasControl(string text, bool allowNewlines) =>
         text.Any(c => (char.IsControl(c) && !(allowNewlines && c is '\n' or '\t')) || char.GetUnicodeCategory(c) == UnicodeCategory.Format);
 
     // registry/path[:tag]@sha256:digest — no scheme, no whitespace, always a digest.

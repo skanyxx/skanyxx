@@ -10,6 +10,7 @@ public sealed class MemoryDbContext(DbContextOptions<MemoryDbContext> options) :
     public DbSet<AgentSecret> AgentSecrets => Set<AgentSecret>();
     public DbSet<StudioAgent> StudioAgents => Set<StudioAgent>();
     public DbSet<StudioRepo> StudioRepos => Set<StudioRepo>();
+    public DbSet<StudioPluginServer> StudioPluginServers => Set<StudioPluginServer>();
     public DbSet<SandboxToken> SandboxTokens => Set<SandboxToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -19,6 +20,7 @@ public sealed class MemoryDbContext(DbContextOptions<MemoryDbContext> options) :
         modelBuilder.ApplyConfiguration(new AgentSecretConfiguration());
         modelBuilder.ApplyConfiguration(new StudioAgentConfiguration());
         modelBuilder.ApplyConfiguration(new StudioRepoConfiguration());
+        modelBuilder.ApplyConfiguration(new StudioPluginServerConfiguration());
         modelBuilder.ApplyConfiguration(new SandboxTokenConfiguration());
     }
 }

@@ -20,8 +20,7 @@ dotnet run --project src/Skanyxx.Host
 The app starts at **http://localhost:5282** (or https://localhost:7219). It needs Postgres (`docker compose up -d`).
 On first run, `/Setup` creates the owner account. With `dotnet run` (Development) and no token configured, that
 works from the same machine only (`http://localhost:5282`). Anywhere else — Production, the installers, a container —
-set `Identity:BootstrapToken` (32+ characters) first and enter it in the setup form; the Linux and macOS installers
-generate one for you. See Identity and security model.
+set `Identity:BootstrapToken` (32+ characters) first and enter it in the setup form. See Identity and security model.
 
 Swagger UI is available at http://localhost:5282/swagger in Development mode.
 
@@ -206,8 +205,13 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   and only DNS out. Skanyxx's UI/API port answers its namespace and, with the ingress on,
   `networkPolicy.ingressNamespaces` (`ingress-nginx`); its mcp port only kagent's controller and agent pods (plus
   `networkPolicy.mcpFrom`); kagent's controller its namespace; agent pods only the controller (A2A); Postgres, MinIO, Gitea and Dragonfly only Skanyxx
-  (+ kagent → Postgres, + Dragonfly → AX: the chart's `ax-server`/`ax-controller` with `ax.install`, else `ax.namespace`). Egress: Skanyxx and kagent's controller anywhere
-  (Jira, Entra, the Kubernetes API); agent pods only kagent's controller, Skanyxx's mcp port (never its UI/API) and
+  (+ kagent → Postgres, + Dragonfly → AX: the chart's `ax-server`/`ax-controller` with `ax.install`, else `ax.namespace`). Egress: Skanyxx anywhere
+  (Jira, Entra); kagent's controller anywhere (the Kubernetes API) unless **`networkPolicy.controllerEgress.enabled`**
+  (off by default, D229): then DNS, `controllerEgress.kubeApiCidrs` on `kubeApiPorts` (443, 6443; required, the chart
+  refuses it without: `kubectl get endpoints kubernetes -n default`), the bundled Postgres, Skanyxx's mcp port, the
+  agent pods on `a2aPorts` (8080), the internet on 443 minus `clusterCidrs` (public plugin servers) and
+  `controllerEgress.extra` (a BYO database, an in-cluster `Studio:McpServers` server); turn it on wherever plugins come
+  from anyone but you, since the controller connects to every plugin server with its header values. Agent pods only kagent's controller, Skanyxx's mcp port (never its UI/API) and
   `networkPolicy.modelEgress` (the internet on 443 minus `networkPolicy.clusterCidrs`; a local model such as Ollama or
   a tool server you add needs a rule in `modelEgress.extra`) (D148); the stores DNS only. `clusterCidrs` defaults to
   the private ranges (RFC 1918, CGNAT, link-local incl. cloud metadata, loopback, IPv6 ULA/link-local): on **IPv6 or
@@ -252,6 +256,34 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   the community fork `pgsty/minio` (D132). `minio.image.*` takes another.
 - **Shown on kind** (evidence: task `2026-10-06_0900_skanyxx-helm`, evidence/e2e.md and e2e-qa1.md) and, as the
   appliance below, on k3s; no cloud cluster yet.
+
+## Desktop launcher (installers)
+
+The GitHub release (`.github/workflows/release.yml`, on a `v*` tag) builds the **desktop launcher** for Windows
+(`.exe`), macOS (`.pkg`, arm64 and x86_64) and Linux (`.deb`): a fresh install runs in Remote mode, and its launchers
+open the company's Skanyxx (`Skanyxx:RemoteUrl`) in the browser directly — nothing listens on the machine (D234). The
+server is the Helm chart.
+
+- **Start it with the launchers** (`skanyxx` on macOS/Linux, the Linux desktop entry, the Windows Start Menu), not
+  by running `Skanyxx.Host` from another folder: the Host reads `appsettings.json` and `modules/` from its working
+  directory, and every launcher starts it in the install folder (D231).
+- **A fixed local address** for bookmarks is optional: the Linux `skanyxx` service, the macOS LaunchAgent
+  (`launchctl start com.skanyxx.app`) or `skanyxx --urls http://127.0.0.1:5282` serve `http://127.0.0.1:5282`, which
+  redirects to the company's Skanyxx. That port is shared by every account on the machine.
+- **Linux:** `sudo apt install ./skanyxx_<version>_amd64.deb` — `dpkg -i` does not install the dependencies (ICU), and
+  the app then aborts at start. Debian 12+ and Ubuntu 22.04+.
+- **Signing:** the pkg is signed and notarized, and the exe Authenticode-signed, when the `MACOS_*` / `APPLE_*` and
+  `WINDOWS_CERT_*` secrets of the **`signing` environment** are set (release.yml lists them). The jobs that hold them
+  only package and sign; restore and build run in jobs without secrets. Without them Gatekeeper blocks the pkg (each
+  user allows it in System Settings → Privacy & Security) and SmartScreen warns about the exe.
+- **macOS:** installs only where `/usr/local` and `/usr/local/share` are root's alone (not on a Mac whose Homebrew owns
+  `/usr/local`).
+- **A release is built from its tag only**: push the tag, or run the workflow *from the tag* (Use workflow from →
+  Tags); a run from a branch, or for a release that already exists, fails. Protect `v*` tags (a ruleset) and the
+  `signing` and `release` environments (required reviewers, `v*` tags only) to gate publishing. Every
+  release carries `SHA256SUMS` and build-provenance attestations.
+- Build installers from a git checkout: a copied working folder carries the developer's own (gitignored)
+  `src/Skanyxx.Host/appsettings.json`, which an installer would take for an existing config.
 
 ## Install as an appliance
 
@@ -524,13 +556,11 @@ account exists (serialized under a Postgres advisory lock, so parallel calls cre
   field). The token is **required** there: without it the bootstrap API answers `403` naming `Identity:BootstrapToken`,
   and `/Setup` shows the form again with that error (startup still succeeds). A configured token shorter than 32
   characters, or with leading or trailing whitespace, stops startup. It is compared in constant time.
-  Installers run the app as Production: the Linux (`.deb`) and macOS (`.pkg`) installers write a random 48-character
-  token into the new `appsettings.json` (printed once by the `.deb`; not printed by the macOS installer, whose log is
-  world-readable) — it stays there under `Identity:BootstrapToken`. The new file is `0600 root` on Linux (the systemd
-  service runs as root) and `0640 root:admin` on macOS (the LaunchAgent runs as whoever logs in). If the token cannot
-  be written the install fails rather than print a token the app does not have. An **upgrade** keeps the existing
-  `appsettings.json` untouched: if it has no token, the installer says so and you set one yourself. The Windows
-  installer does not generate one: set one yourself before first use. An upgraded `appsettings.json` from before
+  Installers run the app as Production. A fresh install is the desktop launcher in Remote mode, which uses no token,
+  so no installer generates one (D231): the new `appsettings.json` holds no secret and is `0644 root` on Linux and
+  macOS, readable by every account that starts the launcher. An **upgrade** keeps the existing `appsettings.json`
+  untouched: if it runs a full Skanyxx (no `Mode`, or `Server`) and has no token, the installer says so and you set one
+  yourself (e.g. `openssl rand -hex 24`); the same holds on Windows. An upgraded `appsettings.json` from before
   invites also has no `Identity:PublicBaseUrl`: the app still starts (with a warning), but inviting people is refused
   until you add it — `"PublicBaseUrl": "http://localhost:5282"` on a desktop install, your public `https://` address
   behind a proxy. The Linux and macOS installers say so on upgrade, the Windows installer on its last page.
@@ -1140,6 +1170,137 @@ org) with a random password nobody keeps, revokes its earlier `skanyxx-*` tokens
 `write:organization,write:repository` to `$GIT_TOKEN_FILE` (default `~/.config/skanyxx/gitea-token`, mode 0600); `host` then
 sets `Studio:Git:*` and `Studio:MemoryMcpUrl`. Remove it with
 `docker compose -p skanyxx rm -sf gitea && docker volume rm skanyxx_skanyxx-gitea` (and delete the token file).
+
+## Plugins
+
+`docs/design/studio.md` "Plugins", D205–D230. A **plugin** is a [Claude Code plugin](https://code.claude.com/docs/en/plugins):
+`.claude-plugin/plugin.json`, its remote MCP servers in `.mcp.json` and its agents in `agents/*.md`. Skanyxx installs
+the servers and agents into kagent through the studio's pull-request gate; it is a **recipe**, never memory (D005).
+
+- **Sources.** The **built-in catalog** (embedded in the agents module: `microsoft-learn`, `deepwiki` — public remote
+  MCP servers that need no account, each with one agent); a **git repository pinned to a full 40-character commit SHA**
+  (https; github.com through codeload, any other host only when listed in `Plugins:GitHosts` with kind `gitea` or
+  `gitlab`; at most 20 MB, 30 s, three same-host redirects, loopback/private/link-local addresses refused unless
+  `Plugins:AllowPrivateNetworks`); an **uploaded zip** (at most 10 MB, 50 MB expanded, 2 000 entries; absolute paths,
+  `..`, `\` and symlinks refuse the whole zip). A source may be a marketplace (`.claude-plugin/marketplace.json`): its
+  entries are listed, and an entry installs from a folder of the same source or from another repository pinned to a
+  commit; a branch or tag alone is refused (it can move after review), npm/archive/command entries are unsupported.
+- **Who.** Catalog: builders and the owner install, supervisors browse. Git and zip: the owner only (third-party
+  content), and **only the owner merges** a git or zip plugin proposal (D222). A catalog proposal is merged by a
+  supervisor or the owner, and only when its files are exactly what this build's catalog renders (an edit pushed to the
+  branch, or a catalog changed since the install, is refused: install it again). A catalog entry pinned to another git
+  repository is the owner's to inspect or install. Header values: the owner only. Uninstall: builders and the owner (a
+  pull request too, which only deletes files, so a supervisor merges it whatever the plugin's source).
+- **Flow.** `/Plugins` (or the API): inspect → a report of what would be added (agents with their tools, servers with
+  URL, protocol and header names; everything renamed, unsupported or refused, with the reason) and the source's
+  **digest** → Install = **one pull request** in `skanyxx-agents` (`plugins/<p>/plugin.yaml`, `plugins/<p>/mcp/<s>.yaml`
+  per server, `agents/<a>/agent.yaml` + an empty `grants.yaml` per agent; trailer `Plugin: <p>`). Install reads the
+  source again and refuses (`409 digest`) when it is not what was inspected. Nothing reaches kagent until a supervisor
+  merges it on `/Studio` (no preview for plugin proposals). The merge runs a full reconcile pass: servers first, then
+  agents (labelled merged, so they are in Chat); an uninstall removes agents, then servers, under the removal brake, and
+  the merge answers "removed" (or how many removals wait for the owner's confirmation on `/Studio`). The PR body holds
+  the plugin's description and report in a code block, so nothing in it renders as a link or image. Two open plugin
+  proposals never bring the same agent or server name.
+- **Translation.** Server names are `<plugin>-<server>` (Kubernetes names ≤ 50, never `skanyxx-*`/`preview-*`); agent
+  names ≤ 33 characters; renames are reported. `http`/`streamable-http` → `STREAMABLE_HTTP`, `sse` → `SSE`; **stdio,
+  ws and sdk servers are never run** (reported unsupported, the rest installs). An agent's `model` is ignored: every
+  plugin agent runs on `Studio:PluginModelConfig` (default `Studio:FactoryModelConfig`). `tools: mcp__<server>__<tool>`
+  become the server's tool names; no `tools` = every tool of the plugin's servers; Claude's built-in tools are
+  unsupported. A plugin agent may use only its own plugin's servers, with no memory grants, TTL memory or skills; the
+  reconciler holds it to that too (a hand edit of main that gives one memory is skipped and logged), and an agent two
+  plugins list belongs to neither and is never applied. Any other studio agent may pick merged plugin servers on the
+  form, but **must name their tools** (never "every tool, now and later"), uses servers of **one plugin at most**, and
+  **never together with an allow-listed `Studio:McpServers` server, memory grants or kagent TTL memory**: a third
+  party's tool text must reach neither company memory nor another credentialed server whose data it could carry out
+  through the third party (D219, D225). The form, the review, the merge and every reconcile pass check it. An agent a plugin owns
+  changes only through the plugin: the form refuses to propose or edit it (the next update would overwrite it). A plugin
+  server leaves main only when no agent outside the plugin still uses it: uninstall and an update that drops it are
+  refused (`409 in-use`), and the reconciler keeps such a server if main was edited by hand (logged, and the merge answer
+  says "kept: in use": no retry fixes it, a person changes those agents). Skills, commands, hooks, LSP
+  servers, `oauth` and `headersHelper` are Claude Code features and are not installed.
+- **Server URLs** (D221, D226). https only (unless `Plugins:AllowHttp`). The URL goes to git as it is, so it carries
+  **no credential**: user info, a **fragment**, a query key whose words (split on `_`, `-`, `.` and camelCase) include
+  `key`, `apikey`, `token`, `secret`, `auth`, `sig`, `signature`, `password`, `pwd`, `code`, `session` or `credential`,
+  or a word ending in `key`, `token`, `secret`, `password`, `signature` or `credential` (`api_key`, `apiKey`,
+  `access-token`, `X-Sig`, `authtoken`, `accesskey`, `clientsecret` and `privatekey` are refused; `author`, `design`,
+  `barcode` and `encoding` pass), a path segment or query value of 32+ random letters and digits, or a known token shape
+  is refused ("put it in a header"). **Ids that only look like credentials are refused too**: a UUID or a 40-hex id (a
+  commit SHA) as a path segment or query value (`/v1/550e8400-e29b-41d4-a716-446655440000/mcp`, `?commit=<sha>`), and a
+  query key named like one (`sort_key`, `partition_key`, `country_code`, `token_limit`: words ending in `key`, `token`,
+  `secret`, … or equal to `code`); ask the plugin's author to take it out of the URL. A path with a `.` or `..` segment, raw or percent-encoded (`%2e`), is refused
+  (D230): .NET collapses it while kagent sends the path as written, so the address checked would not be the one asked
+  for. The host must be **plain
+  ASCII** (an international name in its `xn--` form), always: .NET leaves a full-width host such as `１２７.0.0.1`
+  unmapped while kagent's Go client maps it. **Internal addresses are refused** unless `Plugins:AllowPrivateServers`:
+  non-public IPs (a trailing dot is dropped first, so `10.0.0.5.` counts), `localhost`, single-label hosts, `.svc`,
+  `.cluster.local`, `.local`, `.internal`, `.localhost`, `.home.arpa`, and any host whose last label is not two or more
+  letters or an IDN top-level domain in its `xn--` form (`xn--p1ai`). That is a check on the name only: `gitea.skanyxx` or `kubernetes.default` (a Service in another namespace,
+  resolved through the pod's search domains) still pass, and a public name can resolve inward. **The real control is
+  kagent's egress NetworkPolicy**, and what the chart renders (`networkPolicy.enabled`, on by default, bundled kagent
+  only) is: kagent's **agent pods**, which call the plugin's tools with the header values, reach only kagent's
+  controller, Skanyxx's mcp port, DNS and `networkPolicy.modelEgress` — by default `0.0.0.0/0` and `::/0` **minus
+  `networkPolicy.clusterCidrs`** (RFC 1918, CGNAT, link-local incl. cloud metadata, loopback, ULA) on **port 443
+  only**, plus anything you add in `modelEgress.extra`; so an agent cannot call a plugin server inside those ranges or
+  on another port, whatever its name says. kagent's **controller**, which connects to every server to discover its
+  tools (sending the same header values), has **open egress** by default (`egress: [{}]`: it needs the Kubernetes API,
+  whose address differs per cluster). **`networkPolicy.controllerEgress`** fences it (D229; see "Install with Helm":
+  the API's CIDRs are required, then the internet minus `clusterCidrs` on 443 and the in-cluster peers it needs); turn
+  it on if plugins come from anyone but you. With BYO kagent (`kagent.enabled=false`) the chart renders no kagent policy
+  at all (and refuses `controllerEgress`): fence its controller yourself. `/Plugins` tells the owner the controller is
+  unfenced, and outside Development Skanyxx warns at startup when `Plugins:AllowHttp` or `Plugins:AllowPrivateServers`
+  is on (each lets the controller send header values to an in-cluster address). Headers that steer the connection, or what the far end believes about the
+  caller, are refused (`Host`, `Cookie`, `Content-*`, `Transfer-Encoding`, `Connection`, `Proxy-*`, `X-Forwarded-*`,
+  `Forwarded`, `TE`, `Upgrade`, `X-Real-IP`, `True-Client-IP`, `X-Client-IP`, `CF-Connecting-IP`,
+  `X-Original-Forwarded-For`, `X-Original-URL`, `X-Rewrite-URL`, `X-Host`, `X-Original-Host`, `X-Envoy-*`,
+  `X-HTTP-Method-Override`, …), and a JSON file
+  with a key twice is refused (Claude Code would read the last one).
+- **Secrets** (D220). No header value ever goes to git, the PR or a log. A `${VAR}` header keeps its template in git and
+  needs a value from the owner (`/Plugins` or `PUT api/plugins/servers/{server}/secrets`); a literal header value in the
+  plugin is stored encrypted (memory module, Data Protection) at install. Until every declared header has a value the
+  server is **needs secret**: not created in kagent, and its agents are held. kagent gets the values as the server's
+  Secret `<server>-<fingerprint>`, where the fingerprint is **12 random hex**, new whenever the values change (never
+  derived from them, never returned by the API); a new value replaces the server under a new Secret. **Values are bound
+  to the URL's scheme, host, port and path** (everything but the query; D226) they were entered for, since multi-tenant
+  hosts tell tenants apart by path. An install whose new version **moves a running server** (any of those parts; an
+  unclaimed record at another address runs nowhere and is simply replaced) stores nothing for it and leaves the values the running server has untouched: the install report says the owner **enters the values
+  after merge** (naming the headers, literal ones too) and the review notes the move. Once the move is merged the server
+  waits as needs secret until the owner enters them; the running one stays as it was meanwhile, and if the proposal is
+  closed nothing changed at all (D225). Values change only by the owner's entry or an install for the same address.
+  Values stored for a proposal that is closed (in Skanyxx at once, except values a reinstall stored after the close
+  began; closed in git, by a pass once the record is an hour old) or for a server nothing will deploy are **deleted**, so a later install inherits nothing; a record is also deleted
+  when neither main nor an open proposal gives its server to *its* plugin, so a row another plugin left never blocks a
+  server for good. One plugin never takes over another's stored values. If deleting fails at close, the proposal is
+  still closed (the answer says so) and a later pass deletes them. **Every chat user of a plugin's
+  agents acts with the owner's header values** at that service: use least-privilege tokens (the page and the PR say so).
+  A plugin that ships a server **without headers beside a credentialed one** is noted in the install report: its agents
+  use them together, so what the open server returns can steer what is done with the credentials; vet them as one.
+  Outside Development without `Identity:DataProtectionCertificatePath` the key ring that protects the values sits
+  unencrypted in the identity database: Skanyxx warns at startup and on `/Plugins`; set a certificate, and keep the
+  identity and memory databases out of one shared backup.
+- **API** (`api/plugins`, signed in, CORS off, origin guarded and rate limited like `api/studio`): `GET api/plugins`
+  (installed plugins, server state `deployed`/`starting`/`needs-secret`/`pending`/`foreign`/`invalid`, header names and
+  whether a value is stored for the server's current address — never the value — agents as kagent runs them, warnings such as a tool name the server does
+  not offer, open plugin PRs, `keyRingInClear`), `GET api/plugins/catalog`, `POST api/plugins/inspect`
+  `{source: catalog|git, name?, url?, commit?, path?}`, `POST api/plugins/inspect/zip` (multipart `file`, `path?`,
+  `name?`), `POST api/plugins/install` (+ `digest`), `POST api/plugins/install/zip` (+ `digest`),
+  `POST api/plugins/{name}/uninstall`, `PUT api/plugins/servers/{server}/secrets` `{values: {header: value}}`. A refused
+  source is `400` with the reason, an unreachable git host `502`, a zip over 10 MB `413`.
+- **States.** `deployed` (kagent runs it and lists its tools), **`starting`** (created, but kagent has not discovered
+  its tools yet: kagent 0.10 creates a server before its companion Secret, logs "Secret not found" and retries **about a
+  minute** later), `needs-secret`, `pending` (the next pass applies it), `foreign`, `invalid`. An agent shows live only
+  once every plugin server it uses is deployed; a tool name the server does not offer is flagged under the plugin.
+- **Config** (all in `appsettings.template.json`). `Plugins:GitHosts` (`[{Host, Kind}]`), `Plugins:AllowPrivateNetworks`
+  (git downloads), `Plugins:AllowPrivateServers` (internal MCP server URLs), `Plugins:AllowHttp` (accept `http://` git
+  hosts and MCP server URLs; off by default; the one switch for both), `Plugins:MaxDownloadBytes` (20 MB),
+  `Studio:PluginModelConfig`, plus the studio's `Studio:*` (the repo, `Studio:Namespace`, `Studio:MaxRemovalsPerPass`).
+- **Local dev.** A plugin repository in the local Gitea needs `Plugins__GitHosts__0__Host=127.0.0.1:3300`,
+  `Plugins__GitHosts__0__Kind=gitea`, `Plugins__AllowHttp=true` and `Plugins__AllowPrivateNetworks=true`; an MCP server
+  on the machine or in the cluster also needs `Plugins__AllowPrivateServers=true` — never in a shared install (they open
+  the git download, and kagent's tool calls, to the machine's own network).
+- **Not supported.** stdio servers, OAuth-only servers (no header to enter), memory grants or cards from a plugin,
+  Claude Code skills/commands/hooks, plugin sources other than git/zip/catalog. A new version is installed the same way:
+  one PR with what changed and what it dropped (literal values Skanyxx already holds for the same address are kept; the
+  owner replaces them).
 
 ## Ticket pipelines
 

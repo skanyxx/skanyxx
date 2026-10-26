@@ -4,6 +4,8 @@ obj/
 Debug/
 Release/
 **/bin/
+# Not a build output: the Linux package's /usr/bin/skanyxx launcher (D231).
+!/installer/linux/usr/bin/
 **/obj/
 **/Debug/
 **/Release/

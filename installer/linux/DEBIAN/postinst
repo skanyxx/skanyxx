@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ─────────────────────────────────────────────────────────────────
 # Skanyxx .deb — postinst
 # Runs after dpkg places files on disk.
@@ -9,37 +9,26 @@ INSTALL_DIR="/usr/share/skanyxx"
 CONFIG="$INSTALL_DIR/appsettings.json"
 TEMPLATE="$INSTALL_DIR/appsettings.template.json"
 
-# Make the binary executable
-chmod +x "$INSTALL_DIR/Skanyxx.Host" 2>/dev/null || true
+[[ "$1" == "configure" ]] || exit 0
 
-# Create config from template (once — never overwrites)
-# IRREVERSIBLE: once created this file holds the user's API keys
-# The service runs as Production, where the owner account can only be created with Identity:BootstrapToken,
-# so a fresh config gets a random 48-character one. It is shown once below and stays in the config file.
-# Mode 0600 root: the only reader is the systemd service, which runs as root (skanyxx.service has no User=).
-BOOTSTRAP_TOKEN=""
-NEEDS_TOKEN=""
-if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
-    (umask 077 && cp "$TEMPLATE" "$CONFIG")
-    BOOTSTRAP_TOKEN="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-    sed -i "s/\"BootstrapToken\": \"\"/\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"/" "$CONFIG"
-    if [[ ${#BOOTSTRAP_TOKEN} -ne 48 ]] || ! grep -q "\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"" "$CONFIG"; then
-        rm -f "$CONFIG"  # so a retry (dpkg --configure) generates it again
-        echo "Skanyxx: could not write Identity:BootstrapToken into $CONFIG; the template no longer has" >&2
-        echo "  \"BootstrapToken\": \"\"." >&2
-        exit 1
-    fi
-    # A fresh install is the desktop launcher (D200): Remote mode opens the company's Skanyxx, the server is the
-    # Helm chart. Same verify-or-remove rule as the token.
-    sed -i 's/"Mode": "Server"/"Mode": "Remote"/' "$CONFIG"
-    if ! grep -q '"Mode": "Remote"' "$CONFIG"; then
-        rm -f "$CONFIG"
+chmod +x "$INSTALL_DIR/Skanyxx.Host"
+
+# Create config from template (once — never overwrites).
+# A fresh install is the desktop launcher (D200): Remote mode opens the company's Skanyxx, the server is the Helm
+# chart. It holds no secret (no BootstrapToken: Remote mode never uses one, D231), so it is 0644: the CLI and the
+# desktop entry run as the logged-in user and must be able to read it. -L too: never follow a planted symlink as root.
+if [[ ! -e "$CONFIG" && ! -L "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
+    CONFIG_TMP="$(mktemp "$INSTALL_DIR/.appsettings.XXXXXX")"
+    sed 's/"Mode": "Server"/"Mode": "Remote"/' "$TEMPLATE" > "$CONFIG_TMP"
+    # Verify-or-remove: the config is either right or absent, so a retry (dpkg --configure) writes it again.
+    if ! grep -q '"Mode": "Remote"' "$CONFIG_TMP"; then
+        rm -f "$CONFIG_TMP"
         echo "Skanyxx: could not write Skanyxx:Mode into $CONFIG; the template no longer has \"Mode\": \"Server\"." >&2
         exit 1
     fi
-elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
-    # An upgrade from a config written before accounts existed: never edited, only pointed out.
-    NEEDS_TOKEN=1
+    chown root:root "$CONFIG_TMP"
+    chmod 644 "$CONFIG_TMP"
+    mv -f "$CONFIG_TMP" "$CONFIG"
 fi
 REMOTE=""
 DEV_CONSOLE=""
@@ -49,24 +38,44 @@ elif [[ -f "$CONFIG" ]] && ! grep -q '"Mode": *"' "$CONFIG"; then
     # An upgrade from a config written before modes existed: it stays a full Host (Server mode, D204), never edited.
     DEV_CONSOLE=1
 fi
+# A Server-mode config can hold secrets (the first installers wrote it 0644): only root, which runs the service,
+# reads it. The mode is tightened, the content never edited.
+if [[ -z "$REMOTE" ]] && [[ -f "$CONFIG" && ! -L "$CONFIG" ]]; then
+    chmod 600 "$CONFIG"
+    # Server mode runs kubectl, aws and az as root; the hardened unit only lets them keep state in these (D233).
+    for dir in /root/.kube /root/.aws /root/.azure; do
+        [[ -d "$dir" ]] || install -d -m 700 "$dir"
+    done
+fi
+NEEDS_TOKEN=""
 NEEDS_PUBLIC_URL=""
-if [[ -z "$REMOTE" ]] && [[ -f "$CONFIG" ]] && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
-    # An upgrade from a config written before invites existed: the app starts, invites wait for the setting.
-    NEEDS_PUBLIC_URL=1
+if [[ -z "$REMOTE" ]] && [[ -f "$CONFIG" ]]; then
+    # Server-mode upgrades only: never edited, only pointed out. The app starts; setup and invites wait.
+    grep -q '"BootstrapToken": *"[^"]' "$CONFIG" || NEEDS_TOKEN=1
+    grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG" || NEEDS_PUBLIC_URL=1
 fi
 
-# Reload systemd if available
 if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload 2>/dev/null || true
+    # An upgrade restarts a service the admin had running; a fresh install starts nothing.
+    if [[ -n "$2" ]]; then
+        systemctl try-restart skanyxx 2>/dev/null || true
+    fi
 fi
 
 echo "Skanyxx installed."
+if [[ -n "$REMOTE" ]] && [[ "$(stat -c '%a' "$CONFIG")" != 644 ]]; then
+    # A test build before D231 wrote Remote configs 0600 root: the CLI and desktop entry cannot read them. Never edited.
+    echo ""
+    echo "  $CONFIG is not readable by other accounts, so 'skanyxx' and the desktop entry fail. Remote mode"
+    echo "  needs no secret: remove Identity:BootstrapToken from it, then: sudo chmod 644 $CONFIG"
+fi
 if [[ -n "$REMOTE" ]]; then
     echo ""
     echo "  This is the desktop launcher: it opens your company's Skanyxx. The server is the Helm chart."
     echo "  Set Skanyxx:RemoteUrl to your company's Skanyxx address (ask its owner), e.g."
     echo "    \"RemoteUrl\": \"https://skanyxx.example.com\""
-    echo "  in $CONFIG"
+    echo "  in $CONFIG (sudo)"
 fi
 if [[ -n "$DEV_CONSOLE" ]]; then
     echo ""
@@ -75,27 +84,21 @@ if [[ -n "$DEV_CONSOLE" ]]; then
     echo "  \"Mode\": \"Remote\" and \"RemoteUrl\" under \"Skanyxx\". Data kept here is not moved anywhere."
 fi
 echo ""
-echo "  Start manually:"
-echo "    skanyxx"
-echo ""
-echo "  Enable auto-start on boot:"
-echo "    sudo systemctl enable skanyxx"
-echo "    sudo systemctl start skanyxx"
-echo ""
-echo "  Open in browser: http://localhost:5282"
-if [[ -z "$REMOTE" ]]; then
-    echo "  The model and its API key are set in the app, on the owner's /Model page."
-fi
-if [[ -n "$BOOTSTRAP_TOKEN" ]] && [[ -z "$REMOTE" ]]; then
+if [[ -n "$REMOTE" ]]; then
+    echo "  Start it: the Skanyxx desktop entry, or run: skanyxx"
+    echo "  A fixed local address for bookmarks (http://127.0.0.1:5282, shared by every account on this machine):"
+    echo "    sudo systemctl enable --now skanyxx"
+else
+    # Its config is root's only (it can hold secrets), so the root service is the way to run it.
+    echo "  Start it (a full Skanyxx runs as the root service): sudo systemctl enable --now skanyxx"
     echo ""
-    echo "  First run: /Setup asks for this bootstrap token to create the owner account"
-    echo "  (also the owner's break-glass token; kept in $CONFIG as Identity:BootstrapToken):"
-    echo "    $BOOTSTRAP_TOKEN"
+    echo "  Open in browser: http://127.0.0.1:5282"
+    echo "  The model and its API key are set in the app, on the owner's /Model page."
 fi
 if [[ -n "$NEEDS_TOKEN" ]]; then
     echo ""
-    echo "  Set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
-    echo "  the first-run setup page asks for it to create the owner account."
+    echo "  Set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters,"
+    echo "  e.g. openssl rand -hex 24): the first-run setup page asks for it to create the owner account."
 fi
 if [[ -n "$NEEDS_PUBLIC_URL" ]]; then
     echo ""

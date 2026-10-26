@@ -27,25 +27,22 @@
   </div>
 
   <div class="step"><span class="num">2.</span>
-    <span>Start the app:<br>
+    <span>Start the app: <code>skanyxx</code> opens your company's Skanyxx in your browser, where you sign in.<br>
     <pre>skanyxx</pre></span>
-  </div>
-
-  <div class="step"><span class="num">3.</span>
-    <span>Open <a href="http://localhost:5282">http://localhost:5282</a>: it takes you to your company's Skanyxx,
-    where you sign in.</span>
   </div>
 
   <h3>Upgrading?</h3>
   <p>An existing <code>appsettings.json</code> is left as it was. Without <code>"Mode"</code> it keeps running a full
   Skanyxx with its own data on this Mac: a dev console, not your company's workspace. Set <code>"Mode": "Remote"</code>
-  and <code>"RemoteUrl"</code> to open the company's Skanyxx instead. In that full mode, <code>/Setup</code> asks for
+  and <code>"RemoteUrl"</code> to open the company's Skanyxx instead. Such a config can hold secrets, so this
+  installer leaves it readable by administrator accounts only: run that full Skanyxx from an admin account. In that full mode, <code>/Setup</code> asks for
   <code>Identity:BootstrapToken</code> from the same file (a random string of at least 32 characters, e.g.
   <code>openssl rand -hex 24</code>), and the model and its key are set on the owner's <code>/Model</code> page.</p>
 
   <h3>To uninstall</h3>
   <pre>sudo rm -rf /usr/local/share/skanyxx
 sudo rm -f /usr/local/bin/skanyxx
-sudo rm -f /Library/LaunchAgents/com.skanyxx.app.plist</pre>
+sudo rm -f /Library/LaunchAgents/com.skanyxx.app.plist
+sudo pkgutil --forget com.skanyxx.app</pre>
 </body>
 </html>

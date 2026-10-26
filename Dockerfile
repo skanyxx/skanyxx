@@ -7,12 +7,12 @@ WORKDIR /src
 COPY global.json ./
 COPY src/ src/
 # Each module copies its dll + deps.json into src/Skanyxx.Host/modules/ after build (CopyToModules), as the release
-# workflow relies on; twelve older modules resolve that folder from $(SolutionDir), which only a solution build sets,
-# hence the property. Tests are not built. NuGet packages live in a BuildKit cache, so a
-# source change does not download them again (the repo has no packages.lock.json for a locked restore, D144).
+# workflow relies on (each finds it from its own folder, $(MSBuildThisFileDirectory)). Tests are not built. NuGet
+# packages live in a BuildKit cache, so a source change does not download them again (the repo has no
+# packages.lock.json for a locked restore, D144).
 RUN --mount=type=cache,id=skanyxx-nuget,target=/root/.nuget/packages,sharing=locked \
     dotnet build src/Skanyxx.Host/Skanyxx.Host.csproj -c Release \
- && for p in src/Modules/*/*.csproj; do dotnet build "$p" -c Release --no-dependencies -p:SolutionDir=/src/ || exit 1; done \
+ && for p in src/Modules/*/*.csproj; do dotnet build "$p" -c Release --no-dependencies || exit 1; done \
  && dotnet publish src/Skanyxx.Host/Skanyxx.Host.csproj -c Release --no-build -o /out \
  && mkdir -p /out/modules \
  && cp src/Skanyxx.Host/modules/*.dll src/Skanyxx.Host/modules/*.deps.json /out/modules/

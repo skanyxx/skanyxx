@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Skanyxx.Core.Platform.Plugins;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
 
@@ -40,6 +41,19 @@ internal static class KAgentObjects
             })
         }
     };
+
+    /// <summary>
+    /// A plugin's server as kagent gets it: the file's RemoteMCPServer, labelled, its headers from
+    /// <paramref name="secretName"/> (named for the values' fingerprint, D118), a Secret kagent creates with it and deletes with it.
+    /// </summary>
+    public static JsonObject PluginServer(PluginServerDraft server, string plugin, string ns, string secretName)
+    {
+        var applied = McpServerManifest.Server(server, ns);
+        applied["metadata"]!["labels"] = new JsonObject { [StudioNames.ManagedByLabel] = StudioNames.ManagedBy, [StudioNames.PluginLabel] = plugin };
+        foreach (var header in applied["spec"]!["headersFrom"] as JsonArray ?? [])
+            header!["valueFrom"]!["name"] = secretName;
+        return applied;
+    }
 
     /// <summary>
     /// A proposal as its preview runs it (D030, D032): its own name, never merged, memory search on <c>company</c> only

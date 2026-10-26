@@ -1,4 +1,3 @@
-using System.Text.Json.Nodes;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -6,11 +5,16 @@ using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Core.Services;
+using Skanyxx.Module.Agents.Studio.Reconcile;
 
 namespace Skanyxx.Module.Agents.Studio.Features;
 
-/// <summary>What the form offers: the owner's models (D099), the allow-listed MCP servers with their tools, the scopes.</summary>
-internal sealed class StudioFormOptionsHandler(KAgentApiClient kagent, IMediator mediator, IOptions<StudioOptions> options, ILogger<StudioFormOptionsHandler> logger)
+/// <summary>
+/// What the form offers: the owner's models (D099), the MCP servers an agent may use with their tools — the allow-list
+/// and every plugin server merged in main (P7) — and the scopes.
+/// </summary>
+internal sealed class StudioFormOptionsHandler(
+    KAgentApiClient kagent, StudioReconciler reconciler, IMediator mediator, IOptions<StudioOptions> options, ILogger<StudioFormOptionsHandler> logger)
     : IRequestHandler<StudioFormOptionsQuery, Outcome<StudioFormOptions>>
 {
     public async Task<Outcome<StudioFormOptions>> Handle(StudioFormOptionsQuery query, CancellationToken ct)
@@ -23,13 +27,10 @@ internal sealed class StudioFormOptionsHandler(KAgentApiClient kagent, IMediator
         try
         {
             models = [.. (await kagent.GetModelConfigRefsAsync(ct)).Where(r => r.StartsWith(ns + "/", StringComparison.Ordinal)).Select(r => r[(ns.Length + 1)..])];
-            // kagent's list may repeat a ref or miss one (m14): the first of each wins, a nameless one is dropped.
-            var discovered = (await kagent.GetToolServerListAsync(ct))
-                .Select(s => (Ref: Text(s?["ref"]), Tools: (s?["discoveredTools"] as JsonArray ?? []).Select(t => Text(t?["name"])).OfType<string>().ToList()))
-                .Where(s => s.Ref is not null)
-                .GroupBy(s => s.Ref!)
-                .ToDictionary(g => g.Key, g => g.First().Tools);
-            servers = [.. options.Value.McpServers.Select(s => new McpToolChoice(s, discovered.GetValueOrDefault($"{ns}/{s}") ?? []))];
+            var discovered = await reconciler.ToolServerToolsAsync(ct);
+            var pluginServers = options.Value.Configured ? await PluginServersAsync(ct) : [];
+            servers = [.. options.Value.McpServers.Concat(pluginServers.Order(StringComparer.Ordinal)).Distinct()
+                .Select(s => new McpToolChoice(s, discovered.GetValueOrDefault($"{ns}/{s}") ?? []))];
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
@@ -42,5 +43,17 @@ internal sealed class StudioFormOptionsHandler(KAgentApiClient kagent, IMediator
             ["company", .. teams.Select(t => $"team:{t.Slug}"), .. departments.Select(d => $"department:{d.Slug}")]));
     }
 
-    private static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
+    /// <summary>The repo guard's refusal is the studio page's to show; the form then offers the allow-list alone.</summary>
+    private async Task<IReadOnlyCollection<string>> PluginServersAsync(CancellationToken ct)
+    {
+        try
+        {
+            return (await reconciler.MainPluginServersAsync(ct)).Keys;
+        }
+        catch (StudioApplyException ex)
+        {
+            logger.LogWarning("Studio form options: plugin servers left out ({Problem})", ex.Message);
+            return [];
+        }
+    }
 }

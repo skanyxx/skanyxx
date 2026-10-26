@@ -1,0 +1,7 @@
+{
+  "name": "rootly",
+  "version": "0.4.0",
+  "description": "Incident response with Rootly.",
+  "userConfig": { "ROOTLY_API_TOKEN": { "title": "Rootly API Token (optional)",
+    "description": "Optional: Rootly API token for hook scripts. The MCP server signs in with OAuth.", "type": "string", "sensitive": true } }
+}

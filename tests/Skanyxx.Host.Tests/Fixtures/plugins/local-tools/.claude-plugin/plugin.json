@@ -1,0 +1,2 @@
+{ "name": "local-tools", "description": "Synthetic plugin with local servers.",
+  "mcpServers": { "deploy-api": { "command": "node", "args": ["${CLAUDE_PLUGIN_ROOT}/server.js"] } } }

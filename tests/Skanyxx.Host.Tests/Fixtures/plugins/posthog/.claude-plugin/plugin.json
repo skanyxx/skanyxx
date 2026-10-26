@@ -1,0 +1,10 @@
+{
+  "name": "posthog",
+  "version": "1.1.67",
+  "description": "PostHog for Claude Code: product analytics, feature flags, experiments and error tracking.",
+  "author": { "name": "PostHog", "email": "hey@posthog.com", "url": "https://posthog.com" },
+  "homepage": "https://posthog.com/docs/model-context-protocol",
+  "repository": "https://github.com/PostHog/ai-plugin",
+  "license": "MIT",
+  "keywords": ["analytics", "feature-flags", "error-tracking"]
+}

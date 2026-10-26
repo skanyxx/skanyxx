@@ -24,6 +24,9 @@ internal sealed class StartPreviewHandler(
             if (await repo.PullAsync(command.Number, ct) is not { Open: true } pull)
                 return Outcome<PreviewAgent>.NotFound(StudioFailure.NoProposal);
             await guard.RequireAsync(setup: false, ct);
+            // A plugin's servers do not exist before its merge, and its tools are a third party's (P8).
+            if (ProposalTrailer.PluginOf(pull.Body) is not null)
+                return StudioFailure.Conflict<PreviewAgent>("plugin proposals have no preview", "plugin");
             var inspected = await inspector.InspectAsync(pull, ct);
             if (inspected.Draft is not { } draft)
                 return StudioFailure.Conflict<PreviewAgent>($"This proposal cannot run: {string.Join(" ", inspected.Problems)}", "invalid");

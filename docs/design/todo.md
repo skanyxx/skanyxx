@@ -2,7 +2,7 @@
 
 For people. AI agents: read [`AGENTS.md`](../../AGENTS.md) first, then this file. Do **not** skip ahead to Helm, studio, or AX until the current slice’s “done when” is true.
 
-Locked product: `spine.md`, `three-planes.md`, `first-hour.md`, `decisions.md`. Community catalog is **paused** (D054).
+Locked product: `spine.md`, `three-planes.md`, `first-hour.md`, `decisions.md`. Community catalog: Claude Code plugins, recipes only (D205, unpauses D054).
 
 ## Status of `dotnetapi` (2026-10-05)
 
@@ -173,7 +173,7 @@ D076/D077 listener is built (box above, D190–D194); it is not yet shown from i
 - [x] Polly → `Microsoft.Extensions.Http.Resilience`; xunit v3 (split out, next bullet); delete or adopt root `SkanyxxWeb.csproj`; untrack `bin/`/`obj/`; add tests to the release workflow (`open.md` Platform). **2026-10-07:** done — Polly removed with the uncalled `AddResilientHttpClient`, no client retries (D170); legacy root monolith deleted (D171); `bin/`/`obj/` untracked (D172); release `test` job gates every installer (D173).
 - [x] xunit v3 (follow-up wave, not part of the 2026-10-07 platform change). **2026-10-07:** done — all five suites on `xunit.v3` 4.0.1 under Microsoft.Testing.Platform (`global.json` `test.runner`), ArchUnitNET on its xUnitV3 package; counts unchanged (Host 362, Identity 395, Memory 319, Sandboxes 229, Tickets 311) (D175).
 - [x] Host tests on Windows: parallel testhosts lock `skanyxx.db` on dispose. Fix the harness (unique content-root / serial collection), do not delete the tests. **2026-10-07:** content roots were already unique; the lock was the SQLite connection pool — cleared before the delete, test added (D174). Unconfirmed on Windows.
-- Community templates (D005 / D054) — paused.
+- [x] Community templates (D005 / D054) — **2026-10-20:** unpaused for recipes as Claude Code plugins (catalog, git commit, zip → studio PR; D205–D218, README "Plugins").
 
 **2026-10-07 — section 6, identity leftovers built (D150–D159; branch `slice6-identity`).** SMTP email through MailKit
 (`Identity:Smtp`; off = behaviour as before): invite links emailed to the invitee (D151). Durable `identity_audit`

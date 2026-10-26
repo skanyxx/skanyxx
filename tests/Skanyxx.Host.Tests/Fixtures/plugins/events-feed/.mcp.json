@@ -1,0 +1,1 @@
+{ "mcpServers": { "feed": { "type": "sse", "url": "https://events.example.com/sse", "headers": { "X-Api-Key": "literal-key-123", "X-Team": "${TEAM}" } } } }

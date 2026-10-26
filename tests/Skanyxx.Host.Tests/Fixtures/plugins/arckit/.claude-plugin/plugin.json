@@ -1,0 +1,13 @@
+{
+  "name": "arckit",
+  "displayName": "ArcKit",
+  "version": "2.4.0",
+  "description": "Enterprise architecture governance toolkit.",
+  "icon": "https://arckit.org/icon.png",
+  "documentationUrl": "https://arckit.org/docs",
+  "mcpServers": "./.mcp.json",
+  "userConfig": {
+    "GOOGLE_API_KEY": { "type": "string", "title": "Google API key", "description": "For the Google developer knowledge server.", "sensitive": true }
+  },
+  "experimental": { "monitors": [] }
+}

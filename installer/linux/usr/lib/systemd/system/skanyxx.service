@@ -1,0 +1,45 @@
+[Unit]
+Description=Skanyxx (desktop launcher; Server mode = dev console)
+Documentation=https://github.com/skanyxx/skanyxx
+After=network.target
+# A bad RemoteUrl fails startup: give up after 5 tries in 2 minutes instead of restarting every 5 s forever.
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/share/skanyxx/Skanyxx.Host --urls http://127.0.0.1:5282
+WorkingDirectory=/usr/share/skanyxx
+Environment=ASPNETCORE_ENVIRONMENT=Production
+# kubectl finds ~/.kube through $HOME only; systemd sets it only with User=.
+Environment=HOME=/root
+Restart=on-failure
+RestartSec=5
+SyslogIdentifier=skanyxx
+# Runs as root so an upgraded Server-mode config (0600 root) and its skanyxx.db keep working (D231). Everything else is
+# locked down: the system is read-only except the install folder and the cloud CLIs' own state under /root (kubectl,
+# aws and az read and write ~/.kube, ~/.aws, ~/.azure in Server mode), no other home directory, no privilege gain.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ReadWritePaths=/usr/share/skanyxx -/root/.kube -/root/.aws -/root/.azure
+ProtectHome=tmpfs
+BindPaths=-/root/.kube -/root/.aws -/root/.azure
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+ProtectProc=invisible
+UMask=0077
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX AF_NETLINK
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

@@ -41,6 +41,12 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>Companion Secrets: name → (owning tool server, value). Deleted with their server, as Kubernetes GC does.</summary>
     public ConcurrentDictionary<string, (string Owner, string Value)> Secrets { get; } = new();
 
+    /// <summary>Every key of every companion Secret (kagent groups entries by name into one Secret): <c>name/key</c> → (owner, value).</summary>
+    public ConcurrentDictionary<string, (string Owner, string Value)> SecretData { get; } = new();
+
+    /// <summary>The tools kagent discovers per server (<c>ns/name</c>); a server not listed here offers memory's two.</summary>
+    public ConcurrentDictionary<string, string[]> DiscoveredTools { get; } = new();
+
     /// <summary>How many tool server creates to refuse with a 500 (nothing created), as kagent down mid-apply.</summary>
     public int FailToolServerCreates;
 
@@ -167,7 +173,8 @@ public sealed class FakeKAgent : IAsyncDisposable
             .. ToolServers.Keys.Select(k => (JsonNode)new JsonObject
             {
                 ["ref"] = k, ["groupKind"] = "RemoteMCPServer.kagent.dev",
-                ["discoveredTools"] = new JsonArray(new JsonObject { ["name"] = "memory_search" }, new JsonObject { ["name"] = "memory_upsert" })
+                ["discoveredTools"] = new JsonArray([.. (DiscoveredTools.TryGetValue(k, out var tools) ? tools : ["memory_search", "memory_upsert"])
+                    .Select(t => (JsonNode)new JsonObject { ["name"] = t })])
             })])));
         app.MapPost("/api/toolservers", (JsonObject body) =>
         {
@@ -178,7 +185,10 @@ public sealed class FakeKAgent : IAsyncDisposable
             if (!ToolServers.TryAdd(key, (JsonObject)server.DeepClone()))
                 return Results.Json(new JsonObject { ["error"] = "Failed to create RemoteMCPServer in Kubernetes" }, statusCode: 500);
             foreach (var secret in body["secrets"] as JsonArray ?? [])
+            {
                 Secrets[secret!["name"]!.GetValue<string>()] = (key, secret["value"]!.GetValue<string>());
+                SecretData[$"{secret["name"]!.GetValue<string>()}/{secret["key"]!.GetValue<string>()}"] = (key, secret["value"]!.GetValue<string>());
+            }
             return Results.Json(new JsonObject { ["error"] = false, ["data"] = server.DeepClone() }, statusCode: 201);
         });
         app.MapDelete("/api/toolservers/{ns}/{name}", (string ns, string name) =>
@@ -187,6 +197,8 @@ public sealed class FakeKAgent : IAsyncDisposable
                 return Results.Json(new JsonObject { ["error"] = "ToolServer not found" }, statusCode: 404);
             foreach (var owned in Secrets.Where(s => s.Value.Owner == $"{ns}/{name}").Select(s => s.Key).ToList())
                 Secrets.TryRemove(owned, out _);
+            foreach (var owned in SecretData.Where(s => s.Value.Owner == $"{ns}/{name}").Select(s => s.Key).ToList())
+                SecretData.TryRemove(owned, out _);
             return Envelope(new JsonObject());
         });
         app.MapGet("/api/modelconfigs", () => Envelope(new JsonArray(

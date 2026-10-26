@@ -182,6 +182,21 @@ networkPolicy:
     ports: [443]
     cidrs: ["0.0.0.0/0", "::/0"]
     extra: []
+  # kagent's controller (the bundled kagent) connects to every plugin MCP server with its header values, for tool
+  # discovery (D229). Off by default, and then its egress is open: it needs the Kubernetes API, whose address differs
+  # per cluster, so turning this on needs kubeApiCidrs (the chart refuses it without):
+  #   kubectl get endpoints kubernetes -n default -o jsonpath='{.subsets[*].addresses[*].ip}'   (each as a /32)
+  # On: DNS, kubeApiCidrs on kubeApiPorts, the bundled Postgres, Skanyxx's mcp port, the agent pods on a2aPorts, the
+  # internet minus clusterCidrs on 443 (public plugin servers), and `extra` (a BYO database, an in-cluster MCP server
+  # in Studio:McpServers), e.g.
+  #   extra: [{to: [{ipBlock: {cidr: 10.20.0.5/32}}], ports: [{port: 5432}]}]
+  # With BYO kagent the chart renders nothing for its controller: fence it in its own namespace.
+  controllerEgress:
+    enabled: false
+    kubeApiCidrs: []
+    kubeApiPorts: [443, 6443]
+    a2aPorts: [8080]
+    extra: []
 
 # AX Tasks (experimental, D063/D064). D069 (locked 2026-10-08): off by default, off in the appliance, on-by-flag for BYO
 # clusters that already run Agent Substrate. The chart never installs Substrate. Two ways to turn AX on (README "AX Tasks"):

@@ -14,7 +14,7 @@ namespace Skanyxx.Host.Tests.Infrastructure;
 /// <summary>
 /// The slice of Gitea 1.24's API the studio uses (research/gitea-api.md), in memory on real Kestrel: one org, one repo,
 /// branches as file maps, pull requests, the main protection rule (no direct writes), merges pinned to a head commit.
-/// Every request must carry <see cref="Token"/>; requests are recorded. Knobs: <see cref="Down"/>, <see cref="MoveHeadOnMerge"/>,
+/// Every request must carry <see cref="Token"/>; requests are recorded. Knobs: <see cref="Down"/>, <see cref="MoveHeadOnMerge"/>, <see cref="OnRequest"/>,
 /// and <see cref="PushToBranch"/> to put files on a branch the way someone with git access would.
 /// </summary>
 public sealed class FakeGitea : IAsyncDisposable
@@ -66,6 +66,9 @@ public sealed class FakeGitea : IAsyncDisposable
 
     /// <summary>Runs once git has merged, before it answers (a person closing the page right then).</summary>
     public Action? OnMerge { get; set; }
+
+    /// <summary>Runs with the method and path of every request git admits, before it is answered (a change landing mid-pass).</summary>
+    public Action<string, string>? OnRequest { get; set; }
 
     public List<Pull> Pulls { get; } = [];
 
@@ -169,6 +172,7 @@ public sealed class FakeGitea : IAsyncDisposable
                 context.Response.StatusCode = 503;
                 return;
             }
+            OnRequest?.Invoke(context.Request.Method, context.Request.Path);
             if (context.Request.Headers.Authorization.ToString() != $"token {Token}")
             {
                 context.Response.StatusCode = 401;

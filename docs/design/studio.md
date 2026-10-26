@@ -66,3 +66,19 @@ The seed general-purpose agent is just the first file. Changing it uses the same
 - **Preview.** `preview-<pr>-<name>`, not merged, search on `company` only, never upsert, no skills, gone on
   merge/close (D113, D122). Skills only digest-pinned from allow-listed registries (D122).
 - Not yet: customer GitHub/GitLab, removing an agent from the UI, the seed in the repo, skills from git (D115).
+
+## Plugins (as built 2026-10-20, D205–D218)
+
+```
+/Plugins: catalog | git URL @ commit (owner) | zip (owner) → inspect (report + digest) → install = one PR
+    (plugins/<p>/plugin.yaml + plugins/<p>/mcp/<s>.yaml + agents/<a>/) → supervisor merge on /Studio
+    → reconciler: RemoteMCPServers (header values from a fingerprinted Secret) then agents → Chat
+```
+
+- Claude Code plugins; recipes only, never memory (D205). Remote MCP servers only, stdio never run (D209).
+- Header values never in git: templates wait for the owner's value ("needs secret", server not created, agents held);
+  values encrypted in memory, given to kagent as `<server>-<fingerprint>` (D208, D211).
+- Merged plugin servers join the MCP allow-list and the form (D212). Plugin PRs have their own inspector shape, no
+  preview, and the removal brake covers servers too (D213).
+- Not yet: OAuth-only MCP servers, updating kagent servers in place (kagent 0.10.2 has no update: replace), a plugin's
+  skills/commands/hooks.

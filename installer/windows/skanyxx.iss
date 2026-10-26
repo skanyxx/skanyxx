@@ -17,7 +17,6 @@
 #define AppPublisher  "Skanyxx"
 #define AppURL        "https://github.com/skanyxx/skanyxx"
 #define AppExeName    "Skanyxx.Host.exe"
-#define AppPort       "5282"
 ; Source directory must match the dotnet publish output path used in CI
 #define SourceDir     "..\..\publish\win-x64"
 
@@ -49,8 +48,15 @@ UninstallDisplayIcon={app}\{#AppExeName}
 ChangesEnvironment=no
 DisableDirPage=no
 DisableProgramGroupPage=yes
-; Open browser after install
-CloseApplications=no
+; An upgrade offers to close a running Skanyxx.Host.exe instead of stopping on "file in use".
+CloseApplications=yes
+RestartApplications=no
+#ifdef Sign
+; release.yml passes /DSign and /Ssigntool=... when the signing certificate is set: Setup and the uninstaller it
+; embeds are both Authenticode-signed.
+SignTool=signtool
+SignedUninstaller=yes
+#endif
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -58,40 +64,50 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+[InstallDelete]
+; The Host loads every Skanyxx.Module.*.dll in modules\: start it empty so a removed or renamed module does not keep
+; loading after an upgrade. Only on an upgrade: a fresh install may have been pointed at a folder with its own modules\.
+Type: filesandordirs; Name: "{app}\modules"; Check: IsUpgrade
+; The shortcuts open Skanyxx:RemoteUrl themselves (D234): the old page opener and its Start Menu entry go.
+Type: files; Name: "{app}\open-browser.cmd"
+Type: files; Name: "{group}\Open Skanyxx in Browser.lnk"
+
 [Files]
 ; All published app files (self-contained .NET executable + modules)
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+; Excludes appsettings.json: a publish from a dev tree carries the developer's own config, which would replace the
+; template below and be read as an upgrade.
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "appsettings.json"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; Config template — copied as appsettings.json only if it doesn't already exist
 Source: "..\..\appsettings.template.json"; DestDir: "{app}"; DestName: "appsettings.json"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
-; Start Menu
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "--urls http://localhost:{#AppPort}"; WorkingDir: "{app}"; Comment: "Open your company's Skanyxx"
-Name: "{group}\Open Skanyxx in Browser"; Filename: "{app}\open-browser.cmd"; WorkingDir: "{app}"
+; Start Menu. "open" opens Skanyxx:RemoteUrl in the browser and exits: nothing listens on this PC (D234).
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "open"; WorkingDir: "{app}"; Comment: "Open your company's Skanyxx"
 Name: "{group}\Uninstall {#AppName}"; Filename: "{uninstallexe}"
 ; Desktop
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "--urls http://localhost:{#AppPort}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "open"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-; Write the launch helper batch file
-Filename: "{cmd}"; Parameters: "/C echo @echo off > ""{app}\open-browser.cmd"" && echo start http://localhost:{#AppPort} >> ""{app}\open-browser.cmd"""; Flags: runhidden
-
 ; Offer to launch after install
-Filename: "{app}\{#AppExeName}"; Parameters: "--urls http://localhost:{#AppPort}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+Filename: "{app}\{#AppExeName}"; Parameters: "open"; WorkingDir: "{app}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 
 [UninstallDelete]
-; Remove files created at runtime (config, database) only if user agrees
-; (the files marked uninsneveruninstall above are kept)
+; appsettings.json (uninsneveruninstall) is kept; the folder goes once it is otherwise empty.
 Type: dirifempty; Name: "{app}"
 
 [Messages]
-WelcomeLabel2=This will install [name/ver] on your computer.%n%nSkanyxx is your company's agent workspace. This installs the desktop launcher: http://localhost:{#AppPort} on this PC opens your company's Skanyxx. The Skanyxx server itself is installed with the Helm chart, not here.%n%nClick Next to continue.
-FinishedLabel=Setup has finished installing [name] on your computer.%n%nOpen Skanyxx from the Start Menu: http://localhost:{#AppPort} takes you to your company's Skanyxx. Its address is Skanyxx:RemoteUrl in appsettings.json in the install folder; change it there and restart Skanyxx.%n%nUpgraded? Your existing appsettings.json was kept as it was. Without "Mode" it still runs a full Skanyxx with its own data on this PC: a dev console, not your company's workspace (the model and its key are set on the owner's /Model page, the owner account needs Identity:BootstrapToken). Set "Mode": "Remote" and "RemoteUrl" under "Skanyxx" to open the company's Skanyxx instead.
+WelcomeLabel2=This will install [name/ver] on your computer.%n%nSkanyxx is your company's agent workspace. This installs the desktop launcher: the Skanyxx shortcut opens your company's Skanyxx in the browser. The Skanyxx server itself is installed with the Helm chart, not here.%n%nClick Next to continue.
+FinishedLabel=Setup has finished installing [name] on your computer.%n%nThe Skanyxx shortcut in the Start Menu opens your company's Skanyxx. Its address is Skanyxx:RemoteUrl in appsettings.json in the install folder; change it there.%n%nUpgraded? Your existing appsettings.json was kept as it was. Without "Mode" it still runs a full Skanyxx with its own data on this PC: a dev console, not your company's workspace (the model and its key are set on the owner's /Model page, the owner account needs Identity:BootstrapToken). Set "Mode": "Remote" and "RemoteUrl" under "Skanyxx" to open the company's Skanyxx instead.
 
 [Code]
 var
   AddressPage: TInputQueryWizardPage;
   FreshConfig: Boolean;
+
+function IsUpgrade: Boolean;
+begin
+  Result := FileExists(ExpandConstant('{app}\{#AppExeName}'));
+end;
 
 function ConfigPath: String;
 begin

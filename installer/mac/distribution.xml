@@ -2,7 +2,6 @@
 <installer-gui-script minSpecVersion="1">
 
     <title>Skanyxx</title>
-    <background file="background.png" alignment="bottomleft" scaling="proportional"/>
     <welcome    file="welcome.html"   mime-type="text/html"/>
     <readme     file="readme.html"    mime-type="text/html"/>
     <conclusion file="conclusion.html" mime-type="text/html"/>
@@ -10,7 +9,7 @@
     <!-- Minimum macOS version: 15.0 (Sequoia), the oldest .NET 10 supports (dotnet/core release-notes/10.0/supported-os.md) -->
     <os-version min="15.0"/>
 
-    <!-- Allow installation for the current user only (no admin required) -->
+    <!-- Installs system-wide (/usr/local): needs an administrator. hostArchitectures is set per build by release.yml. -->
     <options customize="never"
              require-scripts="false"
              allow-external-scripts="false"

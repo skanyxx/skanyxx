@@ -11,6 +11,9 @@ public class Agent
     public bool Ready { get; set; }
     public bool Accepted { get; set; }
     public Dictionary<string, string> Labels { get; set; } = [];
+
+    /// <summary>The MCP servers its spec names (<c>declarative.tools</c>), each with its tool names; none = every tool the server lists.</summary>
+    public Dictionary<string, List<string>> McpToolNames { get; set; } = [];
     public int TasksToday { get; set; }
     public int AvgResponseMs { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

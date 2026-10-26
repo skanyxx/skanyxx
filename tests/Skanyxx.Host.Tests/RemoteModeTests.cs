@@ -110,18 +110,23 @@ public sealed class RemoteModeTests(PostgresFixture fixture)
         Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health", Ct)).StatusCode);
     }
 
+    public static readonly TheoryData<string> InvalidRemoteUrls =
+    [
+        "skanyxx.example.com",
+        "/relative",
+        "ftp://skanyxx.example.com",
+        "http://skanyxx.example.com",
+        "http://localhost.example.com",
+        "https://skanyxx.example.com/?next=/x",
+        "https://skanyxx.example.com/#x",
+        "https://user:pass@skanyxx.example.com",
+        " https://skanyxx.example.com",
+        "https://skanyxx.bücher.example", // a Unicode host would make every redirect a 500
+        "https://skanyxx.example.com/tëam"
+    ];
+
     [Theory]
-    [InlineData("skanyxx.example.com")]
-    [InlineData("/relative")]
-    [InlineData("ftp://skanyxx.example.com")]
-    [InlineData("http://skanyxx.example.com")]
-    [InlineData("http://localhost.example.com")]
-    [InlineData("https://skanyxx.example.com/?next=/x")]
-    [InlineData("https://skanyxx.example.com/#x")]
-    [InlineData("https://user:pass@skanyxx.example.com")]
-    [InlineData(" https://skanyxx.example.com")]
-    [InlineData("https://skanyxx.bücher.example")] // a Unicode host would make every redirect a 500
-    [InlineData("https://skanyxx.example.com/tëam")]
+    [MemberData(nameof(InvalidRemoteUrls))]
     public async Task AnInvalidRemoteUrl_ExitsOne(string remoteUrl)
     {
         var (exitCode, log, _) = await ExitCodeTests.RunEntryPointAsync(Unreachable, s =>
@@ -132,6 +137,101 @@ public sealed class RemoteModeTests(PostgresFixture fixture)
 
         Assert.Equal(1, exitCode);
         Assert.Contains(log.Split('\n'), line => line.Contains("\"@l\":\"Fatal\"") && line.Contains("Skanyxx:RemoteUrl"));
+    }
+
+    /// <summary>The launchers' verb (D234): prints the address and exits, before any host, logger or listener exists.</summary>
+    [Fact]
+    public async Task Url_PrintsTheRemoteUrl_AndStartsNothing()
+    {
+        var watch = Stopwatch.StartNew();
+        var (exitCode, stdout, stderr, _) = await RunCommandAsync("url", s =>
+        {
+            s["Skanyxx:Mode"] = "Remote";
+            s["Skanyxx:RemoteUrl"] = RemoteUrl;
+        });
+
+        Assert.Equal(0, exitCode);
+        // Contains, not Equal: the console is process-wide, and a test elsewhere may write to it meanwhile.
+        Assert.Contains("https://skanyxx.example.com/", stdout.Split('\n').Select(line => line.TrimEnd('\r')));
+        Assert.DoesNotContain("Skanyxx:", stderr);
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(15), $"took {watch.Elapsed}");
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidRemoteUrls))]
+    public async Task Url_WithAnInvalidRemoteUrl_ExitsOne_WithTheReason(string remoteUrl)
+    {
+        var (exitCode, stdout, stderr, _) = await RunCommandAsync("url", s =>
+        {
+            s["Skanyxx:Mode"] = "Remote";
+            s["Skanyxx:RemoteUrl"] = remoteUrl;
+        });
+
+        Assert.Equal(1, exitCode);
+        Assert.DoesNotContain("https://", stdout);
+        Assert.Contains("Skanyxx:RemoteUrl must be empty or an absolute https:// URL", stderr);
+    }
+
+    // "open" fails before it would start a browser: only failing cases of it are ever run here.
+    [Theory]
+    [InlineData("url")]
+    [InlineData("open")]
+    public async Task UrlAndOpen_WithoutRemoteUrl_ExitOne_AndSayWhereToSetIt(string verb)
+    {
+        var (exitCode, stdout, stderr, contentRoot) = await RunCommandAsync(verb, s =>
+        {
+            s["Skanyxx:Mode"] = "Remote";
+            s["Skanyxx:RemoteUrl"] = "";
+        });
+
+        Assert.Equal(1, exitCode);
+        Assert.DoesNotContain("https://", stdout);
+        Assert.Contains("\"RemoteUrl\"", stderr);
+        Assert.Contains(Path.Combine(contentRoot, "appsettings.json"), stderr);
+    }
+
+    [Theory]
+    [InlineData("url", null)]
+    [InlineData("open", null)]
+    [InlineData("url", "Server")]
+    [InlineData("open", "Server")]
+    public async Task UrlAndOpen_InServerMode_ExitOne_AndSayHowToStartIt(string verb, string? mode)
+    {
+        var (exitCode, stdout, stderr, _) = await RunCommandAsync(verb, s =>
+        {
+            if (mode is not null)
+                s["Skanyxx:Mode"] = mode;
+            s["Skanyxx:RemoteUrl"] = RemoteUrl;
+        });
+
+        Assert.Equal(1, exitCode);
+        Assert.DoesNotContain("https://", stdout);
+        Assert.Contains("Server mode", stderr);
+        Assert.Contains("127.0.0.1:5282", stderr);
+    }
+
+    /// <summary>The real entry point with a verb first, as a launcher runs it; stdout and stderr apart.</summary>
+    private static async Task<(int ExitCode, string Out, string Error, string ContentRoot)> RunCommandAsync(
+        string verb, Action<Dictionary<string, string>> configure)
+    {
+        var contentRoot = TempContentRoot.Create();
+        var (stdout, stderr) = (new StringWriter(), new StringWriter());
+        var (originalOut, originalError) = (Console.Out, Console.Error);
+        Console.SetOut(stdout);
+        Console.SetError(stderr);
+        try
+        {
+            string[] args = [verb, .. HostApp.Arguments(Unreachable, contentRoot, configure)];
+            var run = Task.Run(() => (int)typeof(Program).Assembly.EntryPoint!.Invoke(null, [args])!);
+            var exitCode = await run.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+            return (exitCode, stdout.ToString(), stderr.ToString(), contentRoot);
+        }
+        finally
+        {
+            Console.SetOut(originalOut);
+            Console.SetError(originalError);
+            TempContentRoot.Delete(contentRoot);
+        }
     }
 
     [Fact]
@@ -198,7 +298,7 @@ public sealed class RemoteModeTests(PostgresFixture fixture)
 
         foreach (var script in new[] { Repo.Path("installer", "mac", "scripts", "postinstall"), Repo.Path("installer", "linux", "DEBIAN", "postinst") })
         {
-            var expression = Regex.Match(File.ReadAllText(script), "sed -i(?: '')? '(s/\"Mode\": \"Server\"/\"Mode\": \"Remote\"/)'");
+            var expression = Regex.Match(File.ReadAllText(script), "sed '(s/\"Mode\": \"Server\"/\"Mode\": \"Remote\"/)' \"\\$TEMPLATE\"");
             Assert.True(expression.Success, $"{script} no longer sets Mode with sed");
             if (OperatingSystem.IsWindows())
                 continue;

@@ -3,11 +3,15 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Studio;
+using Skanyxx.Module.Agents.Studio.Git;
+using Skanyxx.Module.Agents.Studio.Plugins;
 using Skanyxx.Module.Agents.Studio.Reconcile;
 
 namespace Skanyxx.Module.Agents.Studio.Features;
 
-internal sealed class EditDraftHandler(StudioReconciler reconciler, IOptions<StudioOptions> options, ILogger<EditDraftHandler> logger)
+/// <summary>An agent in main as the form to edit it; a plugin's agent is edited through its plugin (D222).</summary>
+internal sealed class EditDraftHandler(
+    IAgentRepo repo, StudioReconciler reconciler, PluginRepoReader plugins, IOptions<StudioOptions> options, ILogger<EditDraftHandler> logger)
     : IRequestHandler<EditDraftQuery, Outcome<AgentDraft>>
 {
     public async Task<Outcome<AgentDraft>> Handle(EditDraftQuery query, CancellationToken ct)
@@ -18,7 +22,10 @@ internal sealed class EditDraftHandler(StudioReconciler reconciler, IOptions<Stu
             return StudioFailure.Conflict<AgentDraft>(StudioFailure.NotConfigured);
         try
         {
-            var (draft, _) = await reconciler.ReadAgentAsync(query.Agent, options.Value.Git.Branch, ct);
+            var tree = await plugins.ReadAsync(await repo.ListMainAsync(ct), options.Value.Git.Branch, log: false, ct);
+            if (tree.OwnerOf(query.Agent) is { } owner)
+                return StudioFailure.Conflict<AgentDraft>(StudioFailure.PluginOwned(query.Agent, owner), "plugin");
+            var (draft, _) = await reconciler.ReadAgentAsync(query.Agent, options.Value.Git.Branch, tree.ServerPlugins, [], ct);
             return draft is null ? Outcome<AgentDraft>.NotFound($"No valid agent '{query.Agent}' in main.") : Outcome<AgentDraft>.Ok(draft);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)

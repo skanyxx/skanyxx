@@ -1,12 +1,12 @@
-#!/usr/bin/env bash
+#!/bin/bash
 # ─────────────────────────────────────────────────────────────────
 # Skanyxx .deb — prerm
 # Runs before dpkg removes app files.
 # ─────────────────────────────────────────────────────────────────
 set -e
 
-if command -v systemctl >/dev/null 2>&1; then
+# Only a removal stops and disables the service; an upgrade keeps the admin's choice (postinst restarts it).
+if [[ "$1" == "remove" ]] && command -v systemctl >/dev/null 2>&1; then
     systemctl stop    skanyxx 2>/dev/null || true
     systemctl disable skanyxx 2>/dev/null || true
-    systemctl daemon-reload  2>/dev/null || true
 fi

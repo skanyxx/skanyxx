@@ -1,0 +1,17 @@
+#!/bin/sh
+# The desktop entry opens Skanyxx:RemoteUrl itself (D234): no local port, so no other account can stand in for it.
+# `url` validates and prints the address; xdg-open replaces this script, so nothing waits on the browser or holds a pipe
+# it inherited.
+cd /usr/share/skanyxx || exit 1
+err=$(mktemp) || exit 1
+if url=$(./Skanyxx.Host url 2>"$err"); then
+    # A warning (e.g. a RemoteUrl on this machine) reaches the desktop too, not only a terminal.
+    if [ -s "$err" ] && command -v notify-send >/dev/null 2>&1; then notify-send Skanyxx "$(cat "$err")"; fi
+    rm -f "$err"
+    exec xdg-open "$url"
+fi
+msg=$(cat "$err")
+rm -f "$err"
+echo "$msg" >&2
+command -v notify-send >/dev/null 2>&1 && notify-send Skanyxx "$msg"
+exit 1

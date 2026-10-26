@@ -19,5 +19,11 @@ internal static class StudioFailure
     public static string NameTaken(string agent) =>
         $"Memory already has an agent '{agent}' that the studio did not create (the owner's, or an external client's); the studio never takes it over. Choose another name.";
 
+    /// <summary>A plugin's agent changes only through its plugin (D222): the form would be overwritten by the next update.</summary>
+    public static string PluginOwned(string agent, string plugin) =>
+        $"'{agent}' belongs to the plugin '{plugin}': it changes when the plugin is updated or reinstalled, not on the studio form.";
+
+    public const string PluginNeedsOwner = "This plugin comes from git or a zip (third-party content): only the owner merges it.";
+
     public static Outcome<T> Conflict<T>(string message, string? reason = null) => Outcome<T>.Conflict(default, message, reason);
 }

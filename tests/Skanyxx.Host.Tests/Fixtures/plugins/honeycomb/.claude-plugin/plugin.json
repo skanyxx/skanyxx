@@ -1,0 +1,7 @@
+{
+  "name": "honeycomb",
+  "version": "1.2.3",
+  "description": "Query and investigate Honeycomb observability data.",
+  "license": "MIT",
+  "mcpServers": "./.mcp.json"
+}

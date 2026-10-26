@@ -6,53 +6,77 @@
 set -euo pipefail
 
 INSTALL_DIR="/usr/local/share/skanyxx"
-BIN_LINK="/usr/local/bin/skanyxx"
+BIN_DIR="/usr/local/bin"
+BIN_LAUNCHER="$BIN_DIR/skanyxx"
 LAUNCHD_PLIST="/Library/LaunchAgents/com.skanyxx.app.plist"
 CONFIG="$INSTALL_DIR/appsettings.json"
 TEMPLATE="$INSTALL_DIR/appsettings.template.json"
+PORT=5282
 
-# ── Permissions ───────────────────────────────────────────────────
-chmod +x "$INSTALL_DIR/Skanyxx.Host" 2>/dev/null || true
-find "$INSTALL_DIR/modules" -name "*.dll" -exec chmod 644 {} \; 2>/dev/null || true
-
-# ── Symlink CLI launcher ──────────────────────────────────────────
-ln -sf "$INSTALL_DIR/Skanyxx.Host" "$BIN_LINK" 2>/dev/null || true
-
-# ── Config file (created once, never overwritten) ─────────────────
-# IRREVERSIBLE: once created, appsettings.json holds the user's API keys.
-# The installer never overwrites it on upgrades.
-# The app runs as Production, where the owner account can only be created with Identity:BootstrapToken, so a
-# fresh config gets a random 48-character one. It is NOT printed: install.log is world-readable. The conclusion
-# page tells the user where it is.
-# Mode 0640 root:admin: the LaunchAgent runs as whichever user logs in, so no single owner fits; admin accounts
-# (who run a tool like this) can read it, standard and guest accounts on a shared Mac cannot.
-if [[ ! -f "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
-    (umask 077 && cp "$TEMPLATE" "$CONFIG")
-    BOOTSTRAP_TOKEN="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
-    sed -i '' "s/\"BootstrapToken\": \"\"/\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"/" "$CONFIG"
-    if [[ ${#BOOTSTRAP_TOKEN} -ne 48 ]] || ! grep -q "\"BootstrapToken\": \"$BOOTSTRAP_TOKEN\"" "$CONFIG"; then
-        rm -f "$CONFIG"  # so reinstalling generates it again
-        echo "Skanyxx: could not write Identity:BootstrapToken into $CONFIG; the template no longer has" >&2
-        echo "  \"BootstrapToken\": \"\"." >&2
+# Every account runs what is in here (CLI, LaunchAgent), and this script writes into it as root: the folder and every
+# parent must be root's alone, or another account (e.g. the one Homebrew gave /usr/local to) could swap it (D233).
+root_only() {
+    [[ -d "$1" && ! -L "$1" ]] && [[ "$(stat -f '%u' "$1")" == 0 ]] && [[ -z "$(find "$1" -maxdepth 0 -perm +022)" ]]
+}
+for dir in /usr/local /usr/local/share "$INSTALL_DIR"; do
+    if ! root_only "$dir"; then
+        echo "Skanyxx: $dir must be a folder owned by root and writable only by root (on a Mac where Homebrew owns" >&2
+        echo "  /usr/local, install Homebrew under /opt/homebrew or fix the ownership first)." >&2
         exit 1
     fi
-    # A fresh install is the desktop launcher (D200): Remote mode opens the company's Skanyxx, the server is the
-    # Helm chart. Same verify-or-remove rule as the token.
-    sed -i '' 's/"Mode": "Server"/"Mode": "Remote"/' "$CONFIG"
-    if ! grep -q '"Mode": "Remote"' "$CONFIG"; then
-        rm -f "$CONFIG"
+done
+
+# ── Permissions ───────────────────────────────────────────────────
+chmod +x "$INSTALL_DIR/Skanyxx.Host"
+find "$INSTALL_DIR/modules" -name "*.dll" -exec chmod 644 {} \; 2>/dev/null || true
+
+# ── CLI launcher ──────────────────────────────────────────────────
+# A script, not a symlink: the Host reads appsettings.json and modules/ from its working directory, so it has to start
+# in the install folder (D231). /usr/local/bin is missing on a Mac without Homebrew. Written to a new file and renamed:
+# the rename replaces whatever is there (an older install's symlink to Skanyxx.Host, or one planted in a user-owned
+# /usr/local/bin) instead of writing through it.
+# -h: rename onto the name itself, never into a directory a symlink there points to. A /usr/local/bin that another
+# account owns gets no launcher: what root writes there could be redirected.
+mkdir -p "$BIN_DIR"
+if root_only "$BIN_DIR"; then
+    LAUNCHER_TMP="$(mktemp "$BIN_DIR/.skanyxx.XXXXXX")"
+    cat > "$LAUNCHER_TMP" <<LAUNCHER
+#!/bin/sh
+# No arguments: open the company's Skanyxx (Skanyxx:RemoteUrl) directly; nothing listens (D234).
+cd "$INSTALL_DIR" || exit 1
+[ "\$#" -gt 0 ] || set -- open
+exec ./Skanyxx.Host "\$@"
+LAUNCHER
+    chmod 755 "$LAUNCHER_TMP"
+    mv -fh "$LAUNCHER_TMP" "$BIN_LAUNCHER"
+else
+    echo "Skanyxx: $BIN_DIR is not root's alone, so no skanyxx command was installed there. Start Skanyxx with:"
+    echo "  cd $INSTALL_DIR && ./Skanyxx.Host open"
+fi
+
+# ── Config file (created once, never overwritten) ─────────────────
+# A fresh install is the desktop launcher (D200): Remote mode opens the company's Skanyxx, the server is the Helm
+# chart. It holds no secret (no BootstrapToken: Remote mode never uses one, D231), so it is 0644 and every account on
+# the Mac can start the launcher. -L too: a dangling symlink planted here must never be followed by this root script.
+if [[ ! -e "$CONFIG" && ! -L "$CONFIG" ]] && [[ -f "$TEMPLATE" ]]; then
+    CONFIG_TMP="$(mktemp "$INSTALL_DIR/.appsettings.XXXXXX")"
+    sed 's/"Mode": "Server"/"Mode": "Remote"/' "$TEMPLATE" > "$CONFIG_TMP"
+    # Verify-or-remove: the config is either right or absent, so reinstalling writes it again.
+    if ! grep -q '"Mode": "Remote"' "$CONFIG_TMP"; then
+        rm -f "$CONFIG_TMP"
         echo "Skanyxx: could not write Skanyxx:Mode into $CONFIG; the template no longer has \"Mode\": \"Server\"." >&2
         exit 1
     fi
-    chgrp admin "$CONFIG"
-    chmod 640 "$CONFIG"
+    chown root:wheel "$CONFIG_TMP"
+    chmod 644 "$CONFIG_TMP"
+    mv -fh "$CONFIG_TMP" "$CONFIG"
     echo "Skanyxx: set Skanyxx:RemoteUrl in $CONFIG to your company's Skanyxx address (ask its owner),"
     echo "  e.g. \"RemoteUrl\": \"https://skanyxx.example.com\"."
-elif [[ -f "$CONFIG" ]] && ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
-    # An upgrade from a config written before accounts existed: never edited, only pointed out (also on the
-    # conclusion page).
-    echo "Skanyxx: set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
-    echo "  the first-run setup page asks for it to create the owner account."
+fi
+if [[ -f "$CONFIG" ]] && grep -q '"Mode": *"Remote"' "$CONFIG" && [[ "$(stat -f '%Lp' "$CONFIG")" != 644 ]]; then
+    # A test build before D231 wrote Remote configs 0640 root:admin: standard accounts cannot read them. Never edited.
+    echo "Skanyxx: $CONFIG is not readable by every account, so standard users cannot start Skanyxx. Remote mode needs"
+    echo "  no secret: remove Identity:BootstrapToken from it, then: sudo chmod 644 $CONFIG"
 fi
 if [[ -f "$CONFIG" ]] && ! grep -q '"Mode": *"' "$CONFIG"; then
     # An upgrade from a config written before modes existed: it stays a full Host (Server mode, D204), never edited.
@@ -60,15 +84,29 @@ if [[ -f "$CONFIG" ]] && ! grep -q '"Mode": *"' "$CONFIG"; then
     echo "  not your company's workspace (D059). To open the company's Skanyxx instead, set \"Mode\": \"Remote\" and"
     echo "  \"RemoteUrl\" under \"Skanyxx\". Data kept here is not moved anywhere."
 fi
-if [[ -f "$CONFIG" ]] && ! grep -q '"Mode": *"Remote"' "$CONFIG" && ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
-    # An upgrade from a config written before invites existed: never edited, only pointed out. The app starts;
-    # inviting people waits for the setting.
-    echo "Skanyxx: to invite people, set Identity:PublicBaseUrl in $CONFIG to the address they use to reach"
-    echo "  Skanyxx, e.g. \"PublicBaseUrl\": \"http://localhost:5282\" on this Mac (https://... behind a proxy)."
+if [[ -f "$CONFIG" && ! -L "$CONFIG" ]] && ! grep -q '"Mode": *"Remote"' "$CONFIG"; then
+    # A Server-mode config can hold secrets (the first installers wrote it 0644): readable by admin accounts only, who
+    # run a full Skanyxx here. The mode is tightened, the content never edited.
+    chgrp admin "$CONFIG"
+    chmod o-rwx,g-w "$CONFIG"
+fi
+if [[ -f "$CONFIG" ]] && ! grep -q '"Mode": *"Remote"' "$CONFIG"; then
+    # Server-mode upgrades only: never edited, only pointed out (also on the conclusion page).
+    if ! grep -q '"BootstrapToken": *"[^"]' "$CONFIG"; then
+        echo "Skanyxx: set Identity:BootstrapToken in $CONFIG (a random string of at least 32 characters):"
+        echo "  the first-run setup page asks for it to create the owner account."
+    fi
+    if ! grep -q '"PublicBaseUrl": *"[^"]' "$CONFIG"; then
+        echo "Skanyxx: to invite people, set Identity:PublicBaseUrl in $CONFIG to the address they use to reach"
+        echo "  Skanyxx, e.g. \"PublicBaseUrl\": \"http://localhost:$PORT\" on this Mac (https://... behind a proxy)."
+    fi
 fi
 
-# ── launchd agent (auto-start on login) ──────────────────────────
-cat > "$LAUNCHD_PLIST" <<'PLIST'
+# ── launchd agent (on demand: launchctl start com.skanyxx.app) ────
+# The optional fixed local address for bookmarks (http://127.0.0.1:$PORT, shared by every account; the launcher itself
+# needs no listener, D234). Not started at login. No StandardOutPath: a fixed file in /tmp is shared by every account (symlink planting,
+# world-readable logs); the output goes to the unified log instead.
+cat > "$LAUNCHD_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -77,15 +115,13 @@ cat > "$LAUNCHD_PLIST" <<'PLIST'
     <key>Label</key>          <string>com.skanyxx.app</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/share/skanyxx/Skanyxx.Host</string>
+        <string>$INSTALL_DIR/Skanyxx.Host</string>
         <string>--urls</string>
-        <string>http://localhost:5282</string>
+        <string>http://127.0.0.1:$PORT</string>
     </array>
-    <key>WorkingDirectory</key>  <string>/usr/local/share/skanyxx</string>
+    <key>WorkingDirectory</key>  <string>$INSTALL_DIR</string>
     <key>RunAtLoad</key>         <false/>
     <key>KeepAlive</key>         <false/>
-    <key>StandardOutPath</key>   <string>/tmp/skanyxx.log</string>
-    <key>StandardErrorPath</key> <string>/tmp/skanyxx-error.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>ASPNETCORE_ENVIRONMENT</key><string>Production</string>

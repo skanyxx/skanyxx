@@ -75,10 +75,20 @@ spec:
     {{- end }}
   egress:
     - {}
+{{- $ce := $np.controllerEgress }}
+{{- if and $ce.enabled (not .Values.kagent.enabled) }}
+{{- fail "networkPolicy.controllerEgress fences the bundled kagent only (kagent.enabled=false): fence your own kagent's controller in its namespace" }}
+{{- end }}
+{{- if and $ce.enabled (not $ce.kubeApiCidrs) }}
+{{- fail "networkPolicy.controllerEgress.enabled needs networkPolicy.controllerEgress.kubeApiCidrs (kubectl get endpoints kubernetes -n default): the controller cannot work without the Kubernetes API" }}
+{{- end }}
 {{- if .Values.kagent.enabled }}
 ---
-# kagent 0.10.2 authenticates nobody (D101): its controller API answers this namespace only. Its egress stays open:
-# it needs the Kubernetes API, whose address differs per cluster.
+# kagent 0.10.2 authenticates nobody (D101): its controller API answers this namespace only. It connects to every
+# plugin MCP server with its header values (tool discovery), so networkPolicy.controllerEgress fences it (D229): DNS
+# (default-deny), the Kubernetes API, Postgres, Skanyxx's mcp port, the agent pods' A2A port, the internet minus
+# clusterCidrs on 443, and controllerEgress.extra. Off by default, egress stays open: the API's address differs per
+# cluster.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -95,7 +105,61 @@ spec:
     - from:
         - podSelector: {}
   egress:
+    {{- if $ce.enabled }}
+    - to:
+        {{- range $ce.kubeApiCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        {{- range $ce.kubeApiPorts }}
+        - port: {{ . }}
+        {{- end }}
+    {{- if .Values.postgresql.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "skanyxx.selectorLabels" (dict "ctx" . "name" "postgres") | nindent 14 }}
+      ports:
+        - port: postgres
+    {{- end }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "skanyxx.selectorLabels" $skanyxx | nindent 14 }}
+      ports:
+        - port: mcp
+    - to:
+        - podSelector:
+            matchLabels:
+              app: kagent
+            matchExpressions:
+              - {key: kagent, operator: Exists}
+      ports:
+        {{- range $ce.a2aPorts }}
+        - port: {{ . }}
+        {{- end }}
+    # Public plugin servers: the internet minus every clusterCidrs range of the same family (D149).
+    - to:
+        {{- range list "0.0.0.0/0" "::/0" }}
+        {{- $v6 := contains ":" . }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+            except:
+              {{- range $np.clusterCidrs }}
+              {{- if eq $v6 (contains ":" .) }}
+              - {{ . | quote }}
+              {{- end }}
+              {{- end }}
+        {{- end }}
+      ports:
+        - port: 443
+    {{- with $ce.extra }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+    {{- else }}
     - {}
+    {{- end }}
 ---
 # kagent's agent pods (labelled app=kagent, kagent=<agent> by its controller): A2A only from the controller (Chat goes
 # through it). Out (D148): kagent's controller, Skanyxx's mcp port (never its UI/API), DNS (default-deny), the model

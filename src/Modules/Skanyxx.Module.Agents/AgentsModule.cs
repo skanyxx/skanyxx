@@ -1,13 +1,19 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Core.Interfaces;
 using Skanyxx.Core.Platform.Memory;
+using Skanyxx.Module.Agents.Plugins;
+using Skanyxx.Module.Agents.Plugins.Features;
+using Skanyxx.Module.Agents.Plugins.Sources;
 using Skanyxx.Module.Agents.Services;
 using Skanyxx.Module.Agents.Studio;
 using Skanyxx.Module.Agents.Studio.Features;
 using Skanyxx.Module.Agents.Studio.Git;
+using Skanyxx.Module.Agents.Studio.Plugins;
 using Skanyxx.Module.Agents.Studio.Reconcile;
 
 namespace Skanyxx.Module.Agents;
@@ -45,15 +51,35 @@ public class AgentsModule : IModule
         services.AddSingleton<IAgentRepo, GiteaAgentRepo>();
         services.AddSingleton<StudioRepoGuard>();
         services.AddSingleton<StudioSignal>();
+        services.AddSingleton<PluginRepoReader>();
         services.AddSingleton<StudioReconciler>();
         services.AddHostedService<StudioReconcileLoop>();
         services.AddSingleton<ProposalInspector>();
         services.AddSingleton<StudioChat>();
+
+        services.AddOptions<PluginsOptions>().Bind(configuration.GetSection(PluginsOptions.Section));
+        services.AddHttpClient(GitArchiveSource.HttpClientName, client => client.Timeout = GitArchiveSource.Timeout)
+            .ConfigurePrimaryHttpMessageHandler(sp => GitArchiveSource.Handler(sp.GetRequiredService<IOptions<PluginsOptions>>().Value));
+        services.AddSingleton<GitArchiveSource>();
+        services.AddSingleton<CatalogPluginSource>();
+        services.AddSingleton<PluginLoader>();
     }
 
-    /// <summary>The reconciler's cross-replica lock (D120) is memory's: fail startup, not the first pass, without it.</summary>
-    public Task InitializeAsync(IServiceProvider serviceProvider) =>
-        serviceProvider.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IStudioReconcileLock))
-            ? Task.CompletedTask
-            : throw new InvalidOperationException("The agents module needs IStudioReconcileLock (the memory module) to run the studio reconciler; enable the memory module.");
+    /// <summary>
+    /// The reconciler's cross-replica lock (D120) is memory's: fail startup, not the first pass, without it. A key ring in
+    /// clear outside Development is said once at startup (D220): stored plugin header values depend on it. So is a plugin
+    /// switch that widens where kagent's controller sends them (D229).
+    /// </summary>
+    public Task InitializeAsync(IServiceProvider serviceProvider)
+    {
+        if (!serviceProvider.GetRequiredService<IServiceProviderIsService>().IsService(typeof(IStudioReconcileLock)))
+            throw new InvalidOperationException("The agents module needs IStudioReconcileLock (the memory module) to run the studio reconciler; enable the memory module.");
+        var environment = serviceProvider.GetRequiredService<IHostEnvironment>();
+        var logger = serviceProvider.GetRequiredService<ILoggerFactory>().CreateLogger<AgentsModule>();
+        if (PluginValueKeyRing.InClear(environment, serviceProvider.GetRequiredService<IConfiguration>()))
+            logger.LogWarning("{Warning}", PluginValueKeyRing.Warning);
+        foreach (var warning in PluginEgressWarnings.Of(environment, serviceProvider.GetRequiredService<IOptions<PluginsOptions>>().Value))
+            logger.LogWarning("{Warning}", warning);
+        return Task.CompletedTask;
+    }
 }

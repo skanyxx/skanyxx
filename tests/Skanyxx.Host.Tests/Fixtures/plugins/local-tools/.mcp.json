@@ -1,0 +1,5 @@
+{ "mcpServers": {
+  "files": { "type": "stdio", "command": "npx", "args": ["-y", "@modelcontextprotocol/server-filesystem", "."] },
+  "untyped": { "url": "https://untyped.example.com/mcp" },
+  "remote": { "type": "http", "url": "https://remote.example.com/mcp" }
+} }

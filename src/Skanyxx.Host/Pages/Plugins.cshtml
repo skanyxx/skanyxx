@@ -1,0 +1,403 @@
+@page
+@model PluginsModel
+@{
+    ViewData["Title"] = "Plugins";
+    var me = Model.Me;
+}
+<p class="text-muted">
+    A plugin is a Claude Code plugin: remote MCP servers and the agents that use them. Installing one opens a pull request
+    in the agent repo; nothing is live until a supervisor merges it on the <a href="/Studio">Studio</a> page. Plugins are
+    recipes only: they never get memory grants. Header secrets are entered here by the owner and never go to git.
+</p>
+<p class="text-muted" id="credential-note">
+    A header value is the owner's credential at that service, and <strong>every chat user of the plugin's agents acts with
+    it</strong>: enter a least-privilege token (read-only, one project), never a personal admin token. Values stay bound to
+    the address (host, port and path) they were entered for; a new version that moves a server elsewhere keeps them with the
+    running server until it is merged, then waits for them to be entered again.
+</p>
+
+<section id="plugins" data-owner="@(me.IsOwner ? "true" : "false")" data-propose="@(me.CanPropose ? "true" : "false")">
+    <p id="plugins-error" class="text-error" role="alert" hidden></p>
+    <p id="plugins-status" class="text-success" role="status" hidden></p>
+
+    <div class="card mb-3">
+        <div class="card-header flex items-center gap-2">
+            <h3 class="card-title">Installed</h3>
+            <button type="button" class="btn btn-ghost" id="refresh">Refresh</button>
+        </div>
+        <p id="repo-problem" hidden></p>
+        <p id="key-ring" class="text-error" role="alert" hidden></p>
+        @if (me.IsOwner)
+        {
+            <p id="controller-egress" class="text-muted">
+                kagent's controller connects to every plugin server, with its header values, to discover its tools. Skanyxx's Helm chart
+                fences that egress only with <code>networkPolicy.controllerEgress</code> (off by default); with your own kagent, fence its
+                controller yourself.
+            </p>
+        }
+        <div id="installed"></div>
+        <p id="installed-empty" class="text-muted" hidden>No plugins installed.</p>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header"><h3 class="card-title">Open plugin proposals</h3></div>
+        <div class="table-container">
+            <table>
+                <thead><tr><th scope="col">#</th><th scope="col">Title</th><th scope="col">Plugin</th><th scope="col">Proposed by</th></tr></thead>
+                <tbody id="open-rows"></tbody>
+            </table>
+        </div>
+        <p id="open-empty" class="text-muted" hidden>No open plugin proposals.</p>
+    </div>
+
+    <div class="card mb-3" id="add">
+        <div class="card-header"><h3 class="card-title">Add plugin</h3></div>
+        <div class="flex gap-2" role="tablist" aria-label="Plugin source">
+            <button type="button" class="btn btn-secondary" role="tab" id="tab-catalog" aria-controls="panel-catalog" aria-selected="true">Catalog</button>
+            @if (me.IsOwner)
+            {
+                <button type="button" class="btn btn-ghost" role="tab" id="tab-git" aria-controls="panel-git" aria-selected="false">Git URL + commit</button>
+                <button type="button" class="btn btn-ghost" role="tab" id="tab-zip" aria-controls="panel-zip" aria-selected="false">Upload zip</button>
+            }
+        </div>
+
+        <div id="panel-catalog" role="tabpanel" aria-labelledby="tab-catalog">
+            <p class="text-muted">Plugins bundled with Skanyxx.</p>
+            <div id="catalog"></div>
+        </div>
+        @if (me.IsOwner)
+        {
+            <form id="panel-git" role="tabpanel" aria-labelledby="tab-git" class="flex flex-col gap-2" hidden>
+                <label for="git-url">Repository (https; github.com or a host in Plugins:GitHosts)</label>
+                <input id="git-url" required maxlength="2048" placeholder="https://github.com/owner/repo" autocomplete="off" />
+                <label for="git-commit">Commit (full 40-character SHA; a branch or tag can move after review)</label>
+                <input id="git-commit" required maxlength="40" pattern="[0-9a-f]{40}" autocomplete="off" spellcheck="false" />
+                <label for="git-path">Folder in the repository (empty = its root)</label>
+                <input id="git-path" maxlength="512" autocomplete="off" />
+                <div><button type="submit" class="btn btn-primary">Inspect</button></div>
+            </form>
+            <form id="panel-zip" role="tabpanel" aria-labelledby="tab-zip" class="flex flex-col gap-2" hidden>
+                <label for="zip-file">Plugin zip (at most 10 MB)</label>
+                <input id="zip-file" type="file" accept=".zip,application/zip" required />
+                <label for="zip-path">Folder in the zip (empty = its root)</label>
+                <input id="zip-path" maxlength="512" autocomplete="off" />
+                <div><button type="submit" class="btn btn-primary">Inspect</button></div>
+            </form>
+        }
+        <div id="result" class="mt-3" aria-live="polite"></div>
+    </div>
+</section>
+
+<script>
+(() => {
+    const root = document.getElementById('plugins');
+    const isOwner = root.dataset.owner === 'true';
+    const canPropose = root.dataset.propose === 'true';
+    const errorBox = document.getElementById('plugins-error');
+    const statusBox = document.getElementById('plugins-status');
+    const resultBox = document.getElementById('result');
+    const base = '/api/plugins';
+
+    // Values from the API are only ever set with textContent.
+    const say = (box, text) => { box.textContent = text; box.hidden = !text; };
+    const fail = text => { say(statusBox, ''); say(errorBox, text); };
+    const done = text => { say(errorBox, ''); say(statusBox, text); };
+
+    const problemText = (problem, status) =>
+        problem.detail || problem.message
+        || (problem.errors ? Object.values(problem.errors).flat().join(' ') : '')
+        || problem.title || `HTTP ${status}`;
+
+    async function call(method, path, body) {
+        const init = { method };
+        if (body instanceof FormData) init.body = body;
+        else if (body !== undefined) {
+            init.headers = { 'Content-Type': 'application/json' };
+            init.body = JSON.stringify(body);
+        }
+        const response = await fetch(path, init);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(problemText(data, response.status));
+        return data;
+    }
+
+    function el(tag, text, className) {
+        const e = document.createElement(tag);
+        if (text !== undefined && text !== null) e.textContent = text;
+        if (className) e.className = className;
+        return e;
+    }
+
+    function button(label, aria, action, className = 'btn btn-ghost') {
+        const b = el('button', label, className);
+        b.type = 'button';
+        b.setAttribute('aria-label', aria);
+        b.addEventListener('click', action);
+        return b;
+    }
+
+    function studioLink(number) {
+        const a = el('a', `#${number}`);
+        a.href = `/Studio?pr=${encodeURIComponent(number)}#proposal`;
+        return a;
+    }
+
+    function table(headers, rows) {
+        const t = el('table');
+        const head = el('tr');
+        for (const h of headers) {
+            const th = el('th', h);
+            th.scope = 'col';
+            head.appendChild(th);
+        }
+        t.appendChild(el('thead')).appendChild(head);
+        const body = t.appendChild(el('tbody'));
+        for (const cells of rows) {
+            const tr = body.appendChild(el('tr'));
+            for (const c of cells) {
+                const td = tr.appendChild(el('td'));
+                if (c instanceof Node) td.appendChild(c); else td.textContent = c ?? '';
+            }
+        }
+        const wrap = el('div', null, 'table-container');
+        wrap.appendChild(t);
+        return wrap;
+    }
+
+    const stateText = {
+        'deployed': 'deployed',
+        'starting': 'starting (kagent has not discovered its tools yet; it retries within about a minute)',
+        'needs-secret': 'needs secret',
+        'pending': 'pending (the reconciler applies it)',
+        'foreign': 'name taken in kagent (not created)',
+        'invalid': 'invalid in main (skipped)'
+    };
+
+    const sourceText = s => !s ? '' : s.kind === 'git' ? `git ${s.location} at ${s.commit?.slice(0, 12)}${s.path ? ' /' + s.path : ''}` : `${s.kind} ${s.location}`;
+
+    // Password inputs are built empty every time: a stored value is never sent to the page.
+    function secretsForm(server) {
+        const form = el('form', null, 'flex flex-col gap-2');
+        form.dataset.server = server.name;
+        for (const h of server.headers) {
+            const id = `secret-${server.name}-${h.name}`;
+            const label = el('label', `${h.name}${h.template ? ` (${h.template})` : ''}${h.hasValue ? ' — a value is stored; leave empty to keep it' : ''}`);
+            label.htmlFor = id;
+            const input = el('input');
+            input.type = 'password';
+            input.id = id;
+            input.name = h.name;
+            input.autocomplete = 'off';
+            input.maxLength = 4096;
+            form.append(label, input);
+        }
+        const save = el('button', 'Save values', 'btn btn-secondary');
+        save.type = 'submit';
+        form.appendChild(el('div')).appendChild(save);
+        form.addEventListener('submit', async event => {
+            event.preventDefault();
+            const values = {};
+            for (const input of form.querySelectorAll('input[type=password]')) if (input.value) values[input.name] = input.value;
+            if (Object.keys(values).length === 0) return fail('Enter at least one value.');
+            save.disabled = true;
+            try {
+                const result = await call('PUT', `${base}/servers/${encodeURIComponent(server.name)}/secrets`, { values });
+                done(result.message);
+            } catch (e) {
+                fail(e.message);
+            } finally {
+                for (const input of form.querySelectorAll('input[type=password]')) input.value = '';
+                save.disabled = false;
+            }
+            await load();
+        });
+        return form;
+    }
+
+    function renderPlugin(p) {
+        const card = el('div', null, 'mb-3');
+        card.dataset.plugin = p.name;
+        const title = card.appendChild(el('h4'));
+        title.appendChild(el('code', p.name));
+        title.append(` ${p.version ?? ''}`);
+        if (p.description) card.appendChild(el('p', p.description));
+        if (p.source) card.appendChild(el('p', `From ${sourceText(p.source)}`, 'text-muted'));
+        if (p.problem) card.appendChild(el('p', `Not valid in main: ${p.problem}`, 'text-error'));
+        if (p.servers.length > 0) {
+            card.appendChild(table(['Server', 'URL', 'State', 'Headers'], p.servers.map(s => {
+                const state = el('span', stateText[s.state] ?? s.state, s.state === 'deployed' ? 'badge badge-success' : 'badge badge-warning');
+                state.dataset.state = s.state;
+                return [s.name, s.url, state, s.headers.map(h => `${h.name}${h.hasValue ? ' (value stored)' : ' (no value)'}`).join(', ')];
+            })));
+            if (isOwner) for (const s of p.servers.filter(s => s.headers.length > 0)) {
+                card.appendChild(el('p', `Header values for ${s.name}`, 'text-muted'));
+                card.appendChild(secretsForm(s));
+            }
+        }
+        if (p.agents.length > 0)
+            card.appendChild(table(['Agent', 'Description', 'In kagent'], p.agents.map(a => [a.name, a.description, a.live ? 'live (merged)' : 'not live yet (waits for its servers)'])));
+        for (const w of p.warnings ?? []) card.appendChild(el('p', w, 'text-warning'));
+        if (p.notes.length > 0) {
+            const details = el('details');
+            details.appendChild(el('summary', `Install report (${p.notes.length})`));
+            details.appendChild(table(['Item', 'Status', 'Reason'], p.notes.map(n => [n.item, n.status, n.reason])));
+            card.appendChild(details);
+        }
+        if (canPropose && !p.problem) card.appendChild(button('Uninstall', `Uninstall ${p.name}`, async () => {
+            if (!confirm(`Propose removing ${p.name}? A supervisor merges it; then its agents and servers leave kagent.`)) return;
+            try {
+                const result = await call('POST', `${base}/${encodeURIComponent(p.name)}/uninstall`);
+                done(result.message);
+            } catch (e) {
+                fail(e.message);
+            }
+            await load();
+        }));
+        return card;
+    }
+
+    async function load() {
+        try {
+            const overview = await call('GET', base);
+            say(document.getElementById('repo-problem'), overview.repoProblem ?? '');
+            say(document.getElementById('key-ring'), isOwner && overview.keyRingInClear
+                ? 'Stored header values are protected by a key ring kept unencrypted in the identity database (Identity:DataProtectionCertificatePath is not set): '
+                  + 'anyone who reads that database or its backup can decrypt them. Set a certificate before entering production credentials.'
+                : '');
+            const installed = document.getElementById('installed');
+            installed.replaceChildren(...overview.plugins.map(renderPlugin));
+            document.getElementById('installed-empty').hidden = overview.plugins.length > 0 || !!overview.repoProblem;
+            const rows = document.getElementById('open-rows');
+            rows.replaceChildren();
+            for (const p of overview.open) {
+                const tr = rows.appendChild(el('tr'));
+                tr.appendChild(el('td')).appendChild(studioLink(p.number));
+                tr.appendChild(el('td', p.title));
+                tr.appendChild(el('td')).appendChild(el('code', p.plugin));
+                tr.appendChild(el('td', p.proposedBy));
+            }
+            document.getElementById('open-empty').hidden = overview.open.length > 0;
+        } catch (e) {
+            fail(e.message);
+        }
+    }
+
+    // --- inspect and install ---
+
+    let lastZip = null;
+
+    async function inspect(target) {
+        resultBox.replaceChildren(el('p', 'Reading the source…', 'text-muted'));
+        try {
+            const inspection = target.source === 'zip'
+                ? await call('POST', `${base}/inspect/zip`, zipForm(target))
+                : await call('POST', `${base}/inspect`, target);
+            say(errorBox, '');
+            if (inspection.marketplace) showListing(inspection.marketplace, resultBox);
+            else showReport(inspection.plugin, target);
+        } catch (e) {
+            resultBox.replaceChildren();
+            fail(e.message);
+        }
+    }
+
+    function zipForm(target) {
+        const form = new FormData();
+        form.append('file', lastZip);
+        if (target.path) form.append('path', target.path);
+        if (target.name) form.append('name', target.name);
+        if (target.digest) form.append('digest', target.digest);
+        return form;
+    }
+
+    function showListing(listing, into) {
+        const box = el('div');
+        box.appendChild(el('h4', listing.name));
+        if (listing.description) box.appendChild(el('p', listing.description, 'text-muted'));
+        box.appendChild(table(['Plugin', 'Description', 'Version', ''], listing.entries.map(e => [
+            e.name, e.description, e.version ?? '',
+            e.target ? button('Inspect', `Inspect ${e.name}`, () => inspect(e.target)) : el('span', `${e.problem.status}: ${e.problem.reason}`, 'text-muted')
+        ])));
+        into.replaceChildren(box);
+    }
+
+    function showReport(report, target) {
+        const box = el('div');
+        box.dataset.report = report.name;
+        const title = box.appendChild(el('h4'));
+        title.appendChild(el('code', report.name));
+        title.append(` ${report.version ?? ''}`);
+        if (report.description) box.appendChild(el('p', report.description));
+        box.appendChild(el('p', `From ${sourceText(report.source)} · digest ${report.digest.slice(0, 16)}…`, 'text-muted'));
+        box.appendChild(el('h5', 'Servers it adds (remote MCP)'));
+        box.appendChild(report.servers.length === 0 ? el('p', 'None.', 'text-muted') : table(['Server', 'URL', 'Protocol', 'Headers'], report.servers.map(s =>
+            [s.name, s.url, s.protocol, s.headers.map(h => `${h.name}: ${h.value ?? (h.template ? `owner enters ${h.template}` : '')}`).join('; ')])));
+        if (report.servers.some(s => s.headers.length > 0))
+            box.appendChild(el('p', 'Every chat user of these agents acts with the header values entered for these servers: use least-privilege tokens.', 'text-warning'));
+        box.appendChild(el('h5', 'Agents it adds'));
+        box.appendChild(report.agents.length === 0 ? el('p', 'None.', 'text-muted') : table(['Agent', 'Description', 'Tools'], report.agents.map(a =>
+            [a.name, a.description, a.tools.map(t => t.tools.length === 0 ? `${t.server}: all tools` : `${t.server}: ${t.tools.join(', ')}`).join('; ')])));
+        box.appendChild(el('h5', 'Changed, unsupported or refused'));
+        box.appendChild(report.notes.length === 0 ? el('p', 'Nothing: everything installs as it is.', 'text-muted') : table(['Item', 'Status', 'Reason'], report.notes.map(n => [n.item, n.status, n.reason])));
+        if (canPropose && (target.source === 'catalog' || isOwner)) {
+            const install = button('Install (opens a pull request)', `Install ${report.name}`, async () => {
+                install.disabled = true;
+                const request = { ...target, digest: report.digest };
+                try {
+                    const result = target.source === 'zip'
+                        ? await call('POST', `${base}/install/zip`, zipForm(request))
+                        : await call('POST', `${base}/install`, request);
+                    const line = el('p', `${result.message} Review it on the Studio page: `, 'text-success');
+                    line.appendChild(studioLink(result.number));
+                    box.appendChild(line);
+                    say(errorBox, '');
+                } catch (e) {
+                    fail(e.message);
+                    install.disabled = false;
+                }
+                await load();
+            }, 'btn btn-primary');
+            box.appendChild(install);
+        }
+        resultBox.replaceChildren(box);
+    }
+
+    // --- tabs ---
+
+    const tabs = ['catalog', 'git', 'zip'].map(name => [document.getElementById(`tab-${name}`), document.getElementById(`panel-${name}`)]).filter(([t]) => t);
+    for (const [tab] of tabs) tab.addEventListener('click', () => {
+        for (const [other, panel] of tabs) {
+            const on = other === tab;
+            other.setAttribute('aria-selected', on ? 'true' : 'false');
+            other.className = on ? 'btn btn-secondary' : 'btn btn-ghost';
+            panel.hidden = !on;
+        }
+        resultBox.replaceChildren();
+    });
+
+    async function loadCatalog() {
+        try {
+            showListing((await call('GET', `${base}/catalog`)).marketplace, document.getElementById('catalog'));
+        } catch (e) {
+            fail(e.message);
+        }
+    }
+
+    document.getElementById('panel-git')?.addEventListener('submit', event => {
+        event.preventDefault();
+        const path = document.getElementById('git-path').value.trim();
+        inspect({ source: 'git', url: document.getElementById('git-url').value.trim(), commit: document.getElementById('git-commit').value.trim(), path: path || null });
+    });
+    document.getElementById('panel-zip')?.addEventListener('submit', event => {
+        event.preventDefault();
+        lastZip = document.getElementById('zip-file').files[0];
+        if (!lastZip) return fail('Choose a zip file.');
+        if (lastZip.size > 10 * 1024 * 1024) return fail('The zip is larger than 10 MB.');
+        const path = document.getElementById('zip-path').value.trim();
+        inspect({ source: 'zip', path: path || null });
+    });
+    document.getElementById('refresh').addEventListener('click', load);
+    load();
+    loadCatalog();
+})();
+</script>

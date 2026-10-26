@@ -211,8 +211,23 @@ public class KAgentApiClient
             Status = isReady ? "Active" : "Inactive",
             Ready = isReady,
             Accepted = isAccepted,
-            Labels = labels
+            Labels = labels,
+            McpToolNames = McpToolNames(spec)
         };
+    }
+
+    private static Dictionary<string, List<string>> McpToolNames(JsonElement spec)
+    {
+        var tools = new Dictionary<string, List<string>>();
+        if (spec.ValueKind != JsonValueKind.Object || !spec.TryGetProperty("declarative", out var declarative) || declarative.ValueKind != JsonValueKind.Object
+            || !declarative.TryGetProperty("tools", out var list) || list.ValueKind != JsonValueKind.Array)
+            return tools;
+        foreach (var tool in list.EnumerateArray())
+            if (tool.ValueKind == JsonValueKind.Object && tool.TryGetProperty("mcpServer", out var server) && GetStringProperty(server, "name") is { } name)
+                tools[name] = server.TryGetProperty("toolNames", out var names) && names.ValueKind == JsonValueKind.Array
+                    ? [.. names.EnumerateArray().Where(n => n.ValueKind == JsonValueKind.String).Select(n => n.GetString()!)]
+                    : [];
+        return tools;
     }
 
     private static bool HasCondition(JsonElement status, string type) =>

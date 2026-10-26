@@ -60,6 +60,10 @@
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-studio"/></svg></span>
                             <span class="nav-label">Studio</span>
                         </a>
+                        <a href="/Plugins" class="nav-item @(currentPage == "/Plugins" ? "active" : "")" title="Plugins">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-puzzle"/></svg></span>
+                            <span class="nav-label">Plugins</span>
+                        </a>
                     }
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor))
                     {

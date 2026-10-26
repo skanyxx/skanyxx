@@ -28,6 +28,11 @@ public sealed class StudioOptions
     /// <summary>The ModelConfig the factory agent runs on (D5); the owner's model by default.</summary>
     public string FactoryModelConfig { get; set; } = "default-model-config";
 
+    /// <summary>The ModelConfig every plugin agent runs on (P5: a plugin's own model choice is ignored); empty = <see cref="FactoryModelConfig"/>.</summary>
+    public string PluginModelConfig { get; set; } = "";
+
+    public string PluginModel => string.IsNullOrWhiteSpace(PluginModelConfig) ? FactoryModelConfig : PluginModelConfig;
+
     /// <summary>
     /// OCI registry prefixes skills may come from (D122), e.g. <c>ghcr.io/acme/skills/</c>. Empty (the default) turns
     /// skills off: a skill runs code in the agent's pod, so the owner chooses where it may come from.
@@ -45,6 +50,9 @@ public sealed class StudioOptions
 
     /// <summary>How long a merge, preview or factory call waits for a running reconcile pass (D120) before giving up.</summary>
     public int LockWaitSeconds { get; set; } = 20;
+
+    /// <summary>A plugin proposal changes at most this many files (P8): git lists only the first 50 changed files of a pull request.</summary>
+    public const int MaxPluginFiles = 48;
 
     public bool Configured => !string.IsNullOrWhiteSpace(Git.BaseUrl) && !string.IsNullOrWhiteSpace(Git.Token);
 

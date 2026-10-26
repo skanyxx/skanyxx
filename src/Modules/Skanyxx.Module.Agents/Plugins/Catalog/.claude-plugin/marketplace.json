@@ -1,0 +1,21 @@
+{
+  "name": "skanyxx-catalog",
+  "owner": { "name": "Skanyxx" },
+  "description": "Plugins bundled with Skanyxx: public remote MCP servers that need no account, each with an agent that uses it.",
+  "plugins": [
+    {
+      "name": "microsoft-learn",
+      "source": "./plugins/microsoft-learn",
+      "description": "Microsoft Learn's official docs MCP server and an agent that answers Azure, .NET and Microsoft questions from it, with links.",
+      "version": "1.0.0",
+      "category": "documentation"
+    },
+    {
+      "name": "deepwiki",
+      "source": "./plugins/deepwiki",
+      "description": "DeepWiki's MCP server for public GitHub repositories and an agent that explains how a repository works.",
+      "version": "1.0.0",
+      "category": "development"
+    }
+  ]
+}

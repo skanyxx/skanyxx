@@ -97,12 +97,14 @@ internal sealed class GiteaAgentRepo(IHttpClientFactory clients, IOptions<Studio
             ["new_branch"] = branch,
             ["message"] = message,
             ["author"] = new JsonObject { ["name"] = authorName, ["email"] = authorEmail },
-            ["files"] = new JsonArray([.. changes.Select(c => (JsonNode)new JsonObject
-            {
-                ["operation"] = c.Exists ? "update" : "create",
-                ["path"] = c.Path,
-                ["content"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(c.Content))
-            })])
+            ["files"] = new JsonArray([.. changes.Select(c => (JsonNode)(c.Content is null
+                ? new JsonObject { ["operation"] = "delete", ["path"] = c.Path }
+                : new JsonObject
+                {
+                    ["operation"] = c.Exists ? "update" : "create",
+                    ["path"] = c.Path,
+                    ["content"] = Convert.ToBase64String(Encoding.UTF8.GetBytes(c.Content))
+                }))])
         }, ct);
         var pull = await SendAsync(HttpMethod.Post, $"{RepoPath}/pulls",
             new JsonObject { ["head"] = branch, ["base"] = _git.Branch, ["title"] = title, ["body"] = body }, ct);

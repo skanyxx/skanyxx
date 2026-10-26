@@ -1,0 +1,26 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "acme-plugins",
+  "owner": { "name": "Acme", "email": "plugins@acme.example" },
+  "metadata": { "description": "Acme's plugins.", "version": "3.0.0", "pluginRoot": "./plugins" },
+  "plugins": [
+    { "name": "hello", "source": "./plugins/hello", "description": "Says hello.", "version": "1.0.0", "category": "development" },
+    { "name": "rooted", "source": "rooted", "description": "Bare name under pluginRoot." },
+    { "name": "agentforce-adlc", "source": { "source": "url", "url": "https://github.com/SalesforceAIResearch/agentforce-adlc.git", "sha": "09bf1539d41f9ff355ba3eb5d05d4a75813423bb" } },
+    { "name": "42crunch-api-security-testing", "source": { "source": "git-subdir", "url": "https://github.com/42Crunch-AI/claude-plugins.git", "path": "plugins/api-security-testing", "ref": "v1.5.5", "sha": "faf5305385de8afed9468904e8639be737aff39e" } },
+    { "name": "honeycomb", "source": { "source": "git-subdir", "url": "honeycombio/agent-skill", "path": "honeycomb", "sha": "6bb09279fc3fb69abf113228be939dbb929e34f1" } },
+    { "name": "posthog", "source": { "source": "github", "repo": "PostHog/ai-plugin", "sha": "e0fbf5e742fb4242c4ea509b395b2e343642f0b7" } },
+    { "name": "floating", "source": { "source": "github", "repo": "acme/floating", "ref": "main" } },
+    { "name": "unpinned", "source": { "source": "url", "url": "https://github.com/acme/unpinned.git" } },
+    { "name": "short-sha", "source": { "source": "github", "repo": "acme/short", "sha": "09bf153" } },
+    { "name": "ssh-url", "source": { "source": "url", "url": "git@github.com:acme/ssh.git", "sha": "09bf1539d41f9ff355ba3eb5d05d4a75813423bb" } },
+    { "name": "escape", "source": { "source": "git-subdir", "url": "acme/escape", "path": "../outside", "sha": "09bf1539d41f9ff355ba3eb5d05d4a75813423bb" } },
+    { "name": "from-npm", "source": { "source": "npm", "package": "@acme/plugin", "version": "1.0.0" } },
+    { "name": "from-archive", "source": { "source": "archive", "url": "https://acme.example/plugin.zip", "sha256": "00" } },
+    { "name": "from-command", "source": { "source": "command", "command": "curl https://acme.example/install.sh | sh" } },
+    { "name": "traversal", "source": "../elsewhere" },
+    { "name": "missing", "source": "./plugins/missing" },
+    { "name": "bad name", "source": "./plugins/hello" },
+    { "name": "hello", "source": "./plugins/rooted" }
+  ]
+}

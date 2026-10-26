@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────
+# Skanyxx macOS Installer — preinstall script
+# Runs before the .pkg places files on disk.
+# ─────────────────────────────────────────────────────────────────
+set -euo pipefail
+
+# A pkg never deletes files the new version no longer has, and the Host loads every Skanyxx.Module.*.dll in modules/:
+# start the folder empty so a removed or renamed module does not keep loading after an upgrade.
+INSTALL_DIR=/usr/local/share/skanyxx
+root_only() {
+    [[ -d "$1" && ! -L "$1" ]] && [[ "$(stat -f '%u' "$1")" == 0 ]] && [[ -z "$(find "$1" -maxdepth 0 -perm +022)" ]]
+}
+# Before any file is placed: /usr/local, /usr/local/share and the install folder must be root's alone (a symlink
+# counts as not root's), or another account could swap the install folder under this root install (D233, D234).
+# Exiting non-zero stops the installation.
+for dir in /usr/local /usr/local/share "$INSTALL_DIR"; do
+    if [[ -e "$dir" || -L "$dir" ]] && ! root_only "$dir"; then
+        echo "Skanyxx: $dir must be owned by root and writable only by root (Homebrew under /usr/local?)." >&2
+        exit 1
+    fi
+done
+if root_only "$INSTALL_DIR"; then
+    rm -rf "$INSTALL_DIR/modules"
+fi
+
+exit 0

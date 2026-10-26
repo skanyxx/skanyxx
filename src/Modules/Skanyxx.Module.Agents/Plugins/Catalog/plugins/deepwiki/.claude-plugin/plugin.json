@@ -1,0 +1,7 @@
+{
+  "name": "deepwiki",
+  "version": "1.0.0",
+  "description": "DeepWiki's MCP server for public GitHub repositories and an agent that explains how a repository works.",
+  "homepage": "https://docs.devin.ai/work-with-devin/deepwiki-mcp",
+  "license": "MIT"
+}

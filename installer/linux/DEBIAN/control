@@ -2,14 +2,13 @@ Package: skanyxx
 Version: SKANYXX_VERSION
 Architecture: amd64
 Maintainer: Skanyxx <admin@skanyxx.dev>
-Installed-Size: 120000
-Depends: libc6 (>= 2.27), libgcc-s1, libstdc++6, libicu78 | libicu76 | libicu74 | libicu70, libssl3t64 | libssl3
-Recommends: curl
+Depends: libc6 (>= 2.27), libgcc-s1, libstdc++6, libicu78 | libicu76 | libicu74 | libicu72 | libicu70, libssl3t64 | libssl3
+Recommends: curl, xdg-utils, libnotify-bin
 Section: utils
 Priority: optional
 Homepage: https://github.com/skanyxx/skanyxx
 Description: Skanyxx desktop launcher
- Opens your company's Skanyxx agent workspace from http://localhost:5282
- (Skanyxx:Mode Remote, Skanyxx:RemoteUrl). The Skanyxx server itself is
- installed with the Helm chart; a full local Skanyxx (Mode Server) is a
- dev console only.
+ Opens your company's Skanyxx agent workspace (Skanyxx:RemoteUrl, Mode
+ Remote) in the browser; nothing listens on this machine unless the optional
+ skanyxx service is enabled. The Skanyxx server itself is installed with the
+ Helm chart; a full local Skanyxx (Mode Server) is a dev console only.

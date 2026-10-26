@@ -1,0 +1,6 @@
+#!/bin/sh
+# No arguments: open the company's Skanyxx (Skanyxx:RemoteUrl) directly; nothing listens (D234). With arguments: the
+# Host, e.g. --urls http://127.0.0.1:5282. Always in the install folder: it reads appsettings.json and modules/ there (D231).
+cd /usr/share/skanyxx || exit 1
+[ "$#" -gt 0 ] || set -- open
+exec ./Skanyxx.Host "$@"

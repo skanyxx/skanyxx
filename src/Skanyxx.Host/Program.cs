@@ -17,6 +17,10 @@ using Serilog;
 using Serilog.Formatting.Compact;
 using Skanyxx.Core.Platform;
 
+// `open` / `url`: the launchers' verbs, which open Skanyxx:RemoteUrl and exit without starting a host (D234).
+if (OpenCommand.Run(args) is { } exitCode)
+    return exitCode;
+
 // The entry point only turns a failure into an exit code: a rethrow ends in abort(), which a container's PID 1 ignores,
 // so the process stayed alive (spinning) instead of crash-looping (slice 4, D135/D146).
 try

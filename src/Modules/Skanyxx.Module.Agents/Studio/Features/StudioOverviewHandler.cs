@@ -24,9 +24,10 @@ internal sealed class StudioOverviewHandler(
         {
             await guard.RequireAsync(setup: false, ct);
             var open = (await repo.OpenPullsAsync(ct))
-                .Select(p => new ProposalSummary(p.Number, p.Title, AgentOf(p.Body), ProposalTrailer.ProposedBy(p.Body), p.HeadSha, p.Mergeable))
+                .Select(p => new ProposalSummary(p.Number, p.Title, AgentOf(p.Body), ProposalTrailer.ProposedBy(p.Body), p.HeadSha, p.Mergeable,
+                    ProposalTrailer.PluginOf(p.Body)))
                 .ToList();
-            var main = await reconciler.ReadMainAsync(await reconciler.MainFoldersAsync(ct), ct);
+            var main = await reconciler.ReadMainAsync(ct);
             var live = (await kagent.GetAgentsAsync(ct))
                 .Where(a => a.Namespace == options.Value.Namespace && a.Labels.GetValueOrDefault(StudioNames.MergedLabel) == "true"
                     && a.Labels.GetValueOrDefault(StudioNames.ManagedByLabel) == StudioNames.ManagedBy)
