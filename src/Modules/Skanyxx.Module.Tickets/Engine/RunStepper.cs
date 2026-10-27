@@ -1,4 +1,5 @@
 using MediatR;
+using Skanyxx.Core.Platform.Memory;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Skanyxx.Module.Tickets.Data;
@@ -65,18 +66,37 @@ public sealed class RunStepper(
 
     /// <summary>
     /// Ends a run that could not be stepped, saying why. A direct update rather than load-and-save: the row may be
-    /// exactly what cannot be loaded.
+    /// exactly what cannot be loaded. A run this ended is finished work too, so memory is told (C-6) — from the full run
+    /// when it loads, otherwise from its plain columns with the reason as the outcome.
     /// </summary>
-    public Task FailAsync(Guid runId, string reason, CancellationToken ct)
+    public async Task FailAsync(Guid runId, string reason, CancellationToken ct)
     {
         var now = clock.GetUtcNow().UtcDateTime;
-        return db.Runs
+        var ended = await db.Runs
             .Where(r => r.Id == runId && (r.State == RunState.Pending || r.State == RunState.Running))
             .ExecuteUpdateAsync(s => s
                 .SetProperty(r => r.State, RunState.Failed)
                 .SetProperty(r => r.Error, reason)
                 .SetProperty(r => r.UpdatedAt, now)
                 .SetProperty(r => r.Version, r => r.Version + 1), ct);
+        if (ended == 1)
+            await publisher.Publish(await FailedNoticeAsync(runId, reason, ct), ct);
+    }
+
+    private async Task<TicketRunFinished> FailedNoticeAsync(Guid runId, string reason, CancellationToken ct)
+    {
+        try
+        {
+            var run = await db.Runs.AsNoTracking().Include(r => r.StageRuns).SingleAsync(r => r.Id == runId, ct);
+            return RunFinishedNotice.From(run)!;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            var plain = await db.Runs.AsNoTracking().Where(r => r.Id == runId)
+                .Select(r => new { r.TicketKey, r.CreatedBy, r.PipelineName }).SingleAsync(ct);
+            return new TicketRunFinished(runId, plain.CreatedBy, plain.TicketKey, plain.TicketKey, null, plain.PipelineName,
+                Succeeded: false, TextCut.Take(reason, RunFinishedNotice.OutcomeChars), [], []);
+        }
     }
 
     private async Task<bool> SaveAsync(Run run, CancellationToken ct)
