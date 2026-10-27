@@ -51,6 +51,37 @@ public sealed class ExtractionTests(PostgresFixture postgres) : MemoryTestBase(p
     }
 
     [Fact]
+    public async Task ConcurrentTurnsOfOneSession_KeepEveryTurnsTickets()
+    {
+        // C-3: two answers of one session finishing together each add a ticket; neither may be lost.
+        for (var round = 0; round < 8; round++)
+        {
+            var session = $"race-{round}";
+            await App.ChatTurnAsync(Turn("How do refunds work for SDB-1?", "Within 14 days.", session: session));
+
+            await Task.WhenAll(
+                App.ChatTurnAsync(Turn("And SDB-2?", "Same.", first: false, session: session)),
+                App.ChatTurnAsync(Turn("And SDB-3?", "Also same.", first: false, session: session)));
+
+            await using var db = Postgres.CreateDbContext();
+            var card = await db.Cards.SingleAsync(c => c.Key == $"chat-{session}", TestContext.Current.CancellationToken);
+            Assert.Equal(["SDB-1", "SDB-2", "SDB-3"], card.Tickets.Order());
+            Assert.Contains("How do refunds work", card.What);
+        }
+    }
+
+    [Fact]
+    public async Task ConcurrentFirstTurns_MakeOneCard_WithBothTickets()
+    {
+        await Task.WhenAll(
+            App.ChatTurnAsync(Turn("How do refunds work for SDB-4?", "Within 14 days.", session: "twin")),
+            App.ChatTurnAsync(Turn("How do refunds work for SDB-5?", "Within 14 days.", session: "twin")));
+
+        await using var db = Postgres.CreateDbContext();
+        Assert.Equal(["SDB-4", "SDB-5"], (await db.Cards.SingleAsync(TestContext.Current.CancellationToken)).Tickets.Order());
+    }
+
+    [Fact]
     public async Task ARepeatedIdenticalTurn_WritesNoNewVersion()
     {
         await App.ChatTurnAsync(Turn("How do refunds work for SDB-58?", "Within 14 days."));
