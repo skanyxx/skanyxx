@@ -24,6 +24,7 @@ We design in small steps. This folder is the running record — not a product sp
 | [memory-hierarchy.md](memory-hierarchy.md) | Personal → team → dept → company; lift cards. |
 | [memory-stack.md](memory-stack.md) | Postgres + MinIO + MCP; one Dragonfly (shared with AX). |
 | [memory-how.md](memory-how.md) | End-to-end: turn, lift, grants, stack. |
+| [chat-context.md](chat-context.md) | Chat index, related prior work, ticket view, answer cache (D236–D242). |
 | [seed-vs-factory.md](seed-vs-factory.md) | Seed vs factory; factory = YAML + git PR. |
 | [roles.md](roles.md) | Owner, supervisor, builder, employee. |
 
