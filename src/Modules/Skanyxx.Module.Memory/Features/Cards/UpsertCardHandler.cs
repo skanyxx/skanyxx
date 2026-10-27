@@ -15,11 +15,11 @@ namespace Skanyxx.Module.Memory.Features.Cards;
 /// The one write path for cards (memory-writes.md). An identical update is not a write: it returns the card as it is,
 /// with no new version and no rate-limit slot, so a retrying agent cannot churn versions. A real write takes a slot per
 /// caller and card, then per caller, then for everyone; keeps the version it replaces; and ends cached searches over the
-/// scope. A scope holds at most its quota of cards (memory-store.md).
+/// scope. A scope holds at most its quota of cards (memory-store.md, <see cref="ScopeCapacity"/>).
 /// </summary>
 internal sealed class UpsertCardHandler(
     MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, CardBodies bodies, SearchCache cache,
-    IOptions<MemoryOptions> options)
+    ScopeCapacity capacity, IOptions<MemoryOptions> options)
     : IRequestHandler<UpsertCardCommand, Outcome<Card>>
 {
     public async Task<Outcome<Card>> Handle(UpsertCardCommand command, CancellationToken ct)
@@ -51,11 +51,12 @@ internal sealed class UpsertCardHandler(
             return await ConflictAsync(command, "Card already exists; read it and update its version.", ct);
         if (!await limiter.TryAcquireAsync(command.Caller.RateLimitKey, $"{command.Scope}/{command.Key}"))
             return Outcome<Card>.RateLimited("Upsert rate limit reached; try again later.");
-        var quota = scope.Level == ScopeLevel.Personal ? options.Value.MaxCardsPerPersonalScope : options.Value.MaxCardsPerScope;
-        if (await db.Cards.CountAsync(c => c.Scope == command.Scope, ct) >= quota)
-            return Outcome<Card>.Forbidden($"'{scope}' is full ({quota} cards); mark cards stale or ask a supervisor to raise Memory:MaxCards*.");
 
         var (body, source) = await bodies.ResolveAsync(null, command.Body, command.Source, ct);
+        // The quota check, any eviction and the insert commit together or not at all (C-2, C-4).
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (!await capacity.MakeRoomAsync(scope, command.EvictExtracted, ct))
+            return Outcome<Card>.Forbidden(ScopeCapacity.Full(scope));
         var now = DateTime.UtcNow;
         var card = new Card
         {
@@ -82,10 +83,13 @@ internal sealed class UpsertCardHandler(
         try
         {
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
             return Outcome<Card>.Created(card);
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
+            // Rolled back first: the conflict's read cannot run in an aborted transaction, and any eviction is undone.
+            await transaction.RollbackAsync(CancellationToken.None);
             db.ChangeTracker.Clear();
             return await ConflictAsync(command, "Card already exists; read it and update its version.", ct);
         }

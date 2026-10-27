@@ -17,10 +17,10 @@ namespace Skanyxx.Module.Memory.Sessions;
 /// owner rule, versions, dedupe, rate limits and history all hold). A chat session is <c>chat-&lt;session&gt;</c>: born
 /// on its first turn with the question as its <c>what</c>, its <c>why</c> following the latest answer, its tickets
 /// accumulating. A run is <c>run-&lt;ticket&gt;-&lt;run&gt;</c>. A full personal scope makes room by dropping its oldest
-/// extracted card, never one a person wrote. Never throws for a memory failure: the work it records is already done.
+/// extracted card, never one a person wrote — in the same transaction as the new card (<see cref="ScopeCapacity"/>). Never throws for a memory failure: the work it records is already done.
 /// </summary>
 internal sealed partial class CardExtractor(
-    IMediator mediator, MemoryDbContext db, SearchCache cache, IOptions<MemoryOptions> options, ILogger<CardExtractor> logger)
+    IMediator mediator, MemoryDbContext db, IOptions<MemoryOptions> options, ILogger<CardExtractor> logger)
     : ICardExtractor
 {
     private const int KeywordsPerTurn = 6;
@@ -79,10 +79,7 @@ internal sealed partial class CardExtractor(
 
     private async Task<MemoryCardRef?> WriteAsync(Card? existing, UpsertCardCommand command, CancellationToken ct)
     {
-        if (existing is null && !await MakeRoomAsync(command.Scope, ct))
-            return null;
-
-        var outcome = await mediator.Send(command, ct);
+        var outcome = await mediator.Send(command with { EvictExtracted = true }, ct);
         // Two turns of one session finishing together: the second re-reads and writes over the first.
         if (outcome.Status == OutcomeStatus.Conflict && await FindAsync(command.Scope, command.Key, ct) is { } current)
             outcome = await mediator.Send(command with { Version = current.Version }, ct);
@@ -91,21 +88,6 @@ internal sealed partial class CardExtractor(
             return new MemoryCardRef(card.Scope, card.Key, card.What);
         LogNotKept(logger, command.Scope, command.Key, outcome.Status, outcome.Message);
         return null;
-    }
-
-    /// <summary>At the personal quota, the oldest extracted card goes; a scope of only hand-written cards keeps them all.</summary>
-    private async Task<bool> MakeRoomAsync(string scope, CancellationToken ct)
-    {
-        if (await db.Cards.CountAsync(c => c.Scope == scope, ct) < _options.MaxCardsPerPersonalScope)
-            return true;
-        var dropped = await db.Cards
-            .Where(c => c.Scope == scope && c.Origin != CardOrigin.Manual)
-            .OrderBy(c => c.UpdatedAt)
-            .Take(1)
-            .ExecuteDeleteAsync(ct);
-        if (dropped > 0)
-            await cache.InvalidateAsync(scope);
-        return dropped > 0;
     }
 
     private async Task<MemoryCardRef?> GuardAsync(string userId, Func<Task<MemoryCardRef?>> extract)

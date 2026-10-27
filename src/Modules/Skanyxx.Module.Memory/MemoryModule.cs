@@ -66,6 +66,7 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddHostedService<MemoryMigrator>();
         services.AddScoped<CardSearch>();
         services.AddScoped<AccessPolicy>();
+        services.AddScoped<Features.Cards.ScopeCapacity>();
         services.AddScoped<ClientAddress>();
         services.AddSingleton<Dragonfly>();
         services.AddSingleton<SearchCache>();
