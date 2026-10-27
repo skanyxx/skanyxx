@@ -108,16 +108,21 @@ internal static class AgentSpec
     }
 
     /// <summary>
-    /// A tool the form cannot show faithfully: an MCP server or agent in another namespace, or a server of another kind.
-    /// The form names tools by name in the agent's namespace, so editing such an agent would retarget or drop them.
+    /// Tools the form cannot show faithfully (D256, C-1): an MCP server or agent in another namespace, a server of another
+    /// kind, or one server or agent named by several entries (each entry may carry its own headers, so merging them would
+    /// move a credential to other tools). The form names each tool once, by name, in the agent's namespace.
     /// </summary>
-    public static bool HasForeignTools(JsonObject agent)
+    public static bool HasUneditableTools(JsonObject agent)
     {
         var ns = Text(agent["metadata"]?["namespace"]);
-        return (agent["spec"]?["declarative"]?["tools"] as JsonArray ?? []).Any(t =>
-            (t?["mcpServer"] is JsonObject server && (Text(server["namespace"]) is { } sns && sns != ns
-                || Text(server["kind"]) is { } kind && kind != "RemoteMCPServer"))
-            || (t?["agent"] is JsonObject target && Text(target["namespace"]) is { } ans && ans != ns));
+        var tools = agent["spec"]?["declarative"]?["tools"] as JsonArray ?? [];
+        var servers = tools.Select(t => Text(t?["mcpServer"]?["name"])).OfType<string>().ToList();
+        var agents = tools.Select(t => Text(t?["agent"]?["name"])).OfType<string>().ToList();
+        return servers.Count != servers.Distinct().Count() || agents.Count != agents.Distinct().Count()
+            || tools.Any(t =>
+                (t?["mcpServer"] is JsonObject server && (Text(server["namespace"]) is { } sns && sns != ns
+                    || Text(server["kind"]) is { } kind && kind != "RemoteMCPServer"))
+                || (t?["agent"] is JsonObject target && Text(target["namespace"]) is { } ans && ans != ns));
     }
 
     private static JsonNode A2aSkill(A2aSkillForm skill)
@@ -149,7 +154,7 @@ internal static class AgentSpec
             Condition(agent, "Accepted"),
             source,
             labels.GetValueOrDefault(StudioNames.MergedLabel) == "true",
-            canWrite && refusal is null && declarativeType && !HasPromptSource(agent) && !HasForeignTools(agent),
+            canWrite && refusal is null && declarativeType && !HasPromptSource(agent) && !HasUneditableTools(agent),
             canWrite && refusal is null,
             refusal,
             source == AgentSource.Studio ? StudioNames.AgentPath(name) : null,

@@ -39,8 +39,8 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.NotDeclarative, "byo");
             if (AgentSpec.HasPromptSource(existing))
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.PromptSource, "prompt-source");
-            if (AgentSpec.HasForeignTools(existing))
-                return Outcome<AgentDetail>.Conflict(null, AgentFailure.ForeignTools, "foreign-tools");
+            if (AgentSpec.HasUneditableTools(existing))
+                return Outcome<AgentDetail>.Conflict(null, AgentFailure.UneditableTools, "tools");
 
             var problems = AgentFormRules.Check(form, options.Value, AgentSpec.Existing(existing),
                 await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct),

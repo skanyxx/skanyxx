@@ -14,8 +14,8 @@ internal static class AgentFailure
 
     public const string PromptSource = "This agent reads its system prompt from a ConfigMap or Secret (systemMessageFrom); edit it there, not here.";
 
-    public const string ForeignTools = "This agent uses an MCP server or agent in another namespace, or a server of another kind; the form "
-        + "names tools in the agent's own namespace only, so edit it where it was made.";
+    public const string UneditableTools = "This agent names an MCP server or agent more than once, in another namespace, or a server of another "
+        + "kind; the form names each tool once in the agent's own namespace, so saving it would change what it did not show. Edit it where it was made.";
 
     public static string OtherNamespace(string ns) => $"Agents are created, edited and deleted in '{ns}' only (Studio:Namespace).";
 

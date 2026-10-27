@@ -263,6 +263,29 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.True(_kagent.AgentObjects.ContainsKey("other-ns/elsewhere"));
     }
 
+    /// <summary>C-1: two entries for one server, each with its own Secret header, are never merged by a save.</summary>
+    [Fact]
+    public async Task AnAgentNamingOneServerTwice_IsNeverEdited_SoNoCredentialMoves()
+    {
+        static JsonObject Entry(string tool, string secret) => new()
+        {
+            ["type"] = "McpServer",
+            ["headersFrom"] = new JsonArray(new JsonObject { ["name"] = "Authorization", ["valueFrom"] = new JsonObject { ["type"] = "Secret", ["name"] = secret, ["key"] = "token" } }),
+            ["mcpServer"] = new JsonObject { ["name"] = Server, ["toolNames"] = new JsonArray(tool) }
+        };
+        Seed("dup", External(), tools: new JsonArray(Entry("search", "token-a"), Entry("fetch", "token-b")));
+        var before = _kagent.AgentObjects[$"{Ns}/dup"].ToJsonString();
+
+        var detail = await _supervisor.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/dup", Ct);
+        Assert.False(detail.GetProperty("canEdit").GetBoolean());
+        // What the page would send for it: one entry for the server (the form names each server once).
+        var saved = await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/dup", Form("dup", tools: [new { server = Server, tools = new[] { "fetch" } }]), Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, saved.StatusCode);
+        Assert.Empty(_kagent.CallsTo("PUT", "/api/agents"));
+        Assert.Equal(before, _kagent.AgentObjects[$"{Ns}/dup"].ToJsonString());
+    }
+
     [Fact]
     public async Task Responses_NeverCarryAnnotationsHeadersOrEnv()
     {
