@@ -28,6 +28,36 @@ public sealed class WriteRulesTests(PostgresFixture postgres) : MemoryTestBase(p
     }
 
     [Fact]
+    public async Task History_KeepsTheWholeReplacedCard()
+    {
+        // C-5: body, source, links, keywords, supersession and attribution of a replaced version survive the write.
+        var ana = App.Client("ana");
+        (await ana.PutAsJsonAsync("/api/memory/cards/personal:ana/refund-window", new
+        {
+            version = 0, type = "decision", what = "We refund within 14 days", why = "Policy X", body = "old body", source = "https://wiki.example/old",
+            tickets = new[] { "SDB-1" }, links = new[] { "company/policy" }, keywords = new[] { "refunds" }
+        }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+        (await ana.PutAsJsonAsync("/api/memory/cards/personal:ana/refund-window", new
+        {
+            version = 1, type = "decision", what = "We refund within 30 days", why = "Policy Y", body = "new body", source = "https://wiki.example/new",
+            tickets = new[] { "SDB-2" }, links = new[] { "company/other" }, keywords = new[] { "returns" }
+        }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+
+        var history = await ana.GetFromJsonAsync<List<CardVersionDto>>("/api/memory/cards/personal:ana/refund-window/history",
+            CardApi.Json, TestContext.Current.CancellationToken);
+
+        var old = Assert.Single(history!);
+        Assert.Equal(1, old.Version);
+        Assert.Equal("old body", old.Body);
+        Assert.Equal("https://wiki.example/old", old.Source);
+        Assert.Equal(["SDB-1"], old.Tickets);
+        Assert.Equal(["company/policy"], old.Links);
+        Assert.Equal(["refunds"], old.Keywords);
+        Assert.Equal("manual", old.Origin);
+        Assert.Null(old.SupersededBy);
+    }
+
+    [Fact]
     public async Task OneCallerWritingOneCard_IsCoalesced_OtherCardsStillWrite()
     {
         await using var app = await MemoryApp.StartAsync(Postgres.ConnectionString,

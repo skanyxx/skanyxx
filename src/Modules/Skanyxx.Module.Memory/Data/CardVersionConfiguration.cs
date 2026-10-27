@@ -20,6 +20,13 @@ internal sealed class CardVersionConfiguration : IEntityTypeConfiguration<CardVe
         version.Property(v => v.Who).HasColumnName("who").HasMaxLength(300);
         version.Property(v => v.Status).HasColumnName("status").HasMaxLength(16).HasConversion(CardConfiguration.Lower<CardStatus>());
         version.Property(v => v.Tickets).HasColumnName("tickets");
+        version.Property(v => v.Links).HasColumnName("links");
+        version.Property(v => v.Keywords).HasColumnName("keywords");
+        version.Property(v => v.Body).HasColumnName("body").HasMaxLength(CardLimits.Body);
+        version.Property(v => v.Source).HasColumnName("source").HasMaxLength(CardLimits.Source);
+        version.Property(v => v.Origin).HasColumnName("origin").HasMaxLength(16).HasConversion(CardConfiguration.Lower<CardOrigin>());
+        version.Property(v => v.AgentId).HasColumnName("agent_id").HasMaxLength(128);
+        version.Property(v => v.SupersededBy).HasColumnName("superseded_by").HasMaxLength(CardLimits.LinkLength);
         version.Property(v => v.UpdatedAt).HasColumnName("updated_at");
 
         version.HasKey(v => v.Id);
