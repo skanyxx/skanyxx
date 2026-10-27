@@ -12,7 +12,7 @@ internal static partial class SessionText
 {
     private static readonly HashSet<string> StopWords =
     [
-        "about", "after", "again", "also", "and", "are", "because", "been", "before", "being", "but", "can", "could", "did",
+        "about", "after", "again", "redacted", "also", "and", "are", "because", "been", "before", "being", "but", "can", "could", "did",
         "does", "doing", "done", "for", "from", "had", "has", "have", "help", "here", "how", "into", "is", "it", "its",
         "just", "like", "make", "more", "most", "need", "not", "now", "only", "other", "our", "out", "over", "please",
         "should", "some", "than", "that", "the", "their", "them", "then", "there", "these", "they", "this", "those",

@@ -15,7 +15,8 @@ namespace Skanyxx.Module.Memory.Sessions;
 /// personal scope, company, the teams and departments they are in) intersected with what the agent may search for them
 /// (its grants, or the default: company + their personal). The block lands in that agent's prompt, so it may hold only
 /// what both could have found on their own: a supervisor's view of every team never reaches a prompt, and an agent's team
-/// grant never shows a person a team they are not in. Published cards only, top-k, and whole cards up to the token budget.
+/// grant never shows a person a team they are not in. Published cards only, top-k, and whole cards up to the token budget;
+/// card text is redacted once more on its way into the prompt (a card written before the write check existed).
 /// </summary>
 internal sealed partial class RelatedMemory(
     AccessPolicy access, CardSearch search, IOptions<MemoryOptions> options, ILogger<RelatedMemory> logger) : IRelatedMemory
@@ -71,7 +72,7 @@ internal sealed partial class RelatedMemory(
     internal static int Tokens(int characters) => (characters + 3) / 4;
 
     private static string Line(CardHit hit) =>
-        $"- {hit.Scope}/{hit.Key} ({hit.Type}): {hit.What} Why: {hit.Why}" +
+        $"- {hit.Scope}/{hit.Key} ({hit.Type}): {SecretText.Redact(hit.What)} Why: {SecretText.Redact(hit.Why)}" +
         (hit.Tickets.Length > 0 ? $" Tickets: {string.Join(", ", hit.Tickets)}." : "") + "\n";
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Related memory for {UserId} failed; the chat starts without it")]

@@ -37,6 +37,10 @@ internal sealed class UpsertCardValidator : AbstractValidator<UpsertCardCommand>
         RuleFor(c => c.Keywords).Must(k => k is null || (k.Count <= CardLimits.Keywords && k.All(CardLinks.IsKeyword) && k.Distinct().Count() == k.Count))
             .WithMessage($"Keywords must be at most {CardLimits.Keywords} distinct lowercase words (a-z, 0-9, '-'), " +
                          $"at most {CardLimits.KeywordLength} characters each.");
+        // requirements.md §1.4: a card is read back by people and agents, so it must not carry a credential.
+        RuleFor(c => c).Must(c => !new[] { c.What, c.Why, c.Body, c.Source }.Concat(c.Links ?? []).Any(SecretText.HasCredential))
+            .OverridePropertyName("card")
+            .WithMessage("The card looks like it contains a credential (a key, token or password); remove it and save again.");
         RuleFor(c => c.ViaAgent).Must(Domain.Scope.IsValidId).When(c => c.ViaAgent is not null).WithMessage("Invalid agent id.");
     }
 }
