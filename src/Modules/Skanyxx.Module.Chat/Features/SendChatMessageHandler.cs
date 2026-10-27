@@ -32,7 +32,7 @@ internal sealed class SendChatMessageHandler(
 
             var isNew = string.IsNullOrEmpty(command.ConversationId);
             string sessionId;
-            if (isNew)
+            if (string.IsNullOrEmpty(command.ConversationId))
                 sessionId = newSession = (await kagent.CreateSessionAsync($"{agent.Namespace}/{agent.Name}", command.UserId, ct)).Id;
             else if (await kagent.GetSessionAsync(command.ConversationId, command.UserId, ct) is { } session
                      && session.AgentId == MergedAgents.SessionAgentId(agent))
