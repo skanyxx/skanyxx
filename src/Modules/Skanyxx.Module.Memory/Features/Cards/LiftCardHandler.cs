@@ -13,8 +13,8 @@ using Skanyxx.Module.Memory.Domain;
 namespace Skanyxx.Module.Memory.Features.Cards;
 
 internal sealed class LiftCardHandler(
-    MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, SearchCache cache, ClientAddress client,
-    ILogger<LiftCardHandler> logger)
+    MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, SearchCache cache, ScopeCapacity capacity,
+    ClientAddress client, ILogger<LiftCardHandler> logger)
     : IRequestHandler<LiftCardCommand, Outcome<CardDto>>
 {
     public async Task<Outcome<CardDto>> Handle(LiftCardCommand command, CancellationToken ct) =>
@@ -67,11 +67,16 @@ internal sealed class LiftCardHandler(
         // Checked first so the usual conflict is not a failed INSERT, which EF logs at Error; the catch is for a race.
         if (await db.Cards.AnyAsync(c => c.Scope == copy.Scope && c.Key == copy.Key, ct))
             return await ExistsAsync(caller, to, copy.Key, ct);
+        // A lift adds a card like a create does, so it counts against the target's quota the same way (C-4, D307).
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (!await capacity.MakeRoomAsync(to, evictExtracted: false, ct))
+            return Outcome<Card>.Forbidden(ScopeCapacity.Full(to));
         db.Cards.Add(copy);
 
         try
         {
             await db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
             await cache.InvalidateAsync(copy.Scope);
             if (oversight)
                 logger.LogWarning("Card {Key} lifted from {SourceScope} to {TargetScope} by {ActorUserId} from {RemoteIp}, who is not a member of the source",
@@ -80,6 +85,7 @@ internal sealed class LiftCardHandler(
         }
         catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
+            await transaction.RollbackAsync(CancellationToken.None);
             db.ChangeTracker.Clear();
             return await ExistsAsync(caller, to, copy.Key, ct);
         }
