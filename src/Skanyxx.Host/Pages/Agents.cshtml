@@ -1,306 +1,366 @@
 @page
-@model Skanyxx.Host.Pages.AgentsModel
+@model AgentsModel
 @{
     ViewData["Title"] = "Agents";
 }
 
-<div class="card mb-3">
-    <div class="card-header">
-        <h3 class="card-title">Available Agents</h3>
-        <button class="btn btn-ghost" onclick="loadAgents()">Refresh</button>
+<section id="agents" data-can-write="@(Model.CanWrite ? "true" : "false")">
+    <div class="card mb-3">
+        <div class="card-header flex items-center gap-2">
+            <h3 class="card-title">Agents</h3>
+            <button type="button" class="btn btn-ghost" id="refresh">Refresh</button>
+            @if (Model.CanWrite)
+            {
+                <button type="button" class="btn btn-primary" id="new-agent">New agent</button>
+            }
+        </div>
+        <p class="text-muted">
+            The agents in kagent. Agents made in Studio change only through a Studio proposal (git is their source of truth),
+            and Skanyxx's own agents (the seed, the factory) cannot be changed here.
+            @if (!Model.CanWrite && Model.IsBuilder)
+            {
+                <span>Builders propose new or changed agents in <a href="/Studio">Studio</a>.</span>
+            }
+        </p>
+        <p id="agents-error" class="text-error" role="alert" hidden></p>
+        <p id="agents-status" class="text-success" role="status" hidden></p>
+        <div class="table-container">
+            <table>
+                <thead><tr><th scope="col">Name</th><th scope="col">Namespace</th><th scope="col">Source</th><th scope="col">Status</th><th scope="col">In Chat</th><th scope="col" aria-label="Actions"></th></tr></thead>
+                <tbody id="agent-rows"></tbody>
+            </table>
+        </div>
+        <p id="agents-empty" class="text-muted" hidden>No agents you can see.</p>
     </div>
-    <p class="text-muted">AI agents available from your kagent cluster. Agents are proposed and changed in the Studio.</p>
-</div>
 
-<div class="agent-grid" id="agentGrid">
-    <div class="loading-state">Loading agents...</div>
-</div>
+    <div class="card mb-3" id="detail-card" hidden>
+        <div class="card-header flex items-center gap-2">
+            <h3 class="card-title">Agent <code id="detail-name"></code></h3>
+            <button type="button" class="btn btn-ghost" id="detail-close">Close</button>
+        </div>
+        <p id="detail-protection" class="text-muted" hidden></p>
+        <dl id="detail-fields" class="agent-fields"></dl>
+    </div>
 
+    @if (Model.CanWrite)
+    {
+        <div class="card mb-3" id="form-card" hidden>
+            <div class="card-header"><h3 class="card-title" id="form-title">New agent</h3></div>
+            <form id="agent-form" class="flex flex-col gap-2">
+                <label for="f-namespace">Namespace</label>
+                <input id="f-namespace" readonly />
+                <label for="f-name">Name (lowercase letters, digits and <code>-</code>, starting with a letter)</label>
+                @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
+                <input id="f-name" required maxlength="63" pattern="[a-z]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
+                <label for="f-description">Description (one line)</label>
+                <input id="f-description" maxlength="500" autocomplete="off" />
+                <label for="f-prompt">System prompt</label>
+                <textarea id="f-prompt" rows="8" required maxlength="16000"></textarea>
+                <label for="f-model">Model</label>
+                <select id="f-model" required></select>
+                <label for="f-runtime">Runtime</label>
+                <select id="f-runtime">
+                    <option value="">kagent's default</option>
+                    <option value="go">go</option>
+                    <option value="python">python</option>
+                </select>
+                <label><input type="checkbox" id="f-stream" /> Stream responses</label>
+
+                <fieldset>
+                    <legend>MCP tools (allow-listed servers; pick the tools the agent may call)</legend>
+                    <div id="f-mcp"></div>
+                    <p id="f-mcp-empty" class="text-muted" hidden>No MCP servers are allow-listed (Studio:McpServers).</p>
+                </fieldset>
+                <label for="f-agents">Agents as tools (Ctrl/Cmd-click for several)</label>
+                <select id="f-agents" multiple size="4"></select>
+                <label for="f-skills">Skills: OCI images pinned by digest, one per line</label>
+                <textarea id="f-skills" rows="2" spellcheck="false"></textarea>
+                <p id="f-skills-off" class="text-muted" hidden>Skills are off: the owner has not allow-listed a registry (Studio:SkillRegistries).</p>
+                <fieldset>
+                    <legend>A2A skills (what the agent's A2A card advertises)</legend>
+                    <div id="f-a2a"></div>
+                    <button type="button" class="btn btn-ghost" id="f-a2a-add">Add A2A skill</button>
+                </fieldset>
+                <div class="flex gap-2">
+                    <button type="submit" class="btn btn-primary" id="f-save">Save</button>
+                    <button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>
+                </div>
+            </form>
+        </div>
+    }
+</section>
 
 <style>
-    .agent-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        gap: 16px;
-    }
-
-    .agent-card {
-        background-color: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 20px;
-    }
-
-    .agent-header {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        margin-bottom: 16px;
-    }
-
-    .agent-icon {
-        font-size: 28px;
-        color: var(--accent-color);
-    }
-
-    .agent-header > div {
-        flex: 1;
-    }
-
-    .agent-name {
-        font-weight: 600;
-        font-size: 16px;
-    }
-
-    .agent-type {
-        font-size: 12px;
-    }
-
-    .agent-description {
-        font-size: 13px;
-        color: var(--text-muted);
-        margin-bottom: 16px;
-        padding-bottom: 16px;
-        border-bottom: 1px solid var(--border-color);
-    }
-
-    .agent-stats {
-        display: flex;
-        gap: 24px;
-        padding: 16px 0;
-        border-top: 1px solid var(--border-color);
-        border-bottom: 1px solid var(--border-color);
-        margin-bottom: 16px;
-    }
-
-    .agent-stat {
-        display: flex;
-        flex-direction: column;
-    }
-
-    .agent-stat .stat-value {
-        font-size: 20px;
-        font-weight: 700;
-        color: var(--accent-color);
-    }
-
-    .agent-stat .stat-label {
-        font-size: 11px;
-        color: var(--text-muted);
-    }
-
-    .agent-actions {
-        display: flex;
-        gap: 8px;
-    }
-
-    .badge-success {
-        background-color: rgba(34, 197, 94, 0.2);
-        color: #22c55e;
-    }
-
-    .badge-warning {
-        background-color: rgba(234, 179, 8, 0.2);
-        color: #eab308;
-    }
-
-    .badge-pending {
-        background-color: rgba(59, 130, 246, 0.2);
-        color: #3b82f6;
-    }
-
-    .badge-error {
-        background-color: rgba(239, 68, 68, 0.2);
-        color: #ef4444;
-    }
-
-    .loading-state {
-        grid-column: 1 / -1;
-        text-align: center;
-        padding: 40px;
-        color: var(--text-muted);
-    }
-
-    .empty-state {
-        grid-column: 1 / -1;
-        text-align: center;
-        padding: 60px 20px;
-        color: var(--text-muted);
-    }
-
-    .empty-state h3 {
-        margin-bottom: 8px;
-        color: var(--text-primary);
-    }
-
-    /* Modal styles */
-    .modal {
-        display: none;
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background-color: rgba(0, 0, 0, 0.6);
-        z-index: 1000;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .modal.active {
-        display: flex;
-    }
-
-    .modal-content {
-        background-color: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        width: 90%;
-        max-width: 500px;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
-
-    .modal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px;
-        border-bottom: 1px solid var(--border-color);
-    }
-
-    .modal-header h3 {
-        margin: 0;
-    }
-
-    #createAgentForm {
-        padding: 20px;
-    }
-
-    .form-group {
-        margin-bottom: 16px;
-    }
-
-    .form-group label {
-        display: block;
-        margin-bottom: 6px;
-        font-size: 14px;
-        font-weight: 500;
-    }
-
-    .form-group input,
-    .form-group textarea,
-    .form-group select {
-        width: 100%;
-        padding: 10px 12px;
-        border: 1px solid var(--border-color);
-        border-radius: 6px;
-        background-color: var(--bg-primary);
-        color: var(--text-primary);
-        font-size: 14px;
-    }
-
-    .form-group input:focus,
-    .form-group textarea:focus,
-    .form-group select:focus {
-        outline: none;
-        border-color: var(--accent-color);
-    }
-
-    .modal-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 12px;
-        padding-top: 16px;
-        border-top: 1px solid var(--border-color);
-    }
+    .agent-fields { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
+    .agent-fields dt { font-weight: 600; }
+    .agent-fields dd { margin: 0; white-space: pre-wrap; word-break: break-word; }
+    .mcp-server, .a2a-skill { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
+    .mcp-tools { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-left: 20px; }
 </style>
 
 <script>
-    let agents = [];
+(() => {
+    const root = document.getElementById('agents');
+    const canWrite = root.dataset.canWrite === 'true';
+    const base = '/api/agents';
+    const errorBox = document.getElementById('agents-error');
+    const statusBox = document.getElementById('agents-status');
+    let options = null;
+    let editing = null;
 
-    async function loadAgents() {
-        const grid = document.getElementById('agentGrid');
-        grid.innerHTML = '<div class="loading-state">Loading agents...</div>';
+    // Values from the API are only ever set with textContent.
+    const say = (box, text) => { box.textContent = text; box.hidden = !text; };
+    const fail = text => { say(statusBox, ''); say(errorBox, text); };
+    const done = text => { say(errorBox, ''); say(statusBox, text); };
+    const problemText = (problem, status) =>
+        (problem.errors ? Object.values(problem.errors).flat().join(' ') : '')
+        || problem.detail || problem.message || problem.title || `HTTP ${status}`;
+    const path = (ns, name) => `${base}/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`;
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+    const lines = text => text.split('\n').map(s => s.trim()).filter(Boolean);
 
+    // Content-Type only with a body: the API reads a JSON body whenever one is announced.
+    async function call(method, url, body) {
+        const init = { method };
+        if (body !== undefined) {
+            init.headers = { 'Content-Type': 'application/json' };
+            init.body = JSON.stringify(body);
+        }
+        const response = await fetch(url, init);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(problemText(data, response.status));
+        return data;
+    }
+
+    function button(label, name, action, cls = 'btn btn-ghost') {
+        const b = el('button', label, cls);
+        b.type = 'button';
+        b.setAttribute('aria-label', `${label} ${name}`);
+        b.addEventListener('click', action);
+        return b;
+    }
+
+    function cell(row, text) { const td = el('td', text); row.appendChild(td); return td; }
+
+    async function load() {
         try {
-            const response = await fetch('/api/agents');
-            if (!response.ok) throw new Error('Failed to load agents');
-            agents = await response.json();
-            renderAgents();
-        } catch (error) {
-            console.error('Error loading agents:', error);
-            grid.innerHTML = `
-                <div class="empty-state">
-                    <h3>No agents found</h3>
-                    <p>Connect to kagent to see available agents. New agents are proposed in the Studio.</p>
-                </div>
-            `;
+            const agents = await call('GET', base);
+            const body = document.getElementById('agent-rows');
+            body.replaceChildren();
+            for (const a of agents) {
+                const row = document.createElement('tr');
+                row.dataset.agent = `${a.namespace}/${a.name}`;
+                cell(row, a.name);
+                cell(row, a.namespace);
+                cell(row, a.source);
+                cell(row, a.ready ? 'Ready' : (a.accepted ? 'Starting' : 'Not ready'));
+                cell(row, a.inChat ? 'yes' : 'no');
+                const actions = cell(row, '');
+                actions.appendChild(button('Details', a.name, () => details(a.namespace, a.name)));
+                if (a.inChat) actions.appendChild(button('Chat', a.name, () => { location.href = `/Chat?agent=${encodeURIComponent(a.name)}`; }));
+                if (canWrite && a.canEdit) actions.appendChild(button('Edit', a.name, () => edit(a.namespace, a.name)));
+                if (canWrite && a.canDelete) actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name)));
+                body.appendChild(row);
+            }
+            document.getElementById('agents-empty').hidden = agents.length > 0;
+        } catch (e) {
+            fail(e.message);
         }
     }
 
-    function renderAgents() {
-        const grid = document.getElementById('agentGrid');
-
-        if (agents.length === 0) {
-            grid.innerHTML = `
-                <div class="empty-state">
-                    <h3>No Agents Available</h3>
-                    <p>Connect to kagent to see available agents. New agents are proposed in the Studio.</p>
-                </div>
-            `;
-            return;
-        }
-
-        grid.innerHTML = agents.map(agent => {
-            const statusClass = getStatusClass(agent.status);
-            const isReady = agent.status === 'Active' || agent.status === 'Ready';
-            return `
-                <div class="agent-card" data-id="${agent.id}">
-                    <div class="agent-header">
-                        <span class="agent-icon">&#x2B21;</span>
-                        <div>
-                            <div class="agent-name">${agent.name}</div>
-                            <div class="agent-type text-muted">${agent.type || 'Declarative'}</div>
-                        </div>
-                        <span class="badge ${statusClass}">${isReady ? 'Ready' : (agent.status || 'Unknown')}</span>
-                    </div>
-                    ${agent.description ? `<div class="agent-description">${agent.description}</div>` : ''}
-                    <div class="agent-actions">
-                        <button class="btn btn-primary" onclick="startChat('${agent.name}')">Chat</button>
-                        <button class="btn btn-ghost" onclick="viewAgentDetails('${agent.id}')">Details</button>
-                    </div>
-                </div>
-            `;
-        }).join('');
-    }
-
-    function getStatusClass(status) {
-        switch ((status || '').toLowerCase()) {
-            case 'active':
-            case 'ready':
-                return 'badge-success';
-            case 'paused':
-            case 'inactive':
-                return 'badge-warning';
-            case 'pending':
-                return 'badge-pending';
-            case 'error':
-            case 'failed':
-                return 'badge-error';
-            default:
-                return 'badge-warning';
+    async function details(ns, name) {
+        try {
+            const a = await call('GET', path(ns, name));
+            document.getElementById('detail-name').textContent = `${a.namespace}/${a.name}`;
+            say(document.getElementById('detail-protection'), a.protection ?? '');
+            const fields = document.getElementById('detail-fields');
+            fields.replaceChildren();
+            const add = (label, value) => {
+                if (value === null || value === undefined || value === '' || (Array.isArray(value) && value.length === 0)) return;
+                fields.append(el('dt', label), el('dd', Array.isArray(value) ? value.join('\n') : String(value)));
+            };
+            add('Description', a.description);
+            add('Type', a.type);
+            add('Source', a.source + (a.studioPath ? ` (${a.studioPath} in the agent repo)` : ''));
+            add('Status', a.ready ? 'Ready' : (a.accepted ? 'Accepted, starting' : 'Not ready'));
+            add('In Chat', a.inChat ? 'yes' : 'no');
+            add('Model', a.modelConfig);
+            add('Runtime', a.runtime);
+            add('Stream', a.stream ? 'yes' : '');
+            add('MCP tools', a.mcpTools.map(t => `${t.server}: ${t.tools.length ? t.tools.join(', ') : 'every tool'}`));
+            add('Agents as tools', a.agentTools);
+            add('Skills', a.skills);
+            add('A2A skills', a.a2aSkills.map(s => `${s.id}: ${s.name}${s.description ? ' — ' + s.description : ''}`));
+            add('System prompt', a.systemMessage);
+            add('Conditions', a.conditions.map(c => `${c.type}=${c.status}${c.reason ? ' (' + c.reason + ')' : ''}${c.message ? ': ' + c.message : ''}`));
+            document.getElementById('detail-card').hidden = false;
+        } catch (e) {
+            fail(e.message);
         }
     }
 
-    function startChat(agentName) {
-        window.location.href = `/Chat?agent=${encodeURIComponent(agentName)}`;
+    async function remove(ns, name) {
+        if (!confirm(`Delete the agent ${ns}/${name}? kagent removes it and its pod; this cannot be undone.`)) return;
+        try {
+            await call('DELETE', path(ns, name));
+            done(`${ns}/${name} deleted.`);
+            document.getElementById('detail-card').hidden = true;
+            await load();
+        } catch (e) {
+            fail(e.message);
+        }
     }
 
-    function viewAgentDetails(id) {
-        window.location.href = `/Debug?agent=${encodeURIComponent(id)}`;
+    document.getElementById('refresh').addEventListener('click', load);
+    document.getElementById('detail-close').addEventListener('click', () => { document.getElementById('detail-card').hidden = true; });
+
+    async function loadOptions() {
+        options ??= await call('GET', `${base}/options`);
+        return options;
     }
 
-    // Load agents on page load
-    document.addEventListener('DOMContentLoaded', loadAgents);
+    function mcpServer(server, tools, chosen, kept) {
+        const box = el('div', undefined, 'mcp-server');
+        box.dataset.server = server;
+        const label = el('label');
+        const on = document.createElement('input');
+        on.type = 'checkbox';
+        on.className = 'mcp-on';
+        on.checked = chosen !== null;
+        label.append(on, ` ${server}${kept ? ' (kept as it is: not on the allow-list)' : ''}`);
+        box.appendChild(label);
+        const list = el('div', undefined, 'mcp-tools');
+        for (const tool of new Set([...tools, ...(chosen ?? [])])) {
+            const t = el('label');
+            const c = document.createElement('input');
+            c.type = 'checkbox';
+            c.value = tool;
+            c.checked = (chosen ?? []).includes(tool);
+            c.disabled = kept;
+            t.append(c, ` ${tool}`);
+            list.appendChild(t);
+        }
+        if (kept) box.dataset.kept = JSON.stringify(chosen);
+        box.appendChild(list);
+        return box;
+    }
+
+    function a2aSkill(skill = {}) {
+        const box = el('div', undefined, 'a2a-skill');
+        const field = (label, key, value, area) => {
+            const l = el('label', label);
+            const i = document.createElement(area ? 'textarea' : 'input');
+            i.dataset.key = key;
+            i.value = value ?? '';
+            if (area) i.rows = 2;
+            box.append(l, i);
+        };
+        field('Id', 'id', skill.id);
+        field('Name', 'name', skill.name);
+        field('Description', 'description', skill.description);
+        field('Tags (comma separated)', 'tags', (skill.tags ?? []).join(', '));
+        field('Examples (one per line)', 'examples', (skill.examples ?? []).join('\n'), true);
+        box.appendChild(button('Remove', 'A2A skill', () => box.remove()));
+        return box;
+    }
+
+    async function openForm(agent) {
+        const o = await loadOptions();
+        editing = agent;
+        document.getElementById('form-title').textContent = agent ? `Edit ${agent.namespace}/${agent.name}` : 'New agent';
+        document.getElementById('f-namespace').value = agent?.namespace ?? o.namespace;
+        const name = document.getElementById('f-name');
+        name.value = agent?.name ?? '';
+        name.readOnly = !!agent;
+        document.getElementById('f-description').value = agent?.description ?? '';
+        document.getElementById('f-prompt').value = agent?.systemMessage ?? '';
+        const model = document.getElementById('f-model');
+        model.replaceChildren(...o.modelConfigs.map(m => { const op = el('option', m); op.value = m; return op; }));
+        if (agent?.modelConfig) model.value = agent.modelConfig;
+        document.getElementById('f-runtime').value = agent?.runtime ?? '';
+        document.getElementById('f-stream').checked = !!agent?.stream;
+
+        const mcp = document.getElementById('f-mcp');
+        const current = new Map((agent?.mcpTools ?? []).map(t => [t.server, t.tools]));
+        const allowed = new Set(o.mcpServers.map(s => s.server));
+        mcp.replaceChildren(
+            ...o.mcpServers.map(s => mcpServer(s.server, s.tools, current.get(s.server) ?? null, false)),
+            ...[...current].filter(([s]) => !allowed.has(s)).map(([s, tools]) => mcpServer(s, [], tools, true)));
+        document.getElementById('f-mcp-empty').hidden = mcp.children.length > 0;
+
+        const agents = document.getElementById('f-agents');
+        agents.replaceChildren(...o.agents.filter(a => a !== agent?.name).map(a => {
+            const op = el('option', a);
+            op.value = a;
+            op.selected = (agent?.agentTools ?? []).includes(a);
+            return op;
+        }));
+        document.getElementById('f-skills').value = (agent?.skills ?? []).join('\n');
+        document.getElementById('f-skills-off').hidden = o.skillRegistries.length > 0;
+        document.getElementById('f-a2a').replaceChildren(...(agent?.a2aSkills ?? []).map(a2aSkill));
+        document.getElementById('form-card').hidden = false;
+        document.getElementById('form-card').scrollIntoView();
+    }
+
+    function formBody() {
+        return {
+            namespace: document.getElementById('f-namespace').value,
+            name: document.getElementById('f-name').value.trim(),
+            description: document.getElementById('f-description').value.trim(),
+            systemMessage: document.getElementById('f-prompt').value,
+            modelConfig: document.getElementById('f-model').value,
+            runtime: document.getElementById('f-runtime').value || null,
+            stream: document.getElementById('f-stream').checked,
+            mcpTools: [...document.querySelectorAll('#f-mcp .mcp-server')]
+                .filter(b => b.querySelector('.mcp-on').checked)
+                .map(b => ({
+                    server: b.dataset.server,
+                    tools: b.dataset.kept ? JSON.parse(b.dataset.kept) : [...b.querySelectorAll('.mcp-tools input:checked')].map(c => c.value)
+                })),
+            agentTools: [...document.getElementById('f-agents').selectedOptions].map(o => o.value),
+            skills: lines(document.getElementById('f-skills').value),
+            a2aSkills: [...document.querySelectorAll('#f-a2a .a2a-skill')].map(b => {
+                const v = key => b.querySelector(`[data-key="${key}"]`).value.trim();
+                return {
+                    id: v('id'), name: v('name'), description: v('description') || null,
+                    tags: v('tags').split(',').map(s => s.trim()).filter(Boolean), examples: lines(v('examples'))
+                };
+            })
+        };
+    }
+
+    async function edit(ns, name) {
+        try {
+            await openForm(await call('GET', path(ns, name)));
+        } catch (e) {
+            fail(e.message);
+        }
+    }
+
+    if (canWrite) {
+        document.getElementById('new-agent').addEventListener('click', () => openForm(null).catch(e => fail(e.message)));
+        document.getElementById('f-cancel').addEventListener('click', () => { document.getElementById('form-card').hidden = true; });
+        document.getElementById('f-a2a-add').addEventListener('click', () => document.getElementById('f-a2a').appendChild(a2aSkill()));
+        document.getElementById('agent-form').addEventListener('submit', async event => {
+            event.preventDefault();
+            const body = formBody();
+            const save = document.getElementById('f-save');
+            save.disabled = true;
+            try {
+                if (editing) await call('PUT', path(editing.namespace, editing.name), body);
+                else await call('POST', base, body);
+                done(`${body.namespace}/${body.name} ${editing ? 'saved' : 'created'}.`);
+                document.getElementById('form-card').hidden = true;
+                options = null;
+                await load();
+            } catch (e) {
+                fail(e.message);
+            } finally {
+                save.disabled = false;
+            }
+        });
+    }
+
+    load();
+})();
 </script>
