@@ -157,7 +157,8 @@
                 cell(row, a.inChat ? 'yes' : 'no');
                 const actions = cell(row, '');
                 actions.appendChild(button('Details', a.name, () => details(a.namespace, a.name)));
-                if (a.inChat) actions.appendChild(button('Chat', a.name, () => { location.href = `/Chat?agent=${encodeURIComponent(a.name)}`; }));
+                // namespace/name: two namespaces may hold the same name, and Chat picks a bare name's first match.
+                if (a.inChat) actions.appendChild(button('Chat', a.name, () => { location.href = `/Chat?agent=${encodeURIComponent(`${a.namespace}/${a.name}`)}`; }));
                 if (canWrite && a.canEdit) actions.appendChild(button('Edit', a.name, () => edit(a.namespace, a.name)));
                 if (canWrite && a.canDelete) actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name)));
                 body.appendChild(row);

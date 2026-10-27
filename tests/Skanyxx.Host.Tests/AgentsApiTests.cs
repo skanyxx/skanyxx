@@ -313,6 +313,16 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("application/json", skill["outputModes"]![0]!.GetValue<string>());
     }
 
+    /// <summary>C-6: the page opens Chat with the agent's namespace/name, never a bare name another namespace may share.</summary>
+    [Fact]
+    public async Task TheChatButton_NamesTheAgentsNamespace()
+    {
+        var page = await _supervisor.GetStringAsync("/Agents", Ct);
+
+        Assert.Contains("/Chat?agent=${encodeURIComponent(`${a.namespace}/${a.name}`)}", page);
+        Assert.DoesNotContain("/Chat?agent=${encodeURIComponent(a.name)}", page);
+    }
+
     /// <summary>C-1: two entries for one server, each with its own Secret header, are never merged by a save.</summary>
     [Fact]
     public async Task AnAgentNamingOneServerTwice_IsNeverEdited_SoNoCredentialMoves()
