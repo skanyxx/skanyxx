@@ -36,17 +36,19 @@ internal sealed partial class CardExtractor(
             var scope = Scope.Personal(turn.UserId).ToString();
             var key = SessionText.Slug($"chat-{turn.SessionId}");
             var existing = await FindAsync(scope, key, ct);
-            var mentioned = CardTickets.FindIn($"{turn.Message}\n{turn.Reply}", CardLimits.Tickets);
-            if (existing is null && SessionText.Words(turn.Message) < _options.Extraction.MinWords && mentioned.Count == 0)
+            // Redacted before anything is cut or indexed: a pasted key must not become a card, a keyword or a prompt line.
+            var (message, reply) = (SecretText.Redact(turn.Message), SecretText.Redact(turn.Reply));
+            var mentioned = CardTickets.FindIn($"{message}\n{reply}", CardLimits.Tickets);
+            if (existing is null && SessionText.Words(message) < _options.Extraction.MinWords && mentioned.Count == 0)
                 return null;
 
             return await WriteAsync(existing, new UpsertCardCommand(
                 new MemoryCaller(turn.UserId, null), scope, key, existing?.Version ?? 0, "fact",
-                existing?.What ?? SessionText.Line($"Chat with {turn.AgentId}: {turn.Message}", CardLimits.What),
-                Why(turn.Reply, "No answer yet."),
+                existing?.What ?? SessionText.Line($"Chat with {turn.AgentId}: {message}", CardLimits.What),
+                Why(reply, "No answer yet."),
                 Source: $"chat:{turn.SessionId}",
                 Tickets: Merge(existing?.Tickets, mentioned, CardLimits.Tickets),
-                Keywords: Merge(existing?.Keywords, SessionText.Keywords(turn.Message).Take(KeywordsPerTurn), CardLimits.Keywords),
+                Keywords: Merge(existing?.Keywords, SessionText.Keywords(message).Take(KeywordsPerTurn), CardLimits.Keywords),
                 Origin: CardOrigin.Chat,
                 ViaAgent: Identifier.IsValid(turn.AgentId) ? turn.AgentId : null), ct);
         });
@@ -62,14 +64,15 @@ internal sealed partial class CardExtractor(
             var key = SessionText.Slug($"run-{run.TicketKey}-{run.RunId:N}");
             var existing = await FindAsync(scope, key, ct);
             var labels = run.Labels.Select(SessionText.Slug).Where(CardLinks.IsKeyword);
+            var (title, outcome) = (SecretText.Redact(run.TicketTitle), SecretText.Redact(run.Outcome));
             return await WriteAsync(existing, new UpsertCardCommand(
                 new MemoryCaller(run.OwnerUserId, null), scope, key, existing?.Version ?? 0, "fact",
-                SessionText.Line($"{run.TicketKey} {run.TicketTitle}: {run.PipelineName} run {(run.Succeeded ? "succeeded" : "failed")}", CardLimits.What),
-                Why(run.Outcome, "No stage output."),
+                SessionText.Line($"{run.TicketKey} {title}: {run.PipelineName} run {(run.Succeeded ? "succeeded" : "failed")}", CardLimits.What),
+                Why(outcome, "No stage output."),
                 Source: $"run:{run.RunId}",
                 Tickets: Merge([run.TicketKey], run.RelatedTickets.Where(CardTickets.IsValid), CardLimits.Tickets),
-                Links: run.TicketUrl is { } url && CardLinks.IsValid(url) ? [url] : [],
-                Keywords: Merge(null, labels.Concat(SessionText.Keywords(run.TicketTitle)), CardLimits.Keywords),
+                Links: run.TicketUrl is { } url && CardLinks.IsValid(url) && !SecretText.HasCredential(url) ? [url] : [],
+                Keywords: Merge(null, labels.Concat(SessionText.Keywords(title)), CardLimits.Keywords),
                 Origin: CardOrigin.Run), ct);
         });
     }
