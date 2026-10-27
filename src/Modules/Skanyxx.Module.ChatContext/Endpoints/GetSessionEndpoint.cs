@@ -1,0 +1,19 @@
+using FastEndpoints;
+using MediatR;
+using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.ChatContext;
+using Skanyxx.Module.ChatContext.Features;
+
+namespace Skanyxx.Module.ChatContext.Endpoints;
+
+internal sealed class GetSessionEndpoint(IMediator mediator) : Endpoint<SessionRouteRequest>
+{
+    public override void Configure()
+    {
+        Get("sessions/{id}");
+        Group<ChatIndexGroup>();
+    }
+
+    public override async Task HandleAsync(SessionRouteRequest req, CancellationToken ct) =>
+        await Send.ResultAsync((await mediator.Send(new GetSessionQuery(ChatReader.From(User), req.Id), ct)).ToHttp());
+}
