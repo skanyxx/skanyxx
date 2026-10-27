@@ -15,6 +15,7 @@ We design in small steps. This folder is the running record — not a product sp
 | [first-hour.md](first-hour.md) | Step 2: setup → first chat message. |
 | [identity.md](identity.md) | Owner bootstrap, invite, teams and departments, optional Entra. |
 | [install-path.md](install-path.md) | License → one install → browser URL. |
+| [cluster-security.md](cluster-security.md) | Who talks to whom in the chart: ports, credentials, SAs, NetworkPolicies, kagent/AX auth gaps. |
 | [studio.md](studio.md) | Step 3: compose agent → PR. |
 | [memory-store.md](memory-store.md) | Volume + tokens: cards not chats. |
 | [memory-card.md](memory-card.md) | Tiny card schema. |

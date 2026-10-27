@@ -46,3 +46,20 @@ networkPolicy:
     - namespaceSelector:
         matchLabels:
           kubernetes.io/metadata.name: kagent
+  # Skanyxx's egress to the customer's kagent controller and Postgres (cluster-security.md): BYO needs these.
+  skanyxxEgress:
+    extra:
+      - to:
+          - namespaceSelector:
+              matchLabels:
+                kubernetes.io/metadata.name: kagent
+            podSelector:
+              matchLabels:
+                app.kubernetes.io/component: controller
+        ports:
+          - port: 8083
+      - to:
+          - ipBlock:
+              cidr: 10.20.0.10/32
+        ports:
+          - port: 5432

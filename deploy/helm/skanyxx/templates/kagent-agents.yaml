@@ -1,0 +1,13 @@
+{{- with and .Values.kagent.enabled (dig "controller" "agentDeployment" "serviceAccountName" "" .Values.kagent) }}
+# The ServiceAccount kagent's agent pods run as (kagent.controller.agentDeployment.serviceAccountName) instead of one
+# kagent creates per agent: no Kubernetes API token, no RoleBinding. Agents talk to kagent's controller with the
+# projected `kagent` token kagent mounts itself, never to the Kubernetes API (cluster-security.md). An Agent whose
+# spec names another serviceAccountName still gets that one.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ . }}
+  labels:
+    {{- include "skanyxx.labels" $ | nindent 4 }}
+automountServiceAccountToken: false
+{{- end }}

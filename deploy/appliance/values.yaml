@@ -22,3 +22,6 @@ ingress:
 networkPolicy:
   # Traefik runs in kube-system on k3s.
   ingressNamespaces: [kube-system]
+  # Only Traefik's pods there, not all of kube-system (D237).
+  ingressPodLabels:
+    app.kubernetes.io/name: traefik

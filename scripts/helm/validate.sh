@@ -117,6 +117,73 @@ grep -A10 'cidr: "0.0.0.0/0"' <<<"$ctrl" | grep -q '"169.254.0.0/16"' || die "co
 sed -n '/cidr: "0.0.0.0\/0"/,$p' <<<"$ctrl" | grep -m1 -- '- port:' | grep -q 'port: 443$' || die "controllerEgress: the internet rule is not 443 only"
 grep -B6 'cidr: 10.20.0.5/32' <<<"$ctrl" | grep -q 'port: 5432' || die "controllerEgress: extra is not rendered"
 
+# C1 (cluster-security.md): Skanyxx's UI/API port admits the ingress controller (+ httpFrom) only, never the whole
+# namespace; with the ingress off, no peer at all.
+sk=$(netpol skanyxx "$WORK/default.yaml")
+if sed -n '/ingress:/,/egress:/p' <<<"$sk" | grep -q 'podSelector: {}'; then die "Skanyxx admits every pod in the namespace"; fi
+if sed -n '/ingress:/,/egress:/p' <<<"$sk" | grep -q -- '- port: http$'; then die "ingress off, yet Skanyxx's UI/API port admits a peer"; fi
+sk=$(netpol skanyxx "$WORK/byo-values.yaml")
+grep -A6 'kubernetes.io/metadata.name: ingress-nginx' <<<"$sk" | grep -q -- '- port: http$' || die "BYO: the ingress controller is not admitted to the UI/API port"
+helm template skanyxx "$CHART" --namespace skanyxx --set ingress.enabled=true --set 'ingress.hosts[0]=x.example.com' \
+  --set networkPolicy.ingressPodLabels.app\\.kubernetes\\.io/name=ingress-nginx \
+  --set-json 'networkPolicy.httpFrom=[{"namespaceSelector":{"matchLabels":{"kubernetes.io/metadata.name":"monitoring"}}}]' >"$WORK/http.yaml"
+sk=$(netpol skanyxx "$WORK/http.yaml")
+grep -A3 'kubernetes.io/metadata.name: ingress-nginx' <<<"$sk" | grep -q 'podSelector:' || die "ingressPodLabels does not narrow the ingress namespace to its pods"
+grep -A8 'kubernetes.io/metadata.name: monitoring' <<<"$sk" | grep -q -- '- port: http$' || die "networkPolicy.httpFrom is not admitted on the UI/API port"
+# C2: Skanyxx's egress is DNS, the bundled kagent controller (8083) and stores, the internet minus clusterCidrs on
+# internetPorts, and extra; never open unless skanyxxEgress.enabled=false. BYO kagent/Postgres need extra.
+sk=$(netpol skanyxx "$WORK/default.yaml")
+if grep -q -- '- {}' <<<"$sk"; then die "Skanyxx egress is open by default"; fi
+sed -n '/egress:/,$p' <<<"$sk" | grep -A6 'app.kubernetes.io/component: controller' | grep -q 'port: 8083' || die "Skanyxx cannot reach kagent's controller API"
+for store in postgres:postgres minio:s3 gitea:http dragonfly:6379; do
+  sed -n '/egress:/,$p' <<<"$sk" | grep -A5 "app.kubernetes.io/name: ${store%%:*}$" | grep -q -- "- port: ${store#*:}$" || die "Skanyxx cannot reach ${store%%:*}"
+done
+grep -A10 'cidr: "0.0.0.0/0"' <<<"$sk" | grep -q '"169.254.0.0/16"' || die "Skanyxx's internet egress does not exclude cloud metadata"
+if sed -n '/egress:/,$p' <<<"$sk" | grep -q 'podSelector: {}\|namespaceSelector: {}'; then die "Skanyxx may send to a whole namespace"; fi
+sk=$(netpol skanyxx "$WORK/byo-values.yaml" | sed -n '/egress:/,$p')
+grep -q 'cidr: 10.20.0.10/32' <<<"$sk" && grep -q 'kubernetes.io/metadata.name: kagent' <<<"$sk" || die "BYO: skanyxxEgress.extra is not rendered"
+netpol skanyxx "$WORK/ax-install-values.yaml" | sed -n '/egress:/,$p' | grep -A4 'app.kubernetes.io/name: ax-server' | grep -q -- '- port: grpc' || die "ax-install: Skanyxx cannot reach ax-server"
+netpol skanyxx "$WORK/ax-values.yaml" | sed -n '/egress:/,$p' | grep -q 'kubernetes.io/metadata.name: ax-system' || die "ax: Skanyxx cannot reach ax.namespace"
+helm template skanyxx "$CHART" --namespace skanyxx --set networkPolicy.skanyxxEgress.enabled=false >"$WORK/open.yaml"
+netpol skanyxx "$WORK/open.yaml" | grep -q -- '- {}' || die "skanyxxEgress.enabled=false does not open Skanyxx's egress"
+# C3: kagent's controller API (no auth, D101) answers Skanyxx and the agent pods on 8083 only (+ its UI when it runs).
+ctrl=$(netpol kagent-controller "$WORK/default.yaml")
+if sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -q 'podSelector: {}'; then die "kagent's controller admits every pod in the namespace"; fi
+sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -q 'app.kubernetes.io/name: skanyxx' || die "kagent's controller does not admit Skanyxx"
+[[ $(sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -c -- '- port:') == 1 ]] && sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -q -- '- port: 8083' \
+  || die "kagent's controller admits more than its API port"
+if grep -q 'component: ui' <<<"$ctrl"; then die "kagent's UI (0 replicas) is admitted to the controller"; fi
+helm template skanyxx "$CHART" --namespace skanyxx --set kagent.ui.replicas=1 >"$WORK/ui.yaml"
+netpol kagent-controller "$WORK/ui.yaml" | grep -q 'component: ui' || die "kagent's UI runs but cannot reach the controller"
+# C4: agent pods answer the controller on a2aPorts only, and send to the controller's API port only.
+agents=$(netpol kagent-agents "$WORK/default.yaml")
+sed -n '/ingress:/,/egress:/p' <<<"$agents" | grep -q -- '- port: 8080' || die "agent pods' A2A ingress is not limited to a2aPorts"
+sed -n '/egress:/,$p' <<<"$agents" | grep -A6 'component: controller' | grep -q 'port: 8083' || die "agent egress to the controller is not its API port only"
+# C5: no workload of ours mounts a Kubernetes API token; only kagent's controller (and its 0-replica UI) may. Agent pods
+# run as kagent-agent (no token). The only RBAC is kagent's namespaced getter/writer.
+for f in default byo-values ax-install-values; do
+  y=$WORK/$f.yaml
+  bad=$(awk 'BEGIN{RS="\n---"} /\nkind: (Deployment|StatefulSet)\n/ && !/automountServiceAccountToken: false/ {
+    match($0, /\n  name: [^\n]+/); n=substr($0, RSTART+9, RLENGTH-9); if (n != "kagent-controller" && n != "kagent-ui" && n != "dragonfly") print n }' "$y")
+  [[ -z $bad ]] || die "$f: these workloads mount a Kubernetes API token: $bad"
+  if grep -qE '^kind: (Role|RoleBinding)$' "$y" && [[ $(awk 'BEGIN{RS="\n---"} /\nkind: (Role|RoleBinding)\n/ && !/\n  name: kagent-/' "$y") != "" ]]; then
+    die "$f: a Role/RoleBinding other than kagent's is rendered"
+  fi
+done
+awk 'BEGIN{RS="\n---"} /\nkind: ServiceAccount\n/ && /\n  name: (dragonfly|skanyxx|kagent-agent)\n/ && !/automountServiceAccountToken: false/' "$WORK/default.yaml" | grep -q . \
+  && die "the Skanyxx, Dragonfly or agent ServiceAccount mounts a token"
+grep -q 'DEFAULT_SERVICE_ACCOUNT_NAME: "kagent-agent"' "$WORK/default.yaml" || die "agent pods do not default to the tokenless kagent-agent ServiceAccount"
+# C6: every container of ours runs non-root, no privilege escalation, read-only root, all capabilities dropped,
+# RuntimeDefault seccomp.
+for f in default ax-install-values; do
+  awk 'BEGIN{RS="\n---"} /\nkind: (Deployment|StatefulSet)\n/ && /# Source: skanyxx\/templates\// {
+    match($0, /\n  name: [^\n]+/); n=substr($0, RSTART+9, RLENGTH-9)
+    c=gsub(/\n +- name: [^\n]+\n +image:/, "&"); e=gsub(/allowPrivilegeEscalation: false/, "&"); r=gsub(/readOnlyRootFilesystem: true/, "&")
+    d=gsub(/drop: \[ALL\]|drop:\n +- ALL/, "&")
+    if (e < c || r < c || d < c || !/runAsNonRoot: true/ || !/RuntimeDefault/) print n " (containers " c ", noEscalation " e ", readOnly " r ", dropALL " d ")" }' \
+    "$WORK/$f.yaml" | grep . && die "$f: a workload misses the pod security baseline"
+done
+
 # D180-D184: memory's card bodies go to the bundled MinIO (its Secret) or the BYO bucket (its Secret); with neither,
 # no object store is configured and bodies stay in Postgres.
 grep -A1 'Memory__ObjectStore__Endpoint' "$WORK/default.yaml" | grep -q '"http://skanyxx-minio.skanyxx.svc:9000"' \
@@ -284,5 +351,8 @@ refuse "controllerEgress without kubeApiCidrs (would cut the controller off the 
 refuse "controllerEgress with BYO kagent (nothing to fence here)" "networkPolicy.controllerEgress fences the bundled kagent only" -f "$CHART/ci/byo-values.yaml" --set networkPolicy.controllerEgress.enabled=true --set 'networkPolicy.controllerEgress.kubeApiCidrs={172.18.0.2/32}'
 refuse "a kubeApiCidrs entry that is not a CIDR" "at '/networkPolicy/controllerEgress/kubeApiCidrs/0'" --set networkPolicy.controllerEgress.enabled=true --set 'networkPolicy.controllerEgress.kubeApiCidrs={kubernetes.default}'
 refuse "controllerEgress.kubeApiPorts empty (would open every port)" "at '/networkPolicy/controllerEgress/kubeApiPorts'" --set-json 'networkPolicy.controllerEgress.kubeApiPorts=[]'
+refuse "kagent's trusted-proxy auth mode (unverified JWT; ignores Skanyxx's X-User-Id)" "at '/kagent/controller/auth/mode'" --set kagent.controller.auth.mode=trusted-proxy
+refuse "Skanyxx egress fenced with BYO kagent/Postgres and no extra rule (would cut them off)" "networkPolicy.skanyxxEgress admits only the bundled" -f "$CHART/ci/byo-values.yaml" --set networkPolicy.skanyxxEgress.extra=null
+refuse "skanyxxEgress.internetPorts empty (would open every port)" "at '/networkPolicy/skanyxxEgress/internetPorts'" --set-json 'networkPolicy.skanyxxEgress.internetPorts=[]'
 refuse "a sandbox token lifetime over 720 hours" "tokenHours': maximum: got 721, want 720" "${AXV[@]}" --set ax.sandboxes.memory.tokenHours=721
-echo "ok: lint + kubeconform -strict for default, byo, ax, ax-install, appliance; /mcp, ModelConfig, RBAC, keep, default-deny, mcpFrom, agent egress, clusterCidrs, controller egress, object store and AX (address, Dragonfly/external/own Redis with password + maxmemory, ax-server/controller policies, sandbox fence kept + DNS peer, sandbox memory listener) checks hold; $refusals refusals, each for its expected reason"
+echo "ok: lint + kubeconform -strict for default, byo, ax, ax-install, appliance; /mcp, ModelConfig, RBAC, keep, default-deny, mcpFrom, agent egress, clusterCidrs, controller egress, Skanyxx ingress/egress, kagent controller + agent ingress, no API tokens, pod security baseline, object store and AX (address, Dragonfly/external/own Redis with password + maxmemory, ax-server/controller policies, sandbox fence kept + DNS peer, sandbox memory listener) checks hold; $refusals refusals, each for its expected reason"

@@ -148,14 +148,33 @@ ingress:
     - /Entra
 
 # The namespace is default-deny (D137): every pod refuses traffic it is not explicitly allowed, and may only send DNS
-# unless allowed more. Allowed: Skanyxx's http port ← this namespace + the ingress controller; its mcp port ← kagent's
-# controller and agent pods; kagent's controller ← this namespace; agent pods ← kagent's controller; each store ←
-# Skanyxx (+ kagent → Postgres, AX → Dragonfly). Egress: Skanyxx and kagent's controller anywhere (Jira, Entra, BYO
-# stores, the Kubernetes API); agent pods → this namespace + the model provider (modelEgress); stores → DNS only.
+# unless allowed more. Allowed (docs/design/cluster-security.md has the matrix): Skanyxx's http port ← the ingress
+# controller (+ httpFrom); its mcp port ← kagent's controller and agent pods; kagent's controller (8083) ← Skanyxx, the
+# agent pods (+ controllerFrom); agent pods (A2A) ← kagent's controller; each store ← Skanyxx (+ kagent → Postgres,
+# AX → Dragonfly). Egress: Skanyxx → skanyxxEgress; kagent's controller anywhere unless controllerEgress; agent pods →
+# the controller, Skanyxx's mcp port, the model provider (modelEgress); stores → DNS only.
 networkPolicy:
   enabled: true
   # The ingress controller's namespace(s), admitted to Skanyxx's http port only while ingress.enabled.
   ingressNamespaces: [ingress-nginx]
+  # Its pods' labels inside those namespaces; empty = every pod there. Set it where the namespace holds more than the
+  # ingress controller (k3s Traefik in kube-system: {app.kubernetes.io/name: traefik}).
+  ingressPodLabels: {}
+  # Other peers admitted to the UI/API port (an in-cluster uptime probe, a mesh gateway). Nothing in this namespace is.
+  httpFrom: []
+  # Other peers admitted to the bundled kagent controller's API (8083), e.g. a kagent CLI pod. It authenticates nobody
+  # (D101): whoever reaches it names the user and may create agents.
+  controllerFrom: []
+  # Skanyxx's egress. On: DNS, the bundled kagent controller and stores (Postgres, MinIO, Gitea, Dragonfly), AX (the
+  # chart's ax-server, or ax.namespace), the internet minus clusterCidrs on internetPorts (Entra/OIDC, Jira Cloud, git
+  # hosts, S3, SMTP submission), and `extra`. BYO kagent or BYO Postgres need an `extra` rule (refused without), as does
+  # anything private: an on-prem Jira, IdP or SMTP relay, a BYO S3 in the cluster, e.g.
+  #   extra: [{to: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kagent}}}], ports: [{port: 8083}]}]
+  # Off: open egress (pre-cluster-security behaviour).
+  skanyxxEgress:
+    enabled: true
+    internetPorts: [443, 465, 587]
+    extra: []
   # Who else may call /mcp/memory on the mcp port (NetworkPolicy peers, D147). The bundled kagent is admitted by
   # itself; with BYO kagent (kagent.enabled=false) nothing is until you name it here, e.g.
   #   mcpFrom: [{namespaceSelector: {matchLabels: {kubernetes.io/metadata.name: kagent}}}]
@@ -444,6 +463,14 @@ kagent:
   ui:
     replicas: 0
   controller:
+    # Must stay unsecure (the chart refuses trusted-proxy): kagent 0.10.2 has no mode that verifies a caller; its API is
+    # fenced by NetworkPolicy instead (cluster-security.md).
+    auth:
+      mode: unsecure
+    # Agent pods run as this ServiceAccount, which the umbrella creates without a Kubernetes API token (agents never
+    # call the API). Empty: kagent creates one per agent, with the token mounted.
+    agentDeployment:
+      serviceAccountName: kagent-agent
     resources:
       requests:
         cpu: 50m
