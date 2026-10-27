@@ -311,6 +311,27 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(before, _kagent.AgentObjects[$"{Ns}/dup"].ToJsonString());
     }
 
+    /// <summary>C-4: kagent's condition text may quote a credential; only the condition's type, status and a reason token are shown.</summary>
+    [Fact]
+    public async Task ConditionMessages_AndOddReasons_NeverReachTheResponse()
+    {
+        Seed("helper", Direct());
+        _kagent.AgentObjects[$"{Ns}/helper"]["status"] = new JsonObject
+        {
+            ["conditions"] = new JsonArray(
+                new JsonObject { ["type"] = "Accepted", ["status"] = "False", ["reason"] = "AgentReconcileFailed",
+                    ["message"] = "fetching header failed: Authorization: Bearer SYNTHETIC-SECRET-MARKER" },
+                new JsonObject { ["type"] = "Ready", ["status"] = "False", ["reason"] = "Bearer SYNTHETIC-SECRET-MARKER" })
+        };
+
+        var body = await _owner.GetStringAsync($"/api/agents/{Ns}/helper", Ct);
+
+        Assert.DoesNotContain("SYNTHETIC-SECRET-MARKER", body);
+        var conditions = JsonDocument.Parse(body).RootElement.GetProperty("conditions");
+        Assert.Equal("AgentReconcileFailed", conditions[0].GetProperty("reason").GetString());
+        Assert.Equal(JsonValueKind.Null, conditions[1].GetProperty("reason").ValueKind);
+    }
+
     [Fact]
     public async Task Responses_NeverCarryAnnotationsHeadersOrEnv()
     {

@@ -192,7 +192,7 @@
             add('Skills', a.skills);
             add('A2A skills', a.a2aSkills.map(s => `${s.id}: ${s.name}${s.description ? ' — ' + s.description : ''}`));
             add('System prompt', a.systemMessage);
-            add('Conditions', a.conditions.map(c => `${c.type}=${c.status}${c.reason ? ' (' + c.reason + ')' : ''}${c.message ? ': ' + c.message : ''}`));
+            add('Conditions', a.conditions.map(c => `${c.type}=${c.status}${c.reason ? ' (' + c.reason + ')' : ''}`));
             document.getElementById('detail-card').hidden = false;
         } catch (e) {
             fail(e.message);

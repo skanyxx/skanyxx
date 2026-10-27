@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
 
@@ -11,7 +12,7 @@ namespace Skanyxx.Module.Agents.Manage.Definition;
 /// starts from the agent's current spec and changes only the form's fields: anything else (deployment, memory, context,
 /// header settings on a kept MCP server) stays as it was.
 /// </summary>
-internal static class AgentSpec
+internal static partial class AgentSpec
 {
     /// <summary>A new agent: Declarative, labelled as the Agents page's and listed in Chat (D253).</summary>
     public static JsonObject NewAgent(AgentForm form) => new()
@@ -175,8 +176,9 @@ internal static class AgentSpec
             [.. Strings(spec?["skills"]?["refs"])],
             [.. (declarative?["a2aConfig"]?["skills"] as JsonArray ?? []).OfType<JsonObject>().Select(s => new A2aSkillForm(
                 Text(s["id"]) ?? "", Text(s["name"]) ?? "", Text(s["description"]), [.. Strings(s["tags"])], [.. Strings(s["examples"])]))],
-            full ? [.. (agent["status"]?["conditions"] as JsonArray ?? []).OfType<JsonObject>().Select(c => new AgentCondition(
-                Text(c["type"]) ?? "", Text(c["status"]) ?? "", Text(c["reason"]), Text(c["message"]) is { } m && m.Length > 300 ? m[..300] : Text(c["message"])))] : [],
+            full ? [.. (agent["status"]?["conditions"] as JsonArray ?? []).OfType<JsonObject>()
+                .Where(c => Token(Text(c["type"])) is not null)
+                .Select(c => new AgentCondition(Text(c["type"])!, Text(c["status"]) is "True" or "False" ? Text(c["status"])! : "Unknown", Token(Text(c["reason"]))))] : [],
             read ? Version(agent) : null);
     }
 
@@ -186,6 +188,12 @@ internal static class AgentSpec
 
     private static bool Condition(JsonObject agent, string type) =>
         (agent["status"]?["conditions"] as JsonArray ?? []).Any(c => Text(c?["type"]) == type && Text(c?["status"]) == "True");
+
+    /// <summary>A CamelCase word as kagent's condition types and reasons are (Ready, DeploymentReady); anything else is dropped (C-4).</summary>
+    private static string? Token(string? text) => text is not null && ConditionToken().IsMatch(text) ? text : null;
+
+    [GeneratedRegex("^[A-Za-z][A-Za-z0-9]{0,63}\\z")]
+    private static partial Regex ConditionToken();
 
     private static void Set(JsonObject target, string key, JsonNode? value)
     {
