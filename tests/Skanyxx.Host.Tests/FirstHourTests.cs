@@ -629,6 +629,60 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         }
     }
 
+    private static string SentText(FakeKAgent.Call turn) =>
+        string.Concat(turn.Body!["params"]!["message"]!["parts"]!.AsArray().Select(p => p!["text"]?.GetValue<string>()));
+
+    [Fact]
+    public async Task Chat_FirstTurnCarriesRelatedCards_LaterTurnsDoNot_AndTheSessionBecomesAPersonalCard()
+    {
+        var owner = await _host.OwnerAsync();
+        (await owner.PutAsJsonAsync("/api/memory/cards/company/refund-window",
+            new { version = 0, type = "decision", what = "We refund within 14 days", why = "Finance policy X" },
+            cancellationToken: TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+
+        var first = await (await owner.PostAsJsonAsync("/api/chat",
+                new { agentNamespace = "kagent", agentName = "seed", message = "What is our refund window for SDB-58?" },
+                cancellationToken: TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+        var conversation = first.GetProperty("conversationId").GetString()!;
+        await owner.PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "And for gift cards?", conversationId = conversation },
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(["company/refund-window"], first.GetProperty("memoryCards").EnumerateArray()
+            .Select(c => $"{c.GetProperty("scope").GetString()}/{c.GetProperty("key").GetString()}"));
+        var turns = _kagent.CallsTo("POST", "/api/a2a/kagent/seed/").Select(SentText).ToList();
+        Assert.StartsWith("[Related memory", turns[0]);
+        Assert.Contains("company/refund-window (decision): We refund within 14 days", turns[0]);
+        Assert.EndsWith("What is our refund window for SDB-58?", turns[0]);
+        Assert.Equal("And for gift cards?", turns[1]);
+
+        var mine = await owner.GetFromJsonAsync<JsonElement>("/api/memory/library?ticket=SDB-58", cancellationToken: TestContext.Current.CancellationToken);
+        var card = Assert.Single(mine.GetProperty("cards").EnumerateArray());
+        Assert.StartsWith("chat-", card.GetProperty("key").GetString());
+        Assert.StartsWith("personal:", card.GetProperty("scope").GetString());
+        Assert.Equal("chat", card.GetProperty("origin").GetString());
+    }
+
+    [Fact]
+    public async Task Chat_NeverInjectsAnotherPersonsSessionCard()
+    {
+        var owner = await _host.OwnerAsync();
+        await owner.PostAsJsonAsync("/api/chat",
+            new { agentNamespace = "kagent", agentName = "seed", message = "Private payroll question about bonuses for SDB-77" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var (employee, _) = await EmployeeAsync();
+
+        var answer = await (await employee.PostAsJsonAsync("/api/chat",
+                new { agentNamespace = "kagent", agentName = "seed", message = "What about payroll bonuses for SDB-77?" },
+                cancellationToken: TestContext.Current.CancellationToken))
+            .Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Empty(answer.GetProperty("memoryCards").EnumerateArray());
+        Assert.DoesNotContain("[Related memory", SentText(_kagent.CallsTo("POST", "/api/a2a/kagent/seed/").Last()));
+        var shelf = await employee.GetFromJsonAsync<JsonElement>("/api/memory/library?ticket=SDB-77", cancellationToken: TestContext.Current.CancellationToken);
+        Assert.All(shelf.GetProperty("cards").EnumerateArray(), c => Assert.DoesNotContain("Private payroll", c.GetProperty("what").GetString()));
+    }
+
     private async Task<(HttpClient Api, Browser Browser)> EmployeeAsync()
     {
         var owner = await _host.OwnerAsync();

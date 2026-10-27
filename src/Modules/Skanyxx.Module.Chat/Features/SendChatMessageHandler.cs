@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.MediatR.Requests;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Core.Services;
 
 namespace Skanyxx.Module.Chat.Features;
@@ -12,8 +13,11 @@ namespace Skanyxx.Module.Chat.Features;
 /// sessions up by id and user, so another person's conversation id is "not found", and a conversation with a different
 /// agent is refused the same way. A first turn that fails, or that the caller abandons, deletes the session it just
 /// created, so retries leave no empty sessions behind.
+/// Memory takes part through Core interfaces (no-ops without the memory module): a new conversation's first message
+/// carries the related cards both the person and the agent may read, and every answered turn updates the session's card.
 /// </summary>
-internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ILogger<SendChatMessageHandler> logger)
+internal sealed class SendChatMessageHandler(
+    KAgentApiClient kagent, IRelatedMemory related, ICardExtractor extractor, ILogger<SendChatMessageHandler> logger)
     : IRequestHandler<SendChatMessageCommand, Outcome<ChatResponse>>
 {
     public async Task<Outcome<ChatResponse>> Handle(SendChatMessageCommand command, CancellationToken ct)
@@ -26,8 +30,9 @@ internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ILogger<Sen
             if (agent is null)
                 return Outcome<ChatResponse>.NotFound("No such agent to chat with.");
 
+            var isNew = string.IsNullOrEmpty(command.ConversationId);
             string sessionId;
-            if (string.IsNullOrEmpty(command.ConversationId))
+            if (isNew)
                 sessionId = newSession = (await kagent.CreateSessionAsync($"{agent.Namespace}/{agent.Name}", command.UserId, ct)).Id;
             else if (await kagent.GetSessionAsync(command.ConversationId, command.UserId, ct) is { } session
                      && session.AgentId == MergedAgents.SessionAgentId(agent))
@@ -35,8 +40,18 @@ internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ILogger<Sen
             else
                 return Outcome<ChatResponse>.NotFound("No such conversation.");
 
-            return Outcome<ChatResponse>.Ok(
-                await kagent.SendMessageAsync(agent.Namespace, agent.Name, sessionId, command.Message, command.UserId, ct));
+            // An agent's memory id is its kagent name (the studio grants by it).
+            var memory = isNew
+                ? await related.ForNewChatAsync(new RelatedMemoryQuery(command.UserId, agent.Name, command.Message), ct)
+                : MemoryContext.None;
+            var response = await kagent.SendMessageAsync(
+                agent.Namespace, agent.Name, sessionId, memory.Block + command.Message, command.UserId, ct);
+            response.MemoryCards = memory.Cards;
+            // Not the request's token: the answer exists, so its card should be kept even if the caller left.
+            await extractor.ChatTurnAsync(new ChatTurnDigest(
+                command.UserId, agent.Name, $"{agent.Namespace}/{agent.Name}", sessionId, command.Message, response.Message.Content, isNew),
+                CancellationToken.None);
+            return Outcome<ChatResponse>.Ok(response);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
