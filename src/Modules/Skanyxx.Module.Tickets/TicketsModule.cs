@@ -7,8 +7,10 @@ using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Tickets;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Engine;
+using Skanyxx.Module.Tickets.Features.Runs;
 using Skanyxx.Module.Tickets.Sources;
 
 namespace Skanyxx.Module.Tickets;
@@ -50,6 +52,7 @@ public sealed class TicketsModule : IModule
         services.AddSingleton<RunSignal>();
         services.AddScoped<StageRunner>();
         services.AddScoped<RunStepper>();
+        services.AddScoped<ITicketRuns, TicketRuns>();
 
         var kagent = configuration.GetSection("KAgent").Get<KAgentConfig>() ?? new KAgentConfig();
         services.AddHttpClient<IStageAgentClient, KAgentStageClient>((sp, http) =>
