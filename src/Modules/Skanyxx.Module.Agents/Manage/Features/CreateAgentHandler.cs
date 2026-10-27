@@ -17,6 +17,7 @@ internal sealed class CreateAgentHandler(KAgentApiClient kagent, IMediator media
         if (!AgentAccess.CanWrite(command.User))
             return Outcome<AgentDetail>.Forbidden(AgentAccess.NotWriter);
         var form = command.Form;
+        var intended = false;
         try
         {
             var agents = await AgentQueries.AgentsAsync(kagent, options.Value.Namespace, ct);
@@ -28,14 +29,18 @@ internal sealed class CreateAgentHandler(KAgentApiClient kagent, IMediator media
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.Exists(form.Namespace, form.Name), "exists");
 
             var agent = AgentSpec.NewAgent(form);
+            await AgentAudit.WriteAsync(mediator, AgentAudit.CreateRequested, command.User, form.Namespace, form.Name, form);
+            intended = true;
             await kagent.CreateAgentAsync(agent, ct);
-            await AgentAudit.WriteAsync(mediator, AgentAudit.Created, command.User, form.Namespace, form.Name, form);
+            await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Created, command.User, form.Namespace, form.Name, form);
             logger.LogWarning("Agent {Namespace}/{Name} created by {ActorUserId}", form.Namespace, form.Name, command.User.UserId);
             return Outcome<AgentDetail>.Created(AgentSpec.Detail(agent, full: true, canWrite: true, read: false));
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             logger.LogWarning(ex, "Agent {Namespace}/{Name}: kagent did not create it", form.Namespace, form.Name);
+            if (intended)
+                await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Failed, command.User, form.Namespace, form.Name, reason: "create");
             return Outcome<AgentDetail>.Unavailable(AgentFailure.Unavailable);
         }
     }

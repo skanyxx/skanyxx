@@ -20,6 +20,7 @@ internal sealed class DeleteAgentHandler(KAgentApiClient kagent, IMediator media
             return Outcome<AgentDeleted>.NotFound(AgentFailure.NotFound);
         if (command.Namespace != options.Value.Namespace)
             return Outcome<AgentDeleted>.Conflict(null, AgentFailure.OtherNamespace(options.Value.Namespace), "namespace");
+        var intended = false;
         try
         {
             var existing = await kagent.GetAgentObjectAsync(command.Namespace, command.Name, ct);
@@ -32,15 +33,22 @@ internal sealed class DeleteAgentHandler(KAgentApiClient kagent, IMediator media
                     reason: "delete: " + AgentProtection.SourceOf(command.Name, labels));
                 return Outcome<AgentDeleted>.Conflict(null, refusal, AgentProtection.SourceOf(command.Name, labels));
             }
+            await AgentAudit.WriteAsync(mediator, AgentAudit.DeleteRequested, command.User, command.Namespace, command.Name);
+            intended = true;
             if (!await kagent.DeleteAgentAsync(command.Namespace, command.Name, ct))
+            {
+                await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Failed, command.User, command.Namespace, command.Name, reason: "delete: gone");
                 return Outcome<AgentDeleted>.NotFound(AgentFailure.NotFound);
-            await AgentAudit.WriteAsync(mediator, AgentAudit.Deleted, command.User, command.Namespace, command.Name);
+            }
+            await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Deleted, command.User, command.Namespace, command.Name);
             logger.LogWarning("Agent {Namespace}/{Name} deleted by {ActorUserId}", command.Namespace, command.Name, command.User.UserId);
             return Outcome<AgentDeleted>.Ok(new AgentDeleted(command.Namespace, command.Name));
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             logger.LogWarning(ex, "Agent {Namespace}/{Name}: kagent did not delete it", command.Namespace, command.Name);
+            if (intended)
+                await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Failed, command.User, command.Namespace, command.Name, reason: "delete");
             return Outcome<AgentDeleted>.Unavailable(AgentFailure.Unavailable);
         }
     }

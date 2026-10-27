@@ -20,6 +20,7 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
         if (!AgentAccess.CanWrite(command.User))
             return Outcome<AgentDetail>.Forbidden(AgentAccess.NotWriter);
         var form = command.Form;
+        var intended = false;
         if (!AgentQueries.IsRef(form.Namespace, form.Name))
             return Outcome<AgentDetail>.NotFound(AgentFailure.NotFound);
         if (form.Namespace != options.Value.Namespace)
@@ -56,14 +57,18 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
                 throw AgentFailure.Invalid(problems);
 
             var updated = AgentSpec.Updated(existing, form);
+            await AgentAudit.WriteAsync(mediator, AgentAudit.UpdateRequested, command.User, form.Namespace, form.Name, form);
+            intended = true;
             await kagent.UpdateAgentAsync(updated, ct);
-            await AgentAudit.WriteAsync(mediator, AgentAudit.Updated, command.User, form.Namespace, form.Name, form);
+            await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Updated, command.User, form.Namespace, form.Name, form);
             logger.LogWarning("Agent {Namespace}/{Name} updated by {ActorUserId}", form.Namespace, form.Name, command.User.UserId);
             return Outcome<AgentDetail>.Ok(AgentSpec.Detail(updated, full: true, canWrite: true, read: false));
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             logger.LogWarning(ex, "Agent {Namespace}/{Name}: kagent did not update it", form.Namespace, form.Name);
+            if (intended)
+                await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Failed, command.User, form.Namespace, form.Name, reason: "update");
             return Outcome<AgentDetail>.Unavailable(AgentFailure.Unavailable);
         }
     }
