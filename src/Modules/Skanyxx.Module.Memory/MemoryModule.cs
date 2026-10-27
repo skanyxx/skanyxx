@@ -1,3 +1,4 @@
+using MediatR;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Cors;
@@ -19,7 +20,9 @@ using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Bodies;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Endpoints;
+using Skanyxx.Module.Memory.Domain;
 using Skanyxx.Module.Memory.Features;
+using Skanyxx.Module.Memory.Features.Cards;
 using Skanyxx.Module.Memory.Features.Studio;
 using Skanyxx.Module.Memory.Mcp;
 
@@ -62,6 +65,10 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddSingleton<CardBodies>();
         services.AddSingleton<IStudioReconcileLock, StudioReconcileLock>();
         services.AddSingleton<PluginServerValueProtector>();
+        // D241: card writes are announced (CardsChanged) so caches built on cards can drop what depends on them.
+        services.AddTransient<IPipelineBehavior<UpsertCardCommand, Outcome<Card>>, AnnounceCardWrites<UpsertCardCommand, Outcome<Card>>>();
+        services.AddTransient<IPipelineBehavior<LiftCardCommand, Outcome<CardDto>>, AnnounceCardWrites<LiftCardCommand, Outcome<CardDto>>>();
+        services.AddTransient<IPipelineBehavior<RenameCardCommand, Outcome<CardDto>>, AnnounceCardWrites<RenameCardCommand, Outcome<CardDto>>>();
 
         services.AddHealthChecks().AddNpgSql(
             sp => sp.GetRequiredService<IOptions<MemoryOptions>>().Value.ConnectionSettings().ConnectionString,
