@@ -252,11 +252,6 @@ public class KAgentApiClient
             throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
     }
 
-    public async Task<Agent?> GetAgentAsync(string agentId)
-    {
-        return await RequestAsync<Agent?>($"/api/agents/{agentId}", HttpMethod.Get);
-    }
-
     public async Task<KAgentSession> CreateSessionAsync(string agentName, string? userId = null, CancellationToken ct = default)
     {
         // KAgent expects agent_ref in format "namespace/agent-name"
