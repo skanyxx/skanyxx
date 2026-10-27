@@ -38,3 +38,11 @@ One **Dragonfly** is on by default (D068) because AX needs Redis-protocol. Memor
 
 - Upsert rate limit per agent (a maniac loop dies at the MCP, not in the table)
 - Same agent + same key: coalesce, don’t write 50 times a minute
+
+## As built (2026-10-27, memory-impl, D305, D306)
+
+- Coalescing: an update that changes nothing is not a write; `Memory:UpsertsPerKeyPerMinute` (6) per caller and card.
+- A create that meets an existing card is still a conflict; a lost race (either the version token or the history index)
+  is a conflict, never a 500.
+- Dragonfly, when configured, holds the rate counters (so all replicas share them) and a search cache; it is never asked
+  for a card, and nothing breaks when it is gone.

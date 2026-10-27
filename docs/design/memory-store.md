@@ -26,3 +26,10 @@ A session of 10k tokens should produce **0–few cards**, not 10k tokens in the 
 4. If something new is locked, **upsert** one card (D015), do not append the chat  
 
 That is the same pattern as this design log: we keep D012, we do not keep the whole thread in every later prompt.
+
+## As built (2026-10-27, memory-impl, D301, D307)
+
+- A session or run becomes **one** card of ≤ 200 + 400 characters with a pointer — extraction cuts deterministically and
+  never stores a transcript, a tool call or a draft.
+- Quotas: 2 000 cards per personal scope, 50 000 per other scope (`Memory:MaxCards*`). A full personal scope drops its
+  oldest *extracted* card to keep a new one; hand-written cards are never dropped.

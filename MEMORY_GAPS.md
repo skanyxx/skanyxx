@@ -2,7 +2,7 @@
 
 Every rule in `docs/design/memory-*.md`, plus the memory parts of `requirements.md` (§0 O1/O7, §3.2, §3.4, §3.6, §3.7),
 checked against `src/Modules/Skanyxx.Module.Memory` (below: `M/`) and its callers: Chat, Tickets, Sandboxes, MCP.
-Status is **before** this branch. The "After" column is what this branch changed (see `MEMORY_REPORT.md`).
+Status is **before** this branch (audit commit f7863bf). The "After" column is what this branch changed (see `MEMORY_REPORT.md`).
 
 Paths: `M/` = `src/Modules/Skanyxx.Module.Memory/`, `Chat/` = `src/Modules/Skanyxx.Module.Chat/`,
 `Tickets/` = `src/Modules/Skanyxx.Module.Tickets/`.
