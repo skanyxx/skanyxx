@@ -1,7 +1,7 @@
 # Agents CRUD — report (branch `agents-crud`)
 
 requirements.md §3.3 / O6: full agent CRUD like kagent-ui, role-gated, through kagent's controller HTTP API.
-Decisions: D250–D256 in `docs/design/decisions.md`. Open items: `ISSUES.md`.
+Codex round 1 fixes: `FIX_REPORT.md`. Decisions: D250–D257 in `docs/design/decisions.md`. Open items: `ISSUES.md`.
 
 ## Endpoints (`src/Modules/Skanyxx.Module.Agents/Manage/Endpoints`)
 
@@ -11,8 +11,9 @@ Decisions: D250–D256 in `docs/design/decisions.md`. Open items: `ISSUES.md`.
 | GET | `/api/agents/{ns}/{name}` | owner, supervisor, builder, employee | 200 detail; 404 also when the caller may not read it; system prompt only for builder+ |
 | GET | `/api/agents/options` | owner, supervisor | models, allow-listed MCP servers + tools, callable agents, skill registries |
 | POST | `/api/agents` | owner, supervisor | 201; 400 form problems; 409 name taken |
-| PUT | `/api/agents/{ns}/{name}` | owner, supervisor | 200; 400; 404; 409 studio/system agent, other namespace, BYO, prompt from ConfigMap/Secret, foreign tools |
+| PUT | `/api/agents/{ns}/{name}` | owner, supervisor | 200; 400 (incl. missing `version`); 404; 409 stale `version`, studio/system agent, other namespace, BYO, prompt from ConfigMap/Secret, tools the form cannot show |
 | DELETE | `/api/agents/{ns}/{name}` | owner, supervisor | 200; 404; 409 studio/system agent, other namespace |
+| POST | `/api/agents/{ns}/{name}/suspend`, `/resume` | owner, supervisor | 200 (idempotent); 404; 409 studio/system agent, other namespace (D257) |
 
 Controller calls (`KAgentApiClient`): `GET /api/agents`, `GET/DELETE /api/agents/{ns}/{name}`, `POST/PUT /api/agents`,
 `GET /api/modelconfigs`, `GET /api/toolservers`. Always as Skanyxx's own process user; no person's id or request
@@ -65,7 +66,8 @@ All API values set with `textContent` (the old page used `innerHTML`).
 ## Tests
 
 - `dotnet build Skanyxx.sln -c Release -p:UseSharedCompilation=false`: 0 errors, 0 warnings.
-- `dotnet test --solution Skanyxx.sln -c Release`: **2215 total, 2215 passed, 0 failed, 0 skipped** (Host 26 min).
+- `dotnet test --solution Skanyxx.sln -c Release`: **2226 total, 2226 passed, 0 failed, 0 skipped** (after the Codex
+  round-1 fixes; 2215 before them).
 - `AgentsApiTests` + `StudioTests`: 76/76. RBAC: anonymous 401 on all 7 routes; builder and employee 403 on every
   write and on options, with zero kagent write calls; employees never see unmerged agents or system prompts.
 - Build note: parallel sessions share the compiler server, and a stale one fails untouched Razor pages; build with

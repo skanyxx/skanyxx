@@ -20,15 +20,15 @@
 | A1–A6 | 0a93dd1 (D256; tests `AnAgentsExistingTools_…`, `SystemAndStudioAgents_AreNeverToolsOfANewAgent`, `AgentsOutsideTheStudioNamespace_…`) |
 | A7 | worked around: build with `-p:UseSharedCompilation=false` |
 | A8 | 68a35c9 (page rewritten, textContent only) |
+| Codex C-1…C-8 | see FIX_REPORT.md (854f5b3, a0b7674, 9a4c14f, b36749f, 073b0c1, b801ab3, 1f4a6b4, 88e5fe5) |
 
 ## OPEN
 
 | ID | What | Why open |
 |---|---|---|
-| O1 | Lost update: edit is read-modify-write without `resourceVersion`; a concurrent kubectl/kagent-ui/supervisor edit is overwritten | kagent 0.10.2's PUT does its own Get+Update and ignores the body's resourceVersion; needs kagent support or a Skanyxx-side lock |
-| O2 | A concurrent create of the same name answers 502 ("kagent did not accept"), not 409 | kagent answers 500 for AlreadyExists; the pre-check catches the common case |
+| O1 | Lost update, residual (C-2): stale forms are now 409 (spec version), but a write landing between Skanyxx's read and kagent's own Get+Update is still lost | kagent 0.10.2's PUT ignores the body's resourceVersion; needs upstream support |
 | O3 | List shows Edit for agents whose prompt comes from `systemMessageFrom`/foreign tools; the details view and the API refuse (409) | The list API from kagent is summarised to `Agent` without the spec; owner may want a richer list |
 | O4 | Studio write-back: a direct edit of a studio agent is blocked (D252), not turned into a PR | requirements.md §3.3 "open decision: block, or write back as a PR" — block chosen; PR write-back needs owner go-ahead |
-| O5 | No enable/suspend for direct agents (§3.3 lists it); no "unpublish from Chat" (labels are immutable through kagent's PUT) | Needs a design (delete+recreate or a Skanyxx-side visibility list) |
+| O5 | Suspend/resume now exist (C-7, D257); still no "unpublish from Chat" without stopping the agent, and resume returns to one replica | Labels and annotations are immutable through kagent's PUT |
 | O6 | A direct agent's name blocks a later studio merge of the same name (reconciler never adopts) | By design (D252); owner may want a rename/adopt flow |
 | O7 | D-row numbers D250–D256 chosen to avoid collisions with parallel branches (all at D235); may need renumbering at merge | Merge coordination |
