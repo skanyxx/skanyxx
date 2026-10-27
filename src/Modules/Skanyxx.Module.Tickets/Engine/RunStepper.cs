@@ -1,3 +1,4 @@
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Skanyxx.Module.Tickets.Data;
@@ -8,8 +9,10 @@ namespace Skanyxx.Module.Tickets.Engine;
 /// <summary>
 /// Moves one run by one stage and saves the attempt, its agent turns and the new cursor in ONE transaction.
 /// A crash mid-stage therefore leaves nothing half-written: after a restart the stage simply runs again.
+/// A step that ends the run tells memory, after the save (<see cref="RunFinishedNotice"/>).
 /// </summary>
-public sealed class RunStepper(TicketsDbContext db, StageRunner runner, IOptions<TicketsOptions> options, TimeProvider clock)
+public sealed class RunStepper(
+    TicketsDbContext db, StageRunner runner, IOptions<TicketsOptions> options, TimeProvider clock, IPublisher publisher)
 {
     /// <returns>Whether the run moved (and may move again).</returns>
     public async Task<bool> StepAsync(Guid runId, CancellationToken ct)
@@ -53,7 +56,11 @@ public sealed class RunStepper(TicketsDbContext db, StageRunner runner, IOptions
             }
         }
 
-        return await SaveAsync(run, ct) && run.State == RunState.Running;
+        if (!await SaveAsync(run, ct))
+            return false;
+        if (RunFinishedNotice.From(run) is { } finished)
+            await publisher.Publish(finished, ct);
+        return run.State == RunState.Running;
     }
 
     /// <summary>
