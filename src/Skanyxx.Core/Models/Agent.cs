@@ -12,6 +12,9 @@ public class Agent
     public bool Accepted { get; set; }
     public Dictionary<string, string> Labels { get; set; } = [];
 
+    /// <summary>Scaled to zero (<c>deployment.replicas: 0</c>): suspended on the Agents page, never offered in Chat (D257).</summary>
+    public bool Suspended { get; set; }
+
     /// <summary>The MCP servers its spec names (<c>declarative.tools</c>), each with its tool names; none = every tool the server lists.</summary>
     public Dictionary<string, List<string>> McpToolNames { get; set; } = [];
     public int TasksToday { get; set; }

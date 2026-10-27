@@ -212,8 +212,19 @@ public class KAgentApiClient
             Ready = isReady,
             Accepted = isAccepted,
             Labels = labels,
+            Suspended = Replicas(spec) == 0,
             McpToolNames = McpToolNames(spec)
         };
+    }
+
+    private static int? Replicas(JsonElement spec)
+    {
+        foreach (var holder in new[] { "declarative", "byo" })
+            if (spec.ValueKind == JsonValueKind.Object && spec.TryGetProperty(holder, out var h) && h.ValueKind == JsonValueKind.Object
+                && h.TryGetProperty("deployment", out var d) && d.ValueKind == JsonValueKind.Object
+                && d.TryGetProperty("replicas", out var r) && r.ValueKind == JsonValueKind.Number)
+                return r.GetInt32();
+        return null;
     }
 
     private static Dictionary<string, List<string>> McpToolNames(JsonElement spec)

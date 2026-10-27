@@ -148,6 +148,30 @@ internal static partial class AgentSpec
     }
 
     /// <summary>The agent as the API shows it: never annotations, env, headers or secret references.</summary>
+    /// <summary>Suspended on the Agents page (D257): its Deployment scaled to zero.</summary>
+    public static bool IsSuspended(JsonObject agent) =>
+        Deployment(agent)?["replicas"] is JsonValue replicas && replicas.TryGetValue<int>(out var count) && count == 0;
+
+    /// <summary>
+    /// The agent scaled to zero (<paramref name="suspended"/>) or back to kagent's default; kagent passes
+    /// <c>deployment.replicas</c> to the agent's Deployment. The rest of the spec is untouched.
+    /// </summary>
+    public static JsonObject WithSuspended(JsonObject agent, bool suspended)
+    {
+        var changed = (JsonObject)agent.DeepClone();
+        var spec = changed["spec"] as JsonObject ?? new JsonObject();
+        changed["spec"] = spec;
+        var holder = (spec["byo"] as JsonObject is { } byo && !IsDeclarative(changed) ? byo : null)
+            ?? spec["declarative"] as JsonObject ?? (JsonObject)(spec["declarative"] = new JsonObject());
+        var deployment = holder["deployment"] as JsonObject ?? new JsonObject();
+        Set(deployment, "replicas", suspended ? 0 : null);
+        Set(holder, "deployment", deployment.Count > 0 ? deployment : null);
+        return changed;
+    }
+
+    private static JsonNode? Deployment(JsonObject agent) =>
+        (IsDeclarative(agent) ? agent["spec"]?["declarative"] : agent["spec"]?["byo"])?["deployment"];
+
     /// <summary>The edit version of an agent: a hash of its spec as kagent returns it (C-2).</summary>
     public static string Version(JsonObject agent) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(agent["spec"]?.ToJsonString() ?? "")))[..32];
@@ -172,6 +196,7 @@ internal static partial class AgentSpec
             Condition(agent, "Accepted"),
             source,
             labels.GetValueOrDefault(StudioNames.MergedLabel) == "true",
+            IsSuspended(agent),
             canWrite && refusal is null && declarativeType && !HasPromptSource(agent) && !HasUneditableTools(agent),
             canWrite && refusal is null,
             refusal,

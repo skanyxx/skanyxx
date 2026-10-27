@@ -23,6 +23,7 @@ The API decides; the page only hides what a role cannot use.
 | Create | yes | yes | 403 (propose in Studio) | 403 |
 | Edit | yes¹ | yes¹ | 403 | 403 |
 | Delete | yes¹ | yes¹ | 403 | 403 |
+| Suspend / resume (D257) | yes¹ | yes¹ | 403 | 403 |
 
 ¹ Not studio agents (change them with a Studio proposal) and not system agents (seed, skanyxx-factory, skanyxx-*,
 preview-*, ticket-flow stages): those answer 409 for everyone, the owner too (D252).

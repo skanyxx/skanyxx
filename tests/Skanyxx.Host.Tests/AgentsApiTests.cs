@@ -56,7 +56,8 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
     {
         Seed("helper", Direct());
         var anonymous = _host.Client();
-        var writes = new[] { ("GET", "/api/agents/options"), ("POST", "/api/agents"), ("PUT", $"/api/agents/{Ns}/helper"), ("DELETE", $"/api/agents/{Ns}/helper") };
+        var writes = new[] { ("GET", "/api/agents/options"), ("POST", "/api/agents"), ("PUT", $"/api/agents/{Ns}/helper"), ("DELETE", $"/api/agents/{Ns}/helper"),
+            ("POST", $"/api/agents/{Ns}/helper/suspend"), ("POST", $"/api/agents/{Ns}/helper/resume") };
         foreach (var (method, path) in new[] { ("GET", "/api/agents"), ("GET", $"/api/agents/{Ns}/seed") }.Concat(writes))
             Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.SendAsync(Request(method, path), Ct)).StatusCode);
         var before = KAgentWrites();
@@ -286,6 +287,38 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         fresh["version"] = await VersionAsync("helper");
         Assert.Equal(HttpStatusCode.OK, (await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/helper", fresh, Ct)).StatusCode);
         Assert.NotEqual(opened, await VersionAsync("helper"));
+    }
+
+    /// <summary>C-7 (D257): supervisors suspend and resume an agent; a suspended agent is scaled to zero and out of Chat.</summary>
+    [Fact]
+    public async Task Supervisors_SuspendAndResume_AndChatNeverOffersASuspendedAgent()
+    {
+        Seed("helper", Direct());
+        Assert.Contains("helper", await _employee.GetStringAsync("/api/chat/agents", Ct));
+
+        var suspended = await _supervisor.PostAsync($"/api/agents/{Ns}/helper/suspend", null, Ct);
+        Assert.Equal(HttpStatusCode.OK, suspended.StatusCode);
+        Assert.Equal(0, _kagent.AgentObjects[$"{Ns}/helper"]["spec"]!["declarative"]!["deployment"]!["replicas"]!.GetValue<int>());
+        Assert.True((await ListAsync(_supervisor)).First(a => a.GetProperty("name").GetString() == "helper").GetProperty("suspended").GetBoolean());
+        Assert.DoesNotContain("helper", await _employee.GetStringAsync("/api/chat/agents", Ct));
+        Assert.Equal(HttpStatusCode.OK, (await _supervisor.PostAsync($"/api/agents/{Ns}/helper/suspend", null, Ct)).StatusCode);
+        Assert.Single(_kagent.CallsTo("PUT", "/api/agents"));
+
+        Assert.Equal(HttpStatusCode.OK, (await _owner.PostAsync($"/api/agents/{Ns}/helper/resume", null, Ct)).StatusCode);
+        Assert.Null(_kagent.AgentObjects[$"{Ns}/helper"]["spec"]!["declarative"]!["deployment"]);
+        Assert.Contains("helper", await _employee.GetStringAsync("/api/chat/agents", Ct));
+
+        foreach (var action in new[] { "agent.suspend_requested", "agent.suspended", "agent.resume_requested", "agent.resumed" })
+            Assert.Single((await _owner.GetFromJsonAsync<JsonElement>($"/api/identity/audit?action={action}", Ct)).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task SystemAndStudioAgents_AreNeverSuspendedHere()
+    {
+        Seed("refund-helper", new JsonObject { ["skanyxx.dev/managed-by"] = "skanyxx-studio", ["skanyxx.dev/merged"] = "true" });
+        foreach (var name in new[] { "seed", "refund-helper", "ticket-planner" })
+            Assert.Equal(HttpStatusCode.Conflict, (await _owner.PostAsync($"/api/agents/{Ns}/{name}/suspend", null, Ct)).StatusCode);
+        Assert.Empty(_kagent.CallsTo("PUT", "/api/agents"));
     }
 
     /// <summary>C-5: an edit keeps what the form does not show on an A2A skill (its MIME modes).</summary>

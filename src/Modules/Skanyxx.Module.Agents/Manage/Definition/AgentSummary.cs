@@ -10,6 +10,7 @@ internal sealed record AgentSummary(
     bool Accepted,
     string Source,
     bool InChat,
+    bool Suspended,
     bool CanEdit,
     bool CanDelete,
     string? Protection,

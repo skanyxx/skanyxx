@@ -153,13 +153,16 @@
                 cell(row, a.name);
                 cell(row, a.namespace);
                 cell(row, a.source);
-                cell(row, a.ready ? 'Ready' : (a.accepted ? 'Starting' : 'Not ready'));
+                cell(row, a.suspended ? 'Suspended' : (a.ready ? 'Ready' : (a.accepted ? 'Starting' : 'Not ready')));
                 cell(row, a.inChat ? 'yes' : 'no');
                 const actions = cell(row, '');
                 actions.appendChild(button('Details', a.name, () => details(a.namespace, a.name)));
                 // namespace/name: two namespaces may hold the same name, and Chat picks a bare name's first match.
-                if (a.inChat) actions.appendChild(button('Chat', a.name, () => { location.href = `/Chat?agent=${encodeURIComponent(`${a.namespace}/${a.name}`)}`; }));
+                if (a.inChat && !a.suspended) actions.appendChild(button('Chat', a.name, () => { location.href = `/Chat?agent=${encodeURIComponent(`${a.namespace}/${a.name}`)}`; }));
                 if (canWrite && a.canEdit) actions.appendChild(button('Edit', a.name, () => edit(a.namespace, a.name)));
+                if (canWrite && a.canDelete) actions.appendChild(a.suspended
+                    ? button('Resume', a.name, () => lifecycle(a.namespace, a.name, 'resume'))
+                    : button('Suspend', a.name, () => lifecycle(a.namespace, a.name, 'suspend')));
                 if (canWrite && a.canDelete) actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name)));
                 body.appendChild(row);
             }
@@ -184,7 +187,7 @@
             add('Type', a.type);
             add('Source', a.source + (a.studioPath ? ` (${a.studioPath} in the agent repo)` : ''));
             add('Status', a.ready ? 'Ready' : (a.accepted ? 'Accepted, starting' : 'Not ready'));
-            add('In Chat', a.inChat ? 'yes' : 'no');
+            add('In Chat', a.inChat ? (a.suspended ? 'no (suspended)' : 'yes') : 'no');
             add('Model', a.modelConfig);
             add('Runtime', a.runtime);
             add('Stream', a.stream ? 'yes' : '');
@@ -195,6 +198,17 @@
             add('System prompt', a.systemMessage);
             add('Conditions', a.conditions.map(c => `${c.type}=${c.status}${c.reason ? ' (' + c.reason + ')' : ''}`));
             document.getElementById('detail-card').hidden = false;
+        } catch (e) {
+            fail(e.message);
+        }
+    }
+
+    async function lifecycle(ns, name, verb) {
+        if (verb === 'suspend' && !confirm(`Suspend ${ns}/${name}? Its pod stops and Chat stops offering it until you resume it.`)) return;
+        try {
+            await call('POST', `${path(ns, name)}/${verb}`);
+            done(`${ns}/${name} ${verb === 'suspend' ? 'suspended' : 'resumed'}.`);
+            await load();
         } catch (e) {
             fail(e.message);
         }

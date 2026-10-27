@@ -36,7 +36,7 @@ internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioO
                 var writable = canWrite && refusal is null && a.Agent.Namespace == options.Value.Namespace;
                 // The details decide finally (a prompt from a ConfigMap, tools in another namespace).
                 return new AgentSummary(a.Agent.Namespace, a.Agent.Name, a.Agent.Description, a.Agent.Type, a.Agent.Ready, a.Agent.Accepted,
-                    AgentProtection.SourceOf(a.Agent.Name, a.Agent.Labels), a.InChat,
+                    AgentProtection.SourceOf(a.Agent.Name, a.Agent.Labels), a.InChat, a.Agent.Suspended,
                     writable && a.Agent.Type == "Declarative", writable, refusal,
                     [.. a.Agent.McpToolNames.Keys.Order(StringComparer.Ordinal)]);
             })]);

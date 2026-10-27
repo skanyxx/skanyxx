@@ -19,6 +19,10 @@ internal static class AgentAudit
     public const string Created = "agent.created";
     public const string Updated = "agent.updated";
     public const string Deleted = "agent.deleted";
+    public const string SuspendRequested = "agent.suspend_requested";
+    public const string ResumeRequested = "agent.resume_requested";
+    public const string Suspended = "agent.suspended";
+    public const string Resumed = "agent.resumed";
     public const string Failed = "agent.write_failed";
     public const string Refused = "agent.write_refused";
 
