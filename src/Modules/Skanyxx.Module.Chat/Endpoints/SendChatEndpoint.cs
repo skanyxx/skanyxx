@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
 using Skanyxx.Core.MediatR.Requests;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.ChatContext;
 
 namespace Skanyxx.Module.Chat.Endpoints;
 
@@ -22,7 +23,8 @@ internal sealed class SendChatEndpoint(IMediator mediator) : Endpoint<SendChatRe
     public override async Task HandleAsync(SendChatRequest req, CancellationToken ct)
     {
         var outcome = await mediator.Send(new SendChatMessageCommand(
-            Caller.UserId(User)!, req.Message ?? "", req.AgentNamespace?.Trim() ?? "", req.AgentName?.Trim() ?? "", req.ConversationId), ct);
+            Caller.UserId(User)!, req.Message ?? "", req.AgentNamespace?.Trim() ?? "", req.AgentName?.Trim() ?? "", req.ConversationId,
+            ChatReader.From(User), req.TicketKeys ?? [], req.NoCache), ct);
         await Send.ResultAsync(outcome.ToHttp(r => r));
     }
 }

@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skanyxx.Core;
+using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Chat.Features;
 
@@ -15,11 +16,12 @@ public class ChatModule : IModule
     public string Version => "1.0.0";
     public IReadOnlyList<string> Dependencies => Array.Empty<string>();
 
+    // TryAdd: Chat works without memory or the chat index; their modules' registrations win when loaded.
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
-        // Chat works without memory; the memory module's own registrations win when it is loaded.
         services.TryAddScoped<IRelatedMemory, NoRelatedMemory>();
         services.TryAddScoped<ICardExtractor, NoCardExtractor>();
+        services.TryAddScoped<IChatContext, NoChatContext>();
     }
 
     public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.MediatR.Requests;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Core.Services;
 
@@ -13,11 +14,12 @@ namespace Skanyxx.Module.Chat.Features;
 /// sessions up by id and user, so another person's conversation id is "not found", and a conversation with a different
 /// agent is refused the same way. A first turn that fails, or that the caller abandons, deletes the session it just
 /// created, so retries leave no empty sessions behind.
-/// Memory takes part through Core interfaces (no-ops without the memory module): a new conversation's first message
-/// carries the related cards both the person and the agent may read, and every answered turn updates the session's card.
+/// Memory and the chat index take part through Core interfaces (no-ops without their modules). A new conversation's first
+/// message may be answered from the answer cache; otherwise it carries related prior chats (chat index) and the related
+/// cards both the person and the agent may read (memory). Every answered turn updates the index and the session's card.
 /// </summary>
 internal sealed class SendChatMessageHandler(
-    KAgentApiClient kagent, IRelatedMemory related, ICardExtractor extractor, ILogger<SendChatMessageHandler> logger)
+    KAgentApiClient kagent, IRelatedMemory related, ICardExtractor extractor, IChatContext context, ILogger<SendChatMessageHandler> logger)
     : IRequestHandler<SendChatMessageCommand, Outcome<ChatResponse>>
 {
     public async Task<Outcome<ChatResponse>> Handle(SendChatMessageCommand command, CancellationToken ct)
@@ -30,11 +32,19 @@ internal sealed class SendChatMessageHandler(
             if (agent is null)
                 return Outcome<ChatResponse>.NotFound("No such agent to chat with.");
 
+            var agentRef = $"{agent.Namespace}/{agent.Name}";
+            var tickets = command.TicketKeys ?? [];
             var isNew = string.IsNullOrEmpty(command.ConversationId);
+            var prepared = isNew && command.Reader is { } reader
+                ? await context.PrepareAsync(new ChatTurnStart(reader, agentRef, agent.Revision, command.Message, tickets, command.NoCache), ct)
+                : ChatPreparation.None;
+            if (prepared.Cached is { } cached)
+                return Outcome<ChatResponse>.Ok(cached);
+
             string sessionId;
-            if (string.IsNullOrEmpty(command.ConversationId))
-                sessionId = newSession = (await kagent.CreateSessionAsync($"{agent.Namespace}/{agent.Name}", command.UserId, ct)).Id;
-            else if (await kagent.GetSessionAsync(command.ConversationId, command.UserId, ct) is { } session
+            if (isNew)
+                sessionId = newSession = (await kagent.CreateSessionAsync(agentRef, command.UserId, ct)).Id;
+            else if (await kagent.GetSessionAsync(command.ConversationId!, command.UserId, ct) is { } session
                      && session.AgentId == MergedAgents.SessionAgentId(agent))
                 sessionId = session.Id;
             else
@@ -45,11 +55,16 @@ internal sealed class SendChatMessageHandler(
                 ? await related.ForNewChatAsync(new RelatedMemoryQuery(command.UserId, agent.Name, command.Message), ct)
                 : MemoryContext.None;
             var response = await kagent.SendMessageAsync(
-                agent.Namespace, agent.Name, sessionId, memory.Block + command.Message, command.UserId, ct);
+                agent.Namespace, agent.Name, sessionId, prepared.Context + memory.Block + command.Message, command.UserId, ct);
+            response.RelatedSessions = prepared.Sessions;
+            response.RelatedCards = prepared.Cards;
             response.MemoryCards = memory.Cards;
-            // Not the request's token: the answer exists, so its card should be kept even if the caller left.
+            // Not the request's token: the answer exists, so the index and the card should record it even if the caller left.
+            if (command.Reader is { } who)
+                await context.CompletedAsync(new ChatTurnDone(
+                    who, sessionId, agentRef, command.Message, response.Message.Content, isNew, tickets, prepared.CacheKey), CancellationToken.None);
             await extractor.ChatTurnAsync(new ChatTurnDigest(
-                command.UserId, agent.Name, $"{agent.Namespace}/{agent.Name}", sessionId, command.Message, response.Message.Content, isNew),
+                command.UserId, agent.Name, agentRef, sessionId, command.Message, response.Message.Content, isNew),
                 CancellationToken.None);
             return Outcome<ChatResponse>.Ok(response);
         }
