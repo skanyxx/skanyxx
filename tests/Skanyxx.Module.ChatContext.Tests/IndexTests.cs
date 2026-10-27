@@ -59,6 +59,8 @@ public sealed class IndexTests(PostgresFixture postgres) : ChatContextTestBase(p
         Assert.Equal(["s2"], Ids(await App.SearchAsync(Ana, "?category=deployment")));
         Assert.Equal(["s2"], Ids(await App.SearchAsync(Ana, "?agent=team-a/seed")));
         Assert.Equal(["s2", "s1"], Ids(await App.SearchAsync(Ana, "")));
+        // A key typed into the search box finds its sessions too.
+        Assert.Equal(["s1"], Ids(await App.SearchAsync(Ana, "?q=SDB-58")));
     }
 
     [Fact]

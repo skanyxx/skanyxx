@@ -45,10 +45,15 @@ internal sealed partial class DeterministicExtractor(IOptions<ChatContextOptions
 
     /// <summary>
     /// Lowercased words worth indexing, in text order, repeats kept (they are the weight). Ticket keys are not words: their
-    /// project (<c>sdb</c> of SDB-58) would make every chat of that Jira project look related.
+    /// project (<c>sdb</c> of SDB-58) would make every chat of that Jira project look related. Standards shaped like keys
+    /// (UTF-8, SHA-256) stay words.
     /// </summary>
     internal static IEnumerable<string> Words(string text) =>
-        WordPattern().Matches(TicketPattern().Replace(text, " "))
+        AllWords(TicketPattern().Replace(text, m => IsProjectShaped(m.Value) ? " " : m.Value));
+
+    /// <summary>Every lowercased non-stop word, ticket keys' parts included: what a person types into a search.</summary>
+    internal static IEnumerable<string> AllWords(string text) =>
+        WordPattern().Matches(text)
             .Select(m => m.Value.ToLowerInvariant())
             .Where(w => w.Length is >= 3 and <= 40 && w.Any(char.IsLetter) && !Stopwords.All.Contains(w));
 
@@ -60,9 +65,6 @@ internal sealed partial class DeterministicExtractor(IOptions<ChatContextOptions
             .Take(SessionDigest.MaxCategories)
             .Select(c => c.Name)];
 
-    /// <summary>Ticket keys written in <paramref name="text"/>, in order, without repeats.</summary>
-    internal IReadOnlyList<string> TicketKeysIn(string text) => [.. TicketKeys(text).Distinct()];
-
     private IEnumerable<string> TicketKeys(string text) =>
         TicketPattern().Matches(text)
             .Select(m => m.Value)
@@ -70,6 +72,8 @@ internal sealed partial class DeterministicExtractor(IOptions<ChatContextOptions
 
     private bool IsProject(string project) =>
         _projects.Count > 0 ? _projects.Contains(project) : project.Length >= 2 && !NotProjects.Contains(project);
+
+    private static bool IsProjectShaped(string key) => key.IndexOf('-') is var dash && dash >= 2 && !NotProjects.Contains(key[..dash]);
 
     /// <summary>The first sentences of the answer as plain text: code blocks and markdown marks dropped, whitespace folded.</summary>
     internal static string Outcome(string reply)

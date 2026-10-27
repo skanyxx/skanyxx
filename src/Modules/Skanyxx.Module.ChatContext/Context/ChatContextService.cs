@@ -16,9 +16,9 @@ namespace Skanyxx.Module.ChatContext.Context;
 
 /// <summary>
 /// Chat's <see cref="IChatContext"/> (D236–D241). Before a new conversation: the answer cache, then related sessions
-/// (<see cref="SessionSearch.RelatedAsync"/>, readable only) and published <c>company</c> cards. Company is what every
-/// agent searches by default (D040), so injection never hands an agent a card its grants would not show it; the person's
-/// own cards reach the agent through its own memory search, as that person (D084). After every turn: the index row,
+/// (<see cref="SessionSearch.RelatedAsync"/>, readable only) and published <c>company</c> cards: readable by every person
+/// and in every agent's default grants (D040, D238). No team or department card is injected; the person's own cards reach
+/// the agent through its own memory search, as that person (D084). After every turn: the index row,
 /// through <see cref="IChatExtractor"/>.
 /// </summary>
 internal sealed class ChatContextService(

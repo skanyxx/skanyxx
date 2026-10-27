@@ -52,6 +52,8 @@ public sealed class ExtractorTests
         Assert.Equal(["SDB-58", "OPS-7", "SDB-64"], digest.TicketKeys);
         Assert.DoesNotContain("sdb", digest.KeywordWeights.Keys);
         Assert.DoesNotContain("ops", digest.KeywordWeights.Keys);
+        // Standards shaped like keys are still words.
+        Assert.Contains("utf", digest.KeywordWeights.Keys);
     }
 
     [Fact]
