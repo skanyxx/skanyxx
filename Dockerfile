@@ -20,10 +20,6 @@ RUN --mount=type=cache,id=skanyxx-nuget,target=/root/.nuget/packages,sharing=loc
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
 COPY --from=build /out .
-# The leftover SQLite store (AppDbContext) lives at <content root>/skanyxx.db. The image is read-only at runtime, so
-# that path points into /data (an emptyDir in the chart); SQLite follows the link and keeps its journal next to the
-# real file. Company data is never here: identity, memory and tickets are Postgres (D060).
-RUN mkdir /data && chown "$APP_UID" /data && ln -s /data/skanyxx.db /app/skanyxx.db
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_NOLOGO=1

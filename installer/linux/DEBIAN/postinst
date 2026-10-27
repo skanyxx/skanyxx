@@ -42,10 +42,6 @@ fi
 # reads it. The mode is tightened, the content never edited.
 if [[ -z "$REMOTE" ]] && [[ -f "$CONFIG" && ! -L "$CONFIG" ]]; then
     chmod 600 "$CONFIG"
-    # Server mode runs kubectl, aws and az as root; the hardened unit only lets them keep state in these (D233).
-    for dir in /root/.kube /root/.aws /root/.azure; do
-        [[ -d "$dir" ]] || install -d -m 700 "$dir"
-    done
 fi
 NEEDS_TOKEN=""
 NEEDS_PUBLIC_URL=""

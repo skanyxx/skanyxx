@@ -9,7 +9,7 @@ if command -v systemctl >/dev/null 2>&1; then
     systemctl daemon-reload 2>/dev/null || true
 fi
 
-# appsettings.json and a dev console's skanyxx.db are created at install/run time, so dpkg does not own them: purge
+# appsettings.json (and an older dev console's skanyxx.db) are created at install/run time, so dpkg does not own them: purge
 # removes them (remove keeps them for a reinstall).
 if [[ "$1" == "purge" ]]; then
     rm -rf /usr/share/skanyxx

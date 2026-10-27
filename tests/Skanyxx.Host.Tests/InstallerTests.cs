@@ -110,7 +110,7 @@ public sealed class InstallerTests
         Assert.Contains("systemctl try-restart skanyxx", Read("installer", "linux", "DEBIAN", "postinst"));
         Assert.Contains("if [[ \"$1\" == \"purge\" ]]", Read("installer", "linux", "DEBIAN", "postrm"));
         Assert.Contains("libicu72", Read("installer", "linux", "DEBIAN", "control"));
-        // Server mode runs kubectl as root, which finds ~/.kube through $HOME only; systemd sets it only with User=.
+        // .NET resolves the user profile through $HOME only; systemd sets it only with User=.
         Assert.Contains("Environment=HOME=/root\n", Read("installer", "linux", "usr", "lib", "systemd", "system", "skanyxx.service"));
     }
 
