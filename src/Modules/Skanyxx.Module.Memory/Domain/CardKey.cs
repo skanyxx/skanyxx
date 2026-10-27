@@ -6,6 +6,8 @@ namespace Skanyxx.Module.Memory.Domain;
 /// <summary>Machine-usable slug; identity together with the scope (D035, D038).</summary>
 public static partial class CardKey
 {
+    public const int MaxLength = CardFormat.MaxKeyLength;
+
     public static bool IsValid(string? key) => key is not null && Pattern().IsMatch(key);
 
     // \z, not $: in .NET, $ also matches before a trailing "\n".

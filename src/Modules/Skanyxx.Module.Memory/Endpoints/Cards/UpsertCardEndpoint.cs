@@ -36,7 +36,8 @@ internal sealed class UpsertCardEndpoint(IMediator mediator) : Endpoint<UpsertCa
     public override async Task HandleAsync(UpsertCardRequest req, CancellationToken ct)
     {
         var command = new UpsertCardCommand(
-            HumanCaller.From(User), req.Scope, req.Key, req.Version, req.Type, req.What, req.Why, req.Body, req.Source);
+            HumanCaller.From(User), req.Scope, req.Key, req.Version, req.Type, req.What, req.Why, req.Body, req.Source,
+            req.Tickets, req.Links, req.Keywords);
         var outcome = await mediator.Send(command, ct);
         await Send.ResultAsync(outcome.ToHttp(CardMapper.ToDto));
     }

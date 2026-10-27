@@ -6,13 +6,15 @@ using Npgsql;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Contracts;
+using Skanyxx.Module.Memory.Coordination;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Features.Cards;
 
 internal sealed class LiftCardHandler(
-    MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, ClientAddress client, ILogger<LiftCardHandler> logger)
+    MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, SearchCache cache, ClientAddress client,
+    ILogger<LiftCardHandler> logger)
     : IRequestHandler<LiftCardCommand, Outcome<CardDto>>
 {
     public async Task<Outcome<CardDto>> Handle(LiftCardCommand command, CancellationToken ct) =>
@@ -29,7 +31,7 @@ internal sealed class LiftCardHandler(
         // Decided before the write and the rate-limit slot, so a failing membership lookup neither turns a committed lift
         // into a 500 nor spends a write slot.
         var oversight = await IsOversightAsync(caller, from, ct);
-        if (!limiter.TryAcquire(caller.RateLimitKey))
+        if (!await limiter.TryAcquireAsync(caller.RateLimitKey))
             return Outcome<Card>.RateLimited("Write rate limit reached; try again later.");
 
         var source = await db.Cards.AsNoTracking()
@@ -49,10 +51,17 @@ internal sealed class LiftCardHandler(
             Why = source.Why,
             Who = caller.Who,
             UpdatedAt = DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow,
             Status = CardStatus.Published,
             Body = source.Body,
             Source = source.Source,
-            LiftedFromId = source.Id
+            LiftedFromId = source.Id,
+            Tickets = source.Tickets,
+            Keywords = source.Keywords,
+            // A link into a lower scope would name a card the new readers cannot open: it stays on the original only.
+            Links = [.. source.Links.Where(l => CardLinks.CardScope(l) is not { } linked || linked.Level >= to.Level)],
+            Origin = source.Origin,
+            AgentId = source.AgentId
         };
 
         // Checked first so the usual conflict is not a failed INSERT, which EF logs at Error; the catch is for a race.
@@ -63,6 +72,7 @@ internal sealed class LiftCardHandler(
         try
         {
             await db.SaveChangesAsync(ct);
+            await cache.InvalidateAsync(copy.Scope);
             if (oversight)
                 logger.LogWarning("Card {Key} lifted from {SourceScope} to {TargetScope} by {ActorUserId} from {RemoteIp}, who is not a member of the source",
                     command.Key, from, to, caller.UserId, client.Current);

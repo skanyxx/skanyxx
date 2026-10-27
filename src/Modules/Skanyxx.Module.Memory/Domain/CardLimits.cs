@@ -10,4 +10,10 @@ public static class CardLimits
 
     /// <summary>What Postgres keeps of a body that went to the object store (D181): its first characters.</summary>
     public const int BodyExcerpt = 500;
+
+    public const int Tickets = 20;
+    public const int Links = 20;
+    public const int LinkLength = 512;
+    public const int Keywords = 12;
+    public const int KeywordLength = 40;
 }

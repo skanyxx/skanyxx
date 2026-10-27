@@ -17,11 +17,13 @@ using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Bodies;
+using Skanyxx.Module.Memory.Coordination;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Endpoints;
 using Skanyxx.Module.Memory.Features;
 using Skanyxx.Module.Memory.Features.Studio;
 using Skanyxx.Module.Memory.Mcp;
+using Skanyxx.Module.Memory.Sessions;
 
 namespace Skanyxx.Module.Memory;
 
@@ -50,6 +52,13 @@ public sealed class MemoryModule : IModule, IEndpointModule
                 $"Memory:SandboxMcpPort needs Memory:SandboxTokenKey (at least {MemoryOptions.MinTokenKeyChars} characters): sandbox tokens are signed with it (D076).")
             .Validate(o => o.SandboxMcpPort is null || o.SandboxMcpPort != o.McpPort,
                 "Memory:SandboxMcpPort must differ from Memory:McpPort: the sandbox listener accepts sandbox tokens only, the mcp port agent secrets only (D077).")
+            .Validate(o => o.ReviewScopes.All(s => Domain.Scope.TryParse(s, out _)),
+                "Memory:ReviewScopes must hold scopes: 'company' or 'personal|team|department:<id>'.")
+            .Validate(o => !o.Dragonfly.Enabled || Coordination.DragonflyConfiguration.IsValid(o.Dragonfly.Configuration!),
+                "Memory:Dragonfly:Configuration is not a valid Redis configuration string.")
+            .Validate(o => Valid(o.Injection) && Valid(o.Extraction) && Valid(o.Dragonfly),
+                "Memory:Injection (MaxTokens 100-4000, TopK 1-20), Memory:Extraction (MinWords 1-50) or Memory:Dragonfly " +
+                "(SearchCacheSeconds 1-3600, KeyPrefix [a-z0-9:._-]) is out of range.")
             .ValidateOnStart();
 
         services.AddDbContext<MemoryDbContext>((sp, o) => o
@@ -58,7 +67,12 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddScoped<CardSearch>();
         services.AddScoped<AccessPolicy>();
         services.AddScoped<ClientAddress>();
+        services.AddSingleton<Dragonfly>();
+        services.AddSingleton<SearchCache>();
         services.AddSingleton<UpsertRateLimiter>();
+        // Add, not TryAdd: Chat registers no-ops for both, and the last registration is the one resolved.
+        services.AddScoped<IRelatedMemory, RelatedMemory>();
+        services.AddScoped<ICardExtractor, CardExtractor>();
         services.AddSingleton<CardBodies>();
         services.AddSingleton<IStudioReconcileLock, StudioReconcileLock>();
         services.AddSingleton<PluginServerValueProtector>();
@@ -79,6 +93,10 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddTransient<IStartupFilter, McpPortOnlyFilter>();
         services.AddHostedService<McpPortListenerCheck>();
     }
+
+    private static bool Valid(object options) =>
+        System.ComponentModel.DataAnnotations.Validator.TryValidateObject(
+            options, new System.ComponentModel.DataAnnotations.ValidationContext(options), null, validateAllProperties: true);
 
     /// <summary>Fails startup rather than every card request when nothing answers who is in which team.</summary>
     public Task InitializeAsync(IServiceProvider serviceProvider) =>

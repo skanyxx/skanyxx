@@ -6,6 +6,7 @@ namespace Skanyxx.Module.Memory.Data;
 public sealed class MemoryDbContext(DbContextOptions<MemoryDbContext> options) : DbContext(options)
 {
     public DbSet<Card> Cards => Set<Card>();
+    public DbSet<CardVersion> CardVersions => Set<CardVersion>();
     public DbSet<AgentGrant> Grants => Set<AgentGrant>();
     public DbSet<AgentSecret> AgentSecrets => Set<AgentSecret>();
     public DbSet<StudioAgent> StudioAgents => Set<StudioAgent>();
@@ -16,6 +17,7 @@ public sealed class MemoryDbContext(DbContextOptions<MemoryDbContext> options) :
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfiguration(new CardConfiguration());
+        modelBuilder.ApplyConfiguration(new CardVersionConfiguration());
         modelBuilder.ApplyConfiguration(new AgentGrantConfiguration());
         modelBuilder.ApplyConfiguration(new AgentSecretConfiguration());
         modelBuilder.ApplyConfiguration(new StudioAgentConfiguration());

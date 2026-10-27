@@ -22,7 +22,8 @@ public sealed class MemoryTools(IMediator mediator, IHttpContextAccessor http)
 {
     [McpServerTool(Name = "memory_search", ReadOnly = true)]
     [Description("Search company memory for locked decisions, facts, procedures and open questions. " +
-                 "Returns a few short cards, best match first. Call this before answering questions about how the company works.")]
+                 "Returns a few short cards, best match first; a ticket key in the query (e.g. SDB-58) finds cards about that ticket. " +
+                 "Call this before answering questions about how the company works.")]
     public async Task<IReadOnlyList<CardHit>> SearchAsync(
         [Description("What you are looking for, in plain words.")] string query,
         CancellationToken ct)
@@ -41,6 +42,8 @@ public sealed class MemoryTools(IMediator mediator, IHttpContextAccessor http)
         [Description("Why, at most 400 characters.")] string why,
         [Description("0 to create; otherwise the version you last read.")] int version = 0,
         [Description("'personal' (default, the user's own space) or a scope you were granted, e.g. 'company'.")] string scope = AgentGrant.CallerPersonal,
+        [Description("Ticket keys the card is about, e.g. ['SDB-58']; omit to keep the card's.")] string[]? tickets = null,
+        [Description("Related cards ('scope/key') or http(s) URLs; omit to keep the card's.")] string[]? links = null,
         CancellationToken ct = default)
     {
         var caller = AgentCaller();
@@ -49,7 +52,7 @@ public sealed class MemoryTools(IMediator mediator, IHttpContextAccessor http)
                 "No user context: this call cannot write to 'personal' (the agent does not act for users, or X-User-Id is not a user id).")
             : scope;
 
-        var outcome = await Run(() => mediator.Send(new UpsertCardCommand(caller, target, key, version, type, what, why), ct));
+        var outcome = await Run(() => mediator.Send(new UpsertCardCommand(caller, target, key, version, type, what, why, Tickets: tickets, Links: links), ct));
         return outcome.Status switch
         {
             OutcomeStatus.Ok or OutcomeStatus.Created => outcome.Value!.ToHit(),

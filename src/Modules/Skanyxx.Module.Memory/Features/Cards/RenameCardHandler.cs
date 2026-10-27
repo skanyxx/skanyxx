@@ -6,6 +6,7 @@ using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Access;
 using Skanyxx.Module.Memory.Contracts;
+using Skanyxx.Module.Memory.Coordination;
 using Skanyxx.Module.Memory.Data;
 using Skanyxx.Module.Memory.Domain;
 
@@ -17,7 +18,8 @@ namespace Skanyxx.Module.Memory.Features.Cards;
 /// it keep their link. <c>who</c> stays the author of what/why; the audit line names who renamed it.
 /// </summary>
 internal sealed class RenameCardHandler(
-    MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, ClientAddress client, ILogger<RenameCardHandler> logger)
+    MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, SearchCache cache, ClientAddress client,
+    ILogger<RenameCardHandler> logger)
     : IRequestHandler<RenameCardCommand, Outcome<CardDto>>
 {
     public async Task<Outcome<CardDto>> Handle(RenameCardCommand command, CancellationToken ct) =>
@@ -39,9 +41,10 @@ internal sealed class RenameCardHandler(
         if (await db.Cards.AnyAsync(c => c.Scope == command.Scope && c.Key == command.NewKey, ct))
             return await TakenAsync(command, ct);
         // Only a rename that is about to be written takes a slot: a page refresh or a stale form re-submitted costs none.
-        if (!limiter.TryAcquire(caller.RateLimitKey))
+        if (!await limiter.TryAcquireAsync(caller.RateLimitKey))
             return Outcome<Card>.RateLimited("Write rate limit reached; try again later.");
 
+        db.CardVersions.Add(CardVersion.Of(card));
         card.Key = command.NewKey;
         card.Version++;
         card.UpdatedAt = DateTime.UtcNow;
@@ -49,7 +52,7 @@ internal sealed class RenameCardHandler(
         {
             await db.SaveChangesAsync(ct);
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateException ex) when (CardWrites.LostRace(ex))
         {
             db.ChangeTracker.Clear();
             var current = await db.Cards.AsNoTracking().SingleOrDefaultAsync(c => c.Id == card.Id, ct);
@@ -64,6 +67,7 @@ internal sealed class RenameCardHandler(
             return await TakenAsync(command, ct);
         }
 
+        await cache.InvalidateAsync(command.Scope);
         logger.LogWarning("Card {Scope}/{OldKey} renamed to {NewKey} (version {Version}) by {ActorUserId} from {RemoteIp}",
             scope, command.Key, card.Key, card.Version, caller.UserId, client.Current);
         return Outcome<Card>.Ok(card);

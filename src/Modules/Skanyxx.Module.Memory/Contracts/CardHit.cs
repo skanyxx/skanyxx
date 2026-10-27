@@ -1,5 +1,5 @@
 namespace Skanyxx.Module.Memory.Contracts;
 
-/// <summary>What an agent sees (D034): no id, no body, no source.</summary>
+/// <summary>What an agent sees (D034): no id, no body, no source. Ticket keys let it connect work on the same ticket.</summary>
 public sealed record CardHit(
-    string Scope, string Key, int Version, string Type, string What, string Why, string Who, DateTime UpdatedAt);
+    string Scope, string Key, int Version, string Type, string What, string Why, string Who, DateTime UpdatedAt, string[] Tickets);
