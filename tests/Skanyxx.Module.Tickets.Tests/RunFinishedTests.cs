@@ -44,6 +44,31 @@ public sealed class RunFinishedTests(PostgresFixture postgres) : TicketsTestBase
     }
 
     [Fact]
+    public async Task ARunTheWorkerFailsOnInternalErrors_IsPublishedAsFailed()
+    {
+        // C-6: RunStepper.FailAsync ends the run with a direct update; memory must still hear of it.
+        var recorder = new Recorder();
+        RobustnessTests.ExplodingOn.Calls = 0;
+        RobustnessTests.ExplodingOn.FailFirst = int.MaxValue;
+        await App.DisposeAsync();
+        App = await TicketsApp.StartAsync(Postgres.ConnectionString, KAgent.Url, services =>
+        {
+            services.AddScoped<IStageAgentClient, RobustnessTests.ExplodingOn>();
+            services.AddSingleton<INotificationHandler<TicketRunFinished>>(recorder);
+        });
+        await App.SavePipelineAsync("boom", Stages.Pipeline(Stages.Stage("plan", "plan", "ticket-boom")));
+
+        var run = await App.StartRunAsync(pipelineId: "boom");
+        await App.WaitForAsync(run.Id, RunState.Failed);
+
+        var finished = Assert.Single(recorder.Seen);
+        Assert.Equal(run.Id, finished.RunId);
+        Assert.False(finished.Succeeded);
+        Assert.Equal(TicketsApp.User, finished.OwnerUserId);
+        Assert.Contains("internal error", finished.Outcome);
+    }
+
+    [Fact]
     public void OnlyASucceededOrFailedRun_IsFinishedWork()
     {
         var ticket = new Ticket("SDB-7", "Fix refunds, see SDB-3 and sdb-7", "Also SDB-9.", "Bug", "Open", "High", ["billing"], null,

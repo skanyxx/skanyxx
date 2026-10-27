@@ -189,7 +189,7 @@ public sealed class RobustnessTests(PostgresFixture postgres) : TicketsTestBase(
     }
 
     /// <summary>Throws a non-agent error for one agent, as a bug in stage code would.</summary>
-    private sealed class ExplodingOn(IHttpClientFactory factory, Microsoft.Extensions.Options.IOptions<TicketsOptions> options) : IStageAgentClient
+    internal sealed class ExplodingOn(IHttpClientFactory factory, Microsoft.Extensions.Options.IOptions<TicketsOptions> options) : IStageAgentClient
     {
         public static int Calls;
 
