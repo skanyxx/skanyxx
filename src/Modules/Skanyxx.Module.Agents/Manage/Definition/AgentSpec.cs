@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Nodes;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
@@ -135,7 +137,12 @@ internal static class AgentSpec
     }
 
     /// <summary>The agent as the API shows it: never annotations, env, headers or secret references.</summary>
-    public static AgentDetail Detail(JsonObject agent, bool full, bool canWrite)
+    /// <summary>The edit version of an agent: a hash of its spec as kagent returns it (C-2).</summary>
+    public static string Version(JsonObject agent) =>
+        Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(agent["spec"]?.ToJsonString() ?? "")))[..32];
+
+    /// <param name="read">Read from kagent (it carries a version); false for what a write just sent.</param>
+    public static AgentDetail Detail(JsonObject agent, bool full, bool canWrite, bool read = true)
     {
         var name = Text(agent["metadata"]?["name"]) ?? "";
         var labels = Labels(agent);
@@ -169,7 +176,8 @@ internal static class AgentSpec
             [.. (declarative?["a2aConfig"]?["skills"] as JsonArray ?? []).OfType<JsonObject>().Select(s => new A2aSkillForm(
                 Text(s["id"]) ?? "", Text(s["name"]) ?? "", Text(s["description"]), [.. Strings(s["tags"])], [.. Strings(s["examples"])]))],
             full ? [.. (agent["status"]?["conditions"] as JsonArray ?? []).OfType<JsonObject>().Select(c => new AgentCondition(
-                Text(c["type"]) ?? "", Text(c["status"]) ?? "", Text(c["reason"]), Text(c["message"]) is { } m && m.Length > 300 ? m[..300] : Text(c["message"])))] : []);
+                Text(c["type"]) ?? "", Text(c["status"]) ?? "", Text(c["reason"]), Text(c["message"]) is { } m && m.Length > 300 ? m[..300] : Text(c["message"])))] : [],
+            read ? Version(agent) : null);
     }
 
     public static Dictionary<string, string> Labels(JsonObject agent) =>

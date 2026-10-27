@@ -31,7 +31,7 @@ internal sealed class CreateAgentHandler(KAgentApiClient kagent, IMediator media
             await kagent.CreateAgentAsync(agent, ct);
             await AgentAudit.WriteAsync(mediator, AgentAudit.Created, command.User, form.Namespace, form.Name, form);
             logger.LogWarning("Agent {Namespace}/{Name} created by {ActorUserId}", form.Namespace, form.Name, command.User.UserId);
-            return Outcome<AgentDetail>.Created(AgentSpec.Detail(agent, full: true, canWrite: true));
+            return Outcome<AgentDetail>.Created(AgentSpec.Detail(agent, full: true, canWrite: true, read: false));
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {

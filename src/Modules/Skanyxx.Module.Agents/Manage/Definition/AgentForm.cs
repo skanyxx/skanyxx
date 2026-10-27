@@ -13,6 +13,12 @@ internal sealed class AgentForm
 
     public string Name { get; set; } = "";
 
+    /// <summary>
+    /// On an update: the <see cref="AgentDetail.Version"/> the form was opened with. An agent changed since (by anyone)
+    /// is a 409, never overwritten by the form's older values (C-2).
+    /// </summary>
+    public string? Version { get; set; }
+
     public string Description { get; set; } = "";
 
     public string SystemMessage { get; set; } = "";

@@ -42,6 +42,13 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
             if (AgentSpec.HasUneditableTools(existing))
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.UneditableTools, "tools");
 
+            // C-2: only a form opened on what kagent holds now replaces it. kagent 0.10.2's PUT takes no precondition, so
+            // a write landing between this read and that PUT is still lost (milliseconds; ISSUES.md O1).
+            if (string.IsNullOrEmpty(form.Version))
+                throw AgentFailure.Invalid([AgentFailure.NoVersion]);
+            if (form.Version != AgentSpec.Version(existing))
+                return Outcome<AgentDetail>.Conflict(null, AgentFailure.Stale, "stale");
+
             var problems = AgentFormRules.Check(form, options.Value, AgentSpec.Existing(existing),
                 await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct),
                 AgentQueries.Callable(await AgentQueries.AgentsAsync(kagent, options.Value.Namespace, ct)));
@@ -52,7 +59,7 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
             await kagent.UpdateAgentAsync(updated, ct);
             await AgentAudit.WriteAsync(mediator, AgentAudit.Updated, command.User, form.Namespace, form.Name, form);
             logger.LogWarning("Agent {Namespace}/{Name} updated by {ActorUserId}", form.Namespace, form.Name, command.User.UserId);
-            return Outcome<AgentDetail>.Ok(AgentSpec.Detail(updated, full: true, canWrite: true));
+            return Outcome<AgentDetail>.Ok(AgentSpec.Detail(updated, full: true, canWrite: true, read: false));
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {

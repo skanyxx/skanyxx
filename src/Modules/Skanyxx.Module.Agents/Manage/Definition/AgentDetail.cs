@@ -8,6 +8,10 @@ namespace Skanyxx.Module.Agents.Manage.Definition;
 /// <param name="Protection">Why it cannot be changed here, when it cannot.</param>
 /// <param name="StudioPath">For a studio agent, its file in the agent repo.</param>
 /// <param name="SystemMessage">Only for builders, supervisors and the owner.</param>
+/// <param name="Version">
+/// The spec kagent holds, as a hash: an edit sends it back (C-2). Null on a write's answer, since kagent fills in
+/// defaults; read the agent again to edit it.
+/// </param>
 internal sealed record AgentDetail(
     string Namespace,
     string Name,
@@ -29,4 +33,5 @@ internal sealed record AgentDetail(
     IReadOnlyList<string> AgentTools,
     IReadOnlyList<string> Skills,
     IReadOnlyList<A2aSkillForm> A2aSkills,
-    IReadOnlyList<AgentCondition> Conditions);
+    IReadOnlyList<AgentCondition> Conditions,
+    string? Version);

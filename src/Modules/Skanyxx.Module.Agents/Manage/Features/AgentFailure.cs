@@ -17,6 +17,10 @@ internal static class AgentFailure
     public const string UneditableTools = "This agent names an MCP server or agent more than once, in another namespace, or a server of another "
         + "kind; the form names each tool once in the agent's own namespace, so saving it would change what it did not show. Edit it where it was made.";
 
+    public const string Stale = "The agent changed since you opened it. Reload it and make your change again.";
+
+    public const string NoVersion = "Send the version the agent was read with (reload the agent before editing it).";
+
     public static string OtherNamespace(string ns) => $"Agents are created, edited and deleted in '{ns}' only (Studio:Namespace).";
 
     public static string Exists(string ns, string name) => $"An agent named '{name}' already exists in '{ns}'.";

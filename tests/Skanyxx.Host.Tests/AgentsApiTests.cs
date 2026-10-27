@@ -114,6 +114,7 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         // A field the form does not own (set in kagent-ui or kubectl) survives an edit; the body cannot rename the agent.
         stored["spec"]!["declarative"]!["deployment"] = new JsonObject { ["replicas"] = 2 };
         var update = Form("someone-else", prompt: "Summarize in three bullets.", tools: [new { server = Server, tools = new[] { "fetch" } }]);
+        update["version"] = await VersionAsync("crud-agent");
         var updated = await _owner.PutAsJsonAsync($"/api/agents/{Ns}/crud-agent", update, Ct);
         Assert.Equal(HttpStatusCode.OK, updated.StatusCode);
         stored = _kagent.AgentObjects[$"{Ns}/crud-agent"];
@@ -220,6 +221,7 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
 
         var form = Form("legacy", tools: [new { server = "legacy-mcp", tools = new[] { "a" } }]);
         form["agentTools"] = new[] { "seed" };
+        form["version"] = await VersionAsync("legacy");
         var kept = await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/legacy", form, Ct);
         Assert.Equal(HttpStatusCode.OK, kept.StatusCode);
         var tools = _kagent.AgentObjects[$"{Ns}/legacy"]["spec"]!["declarative"]!["tools"]!;
@@ -227,7 +229,9 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("x-user-id", tools[0]!["mcpServer"]!["allowedHeaders"]![0]!.GetValue<string>());
         Assert.True(tools[1]!["isolateSessions"]!.GetValue<bool>());
 
-        var widened = await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/legacy", Form("legacy", tools: [new { server = "legacy-mcp", tools = new[] { "a", "b" } }]), Ct);
+        var widen = Form("legacy", tools: [new { server = "legacy-mcp", tools = new[] { "a", "b" } }]);
+        widen["version"] = await VersionAsync("legacy");
+        var widened = await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/legacy", widen, Ct);
         Assert.Equal(HttpStatusCode.BadRequest, widened.StatusCode);
     }
 
@@ -261,6 +265,27 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Conflict, (await _owner.PutAsJsonAsync("/api/agents/other-ns/elsewhere", form, Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.Conflict, (await _owner.DeleteAsync("/api/agents/other-ns/elsewhere", Ct)).StatusCode);
         Assert.True(_kagent.AgentObjects.ContainsKey("other-ns/elsewhere"));
+    }
+
+    /// <summary>C-2: a form opened before someone else's change never overwrites it; a form without a version is refused.</summary>
+    [Fact]
+    public async Task AStaleEdit_IsAConflict_AndNeverOverwritesTheNewerChange()
+    {
+        Seed("helper", Direct());
+        var opened = await VersionAsync("helper");
+        _kagent.AgentObjects[$"{Ns}/helper"]["spec"]!["declarative"]!["systemMessage"] = "concurrent supervisor prompt";
+
+        var stale = Form("helper", prompt: "stale browser prompt");
+        stale["version"] = opened;
+        Assert.Equal(HttpStatusCode.Conflict, (await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/helper", stale, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, (await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/helper", Form("helper"), Ct)).StatusCode);
+        Assert.Empty(_kagent.CallsTo("PUT", "/api/agents"));
+        Assert.Equal("concurrent supervisor prompt", _kagent.AgentObjects[$"{Ns}/helper"]["spec"]!["declarative"]!["systemMessage"]!.GetValue<string>());
+
+        var fresh = Form("helper", prompt: "fresh prompt");
+        fresh["version"] = await VersionAsync("helper");
+        Assert.Equal(HttpStatusCode.OK, (await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/helper", fresh, Ct)).StatusCode);
+        Assert.NotEqual(opened, await VersionAsync("helper"));
     }
 
     /// <summary>C-1: two entries for one server, each with its own Secret header, are never merged by a save.</summary>
@@ -335,6 +360,9 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         ["skills"] = Array.Empty<string>(),
         ["a2aSkills"] = tools is null ? new[] { new { id = "summarize", name = "Summarize", description = "Short summaries", tags = new[] { "docs" }, examples = new[] { "Summarize this" } } } : []
     };
+
+    private async Task<string> VersionAsync(string name) =>
+        (await _supervisor.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/{name}", Ct)).GetProperty("version").GetString()!;
 
     private int KAgentWrites() =>
         _kagent.Calls.Count(c => c.Method is "POST" or "PUT" or "DELETE" && c.Path.StartsWith("/api/agents", StringComparison.Ordinal));
