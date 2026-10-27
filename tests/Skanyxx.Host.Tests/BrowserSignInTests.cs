@@ -42,7 +42,7 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
         var browser = new Browser(_host);
 
         var setup = await browser.SubmitAsync("/Setup", Owner);
-        var page = await browser.GetAsync("/Hooks");
+        var page = await browser.GetAsync("/Agents");
         var html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Redirect, setup.StatusCode);
@@ -120,13 +120,13 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
         var browser = new Browser(_host);
 
         var wrong = await browser.SubmitAsync("/Login", new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = "not the password" });
-        var right = await browser.SubmitAsync("/Login?ReturnUrl=%2FHooks",
-            new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword, ["ReturnUrl"] = "/Hooks" });
+        var right = await browser.SubmitAsync("/Login?ReturnUrl=%2FAgents",
+            new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword, ["ReturnUrl"] = "/Agents" });
 
         Assert.Equal(HttpStatusCode.OK, wrong.StatusCode);
         Assert.Contains("Invalid email or password.", await wrong.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Redirect, right.StatusCode);
-        Assert.Equal("/Hooks", right.Headers.Location?.OriginalString);
+        Assert.Equal("/Agents", right.Headers.Location?.OriginalString);
         Assert.True(browser.HasCookie("skanyxx.auth"));
     }
 
@@ -219,8 +219,8 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
         var browser = new Browser(_host);
         await browser.SubmitAsync("/Setup", Owner);
 
-        var logout = await browser.SubmitAsync("/Logout", [], tokenFrom: "/Hooks");
-        var after = await browser.GetAsync("/Hooks");
+        var logout = await browser.SubmitAsync("/Logout", [], tokenFrom: "/Agents");
+        var after = await browser.GetAsync("/Agents");
 
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         Assert.Equal("/Login", logout.Headers.Location?.OriginalString);
@@ -237,7 +237,7 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
         var signIn = await _host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = HostApp.OwnerEmail, password = HostApp.OwnerPassword }, cancellationToken: TestContext.Current.CancellationToken);
         var refreshToken = (await signIn.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("tokens").GetProperty("refreshToken").GetString();
 
-        await browser.SubmitAsync("/Logout", [], tokenFrom: "/Hooks");
+        await browser.SubmitAsync("/Logout", [], tokenFrom: "/Agents");
         var refresh = await _host.Client().PostAsJsonAsync("/api/identity/refresh", new { refreshToken }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, refresh.StatusCode);

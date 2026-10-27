@@ -7,14 +7,16 @@ namespace Skanyxx.Host.Tests;
 [Collection(HostCollection.Name)]
 public sealed class HealthTests(PostgresFixture fixture)
 {
-    [Fact]
-    public async Task Health_IsNotReadableCrossOrigin()
+    /// <summary>No CORS policy: nothing, /health included, is readable cross-origin (the AllowAll policy is gone).</summary>
+    [Theory]
+    [InlineData("/health")]
+    [InlineData("/Privacy")]
+    [InlineData("/api/identity/status")]
+    public async Task NothingIsReadableCrossOrigin(string path)
     {
-        var health = await GetWithOriginAsync("/health");
-        var control = await GetWithOriginAsync("/Privacy"); // anonymous legacy page, still under the global AllowAll policy
+        var response = await GetWithOriginAsync(path);
 
-        Assert.True(control.Headers.Contains("Access-Control-Allow-Origin"), "control should get CORS headers");
-        Assert.False(health.Headers.Contains("Access-Control-Allow-Origin"));
+        Assert.False(response.Headers.Contains("Access-Control-Allow-Origin"));
     }
 
     [Fact]

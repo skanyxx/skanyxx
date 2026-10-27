@@ -62,7 +62,7 @@ public sealed class OffboardingTests(PostgresFixture fixture)
             ? await owner.PutAsJsonAsync($"/api/identity/people/{supervisorId}/roles", new { roles = new[] { "employee" } }, cancellationToken: TestContext.Current.CancellationToken)
             : await owner.PostAsync($"/api/identity/people/{supervisorId}/disable", null, TestContext.Current.CancellationToken);
         var mint = await WithCookie(host, cookie, HttpMethod.Post, "/api/memory/agents/after/secret");
-        var page = await WithCookie(host, cookie, HttpMethod.Get, "/Hooks");
+        var page = await WithCookie(host, cookie, HttpMethod.Get, "/Agents");
         var status = await owner.GetFromJsonAsync<JsonElement>("/api/memory/agents/after/secret", cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, before.StatusCode);

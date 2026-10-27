@@ -97,11 +97,11 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
     {
         var member = await MemberAsync(_host, "supervisor");
 
-        var ownerNav = await (await _owner.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var ownerNav = await (await _owner.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var page = await _owner.GetAsync("/Audit");
         var html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var filtered = await (await _owner.GetAsync("/Audit?action=invite.accepted")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        var memberNav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var memberNav = await (await member.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var memberPage = await member.GetAsync("/Audit");
 
         Assert.Contains("href=\"/Audit\"", ownerNav);

@@ -13,7 +13,7 @@ namespace Skanyxx.Host.Tests.Infrastructure;
 /// The real Program.cs on real Kestrel (random loopback port), with every module from the Host's built
 /// <c>modules/</c> folder. Settings go in as command-line arguments because Program reads configuration before
 /// <c>Build()</c>. The content root is an empty temp directory of its own (<see cref="TempContentRoot"/>), so the
-/// developer's local appsettings.json and skanyxx.db are neither read nor written, and no two hosts share a database file.
+/// developer's local appsettings.json is never read, and no two hosts share a content root.
 /// </summary>
 public sealed class HostApp : IAsyncDisposable
 {

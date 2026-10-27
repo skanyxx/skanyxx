@@ -5,7 +5,6 @@ using System.Text.RegularExpressions;
 using MediatR;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.DependencyInjection;
-using Skanyxx.Host.Data;
 
 namespace Skanyxx.Host.Tests;
 
@@ -86,9 +85,7 @@ public sealed class RemoteModeTests(PostgresFixture fixture)
         await host.Client().GetAsync("/", Ct);
         await host.Client().GetAsync("/health", Ct);
 
-        Assert.False(File.Exists(Path.Combine(host.ContentRoot, "skanyxx.db")));
         Assert.Empty(Directory.EnumerateFileSystemEntries(host.ContentRoot));
-        Assert.Null(host.Services.GetService<AppDbContext>());
         Assert.Null(host.Services.GetService<IMediator>());
         Assert.Null(host.Services.GetService<IAuthenticationSchemeProvider>());
     }

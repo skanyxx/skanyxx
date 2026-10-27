@@ -49,7 +49,7 @@ public class KAgentApiClient
     public string ModelConfigRef => _config.ModelConfig;
 
     // kagent (auth mode unsecure) takes the user from ?user_id=, else X-User-Id. Without a userId, every call is this
-    // process's own anonymous user (the legacy console pages); Chat passes the signed-in person (D5).
+    // process's own anonymous user (agent and tool server lists); Chat passes the signed-in person (D5).
     private string WithUser(string endpoint, string? userId) =>
         $"{endpoint}{(endpoint.Contains('?') ? '&' : '?')}user_id={Uri.EscapeDataString(userId ?? _userId)}";
 
@@ -243,6 +243,15 @@ public class KAgentApiClient
         return null;
     }
 
+    /// <summary>kagent's controller answers its health route within the control deadline; otherwise this throws.</summary>
+    public async Task PingAsync(CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/health");
+        using var response = await SendAsync(request, _controlTimeout, ct);
+        if (!response.IsSuccessStatusCode)
+            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
+    }
+
     public async Task<Agent?> GetAgentAsync(string agentId)
     {
         return await RequestAsync<Agent?>($"/api/agents/{agentId}", HttpMethod.Get);
@@ -259,18 +268,12 @@ public class KAgentApiClient
         }, userId, ct);
     }
 
-    /// <summary><paramref name="userId"/>'s sessions (kagent lists per user); null = this process's own user.</summary>
-    public async Task<List<KAgentSession>> GetSessionsAsync(string? userId = null)
-    {
-        return await RequestAsync<List<KAgentSession>>("/api/sessions", HttpMethod.Get, null, userId);
-    }
-
-    /// <summary>The session if it belongs to <paramref name="userId"/> (kagent looks it up by id and user), else null.</summary>
+    /// <summary><paramref name="userId"/>'s session <paramref name="sessionId"/>; null when kagent does not know it.</summary>
     public async Task<KAgentSession?> GetSessionAsync(string sessionId, string? userId = null, CancellationToken ct = default)
     {
         try
         {
-            var response = await RequestAsync<SessionWithEventsResponse>($"/api/sessions/{Uri.EscapeDataString(sessionId)}", HttpMethod.Get, null, userId, ct);
+            var response = await RequestAsync<KAgentSessionEnvelope>($"/api/sessions/{Uri.EscapeDataString(sessionId)}", HttpMethod.Get, null, userId, ct);
             return response.Session;
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
@@ -513,35 +516,6 @@ public class KAgentApiClient
         }
     }
 
-    public async Task<List<ChatMessage>> GetSessionMessagesAsync(string sessionId, string? userId = null)
-    {
-        return await RequestAsync<List<ChatMessage>>($"/api/sessions/{Uri.EscapeDataString(sessionId)}/messages", HttpMethod.Get, null, userId);
-    }
-
-    public async Task<List<KAgentEvent>> GetSessionEventsAsync(string sessionId, int? limit = null, string? userId = null)
-    {
-        try
-        {
-            var url = $"/api/sessions/{Uri.EscapeDataString(sessionId)}";
-            if (limit.HasValue)
-            {
-                url += $"?limit={limit}";
-            }
-            var response = await RequestAsync<SessionWithEventsResponse>(url, HttpMethod.Get, null, userId);
-            return response?.Events ?? new List<KAgentEvent>();
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "Failed to get session events for {SessionId}, returning empty list", sessionId);
-            return new List<KAgentEvent>();
-        }
-    }
-
-    public async Task<List<KAgentTask>> GetSessionTasksAsync(string sessionId)
-    {
-        return await RequestAsync<List<KAgentTask>>($"/api/sessions/{sessionId}/tasks", HttpMethod.Get);
-    }
-
     public async Task<List<ToolServer>> GetToolServersAsync()
     {
         return await RequestAsync<List<ToolServer>>("/api/toolservers", HttpMethod.Get);
@@ -555,88 +529,5 @@ public class KAgentApiClient
     public async Task DeleteToolServerAsync(string ns, string name)
     {
         await RequestAsync<object>($"/api/toolservers/{ns}/{name}", HttpMethod.Delete);
-    }
-
-    public async Task<object> InvokeToolAsync(string serverRef, string toolName, object parameters)
-    {
-        return await RequestAsync<object>("/api/tools/invoke", HttpMethod.Post, new
-        {
-            server_ref = serverRef,
-            tool_name = toolName,
-            parameters = parameters
-        });
-    }
-
-    public async Task<List<Hook>> GetHooksAsync()
-    {
-        try
-        {
-            // khook API returns a HookList CRD (apiVersion, kind, metadata, items)
-            var hookList = await RequestAsync<HookList>("/api/hooks", HttpMethod.Get);
-            return hookList?.Items ?? new List<Hook>();
-        }
-        catch
-        {
-            // Fallback: try direct list deserialization
-            return await RequestAsync<List<Hook>>("/api/hooks", HttpMethod.Get);
-        }
-    }
-
-    public async Task<Hook> CreateHookAsync(Hook hook)
-    {
-        return await RequestAsync<Hook>("/api/hooks", HttpMethod.Post, hook);
-    }
-
-    public async Task<bool> EnableHookAsync(string hookId)
-    {
-        // Parse namespace/name from hookId
-        var parts = hookId.Split('/');
-        var ns = parts.Length > 1 ? parts[0] : "kagent";
-        var name = parts.Length > 1 ? parts[1] : hookId;
-        await RequestAsync<object>($"/api/hooks/{ns}/{name}/enable", HttpMethod.Post);
-        return true;
-    }
-
-    public async Task<bool> DisableHookAsync(string hookId)
-    {
-        var parts = hookId.Split('/');
-        var ns = parts.Length > 1 ? parts[0] : "kagent";
-        var name = parts.Length > 1 ? parts[1] : hookId;
-        await RequestAsync<object>($"/api/hooks/{ns}/{name}/disable", HttpMethod.Post);
-        return true;
-    }
-
-    public async Task DeleteHookAsync(string ns, string name)
-    {
-        await RequestAsync<object>($"/api/hooks/{ns}/{name}", HttpMethod.Delete);
-    }
-
-    public async Task<List<Alert>> GetAlertsAsync()
-    {
-        return await RequestAsync<List<Alert>>("/api/alerts", HttpMethod.Get);
-    }
-
-    public async Task<AlertSummary> GetAlertSummaryAsync()
-    {
-        try
-        {
-            return await RequestAsync<AlertSummary>("/api/alerts/summary", HttpMethod.Get);
-        }
-        catch
-        {
-            return new AlertSummary();
-        }
-    }
-
-    public async Task<bool> AcknowledgeAlertAsync(string alertId)
-    {
-        await RequestAsync<object>($"/api/alerts/{alertId}/acknowledge", HttpMethod.Post);
-        return true;
-    }
-
-    public async Task<bool> ResolveAlertAsync(string alertId)
-    {
-        await RequestAsync<object>($"/api/alerts/{alertId}/resolve", HttpMethod.Post);
-        return true;
     }
 }

@@ -228,14 +228,6 @@ html, body {
   margin-top: 4px;
 }
 
-/* Stats Grid */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  margin-bottom: 24px;
-}
-
 .stat-card {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
@@ -253,19 +245,6 @@ html, body {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 4px;
-}
-
-.stat-change {
-  font-size: 12px;
-  margin-top: 8px;
-}
-
-.stat-change.positive {
-  color: var(--success-color);
-}
-
-.stat-change.negative {
-  color: var(--error-color);
 }
 
 /* Buttons */
@@ -393,26 +372,6 @@ tr:hover {
   color: var(--accent-color);
 }
 
-/* Status dots */
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  display: inline-block;
-}
-
-.status-dot.online {
-  background-color: var(--success-color);
-}
-
-.status-dot.offline {
-  background-color: var(--error-color);
-}
-
-.status-dot.warning {
-  background-color: var(--warning-color);
-}
-
 /* Animations */
 @keyframes spin {
   from { transform: rotate(0deg); }
@@ -528,10 +487,6 @@ tr:hover {
 
   .main-content {
     margin-left: 0;
-  }
-
-  .stats-grid {
-    grid-template-columns: 1fr;
   }
 }
 

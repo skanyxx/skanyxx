@@ -43,7 +43,7 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         var acceptHtml = await acceptPage.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var accepted = await member.SubmitAsync("/Invite", new() { ["Token"] = token, ["Password"] = MemberPassword, ["DisplayName"] = "Bea" },
             tokenFrom: "/Invite?token=" + token);
-        var nav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var nav = await (await member.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var reuse = await new Browser(_host).GetAsync("/Invite?token=" + token);
 
         Assert.Equal(HttpStatusCode.OK, invited.StatusCode);
@@ -69,12 +69,12 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
     {
         var member = await MemberAsync("supervisor");
 
-        var ownerNav = await (await _owner.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var ownerNav = await (await _owner.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var ownerPage = await _owner.GetAsync("/People");
-        var memberNav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var memberNav = await (await member.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var memberPage = await member.GetAsync("/People");
         var memberPost = await member.SubmitAsync("/People?handler=Invite", new() { ["email"] = "x@skanyxx.example", ["roles"] = "builder" },
-            tokenFrom: "/Hooks");
+            tokenFrom: "/Agents");
         var anonymous = await _host.Client().GetAsync("/People", TestContext.Current.CancellationToken);
 
         Assert.Contains("href=\"/People\"", ownerNav);
@@ -94,7 +94,7 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         var memberId = await PersonIdAsync(MemberEmail);
 
         var roles = await _owner.SubmitAsync($"/People?handler=Roles&id={memberId}", new() { ["roles"] = "employee" }, tokenFrom: "/People");
-        var afterRoles = await member.GetAsync("/Hooks");
+        var afterRoles = await member.GetAsync("/Agents");
         var signedInAgain = await new Browser(_host).SubmitAsync("/Login", new() { ["Email"] = MemberEmail, ["Password"] = MemberPassword });
         var me = await _host.Client(await BearerAsync()).GetFromJsonAsync<JsonElement>("/api/identity/me", cancellationToken: TestContext.Current.CancellationToken);
         var disable = await _owner.SubmitAsync($"/People?handler=Disable&id={memberId}", [], tokenFrom: "/People");

@@ -20,8 +20,7 @@ namespace Skanyxx.Module.Agents;
 
 /// <summary>
 /// kagent agents. The studio (todo.md slice 3, D028–D032, D045): builders propose agents as pull requests in the agent
-/// repo, supervisors merge, and the reconciler applies main to kagent and memory. The legacy agents API stays for the
-/// owner only (D109).
+/// repo, supervisors merge, and the reconciler applies main to kagent and memory. The agents API only reads.
 /// </summary>
 public class AgentsModule : IModule
 {

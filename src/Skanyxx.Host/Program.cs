@@ -1,12 +1,8 @@
 using Skanyxx.Core;
-using Skanyxx.Core.Interfaces;
 using Skanyxx.Core.Infrastructure;
-using Skanyxx.Core.Services;
 using Skanyxx.Host;
-using Skanyxx.Host.Data;
 using WebEssentials.AspNetCore.Pwa;
 using Microsoft.OpenApi.Models;
-using Microsoft.EntityFrameworkCore;
 using Asp.Versioning;
 using Npgsql;
 using OpenTelemetry;
@@ -79,14 +75,6 @@ public partial class Program
         if (!string.IsNullOrEmpty(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]))
             telemetry.UseOtlpExporter();
 
-        // Add SQLite database
-        var dbPath = Path.Combine(builder.Environment.ContentRootPath, "skanyxx.db");
-        builder.Services.AddDbContext<AppDbContext>(options =>
-            options.UseSqlite($"Data Source={dbPath}"));
-
-        // Register DbContext base type so modules can resolve it without referencing Host
-        builder.Services.AddScoped<DbContext>(sp => sp.GetRequiredService<AppDbContext>());
-
         // Add services to the container.
         builder.Services.AddRazorPages();
         var mvcBuilder = builder.Services.AddControllers();
@@ -97,6 +85,7 @@ public partial class Program
         using var loggerFactory = new Serilog.Extensions.Logging.SerilogLoggerFactory(Log.Logger);
         var moduleLoader = new ModuleLoader(builder.Configuration, loggerFactory.CreateLogger<ModuleLoader>());
         moduleLoader.DiscoverModules(builder.Environment.ContentRootPath);
+        builder.Services.AddSingleton(moduleLoader.GetModules());
 
         foreach (var asm in moduleLoader.GetModuleAssemblies())
             mvcBuilder.AddApplicationPart(asm);
@@ -104,7 +93,6 @@ public partial class Program
         moduleLoader.RegisterAllModuleServices(builder.Services, builder.Configuration);
 
         // Register shared services
-        builder.Services.AddSingleton<ICommandExecutionService, CommandExecutionService>();
         builder.Services.AddKAgentHttpClient(builder.Configuration);
 
         // MediatR (+ validation/logging pipeline), validators and FastEndpoints over Core + module assemblies
@@ -136,7 +124,7 @@ public partial class Program
             {
                 Title = "Skanyxx API",
                 Version = "v1",
-                Description = "SRE Platform API for Kubernetes management, agent orchestration, and monitoring",
+                Description = "Skanyxx company agent workspace API",
                 Contact = new OpenApiContact
                 {
                     Name = "Skanyxx",
@@ -178,35 +166,20 @@ public partial class Program
         {
             CacheId = "Skanyxx_v1",
             Strategy = ServiceWorkerStrategy.CacheFirstSafe,
-            RoutesToPreCache = "/,/Index,/Dashboard,/Agents,/Chat,/Investigate,/CloudTools,/ToolServers,/Analytics,/Alerts,/Hooks,/Debug,/Settings,/css/site.css,/js/site.js",
+            RoutesToPreCache = "/,/Chat,/Library,/Agents,/ToolServers,/css/site.css",
             OfflineRoute = "/Offline",
             RegisterServiceWorker = false,
             RegisterWebmanifest = false
         });
 
-        // Add CORS
-        builder.Services.AddCors(options =>
-        {
-            options.AddPolicy("AllowAll", policy =>
-            {
-                policy.AllowAnyOrigin()
-                      .AllowAnyMethod()
-                      .AllowAnyHeader();
-            });
-        });
+        // No CORS policy: no route is readable cross-origin. The middleware stays because endpoints carry DisableCors.
+        builder.Services.AddCors();
 
         var app = builder.Build();
 
         if (app.Environment.IsProduction() && IsOnThisMachine(builder.Configuration.GetConnectionString("Identity")))
             Log.Warning("ConnectionStrings:Identity is a database on this machine: company data on this machine makes this Host a " +
                 "dev console, not the workspace (D059, D200). The workspace is the Helm chart; desktop installs run in Remote mode");
-
-        // Ensure database is created
-        using (var scope = app.Services.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            db.Database.EnsureCreated();
-        }
 
         // Initialize modules
         await moduleLoader.InitializeAllModulesAsync(app.Services);
@@ -235,7 +208,7 @@ public partial class Program
         app.UseSkanyxxApiGuards();
 
         app.UseRouting();
-        app.UseCors("AllowAll");
+        app.UseCors();
 
         app.UseAuthentication();
         app.UseAuthorization();

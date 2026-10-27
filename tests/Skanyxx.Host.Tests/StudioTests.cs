@@ -553,12 +553,13 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
 
     // --- Legacy path and secrets hygiene ---
 
+    /// <summary>Agents change only through the studio: the agents API only reads, even for the owner (its kubectl writes are gone).</summary>
     [Fact]
-    public async Task TheLegacyAgentsApi_NoLongerChangesKagent_ForAnyoneButTheOwner()
+    public async Task TheAgentsApi_IsReadOnly_EvenForTheOwner()
     {
-        Assert.Equal(HttpStatusCode.Forbidden, (await _builder.PostAsJsonAsync("/api/agents", new { name = "x" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await _supervisor.DeleteAsync("/api/agents/kagent__NS__seed", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await _employee.PutAsJsonAsync("/api/agents/kagent__NS__seed/status", "Inactive", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.PostAsJsonAsync("/api/agents", new { name = "x" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.DeleteAsync("/api/agents/kagent__NS__seed", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _owner.PutAsJsonAsync("/api/agents/kagent__NS__seed/status", "Inactive", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -880,7 +881,7 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(skill, _kagent.AgentObjects[$"{Ns}/refund-helper"]["spec"]!["skills"]!["refs"]![0]!.GetValue<string>());
     }
 
-    /// <summary>G1 + D116: what changes kagent, the cluster or runs a process is the owner's, like D109.</summary>
+    /// <summary>G1 + D116: what changes kagent is the owner's.</summary>
     [Fact]
     public async Task LegacyRoutesThatChangeKagent_AreTheOwnersOnly()
     {
@@ -888,14 +889,7 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         {
             Assert.Equal(HttpStatusCode.Forbidden, (await who.PostAsJsonAsync("/api/toolservers", new { name = "x" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await who.DeleteAsync($"/api/toolservers/{Ns}/skanyxx-memory-refund-helper", TestContext.Current.CancellationToken)).StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, (await who.PostAsJsonAsync("/api/toolservers/x/tools/y/invoke", new { }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, (await who.PostAsJsonAsync("/api/cloudtools/repl", new { command = "1" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, (await who.GetAsync("/api/cloudtools/search?query=x", TestContext.Current.CancellationToken)).StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, (await who.PostAsJsonAsync("/api/cloud/scale-up", new { name = "x", @namespace = "y", replicas = 0 }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, (await who.PostAsJsonAsync("/api/hooks", new { }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-            Assert.Equal(HttpStatusCode.Forbidden, (await who.DeleteAsync("/api/sessions/any", TestContext.Current.CancellationToken)).StatusCode);
         }
-        Assert.NotEqual(HttpStatusCode.Forbidden, (await _owner.PostAsJsonAsync("/api/cloudtools/repl", new { command = "" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
     }
 
     /// <summary>m1: once git merged, the person closing the page cancels nothing: the agent still goes live.</summary>

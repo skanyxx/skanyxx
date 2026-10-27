@@ -78,10 +78,10 @@ public sealed partial class OrgPageTests(PostgresFixture fixture) : IAsyncLifeti
         var member = new Browser(_host);
         await member.SubmitAsync("/Login", new() { ["Email"] = MemberEmail, ["Password"] = MemberPassword });
 
-        var ownerNav = await (await _owner.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        var memberNav = await (await member.GetAsync("/Hooks")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var ownerNav = await (await _owner.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var memberNav = await (await member.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var memberPage = await member.GetAsync("/Org");
-        var memberPost = await member.SubmitAsync("/Org?handler=CreateDepartment", new() { ["slug"] = "evil", ["name"] = "Evil" }, tokenFrom: "/Hooks");
+        var memberPost = await member.SubmitAsync("/Org?handler=CreateDepartment", new() { ["slug"] = "evil", ["name"] = "Evil" }, tokenFrom: "/Agents");
         var anonymous = await _host.Client().GetAsync("/Org", TestContext.Current.CancellationToken);
 
         Assert.Contains("href=\"/Org\"", ownerNav);

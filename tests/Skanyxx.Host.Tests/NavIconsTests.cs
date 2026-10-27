@@ -22,7 +22,7 @@ public sealed partial class NavIconsTests(PostgresFixture fixture)
         var used = UsedIcon().Matches(html).Select(m => m.Groups[1].Value).ToHashSet();
         var defined = DefinedIcon().Matches(html).Select(m => m.Groups[1].Value).ToHashSet();
 
-        Assert.True(used.Count >= 15, $"the owner's nav should draw its icons from the sprite (found {used.Count})");
+        Assert.True(used.Count >= 12, $"the owner's nav should draw its icons from the sprite (found {used.Count})");
         Assert.Empty(used.Except(defined));
         Assert.Contains("i-puzzle", used); // Plugins
         Assert.DoesNotContain("<span class=\"nav-icon\">&#x", html);

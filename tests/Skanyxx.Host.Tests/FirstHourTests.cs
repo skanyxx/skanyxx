@@ -277,35 +277,6 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.DoesNotContain("\"@l\":\"Error\"", log);
     }
 
-    /// <summary>I2 (D124): the sessions API shows a person only their own kagent sessions; the owner reads anyone's by name.</summary>
-    [Fact]
-    public async Task Sessions_AreReadOnlyByTheirOwner_OrByTheOwner()
-    {
-        var owner = await _host.OwnerAsync();
-        var ownerId = (await owner.GetFromJsonAsync<JsonElement>("/api/identity/me", cancellationToken: TestContext.Current.CancellationToken)).GetProperty("id").GetString()!;
-        var (employee, _) = await EmployeeAsync();
-        var employeeId = (await employee.GetFromJsonAsync<JsonElement>("/api/identity/me", cancellationToken: TestContext.Current.CancellationToken)).GetProperty("id").GetString()!;
-        string Conversation(JsonElement answer) => answer.GetProperty("conversationId").GetString()!;
-        var ownerChat = Conversation(await (await owner.PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "private question" }, cancellationToken: TestContext.Current.CancellationToken))
-            .Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken));
-        var employeeChat = Conversation(await (await employee.PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "my question" }, cancellationToken: TestContext.Current.CancellationToken))
-            .Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken));
-
-        var listed = await employee.GetFromJsonAsync<JsonElement>("/api/sessions", cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal([employeeChat], listed.EnumerateArray().Select(s => s.GetProperty("id").GetString()));
-        Assert.Equal(HttpStatusCode.OK, (await employee.GetAsync($"/api/sessions/{employeeChat}", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await employee.GetAsync($"/api/sessions/{ownerChat}", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await employee.GetAsync($"/api/sessions/{ownerChat}/events", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await employee.GetAsync($"/api/sessions/{ownerChat}/messages", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.GetAsync($"/api/sessions?user={ownerId}", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.GetAsync($"/api/sessions/{ownerChat}?user={ownerId}", TestContext.Current.CancellationToken)).StatusCode);
-
-        var asOwner = await owner.GetFromJsonAsync<JsonElement>($"/api/sessions?user={employeeId}", cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal([employeeChat], asOwner.EnumerateArray().Select(s => s.GetProperty("id").GetString()));
-        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/api/sessions/{employeeChat}?user={employeeId}", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/api/sessions/{ownerChat}?user={ownerId}", TestContext.Current.CancellationToken)).StatusCode);
-    }
-
     [Fact]
     public async Task Chat_RefusesAConversationWithAnotherMergedAgent_OfTheSameName()
     {
@@ -511,20 +482,6 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Investigate_NeverTalksToAnAgent()
-    {
-        var (employee, _) = await EmployeeAsync();
-
-        var created = await employee.PostAsJsonAsync("/api/investigate", new { query = "What is in my personal memory?" }, cancellationToken: TestContext.Current.CancellationToken);
-        var shared = await (await employee.GetAsync("/api/investigate", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, created.StatusCode);
-        Assert.DoesNotContain(_kagent.Calls, c => c.Path.StartsWith("/api/a2a/", StringComparison.Ordinal) || c.Path.StartsWith("/api/sessions", StringComparison.Ordinal));
-        Assert.DoesNotContain(_kagent.Calls, c => c.HeaderUser is { Length: > 0 });
-        Assert.DoesNotContain(_kagent.Answer, shared);
-    }
-
-    [Fact]
     public async Task ChatAndModel_AreOriginGuarded()
     {
         var owner = await _host.OwnerAsync();
@@ -633,62 +590,28 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         return condition();
     }
 
+    /// <summary>Debug is the owner's diagnostics: modules and every health check, kagent's included; /health leaves kagent out.</summary>
     [Fact]
-    public async Task Settings_AreTheOwnersOnly_ExceptReadingTheTheme()
+    public async Task Debug_IsTheOwnersDiagnostics_AndHealthLeavesKagentOut()
     {
-        var owner = await _host.OwnerAsync();
-        var (employee, employeeBrowser) = await EmployeeAsync();
-        Assert.Equal(HttpStatusCode.OK, (await owner.PutAsJsonAsync("/api/settings/theme", "light", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        var (_, employeeBrowser) = await EmployeeAsync();
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.PutAsJsonAsync("/api/settings/theme", "dark", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.PutAsJsonAsync("/api/settings", new Dictionary<string, string> { ["x"] = "y" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.DeleteAsync("/api/settings/theme", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.GetAsync("/api/settings", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.GetAsync("/api/settings/general.orgName", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.GetAsync("/api/settings/connections", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.PostAsJsonAsync("/api/settings/connections", new { name = "x", baseUrl = "h" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.PostAsJsonAsync("/api/settings/layouts", new { name = "x" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.GetAsync("/api/settings/system-info", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal("light", (await (await employee.GetAsync("/api/settings/theme", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Trim('"'));
-        Assert.Equal("light", (await (await owner.GetAsync("/api/settings/theme", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Trim('"'));
-        Assert.Equal(HttpStatusCode.Unauthorized, (await _host.Client().GetAsync("/api/settings/theme", TestContext.Current.CancellationToken)).StatusCode);
-        var page = await employeeBrowser.GetAsync("/Settings");
-        Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
-        Assert.Contains("/Login", page.Headers.Location?.OriginalString);
-        // Debug reads the owner-only system info, so it is in the owner's nav only.
+        var page = await (await _owner.GetAsync("/Debug")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var denied = await employeeBrowser.GetAsync("/Debug");
         var employeeNav = await (await employeeBrowser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var ownerNav = await (await _owner.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.Contains("href=\"/Hooks\"", employeeNav);
+        var health = await (await _host.Client().GetAsync("/health", TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
+
+        Assert.Contains("<td>kagent</td>", page);
+        Assert.Contains("<td>Healthy</td>", page);
+        Assert.Contains("<code>memory</code>", page);
+        Assert.Contains("<code>runtime</code>", page);
+        Assert.Contains(_kagent.Calls, c => c.Method == "GET" && c.Path == "/health");
+        Assert.Equal(HttpStatusCode.Redirect, denied.StatusCode);
+        Assert.Contains("/Login", denied.Headers.Location?.OriginalString);
         Assert.DoesNotContain("href=\"/Debug\"", employeeNav);
-        Assert.DoesNotContain("href=\"/Settings\"", employeeNav);
         Assert.Contains("href=\"/Debug\"", ownerNav);
-    }
-
-    [Fact]
-    public async Task ConnectionTokens_AreWriteOnly_AndNamesAreRenderedAsText()
-    {
-        const string token = "kagent-token-SECRET-0123";
-        const string script = "<img src=x onerror=alert(1)>";
-        var owner = await _host.OwnerAsync();
-
-        var created = await owner.PostAsJsonAsync("/api/settings/connections", new { name = script, baseUrl = "kagent.local", port = 8083, protocol = "http", token }, cancellationToken: TestContext.Current.CancellationToken);
-        var id = (await created.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("id").GetInt32();
-        var renamed = await owner.PutAsJsonAsync($"/api/settings/connections/{id}", new { name = script + "2", baseUrl = "kagent.local", port = 8083, protocol = "http" }, cancellationToken: TestContext.Current.CancellationToken);
-        var list = await owner.GetAsync("/api/settings/connections", TestContext.Current.CancellationToken);
-        var listed = await list.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
-        Assert.DoesNotContain(token, await created.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.DoesNotContain(token, await renamed.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.DoesNotContain(token, listed);
-        var connection = (await list.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).EnumerateArray().Single(c => c.GetProperty("id").GetInt32() == id);
-        Assert.True(connection.GetProperty("hasToken").GetBoolean()); // the update without a token kept it
-        Assert.Equal(script + "2", connection.GetProperty("name").GetString());
-
-        // The page builds the list with textContent; no stored value goes through innerHTML.
-        var settingsPage = await (await _owner.GetAsync("/Settings")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.DoesNotContain(".innerHTML", settingsPage);
-        Assert.Contains("textContent", settingsPage);
+        Assert.False(health.GetProperty("entries").TryGetProperty("kagent", out _));
     }
 
     private static async Task<(T Result, string Console)> CapturingConsoleAsync<T>(Func<Task<T>> action)

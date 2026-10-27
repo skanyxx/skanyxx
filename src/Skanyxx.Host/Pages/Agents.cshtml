@@ -9,7 +9,7 @@
         <h3 class="card-title">Available Agents</h3>
         <button class="btn btn-ghost" onclick="loadAgents()">Refresh</button>
     </div>
-    <p class="text-muted">AI agents available from your KAgent cluster. Agents are managed via kubectl/helm.</p>
+    <p class="text-muted">AI agents available from your kagent cluster. Agents are proposed and changed in the Studio.</p>
 </div>
 
 <div class="agent-grid" id="agentGrid">
@@ -233,7 +233,7 @@
             grid.innerHTML = `
                 <div class="empty-state">
                     <h3>No agents found</h3>
-                    <p>Connect to KAgent to see available agents. Agents are created via kubectl/helm.</p>
+                    <p>Connect to kagent to see available agents. New agents are proposed in the Studio.</p>
                 </div>
             `;
         }
@@ -246,7 +246,7 @@
             grid.innerHTML = `
                 <div class="empty-state">
                     <h3>No Agents Available</h3>
-                    <p>Connect to KAgent to see available agents. Use kubectl or helm to create new agents.</p>
+                    <p>Connect to kagent to see available agents. New agents are proposed in the Studio.</p>
                 </div>
             `;
             return;

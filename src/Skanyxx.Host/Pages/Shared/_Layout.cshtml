@@ -24,22 +24,11 @@
                     <span class="sidebar-logo-icon">S</span>
                     <div>
                         <div class="sidebar-logo-text">Skanyxx</div>
-                        <div class="sidebar-subtitle">SRE Command Center</div>
+                        <div class="sidebar-subtitle">Agent Workspace</div>
                     </div>
                 </a>
             </div>
             <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">Overview</div>
-                    <a href="/Dashboard" class="nav-item @(currentPage == "/Dashboard" ? "active" : "")" title="Dashboard">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-dashboard"/></svg></span>
-                        <span class="nav-label">Dashboard</span>
-                    </a>
-                    <a href="/Investigate" class="nav-item @(currentPage == "/Investigate" ? "active" : "")" title="Investigate">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-search"/></svg></span>
-                        <span class="nav-label">Investigate</span>
-                    </a>
-                </div>
                 <div class="nav-section">
                     <div class="nav-section-title">AI & Agents</div>
                     <a href="/Agents" class="nav-item @(currentPage == "/Agents" ? "active" : "")" title="Agents">
@@ -53,6 +42,10 @@
                     <a href="/Library" class="nav-item @(currentPage == "/Library" ? "active" : "")" title="Library">
                         <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-library"/></svg></span>
                         <span class="nav-label">Library</span>
+                    </a>
+                    <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")" title="Tool Servers">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-server"/></svg></span>
+                        <span class="nav-label">Tool Servers</span>
                     </a>
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Builder))
                     {
@@ -73,43 +66,13 @@
                         </a>
                     }
                 </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Infrastructure</div>
-                    <a href="/CloudTools" class="nav-item @(currentPage == "/CloudTools" ? "active" : "")" title="Cloud Tools">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cloud"/></svg></span>
-                        <span class="nav-label">Cloud Tools</span>
-                    </a>
-                    <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")" title="Tool Servers">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-server"/></svg></span>
-                        <span class="nav-label">Tool Servers</span>
-                    </a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">Insights</div>
-                    <a href="/Analytics" class="nav-item @(currentPage == "/Analytics" ? "active" : "")" title="Analytics">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-chart"/></svg></span>
-                        <span class="nav-label">Analytics</span>
-                    </a>
-                </div>
-                <div class="nav-section">
-                    <div class="nav-section-title">System</div>
-                    <a href="/Alerts" class="nav-item @(currentPage == "/Alerts" ? "active" : "")" title="Alerts">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-bell"/></svg></span>
-                        <span class="nav-label">Alerts</span>
-                    </a>
-                    <a href="/Hooks" class="nav-item @(currentPage == "/Hooks" ? "active" : "")" title="Hooks">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-link"/></svg></span>
-                        <span class="nav-label">Hooks</span>
-                    </a>
-                    @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner))
-                    {
+                @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner))
+                {
+                    <div class="nav-section">
+                        <div class="nav-section-title">System</div>
                         <a href="/Debug" class="nav-item @(currentPage == "/Debug" ? "active" : "")" title="Debug">
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-terminal"/></svg></span>
                             <span class="nav-label">Debug</span>
-                        </a>
-                        <a href="/Settings" class="nav-item @(currentPage == "/Settings" ? "active" : "")" title="Settings">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-sliders"/></svg></span>
-                            <span class="nav-label">Settings</span>
                         </a>
                         <a href="/Model" class="nav-item @(currentPage == "/Model" ? "active" : "")" title="Model">
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cpu"/></svg></span>
@@ -131,8 +94,8 @@
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-audit"/></svg></span>
                             <span class="nav-label">Audit</span>
                         </a>
-                    }
-                </div>
+                    </div>
+                }
             </nav>
         </aside>
 
@@ -164,7 +127,6 @@
         </main>
     </div>
 
-    <script src="~/js/site.js" asp-append-version="true"></script>
     <script>
         // PWA Install prompt
         let deferredPrompt;

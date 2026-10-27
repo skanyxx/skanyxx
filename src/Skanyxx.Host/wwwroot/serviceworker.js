@@ -1,21 +1,12 @@
 const CACHE_NAME = 'skanyxx-v1';
 const urlsToCache = [
     '/',
-    '/Index',
-    '/Dashboard',
-    '/Agents',
     '/Chat',
-    '/Investigate',
-    '/CloudTools',
+    '/Library',
+    '/Agents',
     '/ToolServers',
-    '/Analytics',
-    '/Alerts',
-    '/Hooks',
-    '/Debug',
-    '/Settings',
     '/Offline',
     '/css/site.css',
-    '/js/site.js',
     '/manifest.json',
     '/icons/icon-192.png',
     '/icons/icon-512.png'

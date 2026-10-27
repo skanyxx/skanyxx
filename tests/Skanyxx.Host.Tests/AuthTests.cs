@@ -18,7 +18,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     [InlineData("/api/tickets/runs")]
     [InlineData("/api/sandboxes")]
     [InlineData("/api/identity/me")]
-    [InlineData("/api/hooks")] // a legacy controller
+    [InlineData("/api/toolservers")] // a legacy controller
     [InlineData("/api/no-such-route")]
     public async Task Anonymous_Api_Is401Problem(string path)
     {
@@ -45,13 +45,13 @@ public sealed class AuthTests(PostgresFixture fixture)
     [Fact]
     public async Task Bearer_ReachesALegacyController()
     {
-        var response = await (await fixture.Host.OwnerAsync()).GetAsync("/api/hooks", TestContext.Current.CancellationToken);
+        var response = await (await fixture.Host.OwnerAsync()).GetAsync("/api/toolservers", TestContext.Current.CancellationToken);
 
         Assert.NotEqual(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Theory]
-    [InlineData("/Hooks", "/Login?ReturnUrl=%2FHooks")]
+    [InlineData("/Agents", "/Login?ReturnUrl=%2FAgents")]
     [InlineData("/", "/Login?ReturnUrl=%2F")]
     public async Task Anonymous_Page_RedirectsToLogin(string path, string location)
     {
