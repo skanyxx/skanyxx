@@ -21,6 +21,7 @@ internal sealed class MemoryMigrator(IServiceScopeFactory scopes) : IHostedServi
     //   (0x4D454D04, hashtext(scope))  memory card adds per scope (quota, D307)  pg_advisory_xact_lock(int, int)
     //   0x544B5402                     tickets run-worker leader             pg_advisory_lock(bigint)
     //   0x544B5403                     tickets migrator                      pg_advisory_lock(bigint)
+    //   0x43485402                     chatcontext migrator                  pg_advisory_lock(bigint)
     //   (0x544B5401, 0)                tickets run start (active-run caps)   pg_advisory_xact_lock(int, int)
     //   0x49444E02                     identity migrator                     pg_advisory_lock(bigint)
     //   0x49444E01                     identity owner bootstrap              pg_advisory_xact_lock(bigint)
