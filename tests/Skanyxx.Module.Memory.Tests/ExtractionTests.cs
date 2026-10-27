@@ -111,6 +111,21 @@ public sealed class ExtractionTests(PostgresFixture postgres) : MemoryTestBase(p
     }
 
     [Fact]
+    public async Task ARefusedExtraction_AtTheQuota_DeletesNothing()
+    {
+        // C-2: the second session is refused by the write limiter; the first session's card must survive it.
+        await using var app = await MemoryApp.StartAsync(Postgres.ConnectionString, upsertsPerMinute: 1,
+            extra: new Dictionary<string, string?> { ["Memory:MaxCardsPerPersonalScope"] = "1" });
+        Assert.NotNull(await app.ChatTurnAsync(Turn("First session about refunds", "Answer one.", session: "s-1")));
+
+        var second = await app.ChatTurnAsync(Turn("Second session about invoices", "Answer two.", session: "s-2"));
+
+        Assert.Null(second);
+        await using var db = Postgres.CreateDbContext();
+        Assert.Equal(["chat-s-1"], await db.Cards.Select(c => c.Key).ToListAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
     public async Task AFullPersonalScope_DropsItsOldestExtractedCard_NeverAHandWrittenOne()
     {
         await using var app = await MemoryApp.StartAsync(Postgres.ConnectionString,
