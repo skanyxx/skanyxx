@@ -86,6 +86,8 @@ kagent's own pods get the same baseline from its global defaults.
 - `trusted-proxy` does not verify the JWT signature, and it ignores `X-User-Id` on user calls. With Skanyxx that would
   turn every Chat user into one person, or a 401. **The schema pins `kagent.controller.auth.mode: unsecure`.**
 - **Compensating control:** only Skanyxx and agent pods reach 8083, and only the controller reaches agent A2A.
+- **Agent writes (D250):** Skanyxx calls the controller's agent CRUD as its own process user, never with a person's id or
+  a request header; who may create, edit or delete, and which agents are protected, is decided in Skanyxx before the call.
 
 ## Known gaps
 
