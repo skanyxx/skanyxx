@@ -16,12 +16,9 @@ internal sealed class ClearAnswerCacheHandler(AnswerCache cache, ILogger<ClearAn
             return Outcome<bool>.Ok(false);
 
         if (command.All)
-        {
-            logger.LogInformation("{UserId} cleared every cached chat answer", command.User.UserId);
-            await cache.ClearAllAsync();
-        }
-        else
-            await cache.ClearAsync(command.User.UserId!);
-        return Outcome<bool>.Ok(true);
+            logger.LogInformation("{UserId} clears every cached chat answer", command.User.UserId);
+        return await (command.All ? cache.ClearAllAsync() : cache.ClearAsync(command.User.UserId))
+            ? Outcome<bool>.Ok(true)
+            : Outcome<bool>.Unavailable("The answer cache did not answer; nothing was cleared.");
     }
 }

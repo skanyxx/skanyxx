@@ -1,6 +1,7 @@
 using System.Globalization;
 using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Module.ChatContext.Data;
+using Skanyxx.Module.ChatContext.Extraction;
 
 namespace Skanyxx.Module.ChatContext.Context;
 
@@ -59,5 +60,6 @@ internal static class RelatedBlock
 
     private static string Line(RelatedCard c) => Cap($"- Card {c.Scope}/{c.Key}: {c.What} Why: {c.Why}");
 
-    private static string Cap(string line) => (line.Length <= MaxItemChars ? line : line[..(MaxItemChars - 1)] + "…") + "\n";
+    // Square brackets are the block's fence: text from other chats must not close it and talk to the agent unfenced.
+    private static string Cap(string line) => TextCut.Cut(line.Replace('[', '(').Replace(']', ')'), MaxItemChars) + "\n";
 }

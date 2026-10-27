@@ -34,8 +34,8 @@ public sealed class ChatContextModule : IModule
             .Bind(configuration.GetSection(ChatContextOptions.Section))
             .Configure(o => o.ConnectionString = configuration.GetConnectionString("Memory") ?? "")
             .ValidateDataAnnotations()
-            .Validate(o => !o.AnswerCache.Enabled || !string.IsNullOrWhiteSpace(o.AnswerCache.Redis),
-                "ChatContext:AnswerCache:Enabled needs ChatContext:AnswerCache:Redis (the Dragonfly/Redis address).")
+            .Validate(o => !o.AnswerCache.Enabled || (!string.IsNullOrWhiteSpace(o.AnswerCache.Redis) && RedisAnswerStore.IsValidConfiguration(o.AnswerCache.Redis)),
+                "ChatContext:AnswerCache:Enabled needs ChatContext:AnswerCache:Redis, a valid Dragonfly/Redis configuration string.")
             .ValidateOnStart();
 
         services.AddDbContext<ChatContextDbContext>((sp, o) => o.UseNpgsql(
@@ -46,7 +46,9 @@ public sealed class ChatContextModule : IModule
 
         services.AddScoped<SessionSearch>();
         services.AddScoped<SessionAccess>();
-        services.TryAddSingleton<IChatExtractor, DeterministicExtractor>();
+        // The deterministic one also reads a new chat's first message (tickets, categories), whatever extracts turns.
+        services.AddSingleton<DeterministicExtractor>();
+        services.TryAddSingleton<IChatExtractor>(sp => sp.GetRequiredService<DeterministicExtractor>());
         // Replace, not add: Chat registers a no-op (TryAdd) so it runs without this module.
         services.Replace(ServiceDescriptor.Scoped<IChatContext, ChatContextService>());
 

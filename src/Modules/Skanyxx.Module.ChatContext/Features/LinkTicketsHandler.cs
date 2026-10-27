@@ -18,6 +18,6 @@ internal sealed class LinkTicketsHandler(ChatContextDbContext db, SessionAccess 
         session.RefreshSearchTerms();
         session.UpdatedAt = clock.GetUtcNow().UtcDateTime;
         await db.SaveChangesAsync(ct);
-        return Outcome<SessionSummary>.Ok(SessionSummaries.From(session, command.User.UserId!));
+        return Outcome<SessionSummary>.Ok(SessionSummaries.From(session, command.User.UserId));
     }
 }

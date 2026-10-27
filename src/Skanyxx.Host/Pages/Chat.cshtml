@@ -672,6 +672,7 @@
     let maskSensitiveData = true;
     let currentScanResult = null;
     let agentList = [];
+    let lastQuestion = '';
     let historyById = {};
 
     // The open conversation, per browser tab: a reload continues it, a new tab starts fresh.
@@ -812,6 +813,8 @@
         document.getElementById('historySelect').addEventListener('change', function() {
             const session = historyById[this.value];
             this.value = '';
+            // A reply still on its way would land in the conversation opened meanwhile.
+            if (isLoading) return;
             const agent = session && agentList.find(a => agentRef(a) === session.agentRef);
             if (!agent) return;
             selectedAgent = agent;
@@ -1026,7 +1029,8 @@
         const notes = [];
         if (data.cached) notes.push('Answered from the cache: you asked this before, so no tokens were spent.');
         if (used.length) notes.push(`Used prior work: ${used.join('; ')}.`);
-        return notes.length ? `<div class="related-note">${escapeHtml(notes.join(' '))}</div>` : '';
+        const fresh = data.cached ? ' <button type="button" class="btn btn-link" onclick="askAgainFresh(lastQuestion)">Ask again without the cache</button>' : '';
+        return notes.length ? `<div class="related-note">${escapeHtml(notes.join(' '))}${fresh}</div>` : '';
     }
 
     function updateAnalytics() {
@@ -1072,6 +1076,17 @@
                 <p>Ask how the company works: the agent searches company memory and cites the cards it used.</p>
             </div>
         `;
+    }
+
+    // Set by "Ask again without the cache": the next first message skips the answer cache.
+    let askFresh = false;
+
+    function askAgainFresh(question) {
+        newChat();
+        askFresh = true;
+        const input = document.getElementById('chatInput');
+        input.value = question;
+        sendMessage();
     }
 
     async function sendMessage() {
@@ -1131,13 +1146,17 @@
         updateAnalytics();
 
         try {
+            const freshAsk = askFresh;
+            askFresh = false;
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     message: messageToSend, // Send masked message to API
                     conversationId: conversationId,
-                    ticketKeys: ticketKeys,
+                    // Links a new conversation only: a later turn must not re-add a link the person removed.
+                    ticketKeys: conversationId ? [] : ticketKeys,
+                    noCache: freshAsk,
                     agentNamespace: selectedAgent?.namespace || '',
                     agentName: selectedAgent?.name || ''
                 })
@@ -1166,6 +1185,7 @@
 
             const aiTokens = TokenUtils.countTokens(content);
             messagesContainer.innerHTML += createMessageBubble(assistantMsg, aiTokens) + relatedNote(data);
+            lastQuestion = messageToSend;
 
         } catch (error) {
             document.getElementById(typingId)?.remove();

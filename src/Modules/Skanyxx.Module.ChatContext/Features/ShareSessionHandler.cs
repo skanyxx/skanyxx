@@ -20,6 +20,6 @@ internal sealed class ShareSessionHandler(ChatContextDbContext db, SessionAccess
         logger.LogInformation("{UserId} shares chat session {SessionId}: {From} -> {To}", command.User.UserId, session.Id, session.Scope, command.Scope);
         session.Scope = command.Scope;
         await db.SaveChangesAsync(ct);
-        return Outcome<SessionSummary>.Ok(SessionSummaries.From(session, command.User.UserId!));
+        return Outcome<SessionSummary>.Ok(SessionSummaries.From(session, command.User.UserId));
     }
 }
