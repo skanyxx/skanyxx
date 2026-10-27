@@ -24,6 +24,7 @@ internal sealed partial class CardExtractor(
     : ICardExtractor
 {
     private const int KeywordsPerTurn = 6;
+    private const int MaxAttempts = 5;
 
     private readonly MemoryOptions _options = options.Value;
 
@@ -35,22 +36,23 @@ internal sealed partial class CardExtractor(
         {
             var scope = Scope.Personal(turn.UserId).ToString();
             var key = SessionText.Slug($"chat-{turn.SessionId}");
-            var existing = await FindAsync(scope, key, ct);
             // Redacted before anything is cut or indexed: a pasted key must not become a card, a keyword or a prompt line.
             var (message, reply) = (SecretText.Redact(turn.Message), SecretText.Redact(turn.Reply));
             var mentioned = CardTickets.FindIn($"{message}\n{reply}", CardLimits.Tickets);
-            if (existing is null && SessionText.Words(message) < _options.Extraction.MinWords && mentioned.Count == 0)
-                return null;
+            var words = SessionText.Keywords(message).Take(KeywordsPerTurn).ToList();
 
-            return await WriteAsync(existing, new UpsertCardCommand(
-                new MemoryCaller(turn.UserId, null), scope, key, existing?.Version ?? 0, "fact",
-                existing?.What ?? SessionText.Line($"Chat with {turn.AgentId}: {message}", CardLimits.What),
-                Why(reply, "No answer yet."),
-                Source: $"chat:{turn.SessionId}",
-                Tickets: Merge(existing?.Tickets, mentioned, CardLimits.Tickets),
-                Keywords: Merge(existing?.Keywords, SessionText.Keywords(message).Take(KeywordsPerTurn), CardLimits.Keywords),
-                Origin: CardOrigin.Chat,
-                ViaAgent: Identifier.IsValid(turn.AgentId) ? turn.AgentId : null), ct);
+            return await WriteAsync(scope, key, existing =>
+                existing is null && SessionText.Words(message) < _options.Extraction.MinWords && mentioned.Count == 0
+                    ? null
+                    : new UpsertCardCommand(
+                        new MemoryCaller(turn.UserId, null), scope, key, existing?.Version ?? 0, "fact",
+                        existing?.What ?? SessionText.Line($"Chat with {turn.AgentId}: {message}", CardLimits.What),
+                        Why(reply, "No answer yet."),
+                        Source: $"chat:{turn.SessionId}",
+                        Tickets: Merge(existing?.Tickets, mentioned, CardLimits.Tickets),
+                        Keywords: Merge(existing?.Keywords, words, CardLimits.Keywords),
+                        Origin: CardOrigin.Chat,
+                        ViaAgent: Identifier.IsValid(turn.AgentId) ? turn.AgentId : null), ct);
         });
     }
 
@@ -62,10 +64,9 @@ internal sealed partial class CardExtractor(
         {
             var scope = Scope.Personal(run.OwnerUserId).ToString();
             var key = SessionText.Slug($"run-{run.TicketKey}-{run.RunId:N}");
-            var existing = await FindAsync(scope, key, ct);
             var labels = run.Labels.Select(SessionText.Slug).Where(CardLinks.IsKeyword);
             var (title, outcome) = (SecretText.Redact(run.TicketTitle), SecretText.Redact(run.Outcome));
-            return await WriteAsync(existing, new UpsertCardCommand(
+            return await WriteAsync(scope, key, existing => new UpsertCardCommand(
                 new MemoryCaller(run.OwnerUserId, null), scope, key, existing?.Version ?? 0, "fact",
                 SessionText.Line($"{run.TicketKey} {title}: {run.PipelineName} run {(run.Succeeded ? "succeeded" : "failed")}", CardLimits.What),
                 Why(outcome, "No stage output."),
@@ -77,16 +78,26 @@ internal sealed partial class CardExtractor(
         });
     }
 
-    private async Task<MemoryCardRef?> WriteAsync(Card? existing, UpsertCardCommand command, CancellationToken ct)
+    /// <summary>
+    /// Builds the write from the card as it is now and sends it; on a conflict (another turn of the same session, or a
+    /// first turn racing a second) builds it again from the newer card, so every turn's tickets and keywords are merged
+    /// into what the other writer left rather than replayed over it (C-3). Bounded: a session that keeps losing is logged.
+    /// </summary>
+    private async Task<MemoryCardRef?> WriteAsync(string scope, string key, Func<Card?, UpsertCardCommand?> build, CancellationToken ct)
     {
-        var outcome = await mediator.Send(command with { EvictExtracted = true }, ct);
-        // Two turns of one session finishing together: the second re-reads and writes over the first.
-        if (outcome.Status == OutcomeStatus.Conflict && await FindAsync(command.Scope, command.Key, ct) is { } current)
-            outcome = await mediator.Send(command with { Version = current.Version }, ct);
+        Outcome<Card>? outcome = null;
+        for (var attempt = 0; attempt < MaxAttempts; attempt++)
+        {
+            if (build(await FindAsync(scope, key, ct)) is not { } command)
+                return null;
+            outcome = await mediator.Send(command with { EvictExtracted = true }, ct);
+            if (outcome.Status != OutcomeStatus.Conflict)
+                break;
+        }
 
         if (outcome is { Status: OutcomeStatus.Ok or OutcomeStatus.Created, Value: { } card })
             return new MemoryCardRef(card.Scope, card.Key, card.What);
-        LogNotKept(logger, command.Scope, command.Key, outcome.Status, outcome.Message);
+        LogNotKept(logger, scope, key, outcome!.Status, outcome.Message);
         return null;
     }
 
