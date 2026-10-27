@@ -146,6 +146,23 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 
+    /// <summary>C-8: a create losing a race for its name (kagent's 500) is the 409 it is, not "kagent unavailable".</summary>
+    [Fact]
+    public async Task ACreate_LosingARaceForItsName_IsAConflict()
+    {
+        _kagent.AgentCreatedMeanwhile = new JsonObject
+        {
+            ["metadata"] = new JsonObject { ["name"] = "racer", ["namespace"] = Ns, ["labels"] = External() },
+            ["spec"] = new JsonObject { ["type"] = "Declarative" }
+        };
+
+        var response = await _supervisor.PostAsJsonAsync("/api/agents", Form("racer"), Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        Assert.Single(_kagent.CallsTo("POST", "/api/agents"));
+        Assert.Equal("kagent-ui", _kagent.AgentObjects[$"{Ns}/racer"]["metadata"]!["labels"]!["created-by"]!.GetValue<string>());
+    }
+
     // --- Studio and system agents (D252) ---
 
     [Fact]

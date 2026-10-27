@@ -47,6 +47,9 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>The tools kagent discovers per server (<c>ns/name</c>); a server not listed here offers memory's two.</summary>
     public ConcurrentDictionary<string, string[]> DiscoveredTools { get; } = new();
 
+    /// <summary>A create racing this one: the next agent POST finds this agent already there and answers 500, as kagent does.</summary>
+    public JsonObject? AgentCreatedMeanwhile { get; set; }
+
     /// <summary>How many agent creates, updates or deletes to refuse with a 500 (nothing changed).</summary>
     public int FailAgentWrites;
 
@@ -156,6 +159,11 @@ public sealed class FakeKAgent : IAsyncDisposable
                     : Results.Json(new JsonObject { ["error"] = "Agent not found" }, statusCode: 404));
         app.MapPost("/api/agents", (JsonObject agent) =>
         {
+            if (AgentCreatedMeanwhile is { } racing)
+            {
+                AgentObjects[$"{racing["metadata"]!["namespace"]!.GetValue<string>()}/{racing["metadata"]!["name"]!.GetValue<string>()}"] = racing;
+                AgentCreatedMeanwhile = null;
+            }
             var key = $"{agent["metadata"]!["namespace"]!.GetValue<string>()}/{agent["metadata"]!["name"]!.GetValue<string>()}";
             if (AgentObjects.ContainsKey(key) || FixedAgents().Any(a => a["agent"]!["metadata"]!["name"]!.GetValue<string>() == key.Split('/')[1]))
                 return Results.Json(new JsonObject { ["error"] = "Failed to create Agent in Kubernetes" }, statusCode: 500);

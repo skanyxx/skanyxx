@@ -39,9 +39,28 @@ internal sealed class CreateAgentHandler(KAgentApiClient kagent, IMediator media
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             logger.LogWarning(ex, "Agent {Namespace}/{Name}: kagent did not create it", form.Namespace, form.Name);
-            if (intended)
-                await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Failed, command.User, form.Namespace, form.Name, reason: "create");
-            return Outcome<AgentDetail>.Unavailable(AgentFailure.Unavailable);
+            if (!intended)
+                return Outcome<AgentDetail>.Unavailable(AgentFailure.Unavailable);
+            // C-8: kagent answers a name taken meanwhile with a 500 like any other failure; a name that exists now is the
+            // conflict it was. Never retried.
+            var taken = await ExistsAsync(form);
+            await AgentAudit.OutcomeAsync(mediator, logger, AgentAudit.Failed, command.User, form.Namespace, form.Name,
+                reason: taken ? "create: name taken" : "create");
+            return taken
+                ? Outcome<AgentDetail>.Conflict(null, AgentFailure.Exists(form.Namespace, form.Name), "exists")
+                : Outcome<AgentDetail>.Unavailable(AgentFailure.Unavailable);
+        }
+    }
+
+    private async Task<bool> ExistsAsync(AgentForm form)
+    {
+        try
+        {
+            return await kagent.GetAgentObjectAsync(form.Namespace, form.Name, CancellationToken.None) is not null;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
+        {
+            return false;
         }
     }
 }
