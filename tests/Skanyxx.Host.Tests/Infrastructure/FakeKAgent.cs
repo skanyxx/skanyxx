@@ -201,6 +201,7 @@ public sealed class FakeKAgent : IAsyncDisposable
                 SecretData.TryRemove(owned, out _);
             return Envelope(new JsonObject());
         });
+        app.MapGet("/health", () => Results.Ok());
         app.MapGet("/api/modelconfigs", () => Envelope(new JsonArray(
             new JsonObject { ["ref"] = "kagent/default-model-config" }, new JsonObject { ["ref"] = "other-ns/elsewhere" })));
 
@@ -238,8 +239,6 @@ public sealed class FakeKAgent : IAsyncDisposable
             _sessions[id] = (UserOf(context), agentId);
             return Results.Json(new JsonObject { ["error"] = false, ["data"] = SessionJson(id) }, statusCode: 201);
         });
-        app.MapGet("/api/sessions", (HttpContext context) =>
-            Envelope(new JsonArray([.. _sessions.Where(s => s.Value.User == UserOf(context)).Select(s => (JsonNode)SessionJson(s.Key))])));
         app.MapGet("/api/sessions/{id}", (HttpContext context, string id) =>
             _sessions.TryGetValue(id, out var s) && s.User == UserOf(context)
                 ? Envelope(new JsonObject { ["session"] = SessionJson(id), ["events"] = new JsonArray() })

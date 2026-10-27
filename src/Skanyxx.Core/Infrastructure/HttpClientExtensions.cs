@@ -1,3 +1,4 @@
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Services;
 
 namespace Skanyxx.Core.Infrastructure;
@@ -22,6 +23,7 @@ public static class HttpClientExtensions
             sp.GetRequiredService<IHttpClientFactory>().CreateClient(KAgentApiClient.HttpClientName),
             configuration,
             sp.GetRequiredService<ILogger<KAgentApiClient>>()));
+        services.AddHealthChecks().AddCheck<KAgentHealthCheck>(KAgentHealthCheck.Name, tags: [HealthEndpoint.DiagnosticsTag]);
         return services;
     }
 }

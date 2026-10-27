@@ -17,6 +17,9 @@ namespace Skanyxx.Core.Platform;
 /// </summary>
 public static class HealthEndpoint
 {
+    /// <summary>Checks only the owner's diagnostics page runs; <c>/health</c> (probes, load balancers) leaves them out.</summary>
+    public const string DiagnosticsTag = "diagnostics";
+
     public static IServiceCollection AddSkanyxxHealthTimeouts(this IServiceCollection services)
     {
         services.AddOptions<HealthCheckServiceOptions>().PostConfigure<IOptions<SkanyxxOptions>>((health, skanyxx) =>
@@ -32,7 +35,7 @@ public static class HealthEndpoint
     }
 
     public static IEndpointConventionBuilder MapSkanyxxHealth(this IEndpointRouteBuilder endpoints, string pattern) =>
-        endpoints.MapHealthChecks(pattern, new HealthCheckOptions { ResponseWriter = WriteAsync })
+        endpoints.MapHealthChecks(pattern, new HealthCheckOptions { ResponseWriter = WriteAsync, Predicate = r => !r.Tags.Contains(DiagnosticsTag) })
             .WithMetadata(new DisableCorsAttribute())
             .AllowAnonymous();
 
