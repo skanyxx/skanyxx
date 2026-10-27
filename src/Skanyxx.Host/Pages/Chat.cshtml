@@ -672,7 +672,8 @@
     let maskSensitiveData = true;
     let currentScanResult = null;
     let agentList = [];
-    let lastQuestion = '';
+    // Questions a cached answer was given to, by index: each "Ask again" button re-asks its own.
+    const cachedQuestions = [];
     let historyById = {};
 
     // The open conversation, per browser tab: a reload continues it, a new tab starts fresh.
@@ -1029,7 +1030,9 @@
         const notes = [];
         if (data.cached) notes.push('Answered from the cache: you asked this before, so no tokens were spent.');
         if (used.length) notes.push(`Used prior work: ${used.join('; ')}.`);
-        const fresh = data.cached ? ' <button type="button" class="btn btn-link" onclick="askAgainFresh(lastQuestion)">Ask again without the cache</button>' : '';
+        const fresh = data.cached
+            ? ` <button type="button" class="btn btn-link" onclick="askAgainFresh(${cachedQuestions.length - 1})">Ask again without the cache</button>`
+            : '';
         return notes.length ? `<div class="related-note">${escapeHtml(notes.join(' '))}${fresh}</div>` : '';
     }
 
@@ -1081,7 +1084,9 @@
     // Set by "Ask again without the cache": the next first message skips the answer cache.
     let askFresh = false;
 
-    function askAgainFresh(question) {
+    function askAgainFresh(index) {
+        if (isLoading) return;
+        const question = cachedQuestions[index];
         newChat();
         askFresh = true;
         const input = document.getElementById('chatInput');
@@ -1184,8 +1189,17 @@
             messages.push(assistantMsg);
 
             const aiTokens = TokenUtils.countTokens(content);
-            messagesContainer.innerHTML += createMessageBubble(assistantMsg, aiTokens) + relatedNote(data);
-            lastQuestion = messageToSend;
+            if (data.cached) {
+                // The answer belongs to an earlier conversation, which the next message continues: show it.
+                cachedQuestions.push(messageToSend);
+                await openConversation(data.conversationId);
+                if (!conversationId) {
+                    // That conversation is gone from kagent: keep the answer in view; asking again starts afresh.
+                    messagesContainer.innerHTML = createMessageBubble(assistantMsg, aiTokens);
+                }
+                messagesContainer.innerHTML += relatedNote(data);
+            } else
+                messagesContainer.innerHTML += createMessageBubble(assistantMsg, aiTokens) + relatedNote(data);
 
         } catch (error) {
             document.getElementById(typingId)?.remove();

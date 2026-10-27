@@ -22,9 +22,13 @@ internal sealed class SessionSearch(ChatContextDbContext db)
 
     private const string ReadableFilter = "(s.user_id = @Me OR s.scope = ANY(@Scopes) OR (@AllOrg AND s.scope ~ '^(team|department):'))";
 
-    /// <summary>The words a search runs on: what the extractor would index, last ones kept (a question's subject comes late).</summary>
+    /// <summary>The words a message is matched on: what the extractor would index, last ones kept (a question's subject comes late).</summary>
     internal static string[] Terms(string text) =>
         [.. DeterministicExtractor.Words(text).Reverse().Distinct().Take(MaxTerms)];
+
+    /// <summary>A person's search text: every word, ticket keys too (<c>?q=SDB-58</c> finds what is linked to it).</summary>
+    private static string[] QueryTerms(string text) =>
+        [.. DeterministicExtractor.AllWords(text).Reverse().Distinct().Take(MaxTerms)];
 
     public async Task<IReadOnlyList<SessionSummary>> SearchAsync(Readable readable, SessionFilter filter, int limit, CancellationToken ct)
     {
@@ -48,7 +52,7 @@ internal sealed class SessionSearch(ChatContextDbContext db)
             where.Add("s.agent_ref = @Agent");
         }
 
-        var terms = string.IsNullOrWhiteSpace(filter.Text) ? [] : Terms(filter.Text);
+        var terms = string.IsNullOrWhiteSpace(filter.Text) ? [] : QueryTerms(filter.Text);
         if (!string.IsNullOrWhiteSpace(filter.Text) && terms.Length == 0)
             return [];
         string sql;
