@@ -1,6 +1,6 @@
 # Skanyxx
 
-SRE Platform for Kubernetes management, agent orchestration, and monitoring. Built on a modular plugin architecture where each UI tab (Agents, Alerts, Chat, etc.) is an independently loadable DLL.
+Company agent-management workspace on kagent (and Google AX for sandboxes): people, roles and org, chat with agents, a memory bank of cards, and a studio where agents are proposed as pull requests. Built on a modular plugin architecture where each module is an independently loadable DLL.
 
 ## Prerequisites
 
@@ -96,8 +96,7 @@ owner here until kagent has accepted a model with its credentials; everyone else
 `GET /api/chat/agents`; `POST /api/chat {agentNamespace, agentName, message, conversationId?}` talks to kagent as the
 signed-in person (kagent's `user_id`/`X-User-Id`), so the seed searches company memory and that person's personal
 memory (D101). An agent is `namespace/name`. A failing turn answers `502` with a fixed text (kagent's own text stays in
-the log) and deletes the conversation it had just started. Chat is the only place that talks to an agent: the leftover
-Investigate page no longer does (D002, D017).
+the log) and deletes the conversation it had just started. Chat is the only place that talks to an agent (D002, D017).
 kagent's API is unauthenticated in this setup (`auth.mode: unsecure`): keep it on localhost / inside the cluster.
 
 ## Local stack on OrbStack
@@ -154,10 +153,10 @@ OWNER_EMAIL=… OWNER_PASSWORD=… scripts/helm/seed-agent.sh   # the seed agent
 scripts/helm/validate.sh                           # helm lint + kubeconform -strict: default, BYO, AX, AX installed + 50 refusals (each checked for its reason)
 ```
 
-- **Image** (`Dockerfile`): .NET 10, multi-stage; the Host plus all 16 module DLLs in `/app/modules`; runs as the
+- **Image** (`Dockerfile`): .NET 10, multi-stage; the Host plus every module DLL in `/app/modules`; runs as the
   non-root `app` user (1654) with a read-only root filesystem; no configuration or secrets inside — the chart sets
   everything through env (`ASPNETCORE_ENVIRONMENT=Production`, `AllowedHosts`, `Identity__*`, `KAgent__*`,
-  `ConnectionStrings__*` from a Secret). The leftover SQLite file lives on an emptyDir (`/data`).
+  `ConnectionStrings__*` from a Secret). The Host keeps no local database (the SQLite settings store is gone, Phase 1).
 - **Secrets** are generated once and kept across `helm upgrade` (`lookup`): the bootstrap token (48 characters),
   Postgres role passwords, MinIO keys, Gitea admin + SECRET_KEY, the Dragonfly password. They are also **kept on
   `helm uninstall`** (`helm.sh/resource-policy: keep`), like the PVCs: a reinstall under the same release name reads
@@ -191,7 +190,7 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   answer 404 there. The Host logs a warning at startup when `Memory:McpPort` is none of the ports it listens on. With
   `ax.sandboxes.memory.enabled` a third port (8082, `Memory:SandboxMcpPort`) serves `/mcp/memory` to sandboxes only,
   by their signed token (D190–D194; see "Sandboxes and memory"). The **Ingress is also an allow-list** of path prefixes (`ingress.prefixPaths`, the
-  product pages only — not the leftover SRE pages): the chart refuses `/`, any path under `/mcp` in any case, anything
+  product pages only): the chart refuses `/`, any path under `/mcp` in any case, anything
   but plain path segments, and the nginx `use-regex` / `rewrite-target` / `*-snippet` annotations. Prefix matching is
   case-sensitive, so a new page must be listed with the casing it links to. TLS ends at the ingress: set **HSTS there**;
   the app does not trust `X-Forwarded-*` headers (D143). kagent's controller has no Ingress.
@@ -341,23 +340,15 @@ sudo ./skanyxx-appliance/install.sh uninstall --purge   # k3s and ALL data (asks
 Skanyxx.sln
 ├── src/
 │   ├── Skanyxx.Core/              # Shared contracts, models, interfaces, services
-│   ├── Skanyxx.Host/              # Web host, ModuleLoader, DB, static files, Razor pages
+│   ├── Skanyxx.Host/              # Web host, ModuleLoader, static files, Razor pages
 │   │   └── modules/               # Module DLLs loaded at runtime (build output, not tracked)
 │   └── Modules/
-│       ├── Skanyxx.Module.Agents/
-│       ├── Skanyxx.Module.Alerts/
-│       ├── Skanyxx.Module.Analytics/
-│       ├── Skanyxx.Module.Chat/
-│       ├── Skanyxx.Module.CloudTools/
-│       ├── Skanyxx.Module.Dashboard/
-│       ├── Skanyxx.Module.Debug/
-│       ├── Skanyxx.Module.Hooks/
+│       ├── Skanyxx.Module.Agents/     # Agent list, studio (PRs in skanyxx-agents), plugins
+│       ├── Skanyxx.Module.Chat/       # Chat with merged agents through kagent
 │       ├── Skanyxx.Module.Identity/   # Accounts, owner bootstrap, sign-in (ASP.NET Core Identity)
-│       ├── Skanyxx.Module.Investigate/
 │       ├── Skanyxx.Module.Memory/     # Memory engine (Postgres cards + MCP)
+│       ├── Skanyxx.Module.Runtime/    # The owner's model step (kagent ModelConfig)
 │       ├── Skanyxx.Module.Sandboxes/  # Sandboxes on Google AX (experimental, off by default)
-│       ├── Skanyxx.Module.Sessions/
-│       ├── Skanyxx.Module.Settings/
 │       ├── Skanyxx.Module.Tickets/    # Ticket pipelines over kagent
 │       └── Skanyxx.Module.ToolServers/
 ├── tests/                         # Host, Identity, Memory, Tickets, Sandboxes test projects
@@ -407,8 +398,7 @@ Edit `src/Skanyxx.Host/appsettings.json`:
   "Modules": {
     "Enabled": {
       "agents": true,
-      "alerts": true,
-      "hooks": false
+      "tickets": false
     }
   }
 }
@@ -423,13 +413,11 @@ does a dependency whose DLL is missing or fails to load: disable the dependents 
 
 | Module | Needs |
 |---|---|
-| `dashboard` | `agents`, `alerts`, `analytics`, `cloudtools` |
-| `debug` | `agents`, `alerts` |
-| `investigate` | `agents`, `chat` |
+| `agents` | `memory`, `identity` (the studio writes grants and secrets through memory; the form lists teams) |
 | `memory` | `identity` (team membership through `IOrgMembership`) |
 
-Nothing depends on `dashboard`, `debug`, `investigate`, `memory`, `hooks`, `sessions`, `settings`, `tickets`,
-`toolservers` or `sandboxes`, so each of those can be disabled on its own.
+Nothing depends on `agents`, `chat`, `runtime`, `tickets`, `toolservers` or `sandboxes`, so each of those can be
+disabled on its own.
 
 ## Adding a New Module
 
@@ -503,9 +491,6 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | `Skanyxx:InviteRateLimit` | Its own window, per client address (IPv6 per /64), over everything that checks a one-time link — `/Invite` and `/ResetPassword` (GET and POST), `POST /api/identity/invites/lookup` and `/accept`, `POST /api/identity/password/lookup` and `/reset`: `PermitLimit` (10) per `WindowSeconds` (60) → `429`. Separate from the sign-in window, so link unfurlers and crawlers opening emailed links cannot spend it |
 | `Skanyxx:HealthCheckTimeoutSeconds` | Per-check timeout for `/health` (5). `/health` is anonymous and lists each check's name and status; no exception text, no CORS |
 | `KAgent` | KAgent API connection (BaseUrl, Port, Protocol, Token), `ControlTimeoutSeconds` (10; every agents/sessions/ModelConfig call, including the owner's `/` probe), `ChatTimeoutSeconds` (300; one blocking chat turn waits for the whole answer), `ModelConfig` (`kagent/default-model-config`; the one the owner's model step edits). No kagent call is ever retried: a chat turn and a model save are not idempotent |
-| `Kubernetes` | Optional kubeconfig path |
-| `AWS` | AWS profile and region for cloud tools |
-| `Azure` | Azure config directory |
 | `Modules` | Plugin directory and enable/disable flags |
 | `ConnectionStrings:Identity` | Postgres for accounts, roles and the Data Protection key ring (required). **Use a separate database role (or database) from the other modules** — whoever can read the key ring can mint sessions |
 | `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `MaxPoolSize` (20), `InviteDays` (7, 1–30), `PublicBaseUrl` (where people reach Skanyxx, e.g. `https://skanyxx.example.com`; invite links are built on it. Optional for startup: **unset outside Development, the app starts and logs a warning, and creating an invite is refused (`409`) until it is set**; Development without it uses the request's scheme and host. When set it must be written exactly — no leading or trailing spaces, backslashes, query, fragment or user info — and absolute `https://`, except a loopback host such as the desktop installs' `http://localhost:5282`, whose links never leave the machine; anything else stops startup. The template ships `http://localhost:5282`, so a server install must change it: a loopback value while Skanyxx listens on a non-loopback address is warned about at startup, and the People page shows the host each new link points at). Validated at startup. (`SecurityStampValidationSeconds` is gone: cookies are checked on every request, and the key is ignored.) `PasswordResetMinutes` (60, 5–1440; how long a reset link works), `AuditRetentionDays` (365, 1–3650; audit rows and finished invites older than this are deleted), `EntraRecheckMinutes` (60, 5–1440; the Graph re-check interval while Microsoft sign-in is on), `Smtp` (outgoing email; `Host` empty = off — see "Email" below) |
@@ -521,25 +506,19 @@ Each module exposes REST endpoints under `/api/`:
 
 | Module | Routes |
 |---|---|
-| Agents | `/api/agents` |
-| Alerts | `/api/alerts` |
-| Analytics | `/api/analytics` |
+| Agents | `/api/agents` (read only), `/api/studio`, `/api/plugins` |
 | Chat | `/api/chat`, `/api/chat/agents` (merged agents only) |
-| CloudTools | `/api/cloud`, `/api/cloudtools` |
-| Dashboard | `/api/dashboard` |
-| Debug | `/api/debug` |
-| Hooks | `/api/hooks` |
 | Identity | `/api/identity/status`, `/bootstrap`, `/sign-in`, `/refresh`, `/sign-out`, `/me`, `/unlock`, `/invites`, `/people`, `/org/departments`, `/org/teams` |
-| Investigate | `/api/investigate` |
 | Memory | `/api/memory/cards`, `/api/memory/grants`, `/api/memory/agents/{agentId}/secret` (+ MCP at `/mcp/memory`, agent secret) |
 | Tickets | `/api/tickets/issues`, `/api/tickets/pipelines`, `/api/tickets/runs` |
 | Sandboxes (experimental) | `/api/sandboxes`, `/api/sandboxes/{name}`, `/api/sandboxes/workspaces`, `/api/sandboxes/models` |
-| Sessions | `/api/sessions` |
-| Settings | `/api/settings` (owner only, except `GET /api/settings/theme`; connection tokens are write-only), `/api/model` (owner: kagent ModelConfig) |
-| ToolServers | `/api/toolservers` |
+| Runtime | `/api/model` (owner: kagent ModelConfig) |
+| ToolServers | `/api/toolservers` (list; create and delete are the owner's) |
 
 Health check: `GET /health` (anonymous; overall status plus each check's name and status, e.g.
-`identity-postgres: Healthy`; no exception text)
+`identity-postgres: Healthy`; no exception text). kagent's reachability is not part of it (kagent down must not take
+the Host out of rotation): the owner's `/Debug` page runs every check, kagent's included, and shows the Host's version,
+mode and loaded modules.
 
 ## Identity and security model
 
@@ -1160,9 +1139,8 @@ in the agent repo `skanyxx-agents` carries them; only a supervisor's merge makes
   `Studio:Git:User` (`skanyxx-bot`), `Studio:Git:Owner`/`Repo`/`Branch`, `Studio:Namespace` (`kagent`),
   `Studio:MemoryMcpUrl`, `Studio:McpServers`, `Studio:ReconcileSeconds`, `Studio:FactoryModelConfig`,
   `Studio:SkillRegistries`, `Studio:MaxRemovalsPerPass`, `Studio:MaxOpenProposalsPerBuilder`, `Studio:LockWaitSeconds`.
-- The legacy `/api/agents` writes (kubectl apply/scale/delete) are the owner's only (D109), and so is every other
-  leftover route that changes kagent or the cluster or runs a process: tool servers, cloud tools, hooks, alerts,
-  sessions (D116).
+- `/api/agents` only reads: its kubectl writes are gone (Phase 1). Creating or deleting a tool server is the owner's
+  (D116). The Host runs no processes and holds no Kubernetes credentials.
 
 **Local Gitea.** `scripts/dev/first-hour.sh git` starts the compose service `gitea` (project `skanyxx`,
 `127.0.0.1:3300`, registration off, sign-in required), creates the account `skanyxx-bot` (not a site admin; it owns the

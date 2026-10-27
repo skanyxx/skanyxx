@@ -24,7 +24,8 @@ AX v0.3.1 does not match D064/D067/D068 as written: see `ax-integration.md` (D06
 - ~~**The release workflow has no test step**~~ — **done (D173, 2026-10-07):** a `test` job runs the five suites on
   Ubuntu and every installer job needs it.
 - ~~**Host tests on Windows lock `skanyxx.db`**~~ — **harness fixed (D174, 2026-10-07):** the SQLite pool is cleared
-  before a host's temp content root is deleted. Not yet confirmed on a Windows machine.
+  before a host's temp content root is deleted. Not yet confirmed on a Windows machine. 2026-10-27: the SQLite store is
+  gone (Phase 1); the unique content roots stay.
 
 ## Studio (slice 3) — left over from QA round 2
 
@@ -225,10 +226,10 @@ AX v0.3.1 does not match D064/D067/D068 as written: see `ax-integration.md` (D06
   - **Windows `open` shows a console window briefly** (the Host is a console app), and stays open on an error until
     Enter. Legacy Server-mode installs get no working shortcut: `open` refuses Server mode and says how to start it.
   - **The Linux unit still runs as root** (hardened, D231), with write access to its own folder: an upgraded
-    Server-mode config is `0600 root` and its `skanyxx.db` sits in `/usr/share/skanyxx`. A service user needs config in
+    Server-mode config is `0600 root` in `/usr/share/skanyxx` (Phase 1: no `skanyxx.db` any more). A service user needs config in
     `/etc/skanyxx` and state in `/var/lib/skanyxx`, i.e. the Host reading both. Windows `[InstallDelete]` on an
     admin-chosen folder a standard user can write is not checked for junctions.
-  - **Upgraded Server-mode configs on macOS/Windows** keep `skanyxx.db` in a root-owned (or Program Files) folder,
-    where a user-run Host cannot write it. Remote installs are unaffected.
+  - ~~**Upgraded Server-mode configs on macOS/Windows** keep `skanyxx.db` in a root-owned (or Program Files) folder,
+    where a user-run Host cannot write it.~~ 2026-10-27: the Host no longer writes `skanyxx.db` (Phase 1).
   - **Intel Macs with Homebrew** own `/usr/local`, so the pkg refuses to install there (D233). Installing to
     `/Library/Application Support/Skanyxx` would serve them; it needs an upgrade path from `/usr/local/share/skanyxx`.

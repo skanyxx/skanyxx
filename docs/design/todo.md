@@ -8,7 +8,7 @@ Locked product: `spine.md`, `three-planes.md`, `first-hour.md`, `decisions.md`. 
 
 **Shipped as slices (keep; do not rewrite):** identity (owner, invite, roles, org, Entra), memory engine (cards, lift, grants, MCP + agent secrets), tickets (kagent stage runs), sandboxes module (AX v0.3.1, experimental, **off**).
 
-**Not the product yet:** ~~first-hour still stops at `/Setup`. No kagent, no seed chat,~~ (2026-10-05: slice 1 done — `/Setup` → `/Model` → Chat with the seed) ~~no library page,~~ (2026-10-05: slice 2 done — `/Library`) ~~no studio/PR,~~ (2026-10-06: slice 3 done — `/Studio`, PRs in `skanyxx-agents`) ~~no Helm umbrella.~~ (2026-10-06: slice 4 — the umbrella chart `deploy/helm/skanyxx`; 2026-10-11: the desktop installers are a remote launcher of it, D200) Nav is still the SRE console (Dashboard, Investigate, Alerts, Hooks, Cloud Tools).
+**Not the product yet:** ~~first-hour still stops at `/Setup`. No kagent, no seed chat,~~ (2026-10-05: slice 1 done — `/Setup` → `/Model` → Chat with the seed) ~~no library page,~~ (2026-10-05: slice 2 done — `/Library`) ~~no studio/PR,~~ (2026-10-06: slice 3 done — `/Studio`, PRs in `skanyxx-agents`) ~~no Helm umbrella.~~ (2026-10-06: slice 4 — the umbrella chart `deploy/helm/skanyxx`; 2026-10-11: the desktop installers are a remote launcher of it, D200) ~~Nav is still the SRE console (Dashboard, Investigate, Alerts, Hooks, Cloud Tools).~~ (2026-10-27: removed in Phase 1, §0.)
 
 ## How to take a slice
 
@@ -21,7 +21,7 @@ Locked product: `spine.md`, `three-planes.md`, `first-hour.md`, `decisions.md`. 
 
 ## 0. Guardrails (always)
 
-- [ ] Do not grow SRE/NOC features (D001). Investigate / Alerts / Hooks / Dashboard / Cloud Tools / Analytics are leftover chrome. Fix only if they block the new path; otherwise leave or hide.
+- [x] Do not grow SRE/NOC features (D001). **Phase 1 (2026-10-27): the SRE leftovers are removed** — Investigate, Alerts, Hooks, Dashboard, Cloud Tools, Analytics and Sessions (modules, pages, Core types), the Host's process runner (kubectl/az/aws), the SQLite settings store and Settings page, and Debug's quick commands. Dashboard, Investigate, Analytics, Cloud tools and Settings come back as new features, built from scratch (product brief), not from the SRE versions.
 - [ ] Do not replace kagent with an in-process LLM loop (D002, D016). Chat talks to kagent.
 - [ ] Do not treat kagent TTL memory or Dragonfly as the company bank (D008, D042, D068). Cards stay in Postgres.
 - [ ] Do not wrap Joicy as the memory store (D046).
@@ -172,7 +172,7 @@ D076/D077 listener is built (box above, D190–D194); it is not yet shown from i
 - [x] Identity leftovers in `open.md` (email delivery, durable audit, password reset, Graph re-check, sandbox stop on `PrivilegesRevoked`, …).
 - [x] Polly → `Microsoft.Extensions.Http.Resilience`; xunit v3 (split out, next bullet); delete or adopt root `SkanyxxWeb.csproj`; untrack `bin/`/`obj/`; add tests to the release workflow (`open.md` Platform). **2026-10-07:** done — Polly removed with the uncalled `AddResilientHttpClient`, no client retries (D170); legacy root monolith deleted (D171); `bin/`/`obj/` untracked (D172); release `test` job gates every installer (D173).
 - [x] xunit v3 (follow-up wave, not part of the 2026-10-07 platform change). **2026-10-07:** done — all five suites on `xunit.v3` 4.0.1 under Microsoft.Testing.Platform (`global.json` `test.runner`), ArchUnitNET on its xUnitV3 package; counts unchanged (Host 362, Identity 395, Memory 319, Sandboxes 229, Tickets 311) (D175).
-- [x] Host tests on Windows: parallel testhosts lock `skanyxx.db` on dispose. Fix the harness (unique content-root / serial collection), do not delete the tests. **2026-10-07:** content roots were already unique; the lock was the SQLite connection pool — cleared before the delete, test added (D174). Unconfirmed on Windows.
+- [x] Host tests on Windows: parallel testhosts lock `skanyxx.db` on dispose. Fix the harness (unique content-root / serial collection), do not delete the tests. **2026-10-27:** the SQLite store is gone (Phase 1), so there is no pool to clear; content roots stay unique. **2026-10-07:** content roots were already unique; the lock was the SQLite connection pool — cleared before the delete, test added (D174). Unconfirmed on Windows.
 - [x] Community templates (D005 / D054) — **2026-10-20:** unpaused for recipes as Claude Code plugins (catalog, git commit, zip → studio PR; D205–D218, README "Plugins").
 
 **2026-10-07 — section 6, identity leftovers built (D150–D159; branch `slice6-identity`).** SMTP email through MailKit

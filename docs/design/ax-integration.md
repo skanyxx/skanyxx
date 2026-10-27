@@ -30,7 +30,7 @@ Source: primary-source read of `github.com/google/ax` (main @ `c5c1ac5`, 2026-09
 | AX need | Skanyxx already has | Decision |
 |---|---|---|
 | Run record, retries, gates | **Tickets** = durable run engine over kagent A2A (runs, per-user cap, cancel, gates) | **Avoid.** No second run engine. AX is source of truth; no local run table. |
-| Word "Task" | kagent A2A tasks (`KAgentTask`) in Sessions/Analytics/Dashboard; Tickets "runs" | **Avoid** the name in code/routes. Module + routes say **Sandboxes**; UI label may say "Tasks (Experimental)". |
+| Word "Task" | kagent A2A tasks (`KAgentTask`) in Sessions/Analytics/Dashboard (all removed in Phase 1); Tickets "runs" | **Avoid** the name in code/routes. Module + routes say **Sandboxes**; UI label may say "Tasks (Experimental)". |
 | Per-user cap, who may stop | Tickets rule: cap per user, creator-or-supervisor cancel | **Reuse the rule**, not the code: same semantics in Sandboxes. |
 | Memory for the sandbox | Memory MCP `/mcp/memory` (agent = owner of the presented per-agent secret, D080/D083; `X-User-Id` only for agents the owner lets act for users, D084) + `PUT /api/memory/grants/{agentId}` | **Reuse.** Attach helper = workspace MCP entry + env ids; grants stay a supervisor call. Attach still needs a per-task credential (D076/D077): no sandbox may hold an agent secret. |
 | Identity of a sandbox | Agent ids in memory grants | **Reuse** the agent-id space: a sandbox gets a synthetic agent id for grants. |
