@@ -1,5 +1,6 @@
 using FluentValidation;
 using Skanyxx.Core.MediatR.Requests;
+using Skanyxx.Core.Platform.ChatContext;
 
 namespace Skanyxx.Module.Chat.Features;
 
@@ -14,6 +15,8 @@ internal sealed class SendChatMessageValidator : AbstractValidator<SendChatMessa
         // Kubernetes namespace and object name (RFC 1123 labels).
         RuleFor(c => c.AgentNamespace).NotEmpty().MaximumLength(63).Matches("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$");
         RuleFor(c => c.AgentName).NotEmpty().MaximumLength(63).Matches("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$");
+        RuleFor(c => c.TicketKeys).Must(k => k!.Count <= ChatTickets.MaxPerSession).When(c => c.TicketKeys is not null);
+        RuleForEach(c => c.TicketKeys).Must(ChatTickets.IsValid).WithMessage("Invalid ticket key.");
         RuleFor(c => c.ConversationId).MaximumLength(128).Matches("^[A-Za-z0-9_-]+$").When(c => !string.IsNullOrEmpty(c.ConversationId));
     }
 }

@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skanyxx.Core;
+using Skanyxx.Core.Platform.ChatContext;
+using Skanyxx.Module.Chat.Features;
 
 namespace Skanyxx.Module.Chat;
 
@@ -12,9 +15,9 @@ public class ChatModule : IModule
     public string Version => "1.0.0";
     public IReadOnlyList<string> Dependencies => Array.Empty<string>();
 
-    public void RegisterServices(IServiceCollection services, IConfiguration configuration)
-    {
-    }
+    // TryAdd: the chatcontext module's registration wins whichever registers first (D236).
+    public void RegisterServices(IServiceCollection services, IConfiguration configuration) =>
+        services.TryAddScoped<IChatContext, NoChatContext>();
 
     public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;
 }
