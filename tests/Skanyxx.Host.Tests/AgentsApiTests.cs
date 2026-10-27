@@ -288,6 +288,31 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.NotEqual(opened, await VersionAsync("helper"));
     }
 
+    /// <summary>C-5: an edit keeps what the form does not show on an A2A skill (its MIME modes).</summary>
+    [Fact]
+    public async Task AnEdit_KeepsTheA2aSkillsMimeModes()
+    {
+        Seed("describer", Direct());
+        _kagent.AgentObjects[$"{Ns}/describer"]["spec"]!["declarative"]!["a2aConfig"] = new JsonObject
+        {
+            ["skills"] = new JsonArray(new JsonObject
+            {
+                ["id"] = "describe", ["name"] = "Describe image",
+                ["inputModes"] = new JsonArray("image/png"), ["outputModes"] = new JsonArray("application/json")
+            })
+        };
+        var form = Form("describer", tools: []);
+        form["description"] = "Only the description changes.";
+        form["a2aSkills"] = new[] { new { id = "describe", name = "Describe image" } };
+        form["version"] = await VersionAsync("describer");
+
+        Assert.Equal(HttpStatusCode.OK, (await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/describer", form, Ct)).StatusCode);
+
+        var skill = _kagent.AgentObjects[$"{Ns}/describer"]["spec"]!["declarative"]!["a2aConfig"]!["skills"]![0]!;
+        Assert.Equal("image/png", skill["inputModes"]![0]!.GetValue<string>());
+        Assert.Equal("application/json", skill["outputModes"]![0]!.GetValue<string>());
+    }
+
     /// <summary>C-1: two entries for one server, each with its own Secret header, are never merged by a save.</summary>
     [Fact]
     public async Task AnAgentNamingOneServerTwice_IsNeverEdited_SoNoCredentialMoves()

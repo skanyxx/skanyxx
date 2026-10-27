@@ -71,7 +71,11 @@ internal static partial class AgentSpec
         Set(declarative, "runtime", string.IsNullOrEmpty(form.Runtime) ? null : form.Runtime);
         Set(declarative, "stream", form.Stream ? true : null);
         Set(declarative, "tools", Tools(declarative["tools"] as JsonArray ?? [], form));
-        Set(declarative, "a2aConfig", form.A2aSkills.Count == 0 ? null : new JsonObject { ["skills"] = new JsonArray([.. form.A2aSkills.Select(A2aSkill)]) });
+        var currentSkills = (declarative["a2aConfig"]?["skills"] as JsonArray ?? []).OfType<JsonObject>().ToList();
+        Set(declarative, "a2aConfig", form.A2aSkills.Count == 0 ? null : new JsonObject
+        {
+            ["skills"] = new JsonArray([.. form.A2aSkills.Select(s => A2aSkill(s, currentSkills.FirstOrDefault(c => Text(c["id"]) == s.Id)))])
+        });
 
         var skills = spec["skills"] as JsonObject ?? new JsonObject();
         Set(skills, "refs", form.Skills.Count == 0 ? null : new JsonArray([.. form.Skills.Select(s => (JsonNode)s)]));
@@ -128,9 +132,15 @@ internal static partial class AgentSpec
                 || (t?["agent"] is JsonObject target && Text(target["namespace"]) is { } ans && ans != ns));
     }
 
-    private static JsonNode A2aSkill(A2aSkillForm skill)
+    /// <summary>
+    /// The form's skill over the agent's skill of the same id, so what the form does not show (<c>inputModes</c>,
+    /// <c>outputModes</c>) stays (C-5).
+    /// </summary>
+    private static JsonNode A2aSkill(A2aSkillForm skill, JsonObject? current)
     {
-        var node = new JsonObject { ["id"] = skill.Id, ["name"] = skill.Name };
+        var node = current?.DeepClone() as JsonObject ?? new JsonObject();
+        node["id"] = skill.Id;
+        node["name"] = skill.Name;
         Set(node, "description", string.IsNullOrEmpty(skill.Description) ? null : skill.Description);
         Set(node, "tags", skill.Tags is { Count: > 0 } tags ? new JsonArray([.. tags.Select(t => (JsonNode)t)]) : null);
         Set(node, "examples", skill.Examples is { Count: > 0 } examples ? new JsonArray([.. examples.Select(e => (JsonNode)e)]) : null);
