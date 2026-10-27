@@ -2,12 +2,14 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Services;
+using Microsoft.Extensions.Options;
 using Skanyxx.Module.Agents.Manage.Definition;
+using Skanyxx.Module.Agents.Studio;
 
 namespace Skanyxx.Module.Agents.Manage.Features;
 
 /// <summary>D252: studio and system agents (the seed, the factory) never leave kagent from here; audited (D255).</summary>
-internal sealed class DeleteAgentHandler(KAgentApiClient kagent, IMediator mediator, ILogger<DeleteAgentHandler> logger)
+internal sealed class DeleteAgentHandler(KAgentApiClient kagent, IMediator mediator, IOptions<StudioOptions> options, ILogger<DeleteAgentHandler> logger)
     : IRequestHandler<DeleteAgentCommand, Outcome<AgentDeleted>>
 {
     public async Task<Outcome<AgentDeleted>> Handle(DeleteAgentCommand command, CancellationToken ct)
@@ -16,6 +18,8 @@ internal sealed class DeleteAgentHandler(KAgentApiClient kagent, IMediator media
             return Outcome<AgentDeleted>.Forbidden(AgentAccess.NotWriter);
         if (!AgentQueries.IsRef(command.Namespace, command.Name))
             return Outcome<AgentDeleted>.NotFound(AgentFailure.NotFound);
+        if (command.Namespace != options.Value.Namespace)
+            return Outcome<AgentDeleted>.Conflict(null, AgentFailure.OtherNamespace(options.Value.Namespace), "namespace");
         try
         {
             var existing = await kagent.GetAgentObjectAsync(command.Namespace, command.Name, ct);

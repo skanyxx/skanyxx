@@ -20,9 +20,9 @@ internal static partial class AgentFormRules
 
     /// <param name="existing">The agent's current spec on an update; null on a create.</param>
     /// <param name="models">ModelConfig names in the agents' namespace.</param>
-    /// <param name="agents">Agent names in the agents' namespace.</param>
+    /// <param name="callable">Agents another agent may call as a tool (<see cref="AgentProtection.IsCallable"/>).</param>
     public static IReadOnlyList<string> Check(AgentForm form, StudioOptions options, ExistingSpec? existing,
-        IReadOnlyCollection<string> models, IReadOnlyCollection<string> agents)
+        IReadOnlyCollection<string> models, IReadOnlyCollection<string> callable)
     {
         var problems = new List<string>();
         if (form.McpTools is null || form.AgentTools is null || form.Skills is null || form.A2aSkills is null
@@ -49,7 +49,7 @@ internal static partial class AgentFormRules
             problems.Add("Runtime: 'go', 'python' or empty for kagent's default.");
 
         CheckMcpTools(form, options, existing, problems);
-        CheckAgentTools(form, agents, problems);
+        CheckAgentTools(form, existing, callable, problems);
         CheckSkills(form, options, existing, problems);
         CheckA2a(form, problems);
         return problems;
@@ -82,13 +82,14 @@ internal static partial class AgentFormRules
         }
     }
 
-    private static void CheckAgentTools(AgentForm form, IReadOnlyCollection<string> agents, List<string> problems)
+    private static void CheckAgentTools(AgentForm form, ExistingSpec? existing, IReadOnlyCollection<string> callable, List<string> problems)
     {
         if (form.AgentTools.Distinct().Count() != form.AgentTools.Count)
             problems.Add("Agent tools: each agent once.");
         foreach (var agent in form.AgentTools)
-            if (agent == form.Name || agent is null || agent.StartsWith("preview-", StringComparison.Ordinal) || !agents.Contains(agent))
-                problems.Add($"Agent tool '{agent}': name another agent in '{form.Namespace}'.");
+            if (agent is null || agent == form.Name || !(callable.Contains(agent) || existing?.AgentTools.Contains(agent) == true))
+                problems.Add($"Agent tool '{agent}': name another agent in '{form.Namespace}' made on the Agents page or outside Skanyxx "
+                    + "(never the seed, a studio agent or one of Skanyxx's own).");
     }
 
     private static void CheckSkills(AgentForm form, StudioOptions options, ExistingSpec? existing, List<string> problems)

@@ -20,10 +20,11 @@ internal sealed class CreateAgentHandler(KAgentApiClient kagent, IMediator media
         try
         {
             var agents = await AgentQueries.AgentsAsync(kagent, options.Value.Namespace, ct);
-            var problems = AgentFormRules.Check(form, options.Value, null, await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct), agents);
+            var problems = AgentFormRules.Check(form, options.Value, null, await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct),
+                AgentQueries.Callable(agents));
             if (problems.Count > 0)
                 throw AgentFailure.Invalid(problems);
-            if (agents.Contains(form.Name))
+            if (agents.Any(a => a.Name == form.Name))
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.Exists(form.Namespace, form.Name), "exists");
 
             var agent = AgentSpec.NewAgent(form);

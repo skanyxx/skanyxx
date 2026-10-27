@@ -104,7 +104,7 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("true", stored["metadata"]!["labels"]!["skanyxx.dev/merged"]!.GetValue<string>());
         Assert.Equal("Declarative", stored["spec"]!["type"]!.GetValue<string>());
         Assert.Equal("search", stored["spec"]!["declarative"]!["tools"]![0]!["mcpServer"]!["toolNames"]![0]!.GetValue<string>());
-        Assert.Equal("seed", stored["spec"]!["declarative"]!["tools"]![1]!["agent"]!["name"]!.GetValue<string>());
+        Assert.Equal("e2e-hello", stored["spec"]!["declarative"]!["tools"]![1]!["agent"]!["name"]!.GetValue<string>());
         Assert.Equal("summarize", stored["spec"]!["declarative"]!["a2aConfig"]!["skills"]![0]!["id"]!.GetValue<string>());
 
         var read = await _employee.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/crud-agent", Ct);
@@ -207,22 +207,60 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task AnAgentsExistingServer_MayStayAsItIs_ButNeverWiden()
+    public async Task AnAgentsExistingTools_MayStayAsTheyAre_WithTheirHeaders_ButNeverWiden()
     {
-        var agent = Direct();
-        Seed("legacy", agent, tools: new JsonArray(new JsonObject
-        {
-            ["type"] = "McpServer",
-            ["mcpServer"] = new JsonObject { ["name"] = "legacy-mcp", ["toolNames"] = new JsonArray("a"), ["allowedHeaders"] = new JsonArray("x-user-id") }
-        }));
+        Seed("legacy", External(), tools: new JsonArray(
+            new JsonObject
+            {
+                ["type"] = "McpServer",
+                ["headersFrom"] = new JsonArray(new JsonObject { ["name"] = "Authorization", ["valueFrom"] = new JsonObject { ["type"] = "Secret", ["name"] = "legacy-token", ["key"] = "token" } }),
+                ["mcpServer"] = new JsonObject { ["name"] = "legacy-mcp", ["toolNames"] = new JsonArray("a"), ["allowedHeaders"] = new JsonArray("x-user-id") }
+            },
+            new JsonObject { ["type"] = "Agent", ["isolateSessions"] = true, ["agent"] = new JsonObject { ["name"] = "seed" } }));
 
-        var kept = await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/legacy", Form("legacy", tools: [new { server = "legacy-mcp", tools = new[] { "a" } }]), Ct);
+        var form = Form("legacy", tools: [new { server = "legacy-mcp", tools = new[] { "a" } }]);
+        form["agentTools"] = new[] { "seed" };
+        var kept = await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/legacy", form, Ct);
         Assert.Equal(HttpStatusCode.OK, kept.StatusCode);
-        var server = _kagent.AgentObjects[$"{Ns}/legacy"]["spec"]!["declarative"]!["tools"]![0]!["mcpServer"]!;
-        Assert.Equal("x-user-id", server["allowedHeaders"]![0]!.GetValue<string>());
+        var tools = _kagent.AgentObjects[$"{Ns}/legacy"]["spec"]!["declarative"]!["tools"]!;
+        Assert.Equal("legacy-token", tools[0]!["headersFrom"]![0]!["valueFrom"]!["name"]!.GetValue<string>());
+        Assert.Equal("x-user-id", tools[0]!["mcpServer"]!["allowedHeaders"]![0]!.GetValue<string>());
+        Assert.True(tools[1]!["isolateSessions"]!.GetValue<bool>());
 
         var widened = await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/legacy", Form("legacy", tools: [new { server = "legacy-mcp", tools = new[] { "a", "b" } }]), Ct);
         Assert.Equal(HttpStatusCode.BadRequest, widened.StatusCode);
+    }
+
+    [Fact]
+    public async Task SystemAndStudioAgents_AreNeverToolsOfANewAgent()
+    {
+        Seed("refund-helper", new JsonObject { ["skanyxx.dev/managed-by"] = "skanyxx-studio", ["skanyxx.dev/merged"] = "true" });
+        var options = await _supervisor.GetFromJsonAsync<JsonElement>("/api/agents/options", Ct);
+        Assert.Equal(["e2e-hello"], options.GetProperty("agents").EnumerateArray().Select(a => a.GetString()));
+        foreach (var target in new[] { "seed", "refund-helper", "ticket-planner" })
+        {
+            var form = Form("caller");
+            form["agentTools"] = new[] { target };
+            Assert.Equal(HttpStatusCode.BadRequest, (await _supervisor.PostAsJsonAsync("/api/agents", form, Ct)).StatusCode);
+        }
+        Assert.Empty(_kagent.CallsTo("POST", "/api/agents"));
+    }
+
+    [Fact]
+    public async Task AgentsOutsideTheStudioNamespace_AreNeverEditedOrDeleted()
+    {
+        _kagent.AgentObjects["other-ns/elsewhere"] = new JsonObject
+        {
+            ["metadata"] = new JsonObject { ["name"] = "elsewhere", ["namespace"] = "other-ns", ["labels"] = External() },
+            ["spec"] = new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject { ["systemMessage"] = "x" } }
+        };
+        var row = (await ListAsync(_owner)).First(a => a.GetProperty("name").GetString() == "elsewhere");
+        Assert.False(row.GetProperty("canEdit").GetBoolean() || row.GetProperty("canDelete").GetBoolean());
+        var form = Form("elsewhere");
+        form["namespace"] = "other-ns";
+        Assert.Equal(HttpStatusCode.Conflict, (await _owner.PutAsJsonAsync("/api/agents/other-ns/elsewhere", form, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _owner.DeleteAsync("/api/agents/other-ns/elsewhere", Ct)).StatusCode);
+        Assert.True(_kagent.AgentObjects.ContainsKey("other-ns/elsewhere"));
     }
 
     [Fact]
@@ -270,7 +308,7 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         ["runtime"] = "go",
         ["stream"] = true,
         ["mcpTools"] = tools ?? [new { server = Server, tools = new[] { "search" } }],
-        ["agentTools"] = tools is null ? new[] { "seed" } : [],
+        ["agentTools"] = tools is null ? new[] { "e2e-hello" } : [],
         ["skills"] = Array.Empty<string>(),
         ["a2aSkills"] = tools is null ? new[] { new { id = "summarize", name = "Summarize", description = "Short summaries", tags = new[] { "docs" }, examples = new[] { "Summarize this" } } } : []
     };

@@ -31,6 +31,13 @@ internal static class AgentProtection
         _ => null
     };
 
+    /// <summary>
+    /// Whether another agent may call it as a tool (D256): never a system or studio agent, whose memory identity, grants
+    /// or studio powers would then answer to whoever chats with the caller.
+    /// </summary>
+    public static bool IsCallable(string name, IReadOnlyDictionary<string, string> labels) =>
+        SourceOf(name, labels) is AgentSource.Direct or AgentSource.External;
+
     private static bool IsSystem(string name, IReadOnlyDictionary<string, string> labels) =>
         StudioNames.IsReserved(name)
         || labels.ContainsKey(StudioNames.RoleLabel)

@@ -289,7 +289,8 @@
         document.getElementById('f-mcp-empty').hidden = mcp.children.length > 0;
 
         const agents = document.getElementById('f-agents');
-        agents.replaceChildren(...o.agents.filter(a => a !== agent?.name).map(a => {
+        // An agent tool the agent already has stays offered (kept as it is), even when no longer callable from new agents.
+        agents.replaceChildren(...[...new Set([...o.agents, ...(agent?.agentTools ?? [])])].filter(a => a !== agent?.name).map(a => {
             const op = el('option', a);
             op.value = a;
             op.selected = (agent?.agentTools ?? []).includes(a);

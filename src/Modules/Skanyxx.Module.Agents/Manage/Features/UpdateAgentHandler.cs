@@ -22,6 +22,8 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
         var form = command.Form;
         if (!AgentQueries.IsRef(form.Namespace, form.Name))
             return Outcome<AgentDetail>.NotFound(AgentFailure.NotFound);
+        if (form.Namespace != options.Value.Namespace)
+            return Outcome<AgentDetail>.Conflict(null, AgentFailure.OtherNamespace(options.Value.Namespace), "namespace");
         try
         {
             var existing = await kagent.GetAgentObjectAsync(form.Namespace, form.Name, ct);
@@ -37,19 +39,20 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.NotDeclarative, "byo");
             if (AgentSpec.HasPromptSource(existing))
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.PromptSource, "prompt-source");
+            if (AgentSpec.HasForeignTools(existing))
+                return Outcome<AgentDetail>.Conflict(null, AgentFailure.ForeignTools, "foreign-tools");
 
             var problems = AgentFormRules.Check(form, options.Value, AgentSpec.Existing(existing),
-                await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct), await AgentQueries.AgentsAsync(kagent, options.Value.Namespace, ct));
+                await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct),
+                AgentQueries.Callable(await AgentQueries.AgentsAsync(kagent, options.Value.Namespace, ct)));
             if (problems.Count > 0)
                 throw AgentFailure.Invalid(problems);
 
-            await kagent.UpdateAgentAsync(AgentSpec.Updated(existing, form), ct);
+            var updated = AgentSpec.Updated(existing, form);
+            await kagent.UpdateAgentAsync(updated, ct);
             await AgentAudit.WriteAsync(mediator, AgentAudit.Updated, command.User, form.Namespace, form.Name, form);
             logger.LogWarning("Agent {Namespace}/{Name} updated by {ActorUserId}", form.Namespace, form.Name, command.User.UserId);
-            var updated = await kagent.GetAgentObjectAsync(form.Namespace, form.Name, ct);
-            return updated is null
-                ? Outcome<AgentDetail>.NotFound(AgentFailure.NotFound)
-                : Outcome<AgentDetail>.Ok(AgentSpec.Detail(updated, full: true, canWrite: true));
+            return Outcome<AgentDetail>.Ok(AgentSpec.Detail(updated, full: true, canWrite: true));
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {

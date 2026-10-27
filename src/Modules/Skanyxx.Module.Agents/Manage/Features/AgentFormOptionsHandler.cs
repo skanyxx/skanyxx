@@ -28,7 +28,7 @@ internal sealed class AgentFormOptionsHandler(
                 await AgentQueries.ModelsAsync(kagent, ns, ct),
                 [.. options.Value.McpServers.Where(s => !s.StartsWith(StudioNames.MemoryServerPrefix, StringComparison.Ordinal)).Distinct()
                     .Select(s => new McpToolChoice(s, discovered.GetValueOrDefault($"{ns}/{s}") ?? []))],
-                [.. (await AgentQueries.AgentsAsync(kagent, ns, ct)).Where(a => !a.StartsWith("preview-", StringComparison.Ordinal))],
+                AgentQueries.Callable(await AgentQueries.AgentsAsync(kagent, ns, ct)),
                 options.Value.SkillRegistries));
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)

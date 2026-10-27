@@ -23,7 +23,7 @@ internal static class AgentAudit
             @namespace = ns,
             name,
             model = form?.ModelConfig,
-            mcpServers = form?.McpTools.Select(t => t.Server),
+            mcpServers = form?.McpTools.Select(t => t.Server).ToList(),
             agentTools = form?.AgentTools,
             skills = form?.Skills.Count,
             reason

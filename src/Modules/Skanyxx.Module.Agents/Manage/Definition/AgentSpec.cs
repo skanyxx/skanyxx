@@ -29,14 +29,16 @@ internal static class AgentSpec
         ["spec"] = Apply(new JsonObject(), form)
     };
 
-    /// <summary>The CR kagent's PUT takes: its name and namespace and the changed spec (kagent ignores the rest of metadata).</summary>
-    public static JsonObject Updated(JsonObject agent, AgentForm form) => new()
+    /// <summary>
+    /// The agent with the form applied: kagent's PUT takes its name, namespace and spec and ignores the rest of metadata
+    /// (labels stay as they are).
+    /// </summary>
+    public static JsonObject Updated(JsonObject agent, AgentForm form)
     {
-        ["apiVersion"] = "kagent.dev/v1alpha2",
-        ["kind"] = "Agent",
-        ["metadata"] = new JsonObject { ["name"] = form.Name, ["namespace"] = form.Namespace },
-        ["spec"] = Apply(agent["spec"] as JsonObject ?? new JsonObject(), form)
-    };
+        var updated = (JsonObject)agent.DeepClone();
+        updated["spec"] = Apply(agent["spec"] as JsonObject ?? new JsonObject(), form);
+        return updated;
+    }
 
     public static bool IsDeclarative(JsonObject agent) => Text(agent["spec"]?["type"]) is null or "Declarative";
 
@@ -50,7 +52,8 @@ internal static class AgentSpec
         foreach (var tool in declarative?["tools"] as JsonArray ?? [])
             if (Text(tool?["mcpServer"]?["name"]) is { } server)
                 mcp[server] = [.. Strings(tool!["mcpServer"]!["toolNames"])];
-        return new ExistingSpec(mcp, Strings(agent["spec"]?["skills"]?["refs"]).ToHashSet());
+        return new ExistingSpec(mcp, Strings(agent["spec"]?["skills"]?["refs"]).ToHashSet(),
+            (declarative?["tools"] as JsonArray ?? []).Select(t => Text(t?["agent"]?["name"])).OfType<string>().ToHashSet());
     }
 
     private static JsonObject Apply(JsonObject current, AgentForm form)
@@ -73,27 +76,48 @@ internal static class AgentSpec
         return spec;
     }
 
-    /// <summary>The form's MCP servers and agents; a server the agent already had keeps its other settings.</summary>
+    /// <summary>
+    /// The form's MCP servers and agents. A tool the agent already had keeps its whole entry (<c>headersFrom</c> and
+    /// <c>isolateSessions</c> sit on the entry, <c>allowedHeaders</c> on the server); only its tool names change.
+    /// </summary>
     private static JsonArray? Tools(JsonArray current, AgentForm form)
     {
         var tools = new JsonArray();
         foreach (var choice in form.McpTools)
         {
-            var server = current.Select(t => t?["mcpServer"] as JsonObject).FirstOrDefault(s => Text(s?["name"]) == choice.Server)?.DeepClone() as JsonObject
-                ?? new JsonObject { ["kind"] = "RemoteMCPServer", ["apiGroup"] = "kagent.dev", ["name"] = choice.Server };
+            var entry = current.FirstOrDefault(t => Text(t?["mcpServer"]?["name"]) == choice.Server)?.DeepClone() as JsonObject
+                ?? new JsonObject
+                {
+                    ["type"] = "McpServer",
+                    ["mcpServer"] = new JsonObject { ["kind"] = "RemoteMCPServer", ["apiGroup"] = "kagent.dev", ["name"] = choice.Server }
+                };
+            var server = (JsonObject)entry["mcpServer"]!;
             Set(server, "toolNames", choice.Tools.Count == 0 ? null : new JsonArray([.. choice.Tools.Select(t => (JsonNode)t)]));
             if (server["requireApproval"] is JsonArray approval)
                 Set(server, "requireApproval", Strings(approval).Where(choice.Tools.Contains).ToList() is { Count: > 0 } kept
                     ? new JsonArray([.. kept.Select(t => (JsonNode)t)]) : null);
-            tools.Add(new JsonObject { ["type"] = "McpServer", ["mcpServer"] = server });
+            tools.Add(entry);
         }
         foreach (var agent in form.AgentTools)
-            tools.Add(new JsonObject
+            tools.Add(current.FirstOrDefault(t => Text(t?["agent"]?["name"]) == agent)?.DeepClone() ?? new JsonObject
             {
                 ["type"] = "Agent",
                 ["agent"] = new JsonObject { ["kind"] = "Agent", ["apiGroup"] = "kagent.dev", ["name"] = agent, ["namespace"] = form.Namespace }
             });
         return tools.Count == 0 ? null : tools;
+    }
+
+    /// <summary>
+    /// A tool the form cannot show faithfully: an MCP server or agent in another namespace, or a server of another kind.
+    /// The form names tools by name in the agent's namespace, so editing such an agent would retarget or drop them.
+    /// </summary>
+    public static bool HasForeignTools(JsonObject agent)
+    {
+        var ns = Text(agent["metadata"]?["namespace"]);
+        return (agent["spec"]?["declarative"]?["tools"] as JsonArray ?? []).Any(t =>
+            (t?["mcpServer"] is JsonObject server && (Text(server["namespace"]) is { } sns && sns != ns
+                || Text(server["kind"]) is { } kind && kind != "RemoteMCPServer"))
+            || (t?["agent"] is JsonObject target && Text(target["namespace"]) is { } ans && ans != ns));
     }
 
     private static JsonNode A2aSkill(A2aSkillForm skill)
@@ -125,7 +149,7 @@ internal static class AgentSpec
             Condition(agent, "Accepted"),
             source,
             labels.GetValueOrDefault(StudioNames.MergedLabel) == "true",
-            canWrite && refusal is null && declarativeType && !HasPromptSource(agent),
+            canWrite && refusal is null && declarativeType && !HasPromptSource(agent) && !HasForeignTools(agent),
             canWrite && refusal is null,
             refusal,
             source == AgentSource.Studio ? StudioNames.AgentPath(name) : null,
