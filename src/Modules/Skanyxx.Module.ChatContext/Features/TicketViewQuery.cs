@@ -9,4 +9,5 @@ internal sealed record TicketViewQuery(ChatReader User, string TicketKey) : IReq
     public const int MaxSessions = 50;
     public const int MaxRelated = 10;
     public const int MaxRuns = 50;
+    public const int MaxRelatedRuns = 10;
 }

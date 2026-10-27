@@ -11,7 +11,7 @@ internal sealed class GetSessionHandler(ChatContextDbContext db, SessionAccess a
     {
         var session = await db.Sessions.FindAsync([query.SessionId], ct);
         return session is not null && SessionAccess.CanRead(await access.ReadableAsync(query.User, ct), session)
-            ? Outcome<SessionSummary>.Ok(SessionSummaries.From(session, query.User.UserId!))
+            ? Outcome<SessionSummary>.Ok(SessionSummaries.From(session, query.User.UserId))
             : Outcome<SessionSummary>.NotFound("No such session.");
     }
 }

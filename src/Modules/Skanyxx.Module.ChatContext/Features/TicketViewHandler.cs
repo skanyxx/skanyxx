@@ -22,12 +22,20 @@ internal sealed class TicketViewHandler(SessionSearch search, SessionAccess acce
             .Select(g => g.Key).Take(SessionSearch.MaxTerms).ToList();
         var related = await search.RelatedTicketsAsync(readable, query.TicketKey, keywords, TicketViewQuery.MaxRelated, ct);
 
-        var allRuns = new List<TicketRunSummary>();
-        foreach (var source in runs)
-            allRuns.AddRange(await source.ForTicketsAsync([query.TicketKey, .. related.Select(r => r.TicketKey)], TicketViewQuery.MaxRuns, ct));
-        var byTicket = allRuns.ToLookup(r => r.TicketKey);
+        // Each ticket its own limit, so a busy related ticket cannot crowd out the asked one's runs.
+        var relatedViews = new List<RelatedTicketView>();
+        foreach (var ticket in related)
+            relatedViews.Add(new RelatedTicketView(ticket.TicketKey, ticket.Sessions, ticket.Score,
+                await RunsAsync(ticket.TicketKey, TicketViewQuery.MaxRelatedRuns, ct)));
+        return Outcome<TicketView>.Ok(new TicketView(
+            query.TicketKey, sessions, await RunsAsync(query.TicketKey, TicketViewQuery.MaxRuns, ct), relatedViews));
+    }
 
-        return Outcome<TicketView>.Ok(new TicketView(query.TicketKey, sessions, [.. byTicket[query.TicketKey]],
-            [.. related.Select(r => new RelatedTicketView(r.TicketKey, r.Sessions, r.Score, [.. byTicket[r.TicketKey]]))]));
+    private async Task<IReadOnlyList<TicketRunSummary>> RunsAsync(string ticket, int limit, CancellationToken ct)
+    {
+        var found = new List<TicketRunSummary>();
+        foreach (var source in runs)
+            found.AddRange(await source.ForTicketsAsync([ticket], limit, ct));
+        return found;
     }
 }

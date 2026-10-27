@@ -76,6 +76,31 @@ public sealed class IndexTests(PostgresFixture postgres) : ChatContextTestBase(p
     }
 
     [Fact]
+    public async Task AnEmojiAtTheCut_IsKeptWhole()
+    {
+        var title = new string('a', ChatContext.Context.ChatContextService.MaxTitle - 2) + "😀😀😀";
+        var outcome = new string('b', Domain.ChatSession.MaxOutcome - 2) + "😀😀😀";
+
+        await App.TurnAsync(Ana, "s1", title, outcome);
+
+        var row = await RowAsync("s1");
+        Assert.EndsWith("…", row.Title);
+        Assert.False(char.IsHighSurrogate(row.Title[^2]));
+        Assert.EndsWith("…", row.Outcome);
+    }
+
+    [Fact]
+    public async Task ARemovedTicketLink_StaysRemoved()
+    {
+        await App.TurnAsync(Ana, "s1", "Refund", "Done.", ["SDB-58"]);
+        (await App.Client(Ana).PutAsJsonAsync("/api/chat/sessions/s1/tickets", new { ticketKeys = Array.Empty<string>() }, TestContext.Current.CancellationToken)).EnsureSuccessStatusCode();
+
+        await App.TurnAsync(Ana, "s1", "And now?", "Still done.", first: false);
+
+        Assert.Empty((await RowAsync("s1")).TicketKeys);
+    }
+
+    [Fact]
     public async Task ForgettingASession_RemovesItsRowOnly()
     {
         await App.TurnAsync(Ana, "s1", "Refund", "Done.");

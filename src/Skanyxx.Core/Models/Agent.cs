@@ -9,7 +9,7 @@ public class Agent
     public string Description { get; set; } = string.Empty;
     public string Namespace { get; set; } = "kagent";
 
-    /// <summary>The CR's <c>metadata.resourceVersion</c>: changes with every edit (the answer cache keys on it).</summary>
+    /// <summary>The CR's <c>metadata.generation</c>: changes with every spec edit, not with status (the answer cache keys on it).</summary>
     public string Revision { get; set; } = string.Empty;
     public bool Ready { get; set; }
     public bool Accepted { get; set; }

@@ -63,9 +63,7 @@ public sealed class AnswerCacheTests(PostgresFixture postgres) : ChatContextTest
         Assert.Null((await App.PrepareAsync(Ana, Question, agent: "team-a/seed")).Cached);
         Assert.Null((await App.PrepareAsync(Ana, Question, revision: "2")).Cached);
         Assert.Null((await App.PrepareAsync(Ana, Question, ["SDB-58"])).Cached);
-        var fresh = await App.PrepareAsync(Ana, Question, noCache: true);
-        Assert.Null(fresh.Cached);
-        Assert.Null(fresh.CacheKey);
+        Assert.Null((await App.PrepareAsync(Ana, Question, noCache: true)).Cached);
     }
 
     [Fact]
@@ -134,6 +132,49 @@ public sealed class AnswerCacheTests(PostgresFixture postgres) : ChatContextTest
         Assert.Null(prepared.Cached);
         Assert.Null(prepared.CacheKey);
         Assert.Equal(2, (await App.SearchAsync(Ana, "?mine=true")).Count);
+    }
+
+    [Fact]
+    public async Task ACacheThatTimesOut_IsAMissToo_AndCardWritesStillSucceed()
+    {
+        await AskedAndAnsweredAsync(Ana, "s1");
+        App.Store.TimingOut = true;
+
+        var prepared = await App.PrepareAsync(Ana, Question);
+        await App.TurnAsync(Ana, "s2", Question, "Fourteen days.", cacheKey: "skanyxx:chat:answer:any");
+        await App.CardAsync(Boss, "company", "refund-window", "We refund within 30 days", "New policy");
+
+        Assert.Null(prepared.Cached);
+        Assert.Equal(HttpStatusCode.BadGateway, (await App.Client(Ana).GetAsync("/api/chat/cache", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.BadGateway, (await App.Client(Ana).DeleteAsync("/api/chat/cache", TestContext.Current.CancellationToken)).StatusCode);
+    }
+
+    [Fact]
+    public async Task AFreshAsk_SkipsTheKeptAnswer_AndReplacesIt()
+    {
+        await AskedAndAnsweredAsync(Ana, "s1");
+
+        var fresh = await App.PrepareAsync(Ana, Question, noCache: true);
+        Assert.Null(fresh.Cached);
+        await App.TurnAsync(Ana, "s2", Question, "Thirty days now.", cacheKey: fresh.CacheKey);
+
+        var again = await App.PrepareAsync(Ana, Question);
+        Assert.Equal("s2", again.Cached!.ConversationId);
+        Assert.Equal("Thirty days now.", again.Cached.Message.Content);
+    }
+
+    [Fact]
+    public async Task AnAnswerBuiltOnSomeoneElsesSharedChat_IsNotKept()
+    {
+        App.Org.Join(Ana, "billing", "finance");
+        App.Org.Join(Bob, "billing", "finance");
+        await App.TurnAsync(Bob, "bob-shared", "What is our refund window for EU?", "Fourteen days in the EU.");
+        await App.ShareAsync(Bob, "bob-shared", "team:billing");
+
+        var prepared = await App.PrepareAsync(Ana, Question);
+
+        Assert.Contains(prepared.Sessions, s => s.SessionId == "bob-shared");
+        Assert.Null(prepared.CacheKey);
     }
 
     [Fact]

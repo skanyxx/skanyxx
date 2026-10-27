@@ -22,7 +22,7 @@ namespace Skanyxx.Module.ChatContext.Context;
 /// through <see cref="IChatExtractor"/>.
 /// </summary>
 internal sealed class ChatContextService(
-    ChatContextDbContext db, SessionSearch search, SessionAccess access, IChatExtractor extractor, AnswerCache cache,
+    ChatContextDbContext db, SessionSearch search, SessionAccess access, IChatExtractor extractor, DeterministicExtractor probe, AnswerCache cache,
     IMediator mediator, IOptions<ChatContextOptions> options, TimeProvider clock, ILogger<ChatContextService> logger) : IChatContext
 {
     public const int MaxTitle = 80;
@@ -33,10 +33,10 @@ internal sealed class ChatContextService(
         try
         {
             string? cacheKey = null;
-            if (cache.On && !start.NoCache)
+            if (cache.On)
             {
                 cacheKey = await cache.KeyAsync(me, start.AgentRef, start.AgentRevision, start.TicketKeys, start.Message);
-                if (cacheKey is not null && await cache.GetAsync(cacheKey) is { } hit)
+                if (!start.NoCache && cacheKey is not null && await cache.GetAsync(cacheKey) is { } hit)
                 {
                     await cache.RecordHitAsync(me, (start.Message.Length + hit.Content.Length) / RelatedBlock.CharsPerToken);
                     return ChatPreparation.None with { Cached = Answer(hit) };
@@ -47,13 +47,20 @@ internal sealed class ChatContextService(
             if (settings.RelatedTokenBudget == 0)
                 return ChatPreparation.None with { CacheKey = cacheKey };
 
+            // What the message itself says: tickets written in it count like linked ones, its categories rank.
+            var asked = await probe.ExtractAsync(SessionDigest.Empty, new ChatTurn(start.Message, ""), ct);
+            var tickets = start.TicketKeys.Union(asked.TicketKeys).ToList();
             var readable = await access.ReadableAsync(start.Reader, ct);
-            var sessions = await search.RelatedAsync(readable, start.Message, start.TicketKeys, settings.MaxRelatedSessions, ct);
+            var sessions = await search.RelatedAsync(readable, start.Message, tickets, asked.Categories, settings.MaxRelatedSessions, ct);
             var cards = await RelatedCardsAsync(start.Message, settings.MaxRelatedCards, ct);
             var block = RelatedBlock.Build(sessions, cards, settings.RelatedTokenBudget);
             if (block.Text.Length > 0)
                 logger.LogInformation("Related work for {UserId}: {Sessions} sessions, {Cards} cards, ~{Tokens} tokens",
                     me, block.Sessions.Count, block.Cards.Count, block.EstimatedTokens);
+            // An answer built on someone else's shared chat is not kept: the share may be withdrawn, or the reader leave
+            // the team, and a kept answer would still carry it.
+            if (block.Sessions.Any(s => !s.Mine))
+                cacheKey = null;
             return new ChatPreparation(block.Text, [.. block.Sessions.Select(Related)], block.Cards, CacheKey: cacheKey);
         }
         catch (DbException ex)
@@ -92,7 +99,8 @@ internal sealed class ChatContextService(
             session.UpdatedAt = now;
             await db.SaveChangesAsync(ct);
         }
-        catch (Exception ex) when (ex is DbException or DbUpdateException)
+        // The person has their answer: no index failure (database, or an extractor that throws) may take it away.
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Could not index chat session {SessionId}", done.SessionId);
         }
@@ -106,7 +114,7 @@ internal sealed class ChatContextService(
     {
         var line = string.Join(' ', message.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
             .FirstOrDefault()?.Split(' ', StringSplitOptions.RemoveEmptyEntries) ?? []);
-        return line.Length <= MaxTitle ? line : line[..(MaxTitle - 1)] + "…";
+        return TextCut.Cut(line, MaxTitle);
     }
 
     private static RelatedSession Related(SessionSummary s) =>

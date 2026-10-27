@@ -7,5 +7,7 @@ namespace Skanyxx.Module.ChatContext.Features;
 internal sealed class AnswerCacheStatsHandler(AnswerCache cache) : IRequestHandler<AnswerCacheStatsQuery, Outcome<AnswerCacheStats>>
 {
     public async Task<Outcome<AnswerCacheStats>> Handle(AnswerCacheStatsQuery query, CancellationToken ct) =>
-        Outcome<AnswerCacheStats>.Ok(await cache.StatsAsync(query.User.UserId!, query.User.IsOwner));
+        await cache.StatsAsync(query.User.UserId, query.User.IsOwner) is { } stats
+            ? Outcome<AnswerCacheStats>.Ok(stats)
+            : Outcome<AnswerCacheStats>.Unavailable("The answer cache did not answer.");
 }

@@ -43,9 +43,12 @@ internal sealed partial class DeterministicExtractor(IOptions<ChatContextOptions
         return Task.FromResult(new SessionDigest(kept, Categories(kept), tickets, outcome.Length > 0 ? outcome : current.Outcome));
     }
 
-    /// <summary>Lowercased words worth indexing, in text order, repeats kept (they are the weight).</summary>
+    /// <summary>
+    /// Lowercased words worth indexing, in text order, repeats kept (they are the weight). Ticket keys are not words: their
+    /// project (<c>sdb</c> of SDB-58) would make every chat of that Jira project look related.
+    /// </summary>
     internal static IEnumerable<string> Words(string text) =>
-        WordPattern().Matches(text)
+        WordPattern().Matches(TicketPattern().Replace(text, " "))
             .Select(m => m.Value.ToLowerInvariant())
             .Where(w => w.Length is >= 3 and <= 40 && w.Any(char.IsLetter) && !Stopwords.All.Contains(w));
 
@@ -56,6 +59,9 @@ internal sealed partial class DeterministicExtractor(IOptions<ChatContextOptions
             .OrderByDescending(c => c.Score).ThenBy(c => c.Name, StringComparer.Ordinal)
             .Take(SessionDigest.MaxCategories)
             .Select(c => c.Name)];
+
+    /// <summary>Ticket keys written in <paramref name="text"/>, in order, without repeats.</summary>
+    internal IReadOnlyList<string> TicketKeysIn(string text) => [.. TicketKeys(text).Distinct()];
 
     private IEnumerable<string> TicketKeys(string text) =>
         TicketPattern().Matches(text)
@@ -73,7 +79,7 @@ internal sealed partial class DeterministicExtractor(IOptions<ChatContextOptions
         var outcome = string.Join(' ', sentences);
         if (outcome.Length == 0)
             outcome = text;
-        return outcome.Length <= Domain.ChatSession.MaxOutcome ? outcome : outcome[..(Domain.ChatSession.MaxOutcome - 1)] + "…";
+        return TextCut.Cut(outcome, Domain.ChatSession.MaxOutcome);
     }
 
     [GeneratedRegex(@"[\p{L}\p{N}]+(?:'[\p{L}]+)?")]

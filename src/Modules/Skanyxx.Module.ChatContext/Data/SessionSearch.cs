@@ -67,11 +67,12 @@ internal sealed class SessionSearch(ChatContextDbContext db)
     }
 
     /// <summary>
-    /// Prior work for a new chat (D238): sessions with an outcome that share a ticket or a word with the message. A shared
-    /// ticket outranks any amount of shared words.
+    /// Prior work for a new chat (D238): sessions with an outcome that share a ticket, a linked ticket (one on the same
+    /// readable session as a given ticket) or a word with the message. A shared ticket outranks a linked one, which
+    /// outranks any amount of shared words; a shared category nudges the word rank.
     /// </summary>
     public async Task<IReadOnlyList<SessionSummary>> RelatedAsync(
-        Readable readable, string message, IReadOnlyList<string> tickets, int limit, CancellationToken ct)
+        Readable readable, string message, IReadOnlyList<string> tickets, IReadOnlyList<string> categories, int limit, CancellationToken ct)
     {
         var terms = Terms(message);
         if (terms.Length == 0 && tickets.Count == 0)
@@ -79,15 +80,22 @@ internal sealed class SessionSearch(ChatContextDbContext db)
 
         var parameters = Parameters(readable, limit);
         parameters.Add("Tickets", tickets.ToArray());
+        parameters.Add("Categories", categories.ToArray());
+        var linked = $"""
+            linked AS (SELECT coalesce(array_agg(DISTINCT k), ARRAY[]::text[]) AS keys
+                       FROM chat_sessions s, unnest(s.ticket_keys) AS k WHERE {ReadableFilter} AND s.ticket_keys && @Tickets)
+            """;
         var (with, from, match, rank) = terms.Length == 0
-            ? ("", "chat_sessions s", "s.ticket_keys && @Tickets", "0")
-            : ($"WITH q AS (SELECT {TsQuery(terms, parameters)} AS query)", "chat_sessions s, q",
-                "(s.ticket_keys && @Tickets OR s.search @@ q.query)", "ts_rank(s.search, q.query)");
+            ? ($"WITH {linked}", "chat_sessions s, linked", "s.ticket_keys && linked.keys", "0")
+            : ($"WITH {linked}, q AS (SELECT {TsQuery(terms, parameters)} AS query)", "chat_sessions s, linked, q",
+                "(s.ticket_keys && linked.keys OR s.search @@ q.query)", "ts_rank(s.search, q.query)");
         var sql = $"""
             {with}
             SELECT {Columns} FROM {from}
             WHERE {ReadableFilter} AND s.outcome <> '' AND {match}
-            ORDER BY (s.ticket_keys && @Tickets) DESC, {rank} DESC, s.updated_at DESC LIMIT @Limit
+            ORDER BY (s.ticket_keys && @Tickets) DESC, (s.ticket_keys && linked.keys) DESC,
+                     {rank} + CASE WHEN s.categories && @Categories THEN 0.1 ELSE 0 END DESC, s.updated_at DESC
+            LIMIT @Limit
             """;
         return [.. (await QueryAsync<SessionRow>(sql, parameters, ct)).Select(r => r.ToSummary())];
     }

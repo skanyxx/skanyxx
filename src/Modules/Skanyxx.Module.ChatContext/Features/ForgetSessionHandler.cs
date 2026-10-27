@@ -19,7 +19,7 @@ internal sealed class ForgetSessionHandler(ChatContextDbContext db, SessionAcces
         await db.SaveChangesAsync(ct);
         // A cached answer may point at this conversation.
         if (cache.On)
-            await cache.ClearAsync(command.User.UserId!);
+            await cache.ClearAsync(command.User.UserId);
         return Outcome<bool>.Ok(true);
     }
 }

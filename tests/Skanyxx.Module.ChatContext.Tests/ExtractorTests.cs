@@ -50,6 +50,8 @@ public sealed class ExtractorTests
         var digest = await Extract("This is about SDB-58 and OPS-7, encoded as UTF-8 with SHA-256 per ISO-8601.", "See also SDB-64.");
 
         Assert.Equal(["SDB-58", "OPS-7", "SDB-64"], digest.TicketKeys);
+        Assert.DoesNotContain("sdb", digest.KeywordWeights.Keys);
+        Assert.DoesNotContain("ops", digest.KeywordWeights.Keys);
     }
 
     [Fact]

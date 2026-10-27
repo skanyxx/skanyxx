@@ -206,7 +206,7 @@ public class KAgentApiClient
             Id = GetStringProperty(agentData, "id") ?? name,
             Name = name,
             Namespace = ns,
-            Revision = GetStringProperty(metadata, "resourceVersion") ?? "",
+            Revision = metadata.TryGetProperty("generation", out var generation) && generation.ValueKind == JsonValueKind.Number ? generation.GetRawText() : "",
             Type = GetStringProperty(spec, "type") ?? "Declarative",
             Description = GetStringProperty(spec, "description") ?? "",
             Status = isReady ? "Active" : "Inactive",

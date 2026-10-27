@@ -36,7 +36,7 @@ internal sealed partial class AnswerCache(IAnswerStore store, IOptions<ChatConte
             var question = string.Join('\n', agentRef, agentRevision, string.Join(',', tickets.Order(StringComparer.Ordinal)), Normalize(message));
             return $"{Prefix}answer:{userId}:{epoch}:{generation}:{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(question)))}";
         }
-        catch (RedisException ex)
+        catch (Exception ex) when (IsStoreFailure(ex))
         {
             logger.LogWarning(ex, "Answer cache unavailable; asking the agent");
             return null;
@@ -49,17 +49,23 @@ internal sealed partial class AnswerCache(IAnswerStore store, IOptions<ChatConte
         {
             return await store.GetAsync(key) is { } json ? JsonSerializer.Deserialize<CachedAnswer>(json) : null;
         }
-        catch (RedisException ex)
+        catch (Exception ex) when (IsStoreFailure(ex))
         {
             logger.LogWarning(ex, "Answer cache unavailable; asking the agent");
             return null;
         }
     }
 
-    public Task SetAsync(string key, CachedAnswer answer) => Quietly("keep an answer", () =>
+    /// <summary>
+    /// What a store that is down or slow throws: StackExchange.Redis reports a timeout as a <see cref="TimeoutException"/>
+    /// (RedisTimeoutException), not a <see cref="RedisException"/>. Never confused with kagent's own timeout upstream.
+    /// </summary>
+    internal static bool IsStoreFailure(Exception ex) => ex is RedisException or TimeoutException;
+
+    public Task<bool> SetAsync(string key, CachedAnswer answer) => Quietly("keep an answer", () =>
         store.SetAsync(key, JsonSerializer.Serialize(answer), TimeSpan.FromMinutes(options.Value.AnswerCache.TtlMinutes)));
 
-    public Task RecordHitAsync(string userId, long tokens) => Quietly("count a hit", async () =>
+    public Task<bool> RecordHitAsync(string userId, long tokens) => Quietly("count a hit", async () =>
     {
         await store.IncrementAsync(Hits(userId));
         await store.IncrementAsync(Saved(userId), tokens);
@@ -67,19 +73,28 @@ internal sealed partial class AnswerCache(IAnswerStore store, IOptions<ChatConte
         await store.IncrementAsync(AllSaved, tokens);
     });
 
-    /// <summary>Every answer kept for this person stops matching (they expire on their own).</summary>
-    public Task ClearAsync(string userId) => Quietly("clear a person's answers", () => store.IncrementAsync(Generation(userId)));
+    /// <summary>Every answer kept for this person stops matching (they expire on their own). False when the store failed.</summary>
+    public Task<bool> ClearAsync(string userId) => Quietly("clear a person's answers", () => store.IncrementAsync(Generation(userId)));
 
-    /// <summary>Every kept answer stops matching: the model changed, or the owner asked.</summary>
-    public Task ClearAllAsync() => Quietly("clear all answers", () => store.IncrementAsync(Epoch));
+    /// <summary>Every kept answer stops matching: the model changed, a shared card was written, or the owner asked.</summary>
+    public Task<bool> ClearAllAsync() => Quietly("clear all answers", () => store.IncrementAsync(Epoch));
 
-    public async Task<AnswerCacheStats> StatsAsync(string userId, bool all)
+    /// <summary>Null when the store cannot be read.</summary>
+    public async Task<AnswerCacheStats?> StatsAsync(string userId, bool all)
     {
         if (!On)
             return new AnswerCacheStats(false, 0, 0, null, null);
-        return new AnswerCacheStats(true,
-            await store.CounterAsync(Hits(userId)), await store.CounterAsync(Saved(userId)),
-            all ? await store.CounterAsync(AllHits) : null, all ? await store.CounterAsync(AllSaved) : null);
+        try
+        {
+            return new AnswerCacheStats(true,
+                await store.CounterAsync(Hits(userId)), await store.CounterAsync(Saved(userId)),
+                all ? await store.CounterAsync(AllHits) : null, all ? await store.CounterAsync(AllSaved) : null);
+        }
+        catch (Exception ex) when (IsStoreFailure(ex))
+        {
+            logger.LogWarning(ex, "Answer cache unavailable; no statistics");
+            return null;
+        }
     }
 
     /// <summary>Case, surrounding and repeated whitespace, and trailing punctuation do not make a question different.</summary>
@@ -92,15 +107,17 @@ internal sealed partial class AnswerCache(IAnswerStore store, IOptions<ChatConte
 
     private static string Saved(string userId) => $"{Prefix}saved:{userId}";
 
-    private async Task Quietly(string what, Func<Task> action)
+    private async Task<bool> Quietly(string what, Func<Task> action)
     {
         try
         {
             await action();
+            return true;
         }
-        catch (RedisException ex)
+        catch (Exception ex) when (IsStoreFailure(ex))
         {
             logger.LogWarning(ex, "Answer cache could not {What}", what);
+            return false;
         }
     }
 

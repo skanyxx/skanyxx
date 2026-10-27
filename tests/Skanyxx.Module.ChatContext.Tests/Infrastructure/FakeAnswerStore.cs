@@ -11,6 +11,9 @@ internal sealed class FakeAnswerStore : IAnswerStore
 
     public bool Down { get; set; }
 
+    /// <summary>Every call times out, as a Redis that accepts connections but does not answer: a TimeoutException, not a RedisException.</summary>
+    public bool TimingOut { get; set; }
+
     public int Reads { get; private set; }
 
     public IReadOnlyDictionary<string, string> Values => _values;
@@ -45,5 +48,7 @@ internal sealed class FakeAnswerStore : IAnswerStore
     {
         if (Down)
             throw new RedisConnectionException(ConnectionFailureType.UnableToConnect, "test: redis is down");
+        if (TimingOut)
+            throw new RedisTimeoutException("test: redis timed out", CommandStatus.Sent);
     }
 }
