@@ -19,6 +19,9 @@
             </div>
         </div>
         <div class="header-actions">
+            <select id="historySelect" class="form-control" title="Your earlier chats" aria-label="Your earlier chats">
+                <option value="">History</option>
+            </select>
             <select id="agentSelect" class="form-control">
                 <option value="">Loading agents...</option>
             </select>
@@ -653,6 +656,11 @@
         text-transform: uppercase;
         letter-spacing: 0.3px;
     }
+    .related-note {
+        margin: -4px 0 12px;
+        font-size: 12px;
+        color: var(--text-secondary);
+    }
 </style>
 
 <script>
@@ -663,6 +671,18 @@
     let messages = [];
     let maskSensitiveData = true;
     let currentScanResult = null;
+    let agentList = [];
+    let historyById = {};
+
+    // The open conversation, per browser tab: a reload continues it, a new tab starts fresh.
+    const STORE_KEY = 'skanyxx.chat';
+    // ?ticket=SDB-58 (comma-separated for several) links the conversation to those Jira tickets in the chat index.
+    const ticketKeys = (new URLSearchParams(location.search).get('ticket') || '').split(',')
+        .map(t => t.trim()).filter(t => /^[A-Z][A-Z0-9_]{0,29}-[1-9][0-9]{0,9}$/.test(t));
+    // The related-work block Skanyxx prepends to a first message; kagent's history keeps it, so it is cut when shown.
+    const RELATED_START = '[Related prior work, found by Skanyxx';
+    const RELATED_END = '[End of related prior work]';
+    const agentRef = a => `${a.namespace}/${a.name}`;
 
     // Security Scanner - detects sensitive data patterns
     const SecurityScanner = {
@@ -787,8 +807,17 @@
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-        loadAgents();
+        loadAgents().then(loadHistory);
         setupInputListeners();
+        document.getElementById('historySelect').addEventListener('change', function() {
+            const session = historyById[this.value];
+            this.value = '';
+            const agent = session && agentList.find(a => agentRef(a) === session.agentRef);
+            if (!agent) return;
+            selectedAgent = agent;
+            document.getElementById('agentSelect').value = agentRef(agent);
+            openConversation(session.sessionId);
+        });
     });
 
     function setupInputListeners() {
@@ -859,7 +888,7 @@
     // Merged agents only (D4), each namespace/name; ?agent=<namespace/name or name> picks one, else the seed, else the first.
     async function loadAgents() {
         const select = document.getElementById('agentSelect');
-        const ref = a => `${a.namespace}/${a.name}`;
+        const ref = agentRef;
         try {
             const response = await fetch('/api/chat/agents');
             const agents = response.ok ? await response.json() : [];
@@ -872,13 +901,21 @@
                 return;
             }
 
+            agentList = agents;
             select.innerHTML = agents.map(a => `<option value="${escapeHtml(ref(a))}">${escapeHtml(ref(a))}</option>`).join('');
             const wanted = new URLSearchParams(location.search).get('agent');
-            selectedAgent = agents.find(a => ref(a) === wanted) || agents.find(a => a.name === wanted)
+            const saved = JSON.parse(sessionStorage.getItem(STORE_KEY) || 'null');
+            const savedAgent = saved && agents.find(a => ref(a) === saved.agent);
+            const keepSaved = savedAgent && (!wanted || wanted === saved.agent || wanted === savedAgent.name);
+            selectedAgent = keepSaved ? savedAgent
+                : agents.find(a => ref(a) === wanted) || agents.find(a => a.name === wanted)
                 || agents.find(a => a.name === 'seed') || agents[0];
             select.value = ref(selectedAgent);
             updateAgentHeader();
-            newChat();
+            if (keepSaved)
+                await openConversation(saved.conversationId);
+            else
+                newChat();
 
             select.addEventListener('change', function() {
                 selectedAgent = agents.find(a => ref(a) === this.value);
@@ -895,9 +932,101 @@
 
     function updateAgentHeader() {
         document.getElementById('agentName').textContent = selectedAgent?.name || 'Select Agent';
-        document.getElementById('sessionInfo').textContent = conversationId
+        document.getElementById('sessionInfo').textContent = (conversationId
             ? `Session: ${conversationId.slice(0, 8)}...`
-            : 'Session: Not started';
+            : 'Session: Not started') + (ticketKeys.length ? ` · Ticket ${ticketKeys.join(', ')}` : '');
+    }
+
+    function remember() {
+        if (conversationId && selectedAgent)
+            sessionStorage.setItem(STORE_KEY, JSON.stringify({ agent: agentRef(selectedAgent), conversationId }));
+        else
+            sessionStorage.removeItem(STORE_KEY);
+    }
+
+    // The person's own indexed chats, newest first, to reopen and continue.
+    async function loadHistory() {
+        try {
+            const response = await fetch('/api/chat/sessions?mine=true');
+            if (!response.ok) return;
+            const sessions = await response.json();
+            historyById = Object.fromEntries(sessions.map(s => [s.sessionId, s]));
+            document.getElementById('historySelect').innerHTML = '<option value="">History</option>' + sessions.map(s =>
+                `<option value="${escapeHtml(s.sessionId)}">${escapeHtml(s.title)} · ${new Date(s.updatedAt).toLocaleDateString()}</option>`).join('');
+        } catch (error) {
+            console.error('Failed to load chat history:', error);
+        }
+    }
+
+    // Continue a conversation: its earlier messages come from kagent's session events.
+    async function openConversation(id) {
+        conversationId = id;
+        messages = [];
+        remember();
+        updateAgentHeader();
+        const container = document.getElementById('chatMessages');
+        container.innerHTML = '';
+        try {
+            const response = await fetch(`/api/sessions/${encodeURIComponent(id)}/events`);
+            if (response.status === 404) {
+                newChat();
+                return;
+            }
+            for (const msg of response.ok ? eventMessages(await response.json()) : []) {
+                messages.push(msg);
+                container.innerHTML += createMessageBubble(msg, TokenUtils.countTokens(msg.content));
+            }
+        } catch (error) {
+            console.error('Failed to load the conversation:', error);
+        }
+        if (messages.length === 0)
+            container.innerHTML = `
+                <div class="welcome-message">
+                    <h3>Continuing your conversation with ${escapeHtml(selectedAgent?.name || 'Agent')}</h3>
+                    <p>Earlier messages could not be shown; what you send now continues the same session.</p>
+                </div>`;
+        updateAnalytics();
+        container.scrollTop = container.scrollHeight;
+    }
+
+    // kagent's session events (ADK events, or A2A messages) as chat bubbles; partial and reasoning parts skipped.
+    function eventMessages(events) {
+        const shown = [];
+        for (const event of events || []) {
+            let data = event.data;
+            if (typeof data === 'string') {
+                try { data = JSON.parse(data); } catch { continue; }
+            }
+            if (!data || data.partial) continue;
+            const content = data.content || data;
+            const role = (content.role || data.role || data.author) === 'user' ? 'user' : 'assistant';
+            const text = (content.parts || [])
+                .filter(p => p && typeof p.text === 'string' && !p.thought
+                    && !(p.metadata && (p.metadata.adk_thought || p.metadata.kagent_thought)))
+                .map(p => p.text).join('');
+            if (!text.trim()) continue;
+            let time = event.timestamp || data.timestamp;
+            if (typeof time === 'number' && time < 1e12) time *= 1000;
+            shown.push({ role, content: role === 'user' ? withoutRelated(text) : text, timestamp: time ? new Date(time).toISOString() : new Date().toISOString() });
+        }
+        return shown;
+    }
+
+    function withoutRelated(text) {
+        const end = text.startsWith(RELATED_START) ? text.indexOf(RELATED_END) : -1;
+        return end < 0 ? text : text.slice(end + RELATED_END.length).trimStart();
+    }
+
+    // Which prior chats and cards the first turn was given, or that the answer came from the cache.
+    function relatedNote(data) {
+        const used = [
+            ...(data.relatedSessions || []).map(s => `chat "${s.title}" (${new Date(s.updatedAt).toLocaleDateString()})`),
+            ...(data.relatedCards || []).map(c => `card ${c.scope}/${c.key}`)
+        ];
+        const notes = [];
+        if (data.cached) notes.push('Answered from the cache: you asked this before, so no tokens were spent.');
+        if (used.length) notes.push(`Used prior work: ${used.join('; ')}.`);
+        return notes.length ? `<div class="related-note">${escapeHtml(notes.join(' '))}</div>` : '';
     }
 
     function updateAnalytics() {
@@ -928,6 +1057,7 @@
     function newChat() {
         conversationId = null;
         messages = [];
+        remember();
         updateAgentHeader();
         updateAnalytics();
 
@@ -1007,6 +1137,7 @@
                 body: JSON.stringify({
                     message: messageToSend, // Send masked message to API
                     conversationId: conversationId,
+                    ticketKeys: ticketKeys,
                     agentNamespace: selectedAgent?.namespace || '',
                     agentName: selectedAgent?.name || ''
                 })
@@ -1022,8 +1153,11 @@
                 throw new Error(errorMessage);
             }
 
+            const wasNew = !conversationId;
             conversationId = data.conversationId;
+            remember();
             updateAgentHeader();
+            if (wasNew) loadHistory();
 
             // Add AI response
             const content = data.message?.content || 'No response received';
@@ -1031,7 +1165,7 @@
             messages.push(assistantMsg);
 
             const aiTokens = TokenUtils.countTokens(content);
-            messagesContainer.innerHTML += createMessageBubble(assistantMsg, aiTokens);
+            messagesContainer.innerHTML += createMessageBubble(assistantMsg, aiTokens) + relatedNote(data);
 
         } catch (error) {
             document.getElementById(typingId)?.remove();
