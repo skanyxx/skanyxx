@@ -259,6 +259,16 @@ namespace Skanyxx.Module.Memory.Data.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
 
+                    b.Property<string>("AgentId")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("agent_id");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(20000)
+                        .HasColumnType("character varying(20000)")
+                        .HasColumnName("body");
+
                     b.Property<long>("CardId")
                         .HasColumnType("bigint")
                         .HasColumnName("card_id");
@@ -269,17 +279,43 @@ namespace Skanyxx.Module.Memory.Data.Migrations
                         .HasColumnType("character varying(80)")
                         .HasColumnName("key");
 
+                    b.PrimitiveCollection<List<string>>("Keywords")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("keywords");
+
+                    b.PrimitiveCollection<List<string>>("Links")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("links");
+
+                    b.Property<string>("Origin")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("origin");
+
                     b.Property<string>("Scope")
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)")
                         .HasColumnName("scope");
 
+                    b.Property<string>("Source")
+                        .HasMaxLength(2048)
+                        .HasColumnType("character varying(2048)")
+                        .HasColumnName("source");
+
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
                         .HasColumnName("status");
+
+                    b.Property<string>("SupersededBy")
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("superseded_by");
 
                     b.PrimitiveCollection<List<string>>("Tickets")
                         .IsRequired()
