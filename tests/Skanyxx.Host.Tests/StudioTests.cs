@@ -553,13 +553,13 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
 
     // --- Legacy path and secrets hygiene ---
 
-    /// <summary>Agents change only through the studio: the agents API only reads, even for the owner (its kubectl writes are gone).</summary>
+    /// <summary>A studio agent never changes or leaves kagent through the agents API, even for the owner (D252): only by a proposal.</summary>
     [Fact]
-    public async Task TheAgentsApi_IsReadOnly_EvenForTheOwner()
+    public async Task TheAgentsApi_RefusesStudioAgents_EvenForTheOwner()
     {
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.PostAsJsonAsync("/api/agents", new { name = "x" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.DeleteAsync("/api/agents/kagent__NS__seed", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await _owner.PutAsJsonAsync("/api/agents/kagent__NS__seed/status", "Inactive", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _owner.DeleteAsync($"/api/agents/{Ns}/skanyxx-factory", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, (await _owner.DeleteAsync($"/api/agents/{Ns}/seed", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.True(_kagent.AgentObjects.ContainsKey($"{Ns}/skanyxx-factory"));
     }
 
     [Fact]
