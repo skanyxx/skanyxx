@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = "Chat";
 }
+@await Component.InvokeAsync("SetupGuide", new { id = "chat" })
 
 <div class="chat-wrapper">
     <!-- Header with Agent Info -->

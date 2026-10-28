@@ -5,6 +5,7 @@
     // D116: only the owner changes kagent; everyone else sees the list.
     var isOwner = User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner);
 }
+@await Component.InvokeAsync("SetupGuide", new { id = "toolservers" })
 
 <div class="card mb-3">
     <div class="card-header">

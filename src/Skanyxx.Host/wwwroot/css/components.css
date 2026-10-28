@@ -452,6 +452,16 @@
 
 .setup-guide-body { padding: 0 var(--space-5) var(--space-5); }
 
+/* The module guides (Pages/Shared/Components/SetupGuide): what is missing, local + Helm steps, a prompt for an agent. */
+.setup-guide h4 { margin: var(--space-4) 0 var(--space-2); font-size: var(--text-sm); font-weight: var(--weight-semibold); }
+.setup-guide ol, .setup-guide ul { padding-inline-start: var(--space-6); }
+.setup-guide li { margin-bottom: var(--space-2); }
+.setup-command { display: flex; gap: var(--space-2); align-items: flex-start; margin-top: var(--space-1); }
+.setup-command code { flex: 1; white-space: pre-wrap; word-break: break-all; background: var(--surface-2); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); }
+.setup-agent { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; margin: var(--space-4) 0; }
+.setup-errors dt { font-weight: var(--weight-semibold); margin-top: var(--space-2); }
+.setup-errors dd { margin-inline-start: var(--space-4); color: var(--text-2); }
+
 .steps { list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: var(--space-4); }
 
 .step {

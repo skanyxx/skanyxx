@@ -1,0 +1,117 @@
+@model Skanyxx.Host.Setup.SetupPanel
+@using Skanyxx.Host.Setup
+@*
+    The one setup block (Setup/SetupGuideViewComponent). Guide text and setting names only: no configured value ever
+    reaches this view. Copy buttons are the design system's (data-copy / data-copy-target, ui.js).
+*@
+@{
+    var g = Model.Guide;
+    var s = Model.State;
+    var promptId = $"setup-prompt-{g.Id}";
+
+    async Task Steps(IReadOnlyList<SetupStep> steps)
+    {
+        <ol class="setup-steps">
+            @foreach (var step in steps)
+            {
+                <li>
+                    @step.Text
+                    @if (step.Command is not null)
+                    {
+                        <div class="setup-command">
+                            <code>@step.Command</code>
+                            <copy-button value="@step.Command" label="Copy" />
+                        </div>
+                    }
+                </li>
+            }
+        </ol>
+    }
+}
+@if (!Model.CanRead)
+{
+    if (!s.Ready)
+    {
+        <p class="text-muted setup-ask-admin" id="setup-@g.Id" data-setup="ask-admin">
+            @g.Title is not set up on this install yet. Ask your admin (the owner or a supervisor) to set it up.
+        </p>
+    }
+}
+else
+{
+    <details class="card setup-guide" id="setup-@g.Id" data-setup="@(s.Ready ? "ready" : "missing")" open="@(!s.Ready)">
+        <summary>
+            <svg class="setup-guide-icon" aria-hidden="true" focusable="false"><use href="#i-compass"/></svg>
+            <span class="setup-guide-heading"><span class="setup-guide-title">@(s.Ready ? "Setup guide" : "Setup"): @g.Title</span></span>
+            @if (s.Ready)
+            {
+                <status-badge label="ready" tone="success" />
+            }
+            else
+            {
+                <status-badge label="needs setup" tone="warning" />
+            }
+            <svg class="icon setup-guide-chevron" aria-hidden="true" focusable="false"><use href="#i-chevron-down"/></svg>
+        </summary>
+        <div class="setup-guide-body">
+        <p>@g.What</p>
+
+        @if (s.Missing.Count > 0)
+        {
+            <h4>What is not working</h4>
+            <ul class="setup-missing">
+                @foreach (var setting in s.Missing)
+                {
+                    <li data-missing="@setting.Key"><code>@setting.Name</code> is not set. @setting.Effect <span class="text-muted">Value: @setting.WhereToGet</span></li>
+                }
+            </ul>
+        }
+        else
+        {
+            <p class="text-success">Every required setting is set.</p>
+        }
+        @if (s.OptionalUnset.Count > 0)
+        {
+            <h4>Optional, not set</h4>
+            <ul>
+                @foreach (var setting in s.OptionalUnset)
+                {
+                    <li><code>@setting.Name</code>: @setting.Effect <span class="text-muted">Value: @setting.WhereToGet</span></li>
+                }
+            </ul>
+        }
+
+        <h4>Prerequisites</h4>
+        <ul>
+            @foreach (var p in g.Prerequisites)
+            {
+                <li>@p</li>
+            }
+        </ul>
+
+        <h4>Fix it: local development</h4>
+        @{ await Steps(g.Local); }
+        <h4>Fix it: Helm on a customer cluster</h4>
+        @{ await Steps(g.Helm); }
+
+        <div class="setup-agent">
+            <button type="button" class="btn btn-primary" data-copy-target="#@promptId"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-copy"/></svg><span data-copy-label>Copy instructions for agent</span></button>
+            <span class="text-muted">A prompt for an AI coding agent: the goal, what is missing (names only), the steps and how to verify. No secret values.</span>
+            <textarea id="@promptId" class="setup-prompt" readonly hidden>@Model.Prompt</textarea>
+        </div>
+
+        <h4>Verify</h4>
+        @{ await Steps(g.Verify); }
+
+        <h4>Common errors</h4>
+        <dl class="setup-errors">
+            @foreach (var e in g.Errors)
+            {
+                <dt>@e.Symptom</dt>
+                <dd>@e.Fix</dd>
+            }
+        </dl>
+        <p class="text-muted">Source: README, "@g.Readme".</p>
+        </div>
+    </details>
+}

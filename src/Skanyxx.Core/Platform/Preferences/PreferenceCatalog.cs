@@ -19,7 +19,7 @@ public static class PreferenceCatalog
     public static readonly IReadOnlyList<string> NavKeys =
     [
         "chat", "library", "agents", "studio", "plugins", "sandboxes", "investigate",
-        "dashboard", "models", "toolservers", "people", "org", "entra", "audit", "analytics", "settings", "debug"
+        "dashboard", "models", "toolservers", "people", "org", "entra", "audit", "analytics", "setupguides", "settings", "debug"
     ];
 
     /// <summary>"auto" is the built-in landing (Chat; the owner's model step until a model is set).</summary>

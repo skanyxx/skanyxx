@@ -4,6 +4,7 @@
     ViewData["Title"] = "Plugins";
     var me = Model.Me;
 }
+@await Component.InvokeAsync("SetupGuide", new { id = "plugins" })
 <p class="text-muted">
     A plugin is a Claude Code plugin: remote MCP servers and the agents that use them. Installing one opens a pull request
     in the agent repo; nothing is live until a supervisor merges it on the <a href="/Studio">Studio</a> page. Plugins are

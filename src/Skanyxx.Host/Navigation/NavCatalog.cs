@@ -41,6 +41,7 @@ public static class NavCatalog
         new("entra", "/Entra", "Microsoft sign-in", "i-signin", Admin, OwnerOnly, NeedsEntra: true),
         new("audit", "/Audit", "Audit", "i-audit", Admin, OwnerOnly),
         new("analytics", "/Analytics", "Analytics", "i-chart", Admin, Supervisors),
+        new("setupguides", "/SetupGuides", "Setup guides", "i-guide", Admin, Supervisors),
         new("settings", "/Settings", "Settings", "i-settings", Admin, OwnerOnly),
         new("debug", "/Debug", "Debug", "i-terminal", Admin, OwnerOnly),
     ];

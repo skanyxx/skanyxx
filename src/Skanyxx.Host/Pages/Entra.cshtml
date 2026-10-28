@@ -5,6 +5,7 @@
 @{
     ViewData["Title"] = "Microsoft sign-in";
 }
+@await Component.InvokeAsync("SetupGuide", new { id = "entra" })
 @if (Model.Error is not null)
 {
     <p class="text-error" role="alert">@Model.Error</p>

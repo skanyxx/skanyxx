@@ -152,6 +152,7 @@ ingress:
     - /Sandboxes
     - /Debug
     - /Audit
+    - /SetupGuides
     - /ResetPassword
     - /ForgotPassword
     - /AccessDenied

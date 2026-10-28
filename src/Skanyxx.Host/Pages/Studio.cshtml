@@ -4,6 +4,7 @@
     ViewData["Title"] = "Studio";
     var me = Model.Me;
 }
+@await Component.InvokeAsync("SetupGuide", new { id = "studio" })
 @if (Model.Error is not null)
 {
     <p class="text-error" role="alert">@Model.Error</p>
