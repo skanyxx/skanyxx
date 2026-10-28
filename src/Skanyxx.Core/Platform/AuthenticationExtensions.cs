@@ -19,6 +19,12 @@ public static class AuthenticationExtensions
 
     public const string LoginPath = "/Login";
 
+    /// <summary>
+    /// A signed-in person without the role: a 403 page. Not the login page, which sends a signed-in person straight back
+    /// to the page that refused them (a redirect loop, Chrome walkthrough 2026-10-28).
+    /// </summary>
+    public const string AccessDeniedPath = "/AccessDenied";
+
     private const string McpPath = "/mcp";
 
     public static IServiceCollection AddSkanyxxAuthentication(this IServiceCollection services, IHostEnvironment environment)
@@ -51,7 +57,7 @@ public static class AuthenticationExtensions
             o.ExpireTimeSpan = TimeSpan.FromHours(8);
             o.SlidingExpiration = true;
             o.LoginPath = LoginPath;
-            o.AccessDeniedPath = LoginPath;
+            o.AccessDeniedPath = AccessDeniedPath;
             o.Events.OnRedirectToLogin = context => ApiProblemOr(context, StatusCodes.Status401Unauthorized, "Sign in first.");
             o.Events.OnRedirectToAccessDenied = context => ApiProblemOr(context, StatusCodes.Status403Forbidden, "Not allowed.");
         });

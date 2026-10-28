@@ -530,7 +530,7 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.DoesNotContain("data-merge=", html); // a builder sees no merge button
         var refused = await employee.GetAsync("/Studio");
         Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
-        Assert.Contains("/Login", refused.Headers.Location?.OriginalString);
+        Assert.Equal("/AccessDenied", new Uri(_host.BaseAddress, refused.Headers.Location!).AbsolutePath);
         Assert.DoesNotContain("href=\"/Studio\"", await (await employee.GetAsync("/Library")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var supervisor = await SignInAsync("sue@skanyxx.example");
         Assert.Contains($"data-merge=\"{number}\"", await (await supervisor.GetAsync($"/Studio?pr={number}")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
@@ -558,8 +558,8 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
     public async Task TheAgentsApi_IsReadOnly_EvenForTheOwner()
     {
         Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.PostAsJsonAsync("/api/agents", new { name = "x" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.DeleteAsync("/api/agents/kagent__NS__seed", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await _owner.PutAsJsonAsync("/api/agents/kagent__NS__seed/status", "Inactive", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.DeleteAsync("/api/agents/kagent/seed", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.PutAsJsonAsync("/api/agents/kagent/seed", "Inactive", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]

@@ -145,7 +145,7 @@
         <form method="post" asp-page-handler="Propose" class="card auth-form mb-3" id="compose">
             <div class="card-header"><h3 class="card-title">@(string.IsNullOrEmpty(Model.Edit) ? "Compose an agent" : $"Change {Model.Edit}")</h3></div>
             <label asp-for="Name">Name</label>
-            <input asp-for="Name" required maxlength="34" pattern="[a-z0-9]([-a-z0-9]*[a-z0-9])?" autocomplete="off" />
+            <input asp-for="Name" required maxlength="34" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
             <label asp-for="Description">Description</label>
             <input asp-for="Description" maxlength="500" autocomplete="off" />
             <label asp-for="ModelConfig">Model</label>
