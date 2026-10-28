@@ -6,7 +6,7 @@ using DotNet.Testcontainers.Containers;
 namespace Skanyxx.Host.Tests;
 
 /// <summary>
-/// D241 end to end: the Host with the answer cache on, against a real Redis (Dragonfly speaks the same protocol). The
+/// D265 end to end: the Host with the answer cache on, against a real Redis (Dragonfly speaks the same protocol). The
 /// module loads StackExchange.Redis from the Host (PluginLoadContext), a repeat question is answered without kagent, and
 /// another person's same question is not.
 /// </summary>

@@ -6,7 +6,7 @@ using static Skanyxx.Module.ChatContext.Tests.Infrastructure.People;
 namespace Skanyxx.Module.ChatContext.Tests;
 
 /// <summary>
-/// D237: a person sees, and is injected with, only sessions they may read. Another person's private chat never shows up:
+/// D261: a person sees, and is injected with, only sessions they may read. Another person's private chat never shows up:
 /// not in search, history, by id, in a ticket view, in related tickets, nor in related work for a new chat.
 /// </summary>
 public sealed class AccessTests(PostgresFixture postgres) : ChatContextTestBase(postgres)

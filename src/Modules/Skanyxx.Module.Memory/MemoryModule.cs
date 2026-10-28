@@ -80,7 +80,7 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddSingleton<CardBodies>();
         services.AddSingleton<IStudioReconcileLock, StudioReconcileLock>();
         services.AddSingleton<PluginServerValueProtector>();
-        // D241: card writes are announced (CardsChanged) so caches built on cards can drop what depends on them.
+        // D265: card writes are announced (CardsChanged) so caches built on cards can drop what depends on them.
         services.AddTransient<IPipelineBehavior<UpsertCardCommand, Outcome<Card>>, AnnounceCardWrites<UpsertCardCommand, Outcome<Card>>>();
         services.AddTransient<IPipelineBehavior<LiftCardCommand, Outcome<CardDto>>, AnnounceCardWrites<LiftCardCommand, Outcome<CardDto>>>();
         services.AddTransient<IPipelineBehavior<RenameCardCommand, Outcome<CardDto>>, AnnounceCardWrites<RenameCardCommand, Outcome<CardDto>>>();

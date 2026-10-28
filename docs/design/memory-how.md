@@ -14,7 +14,7 @@ This is the company brain. kagent’s built-in memory is **not** this: that one 
 
 A 10k-token chat must not become 10k tokens in the bank. At most a **few cards** if something actually locked.
 
-**Sessions are indexed (D236–D242, 2026-10-27).** Every Chat session gets one small row in `chat_sessions` (memory's
+**Sessions are indexed (D260–D266, 2026-10-27).** Every Chat session gets one small row in `chat_sessions` (memory's
 database, module `chatcontext`): title, keywords, categories, ticket keys and a ≤400-character outcome — derived per turn
 by `IChatExtractor`, never the transcript. The transcript still lives only in kagent (its TTL) and still never goes into
 team, department or company memory; only cards are lifted. The row is personal unless its owner shares it (same scope
@@ -94,7 +94,7 @@ Day one: **FTS**, not embeddings. Cards are small; vectors are a later index. Jo
 
 ## 8. What memory is not
 
-- Not the chat history (the chat *index* holds derived rows, not transcripts — D236)
+- Not the chat history (the chat *index* holds derived rows, not transcripts — D260)
 - Not kagent’s per-agent TTL store
 - Not “record into one agent”
 - Not a file explorer of disks

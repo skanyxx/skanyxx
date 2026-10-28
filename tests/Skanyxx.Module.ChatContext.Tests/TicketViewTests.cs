@@ -6,7 +6,7 @@ using static Skanyxx.Module.ChatContext.Tests.Infrastructure.People;
 
 namespace Skanyxx.Module.ChatContext.Tests;
 
-/// <summary>D240: a team on SDB-64 finds the chats and runs of SDB-58 on the same topic.</summary>
+/// <summary>D264: a team on SDB-64 finds the chats and runs of SDB-58 on the same topic.</summary>
 public sealed class TicketViewTests(PostgresFixture postgres) : ChatContextTestBase(postgres)
 {
     private async Task<TicketView> ViewAsync(string userId, string ticket) =>

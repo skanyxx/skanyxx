@@ -5,7 +5,7 @@ using Skanyxx.Core.Platform.Memory;
 
 namespace Skanyxx.Module.ChatContext.Tests;
 
-/// <summary>D237: a chat reader is a signed-in person, from the authenticated principal only.</summary>
+/// <summary>D261: a chat reader is a signed-in person, from the authenticated principal only.</summary>
 public sealed class ChatReaderTests
 {
     private static ClaimsPrincipal Principal(string? userId, string? authenticationType = "Test", params Claim[] extra) =>

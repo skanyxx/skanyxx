@@ -1,7 +1,7 @@
 namespace Skanyxx.Core.Platform.Tickets;
 
 /// <summary>
-/// Pipeline runs of given tickets, newest first, for the chat index's ticket view (D240). Implemented by the tickets
+/// Pipeline runs of given tickets, newest first, for the chat index's ticket view (D264). Implemented by the tickets
 /// module; optional to its readers (no tickets module, no runs).
 /// </summary>
 public interface ITicketRuns

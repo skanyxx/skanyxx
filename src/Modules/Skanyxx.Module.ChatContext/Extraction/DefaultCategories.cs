@@ -1,6 +1,6 @@
 namespace Skanyxx.Module.ChatContext.Extraction;
 
-/// <summary>The built-in categories (D239): word stems a company's work talk usually falls into. Configurable.</summary>
+/// <summary>The built-in categories (D263): word stems a company's work talk usually falls into. Configurable.</summary>
 public static class DefaultCategories
 {
     public static readonly IReadOnlyDictionary<string, string[]> All = new Dictionary<string, string[]>

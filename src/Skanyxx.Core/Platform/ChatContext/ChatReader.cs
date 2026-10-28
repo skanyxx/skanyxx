@@ -4,7 +4,7 @@ using Skanyxx.Core.Platform.Memory;
 namespace Skanyxx.Core.Platform.ChatContext;
 
 /// <summary>
-/// The signed-in person whose chats are read or written (D237). Built only by <see cref="From"/>, from the authenticated
+/// The signed-in person whose chats are read or written (D261). Built only by <see cref="From"/>, from the authenticated
 /// principal, like memory's <see cref="LibraryUser"/> — but it opens no memory door: library commands still take a
 /// LibraryUser, which only the Host and memory hold.
 /// </summary>

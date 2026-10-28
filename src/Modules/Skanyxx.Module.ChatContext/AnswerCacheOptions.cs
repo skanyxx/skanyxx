@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Skanyxx.Module.ChatContext;
 
-/// <summary>D241: repeated first questions answered from Dragonfly/Redis. Off unless enabled.</summary>
+/// <summary>D265: repeated first questions answered from Dragonfly/Redis. Off unless enabled.</summary>
 public sealed class AnswerCacheOptions
 {
     public bool Enabled { get; set; }

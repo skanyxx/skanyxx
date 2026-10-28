@@ -12,7 +12,7 @@ public sealed class ChatContextOptions
     public string ConnectionString { get; set; } = "";
 
     /// <summary>
-    /// D238: the most the related-work block may add to a first message, in estimated tokens (4 characters each).
+    /// D262: the most the related-work block may add to a first message, in estimated tokens (4 characters each).
     /// 0 turns injection off; the index is still kept and searchable.
     /// </summary>
     [Range(0, 4_000)]
@@ -21,16 +21,13 @@ public sealed class ChatContextOptions
     [Range(0, 10)]
     public int MaxRelatedSessions { get; set; } = 3;
 
-    [Range(0, 10)]
-    public int MaxRelatedCards { get; set; } = 3;
-
     /// <summary>
-    /// D239: category → word stems; a session is in a category when one of its words starts with a stem. Replaces the
+    /// D263: category → word stems; a session is in a category when one of its words starts with a stem. Replaces the
     /// built-in set (<see cref="Extraction.DefaultCategories"/>) when not empty.
     /// </summary>
     public Dictionary<string, string[]> Categories { get; set; } = [];
 
-    /// <summary>D239: ticket projects recognised in chat text (e.g. <c>SDB</c>). Empty: any key shape, minus well-known non-tickets (UTF-8, SHA-256…).</summary>
+    /// <summary>D263: ticket projects recognised in chat text (e.g. <c>SDB</c>). Empty: any key shape, minus well-known non-tickets (UTF-8, SHA-256…).</summary>
     public string[] TicketProjects { get; set; } = [];
 
     [Range(1, 1_000)]

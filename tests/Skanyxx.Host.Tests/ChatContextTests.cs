@@ -4,7 +4,7 @@ using System.Text.Json;
 namespace Skanyxx.Host.Tests;
 
 /// <summary>
-/// The chat index end to end (D236–D241): Chat → chatcontext through the real Host and modules folder, against
+/// The chat index end to end (D260–D265): Chat → chatcontext through the real Host and modules folder, against
 /// <see cref="FakeKAgent"/>. A new chat on a ticket is given the earlier chat on it, the response names it, and another
 /// person is given nothing of it.
 /// </summary>

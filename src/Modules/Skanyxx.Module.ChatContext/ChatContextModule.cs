@@ -17,7 +17,7 @@ using Skanyxx.Module.ChatContext.Extraction;
 namespace Skanyxx.Module.ChatContext;
 
 /// <summary>
-/// The chat index (D236–D241): every Chat session indexed in Postgres (keywords, categories, tickets, outcome; FTS),
+/// The chat index (D260–D265): every Chat session indexed in Postgres (keywords, categories, tickets, outcome; FTS),
 /// related prior work on a new chat's first turn, ticket views, and an optional answer cache. Memory's database; reads
 /// cards through memory's library query, so it needs memory (and so identity, for org membership).
 /// </summary>

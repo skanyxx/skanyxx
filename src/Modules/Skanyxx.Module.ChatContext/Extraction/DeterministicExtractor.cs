@@ -5,7 +5,7 @@ using Skanyxx.Core.Platform.ChatContext;
 namespace Skanyxx.Module.ChatContext.Extraction;
 
 /// <summary>
-/// The default extractor (D239), no model call: keywords are non-stop words weighted by how often they occur (the
+/// The default extractor (D263), no model call: keywords are non-stop words weighted by how often they occur (the
 /// person's words count three times the agent's), categories are the configured stems those keywords hit, ticket keys
 /// are Jira-shaped words, and the outcome is the opening of the latest answer.
 /// </summary>

@@ -686,6 +686,9 @@
     // The related-work block Skanyxx prepends to a first message; kagent's history keeps it, so it is cut when shown.
     const RELATED_START = '[Related prior work, found by Skanyxx';
     const RELATED_END = '[End of related prior work]';
+    // Then memory's related-cards block (D302).
+    const MEMORY_START = '[Related memory: published cards';
+    const MEMORY_END = '[End of related memory]';
     const agentRef = a => `${a.namespace}/${a.name}`;
 
     // Security Scanner - detects sensitive data patterns
@@ -1021,15 +1024,18 @@
     }
 
     function withoutRelated(text) {
-        const end = text.startsWith(RELATED_START) ? text.indexOf(RELATED_END) : -1;
-        return end < 0 ? text : text.slice(end + RELATED_END.length).trimStart();
+        for (const [start, end] of [[RELATED_START, RELATED_END], [MEMORY_START, MEMORY_END]]) {
+            const at = text.startsWith(start) ? text.indexOf(end) : -1;
+            if (at >= 0) text = text.slice(at + end.length).trimStart();
+        }
+        return text;
     }
 
     // Which prior chats and cards the first turn was given, or that the answer came from the cache.
     function relatedNote(data) {
         const used = [
             ...(data.relatedSessions || []).map(s => `chat "${s.title}" (${new Date(s.updatedAt).toLocaleDateString()})`),
-            ...(data.relatedCards || []).map(c => `card ${c.scope}/${c.key}`)
+            ...(data.memoryCards || []).map(c => `card ${c.scope}/${c.key}`)
         ];
         const notes = [];
         if (data.cached) notes.push('Answered from the cache: you asked this before, so no tokens were spent.');

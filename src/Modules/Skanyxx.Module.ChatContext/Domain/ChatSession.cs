@@ -1,8 +1,8 @@
 namespace Skanyxx.Module.ChatContext.Domain;
 
 /// <summary>
-/// One kagent chat session in the index (D236). Only what was derived from the conversation is kept: never the
-/// transcript (kagent keeps that for its TTL, D044). Who may read it is <see cref="Scope"/> (D237).
+/// One kagent chat session in the index (D260). Only what was derived from the conversation is kept: never the
+/// transcript (kagent keeps that for its TTL, D044). Who may read it is <see cref="Scope"/> (D261).
 /// </summary>
 public sealed class ChatSession
 {

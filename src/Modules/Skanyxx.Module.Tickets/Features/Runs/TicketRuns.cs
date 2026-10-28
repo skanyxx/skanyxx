@@ -5,7 +5,7 @@ using Skanyxx.Module.Tickets.Data;
 
 namespace Skanyxx.Module.Tickets.Features.Runs;
 
-/// <summary>Runs of some tickets for the chat index's ticket view (D240); readable by anyone signed in, as <c>GET api/tickets/runs</c> is.</summary>
+/// <summary>Runs of some tickets for the chat index's ticket view (D264); readable by anyone signed in, as <c>GET api/tickets/runs</c> is.</summary>
 internal sealed class TicketRuns(TicketsDbContext db) : ITicketRuns
 {
     public async Task<IReadOnlyList<TicketRunSummary>> ForTicketsAsync(IReadOnlyCollection<string> ticketKeys, int limit, CancellationToken ct)

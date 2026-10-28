@@ -7,7 +7,7 @@ using static Skanyxx.Module.ChatContext.Tests.Infrastructure.People;
 
 namespace Skanyxx.Module.ChatContext.Tests;
 
-/// <summary>D236: every completed turn updates the session's row; only derived fields are kept.</summary>
+/// <summary>D260: every completed turn updates the session's row; only derived fields are kept.</summary>
 public sealed class IndexTests(PostgresFixture postgres) : ChatContextTestBase(postgres)
 {
     private async Task<Domain.ChatSession> RowAsync(string id)

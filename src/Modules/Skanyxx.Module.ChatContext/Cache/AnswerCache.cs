@@ -9,7 +9,7 @@ using StackExchange.Redis;
 namespace Skanyxx.Module.ChatContext.Cache;
 
 /// <summary>
-/// D241: the first question of a new conversation, answered again from Dragonfly/Redis when the same person asks the same
+/// D265: the first question of a new conversation, answered again from Dragonfly/Redis when the same person asks the same
 /// agent the same thing. Never across people: a person's access scope is the widest one the answer may have used (their
 /// personal cards, the teams the agent searched for them), so the key starts with their user id. The key also holds
 /// what must miss when it changes: the agent's revision, the tickets, a global epoch (bumped when the model changes, a

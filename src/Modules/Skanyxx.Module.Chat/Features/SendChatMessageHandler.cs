@@ -57,7 +57,6 @@ internal sealed class SendChatMessageHandler(
             var response = await kagent.SendMessageAsync(
                 agent.Namespace, agent.Name, sessionId, prepared.Context + memory.Block + command.Message, command.UserId, ct);
             response.RelatedSessions = prepared.Sessions;
-            response.RelatedCards = prepared.Cards;
             response.MemoryCards = memory.Cards;
             // Not the request's token: the answer exists, so the index and the card should record it even if the caller left.
             if (command.Reader is { } who)

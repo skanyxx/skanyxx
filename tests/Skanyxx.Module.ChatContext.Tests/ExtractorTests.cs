@@ -3,7 +3,7 @@ using Skanyxx.Module.ChatContext.Extraction;
 
 namespace Skanyxx.Module.ChatContext.Tests;
 
-/// <summary>D239: the deterministic extractor, no database.</summary>
+/// <summary>D263: the deterministic extractor, no database.</summary>
 public sealed class ExtractorTests
 {
     private static DeterministicExtractor Extractor(Action<ChatContextOptions>? configure = null)

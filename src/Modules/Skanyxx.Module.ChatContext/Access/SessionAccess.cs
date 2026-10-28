@@ -5,7 +5,7 @@ using Skanyxx.Module.ChatContext.Domain;
 namespace Skanyxx.Module.ChatContext.Access;
 
 /// <summary>
-/// Who may read and share a chat session (D237), on memory's rules (memory-hierarchy.md, AccessPolicy) with one
+/// Who may read and share a chat session (D261), on memory's rules (memory-hierarchy.md, AccessPolicy) with one
 /// difference: a personal session is its owner's alone, with no supervisor or owner exception. A shared session is read
 /// like a card in its scope: company by everyone signed in, team/department by members and by supervisors (oversight).
 /// Sharing writes like an upsert: personal (own), a team/department one is a member of, company only for a supervisor.

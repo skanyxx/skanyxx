@@ -8,7 +8,7 @@ namespace Skanyxx.Module.ChatContext.Data;
 /// <c>search</c> is a stored generated tsvector (title A, keywords/categories/tickets B, outcome C) with a GIN index, as
 /// memory_cards does. <c>search_terms</c> is the space-joined keywords, categories and ticket keys: array_to_string is
 /// not immutable, so the generated column reads this plain copy. A pgvector <c>embedding</c> column can join later
-/// beside <c>search</c> without changing either (D236).
+/// beside <c>search</c> without changing either (D260).
 /// </summary>
 internal sealed class ChatSessionConfiguration : IEntityTypeConfiguration<ChatSession>
 {

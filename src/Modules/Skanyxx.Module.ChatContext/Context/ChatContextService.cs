@@ -1,11 +1,9 @@
 using System.Data.Common;
-using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform.ChatContext;
-using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.ChatContext.Access;
 using Skanyxx.Module.ChatContext.Cache;
 using Skanyxx.Module.ChatContext.Data;
@@ -15,15 +13,13 @@ using Skanyxx.Module.ChatContext.Extraction;
 namespace Skanyxx.Module.ChatContext.Context;
 
 /// <summary>
-/// Chat's <see cref="IChatContext"/> (D236–D241). Before a new conversation: the answer cache, then related sessions
-/// (<see cref="SessionSearch.RelatedAsync"/>, readable only) and published <c>company</c> cards: readable by every person
-/// and in every agent's default grants (D040, D238). No team or department card is injected; the person's own cards reach
-/// the agent through its own memory search, as that person (D084). After every turn: the index row,
-/// through <see cref="IChatExtractor"/>.
+/// Chat's <see cref="IChatContext"/> (D260–D265). Before a new conversation: the answer cache, then related sessions
+/// (<see cref="SessionSearch.RelatedAsync"/>, readable only). Cards are memory's part (<c>IRelatedMemory</c>, D302).
+/// After every turn: the index row, through <see cref="IChatExtractor"/>.
 /// </summary>
 internal sealed class ChatContextService(
     ChatContextDbContext db, SessionSearch search, SessionAccess access, IChatExtractor extractor, DeterministicExtractor probe, AnswerCache cache,
-    IMediator mediator, IOptions<ChatContextOptions> options, TimeProvider clock, ILogger<ChatContextService> logger) : IChatContext
+    IOptions<ChatContextOptions> options, TimeProvider clock, ILogger<ChatContextService> logger) : IChatContext
 {
     public const int MaxTitle = 80;
 
@@ -52,16 +48,15 @@ internal sealed class ChatContextService(
             var tickets = start.TicketKeys.Union(asked.TicketKeys).ToList();
             var readable = await access.ReadableAsync(start.Reader, ct);
             var sessions = await search.RelatedAsync(readable, start.Message, tickets, asked.Categories, settings.MaxRelatedSessions, ct);
-            var cards = await RelatedCardsAsync(start.Message, settings.MaxRelatedCards, ct);
-            var block = RelatedBlock.Build(sessions, cards, settings.RelatedTokenBudget);
+            var block = RelatedBlock.Build(sessions, settings.RelatedTokenBudget);
             if (block.Text.Length > 0)
-                logger.LogInformation("Related work for {UserId}: {Sessions} sessions, {Cards} cards, ~{Tokens} tokens",
-                    me, block.Sessions.Count, block.Cards.Count, block.EstimatedTokens);
+                logger.LogInformation("Related work for {UserId}: {Sessions} sessions, ~{Tokens} tokens",
+                    me, block.Sessions.Count, block.EstimatedTokens);
             // An answer built on someone else's shared chat is not kept: the share may be withdrawn, or the reader leave
             // the team, and a kept answer would still carry it.
             if (block.Sessions.Any(s => !s.Mine))
                 cacheKey = null;
-            return new ChatPreparation(block.Text, [.. block.Sessions.Select(Related)], block.Cards, CacheKey: cacheKey);
+            return new ChatPreparation(block.Text, [.. block.Sessions.Select(Related)], CacheKey: cacheKey);
         }
         catch (DbException ex)
         {
@@ -126,25 +121,4 @@ internal sealed class ChatContextService(
         Message = new ChatMessage { Role = "assistant", Content = hit.Content, SessionId = hit.ConversationId, Timestamp = hit.CreatedAt },
         Cached = true
     };
-
-    private async Task<IReadOnlyList<RelatedCard>> RelatedCardsAsync(string message, int limit, CancellationToken ct)
-    {
-        var text = CardQuery(message);
-        if (limit == 0 || text.Length == 0)
-            return [];
-        return [.. (await mediator.Send(new CompanyCardsQuery(text, limit), ct)).Select(c => new RelatedCard(c.Scope, c.Key, c.What, c.Why))];
-    }
-
-    /// <summary>The message's search words, joined within the library's query limit.</summary>
-    private static string CardQuery(string message)
-    {
-        var text = "";
-        foreach (var term in SessionSearch.Terms(message))
-        {
-            if (text.Length + term.Length + 1 > CardFormat.MaxQueryLength)
-                break;
-            text = text.Length == 0 ? term : $"{text} {term}";
-        }
-        return text;
-    }
 }

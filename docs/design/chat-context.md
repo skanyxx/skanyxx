@@ -1,6 +1,6 @@
 # Chat context: index, related work, tickets, answer cache
 
-Module `chatcontext` (D236–D242). Chat still talks only to kagent; this module only reads and writes Skanyxx's own index.
+Module `chatcontext` (D260–D266). Chat still talks only to kagent; this module only reads and writes Skanyxx's own index.
 
 ## Turn flow
 
@@ -8,12 +8,12 @@ Module `chatcontext` (D236–D242). Chat still talks only to kagent; this module
 POST api/chat ──► Chat handler
    new conversation?  ──► IChatContext.PrepareAsync
                             1. answer cache (if on): hit → answer, no kagent call
-                            2. related sessions (readable; shared/written/linked ticket, then words) + published company cards
+                            2. related sessions (readable; shared/written/linked ticket, then words) (cards: memory's IRelatedMemory, D302)
                             3. block ≤ RelatedTokenBudget
    kagent: create session (if new), send  block + message
    IChatContext.CompletedAsync ──► upsert chat_sessions row via IChatExtractor
                                    (first turn + cache on → keep the answer)
-   response: answer + relatedSessions + relatedCards (+ cached)
+   response: answer + relatedSessions + memoryCards (+ cached)
 ```
 
 ## Table `chat_sessions` (memory's database)
@@ -46,7 +46,7 @@ pgvector later: an `embedding` column next to `search`, filled by a model-based 
 ## Rules worth remembering
 
 - A personal session is its owner's only. Supervisors and the owner do not read it (unlike cards).
-- Injected cards: published company only (memory's `CompanyCardsQuery`): readable by every person and in every agent's default grants. No team or department card is injected (D238).
+- Injected cards are memory's (`IRelatedMemory`, D302): published cards both the person and the agent may read, in their own block and budget. The chat index injects sessions only (integration, D270).
 - Chat/chatcontext use `ChatReader`, never `LibraryUser`: only the Host and memory act as a person in memory.
 - Card writes publish `CardsChanged(scope)`; the cache drops the owner's answers (personal) or everyone's (shared).
 - An answer built on someone else's shared chat is never cached. A Redis error or timeout is a miss, never a failure.

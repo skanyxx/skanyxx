@@ -10,7 +10,7 @@ using static Skanyxx.Module.ChatContext.Tests.Infrastructure.People;
 
 namespace Skanyxx.Module.ChatContext.Tests;
 
-/// <summary>D241: the answer cache — hit, miss, scope isolation and invalidation — against an in-memory Redis.</summary>
+/// <summary>D265: the answer cache — hit, miss, scope isolation and invalidation — against an in-memory Redis.</summary>
 public sealed class AnswerCacheTests(PostgresFixture postgres) : ChatContextTestBase(postgres)
 {
     private const string Question = "What is our refund window?";

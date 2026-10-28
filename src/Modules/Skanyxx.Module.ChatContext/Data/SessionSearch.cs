@@ -7,7 +7,7 @@ namespace Skanyxx.Module.ChatContext.Data;
 
 /// <summary>
 /// The index's read path (Dapper over the GIN indexes). Every statement carries <see cref="ReadableFilter"/>, so no query
-/// can return a session the reader may not read (D237). Text search is memory's: each word its own plainto_tsquery,
+/// can return a session the reader may not read (D261). Text search is memory's: each word its own plainto_tsquery,
 /// OR-ed, ranked by ts_rank; words are parameters, never spliced.
 /// </summary>
 internal sealed class SessionSearch(ChatContextDbContext db)
@@ -71,7 +71,7 @@ internal sealed class SessionSearch(ChatContextDbContext db)
     }
 
     /// <summary>
-    /// Prior work for a new chat (D238): sessions with an outcome that share a ticket, a linked ticket (one on the same
+    /// Prior work for a new chat (D262): sessions with an outcome that share a ticket, a linked ticket (one on the same
     /// readable session as a given ticket) or a word with the message. A shared ticket outranks a linked one, which
     /// outranks any amount of shared words; a shared category nudges the word rank.
     /// </summary>
@@ -105,7 +105,7 @@ internal sealed class SessionSearch(ChatContextDbContext db)
     }
 
     /// <summary>
-    /// Tickets near <paramref name="ticket"/> (D240): linked on the same readable session, or on readable sessions that match
+    /// Tickets near <paramref name="ticket"/> (D264): linked on the same readable session, or on readable sessions that match
     /// <paramref name="keywords"/> (the words of the ticket's own sessions).
     /// </summary>
     public async Task<IReadOnlyList<RelatedTicket>> RelatedTicketsAsync(
