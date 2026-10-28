@@ -20,6 +20,12 @@ public class Agent
 
     /// <summary>The MCP servers its spec names (<c>declarative.tools</c>), each with its tool names; none = every tool the server lists.</summary>
     public Dictionary<string, List<string>> McpToolNames { get; set; } = [];
+
+    /// <summary>The ModelConfig a Declarative agent runs on (<c>declarative.modelConfig</c>); empty for BYO.</summary>
+    public string ModelConfig { get; set; } = string.Empty;
+
+    /// <summary>The agents its spec calls as tools (<c>declarative.tools[].agent.name</c>).</summary>
+    public List<string> AgentToolNames { get; set; } = [];
     public int TasksToday { get; set; }
     public int AvgResponseMs { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

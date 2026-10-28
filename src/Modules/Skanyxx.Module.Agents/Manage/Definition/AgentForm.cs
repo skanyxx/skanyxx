@@ -42,4 +42,7 @@ internal sealed class AgentForm
 
     /// <summary>The A2A card's skills (<c>declarative.a2aConfig.skills</c>).</summary>
     public List<A2aSkillForm> A2aSkills { get; set; } = [];
+
+    /// <summary>kagent's TTL memory (<c>declarative.memory</c>); null = off.</summary>
+    public AgentMemoryForm? Memory { get; set; }
 }

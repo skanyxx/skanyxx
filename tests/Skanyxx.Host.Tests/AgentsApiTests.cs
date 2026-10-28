@@ -56,9 +56,10 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
     {
         Seed("helper", Direct());
         var anonymous = _host.Client();
-        var writes = new[] { ("GET", "/api/agents/options"), ("POST", "/api/agents"), ("PUT", $"/api/agents/{Ns}/helper"), ("DELETE", $"/api/agents/{Ns}/helper"),
+        var writes = new[] { ("POST", "/api/agents"), ("PUT", $"/api/agents/{Ns}/helper"), ("DELETE", $"/api/agents/{Ns}/helper"),
             ("POST", $"/api/agents/{Ns}/helper/suspend"), ("POST", $"/api/agents/{Ns}/helper/resume") };
-        foreach (var (method, path) in new[] { ("GET", "/api/agents"), ("GET", $"/api/agents/{Ns}/seed") }.Concat(writes))
+        foreach (var (method, path) in new[] { ("GET", "/api/agents"), ("GET", $"/api/agents/{Ns}/seed"), ("GET", "/api/agents/options"),
+            ("GET", "/api/agents/setup"), ("POST", "/api/agents/proposals") }.Concat(writes))
             Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.SendAsync(Request(method, path), Ct)).StatusCode);
         var before = KAgentWrites();
         foreach (var client in new[] { _builder, _employee })
@@ -363,24 +364,25 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("application/json", skill["outputModes"]![0]!.GetValue<string>());
     }
 
-    /// <summary>C-6: the page opens Chat with the agent's namespace/name, never a bare name another namespace may share.</summary>
+    /// <summary>C-6, D312: the page opens Chat on its deep link with the agent's namespace and name, never a bare name.</summary>
     [Fact]
-    public async Task TheChatButton_NamesTheAgentsNamespace()
+    public async Task TheChatButton_OpensTheChatDeepLink_WithTheAgentsNamespace()
     {
         var page = await _supervisor.GetStringAsync("/Agents", Ct);
 
-        Assert.Contains("/Chat?agent=${encodeURIComponent(`${a.namespace}/${a.name}`)}", page);
-        Assert.DoesNotContain("/Chat?agent=${encodeURIComponent(a.name)}", page);
+        Assert.Contains("const chatLink = a => `/Chat/${encodeURIComponent(a.namespace)}/${encodeURIComponent(a.name)}`;", page);
+        Assert.DoesNotContain("/Chat?agent=", page);
     }
 
-    /// <summary>Chrome walkthrough 2026-10-28: a suspended agent's row said "In Chat: yes" while Chat skipped it (D257).</summary>
+    /// <summary>Chrome walkthrough 2026-10-28 (D257): a suspended agent is never offered for Chat, on its card or its details.</summary>
     [Fact]
-    public async Task TheInChatColumn_SaysNoForASuspendedAgent()
+    public async Task ASuspendedAgent_IsNotOfferedForChat()
     {
         var page = await _supervisor.GetStringAsync("/Agents", Ct);
 
-        Assert.Contains("cell(row, a.inChat ? (a.suspended ? 'no (suspended)' : 'yes') : 'no');", page);
-        Assert.DoesNotContain("cell(row, a.inChat ? 'yes' : 'no');", page);
+        Assert.Contains("if (a.inChat && !a.suspended) actions.appendChild(button('Chat'", page);
+        Assert.Contains("if (a.inChat && !a.suspended) {", page);
+        Assert.Contains("['In Chat', a.inChat ? (a.suspended ? 'no (suspended)' : 'yes') : 'no']", page);
     }
 
     /// <summary>C-1: two entries for one server, each with its own Secret header, are never merged by a save.</summary>
@@ -442,6 +444,157 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
 
         var body = await _owner.GetStringAsync($"/api/agents/{Ns}/helper", Ct) + await _owner.GetStringAsync("/api/agents", Ct);
         Assert.DoesNotContain("SECRET", body);
+    }
+
+    // --- The kagent-ui panel (D312): cards, details, memory, keyed problems, proposals, setup guides ---
+
+    [Fact]
+    public async Task TheCards_CarryModelAndToolCount_AndTheDetails_GroupToolsByServerWithDescriptions()
+    {
+        Seed("helper", Direct(), tools: new JsonArray(
+            new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = Server, ["toolNames"] = new JsonArray("search", "fetch") } },
+            new JsonObject { ["type"] = "Agent", ["agent"] = new JsonObject { ["name"] = "e2e-hello" } }));
+        Seed("caller", Direct(), tools: new JsonArray(new JsonObject { ["type"] = "Agent", ["agent"] = new JsonObject { ["name"] = "helper" } }));
+
+        var card = (await ListAsync(_employee)).Single(a => a.GetProperty("name").GetString() == "helper");
+        Assert.Equal("default-model-config", card.GetProperty("modelConfig").GetString());
+        Assert.Equal(3, card.GetProperty("toolCount").GetInt32());
+        Assert.Equal("Declarative", card.GetProperty("type").GetString());
+
+        var asBuilder = await _builder.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct);
+        var server = Assert.Single(asBuilder.GetProperty("toolsByServer").EnumerateArray());
+        Assert.Equal(Server, server.GetProperty("server").GetString());
+        Assert.Equal([FakeKAgent.ToolDescriptionPrefix + "search", FakeKAgent.ToolDescriptionPrefix + "fetch"],
+            server.GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("description").GetString()));
+        Assert.Equal(["caller"], asBuilder.GetProperty("usedBy").EnumerateArray().Select(a => a.GetString()));
+        Assert.Empty((await _employee.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct)).GetProperty("usedBy").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task Employees_NeverSeeASuspendedAgent_BuildersDo()
+    {
+        Seed("helper", Direct());
+        _kagent.AgentObjects[$"{Ns}/helper"]["spec"]!["declarative"]!["deployment"] = new JsonObject { ["replicas"] = 0 };
+
+        Assert.DoesNotContain(await ListAsync(_employee), a => a.GetProperty("name").GetString() == "helper");
+        Assert.Equal(HttpStatusCode.NotFound, (await _employee.GetAsync($"/api/agents/{Ns}/helper", Ct)).StatusCode);
+        var asBuilder = await _builder.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct);
+        Assert.True(asBuilder.GetProperty("suspended").GetBoolean());
+        Assert.Equal(0, asBuilder.GetProperty("replicas").GetInt32());
+    }
+
+    [Fact]
+    public async Task OwnerAndSupervisor_CreateEditAndDelete_WithMemory_Directly()
+    {
+        var form = Form("mem-agent");
+        form["memory"] = new { modelConfig = "default-model-config", ttlDays = 30 };
+        Assert.Equal(HttpStatusCode.Created, (await _owner.PostAsJsonAsync("/api/agents", form, Ct)).StatusCode);
+        Assert.Equal(30, _kagent.AgentObjects[$"{Ns}/mem-agent"]["spec"]!["declarative"]!["memory"]!["ttlDays"]!.GetValue<int>());
+
+        var read = await _supervisor.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/mem-agent", Ct);
+        Assert.Equal(30, read.GetProperty("memory").GetProperty("ttlDays").GetInt32());
+        var edit = Form("mem-agent", prompt: "Shorter.");
+        edit["version"] = read.GetProperty("version").GetString();
+        Assert.Equal(HttpStatusCode.OK, (await _supervisor.PutAsJsonAsync($"/api/agents/{Ns}/mem-agent", edit, Ct)).StatusCode);
+        Assert.Null(_kagent.AgentObjects[$"{Ns}/mem-agent"]["spec"]!["declarative"]!["memory"]);
+
+        Assert.Equal(HttpStatusCode.OK, (await _owner.DeleteAsync($"/api/agents/{Ns}/mem-agent", Ct)).StatusCode);
+        Assert.False(_kagent.AgentObjects.ContainsKey($"{Ns}/mem-agent"));
+    }
+
+    [Fact]
+    public async Task AFormsProblems_AreKeyedByTheirField_SoThePageShowsThemInline()
+    {
+        var form = Form("Bad_Name");
+        form["modelConfig"] = "missing";
+        form["memory"] = new { modelConfig = "default-model-config", ttlDays = 0 };
+
+        var response = await _supervisor.PostAsJsonAsync("/api/agents", form, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors");
+        foreach (var field in new[] { "name", "modelConfig", "memory" })
+            Assert.True(errors.TryGetProperty(field, out _), $"no problem under '{field}': {errors}");
+        Assert.Empty(_kagent.CallsTo("POST", "/api/agents"));
+    }
+
+    [Fact]
+    public async Task AProposal_WithoutStudio_IsAConflict_AndTheSetupGuideSaysWhatAnAdminMustSet()
+    {
+        foreach (var client in new[] { _builder, _employee })
+        {
+            var response = await client.PostAsJsonAsync("/api/agents/proposals", ProposalForm("my-idea"), Ct);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            Assert.Equal("studio-not-configured", (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("reason").GetString());
+        }
+        foreach (var client in new[] { _owner, _supervisor })
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.PostAsJsonAsync("/api/agents/proposals", ProposalForm("my-idea"), Ct)).StatusCode);
+        Assert.Equal(0, KAgentWrites());
+
+        var guides = await _employee.GetFromJsonAsync<JsonElement>("/api/agents/setup", Ct);
+        var guide = Assert.Single(guides.EnumerateArray(), g => g.GetProperty("id").GetString() == "studio-not-configured");
+        Assert.Contains("Only an admin", guide.GetProperty("cause").GetString());
+        var steps = guide.GetProperty("steps").EnumerateArray().Select(s => s.GetString()!).ToList();
+        Assert.Contains(steps, s => s.Contains("Studio:Git:BaseUrl"));
+        Assert.Contains(steps, s => s.Contains("Studio:Git:Token"));
+        Assert.Empty((await _supervisor.GetFromJsonAsync<JsonElement>("/api/agents/setup", Ct)).EnumerateArray());
+        Assert.Equal("proposal", (await _employee.GetFromJsonAsync<JsonElement>("/api/agents/options", Ct)).GetProperty("mode").GetString());
+        Assert.Equal("direct", (await _supervisor.GetFromJsonAsync<JsonElement>("/api/agents/options", Ct)).GetProperty("mode").GetString());
+    }
+
+    [Fact]
+    public async Task AnUnreachableKAgent_ShowsTheNumberedGuide_NeverWhatKAgentSaid()
+    {
+        _kagent.Down = true;
+
+        var list = await _owner.GetAsync("/api/agents", Ct);
+        Assert.Equal(HttpStatusCode.BadGateway, list.StatusCode);
+        Assert.Contains("kagent did not accept the request", await list.Content.ReadAsStringAsync(Ct));
+        foreach (var client in new[] { _owner, _employee })
+        {
+            var body = await client.GetStringAsync("/api/agents/setup", Ct);
+            var guide = Assert.Single(JsonDocument.Parse(body).RootElement.EnumerateArray());
+            Assert.Equal("kagent-unreachable", guide.GetProperty("id").GetString());
+            Assert.Equal(4, guide.GetProperty("steps").GetArrayLength());
+            Assert.Contains("KAgent:BaseUrl", body);
+            Assert.DoesNotContain("127.0.0.1", body);
+            Assert.DoesNotContain(_kagent.Port.ToString(), body);
+            Assert.Equal(client == _employee, body.Contains("Only an admin"));
+        }
+    }
+
+    [Fact]
+    public async Task OptionsAndGuides_NeverCarryASecret()
+    {
+        _kagent.ModelSpec = new JsonObject { ["apiKeySecret"] = "kagent-openai", ["provider"] = "OpenAI" };
+        _kagent.Secret["OPENAI_API_KEY"] = "sk-SECRET-MODEL-KEY";
+        var bodies = string.Concat(
+            await _owner.GetStringAsync("/api/agents/options", Ct), await _owner.GetStringAsync("/api/agents/setup", Ct),
+            await _employee.GetStringAsync("/api/agents/options", Ct), await _employee.GetStringAsync("/api/agents/setup", Ct));
+
+        Assert.DoesNotContain("SECRET", bodies);
+        Assert.DoesNotContain("kagent-openai", bodies);
+    }
+
+    /// <summary>D312: every guide on the page offers its steps to copy for an agent, built from the API's fixed texts only.</summary>
+    [Fact]
+    public async Task ThePage_OffersEachGuideToCopy_AndProposesForNonWriters()
+    {
+        var asEmployee = await _employee.GetStringAsync("/Agents", Ct);
+        var asSupervisor = await _supervisor.GetStringAsync("/Agents", Ct);
+
+        Assert.Contains("Copy instructions for agent", asEmployee);
+        Assert.Contains("navigator.clipboard.writeText(guideText(g))", asEmployee);
+        Assert.Contains("Propose an agent", asEmployee);
+        Assert.Contains("New agent</button>", asSupervisor);
+    }
+
+    private static Dictionary<string, object?> ProposalForm(string name)
+    {
+        var form = Form(name, tools: []);
+        form["runtime"] = null;
+        form["stream"] = false;
+        return form;
     }
 
     private static JsonObject Direct() => new() { ["skanyxx.dev/managed-by"] = "skanyxx-agents", ["skanyxx.dev/merged"] = "true" };

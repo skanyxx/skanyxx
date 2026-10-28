@@ -214,7 +214,9 @@ public class KAgentApiClient
             Accepted = isAccepted,
             Labels = labels,
             Suspended = Replicas(spec) == 0,
-            McpToolNames = McpToolNames(spec)
+            McpToolNames = McpToolNames(spec),
+            ModelConfig = spec.ValueKind == JsonValueKind.Object && spec.TryGetProperty("declarative", out var d) ? GetStringProperty(d, "modelConfig") ?? "" : "",
+            AgentToolNames = AgentToolNames(spec)
         };
     }
 
@@ -241,6 +243,13 @@ public class KAgentApiClient
                     : [];
         return tools;
     }
+
+    private static List<string> AgentToolNames(JsonElement spec) =>
+        spec.ValueKind == JsonValueKind.Object && spec.TryGetProperty("declarative", out var declarative) && declarative.ValueKind == JsonValueKind.Object
+        && declarative.TryGetProperty("tools", out var list) && list.ValueKind == JsonValueKind.Array
+            ? [.. list.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.Object && t.TryGetProperty("agent", out _))
+                .Select(t => GetStringProperty(t.GetProperty("agent"), "name")).OfType<string>()]
+            : [];
 
     private static bool HasCondition(JsonElement status, string type) =>
         status.ValueKind == JsonValueKind.Object

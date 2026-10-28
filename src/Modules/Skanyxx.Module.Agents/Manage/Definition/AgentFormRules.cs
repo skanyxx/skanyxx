@@ -21,115 +21,126 @@ internal static partial class AgentFormRules
     /// <param name="existing">The agent's current spec on an update; null on a create.</param>
     /// <param name="models">ModelConfig names in the agents' namespace.</param>
     /// <param name="callable">Agents another agent may call as a tool (<see cref="AgentProtection.IsCallable"/>).</param>
-    public static IReadOnlyList<string> Check(AgentForm form, StudioOptions options, ExistingSpec? existing,
+    public static IReadOnlyList<FormProblem> Check(AgentForm form, StudioOptions options, ExistingSpec? existing,
         IReadOnlyCollection<string> models, IReadOnlyCollection<string> callable)
     {
-        var problems = new List<string>();
+        var problems = new List<FormProblem>();
         if (form.McpTools is null || form.AgentTools is null || form.Skills is null || form.A2aSkills is null
             || form.Description is null || form.SystemMessage is null || form.ModelConfig is null)
-            return ["Lists and texts must not be null."];
+            return [new("form", "Lists and texts must not be null.")];
 
         if (form.Namespace != options.Namespace)
-            problems.Add($"Namespace: agents are managed in '{options.Namespace}' only.");
+            problems.Add(new("namespace", $"Namespace: agents are managed in '{options.Namespace}' only."));
         if (existing is null)
         {
             if (!IsAgentName(form.Name))
-                problems.Add($"Name: lowercase letters, digits and '-', at most {MaxNameLength} characters, starting with a letter and ending with a letter or digit.");
+                problems.Add(new("name", $"Name: lowercase letters, digits and '-', at most {MaxNameLength} characters, starting with a letter and ending with a letter or digit."));
             else if (StudioNames.IsReserved(form.Name))
-                problems.Add($"Name '{form.Name}' is reserved for Skanyxx's own agents (seed, skanyxx-*, preview-*).");
+                problems.Add(new("name", $"Name '{form.Name}' is reserved for Skanyxx's own agents (seed, skanyxx-*, preview-*)."));
         }
         if (form.Description.Length > DraftRules.MaxDescription || DraftRules.HasControl(form.Description, allowNewlines: false))
-            problems.Add($"Description: one line, at most {DraftRules.MaxDescription} characters, no control or invisible formatting characters.");
+            problems.Add(new("description", $"Description: one line, at most {DraftRules.MaxDescription} characters, no control or invisible formatting characters."));
         if (form.SystemMessage.Trim().Length == 0 || form.SystemMessage.Length > DraftRules.MaxInstructions
             || DraftRules.HasControl(form.SystemMessage, allowNewlines: true))
-            problems.Add($"System prompt: required, at most {DraftRules.MaxInstructions} characters, no control or invisible formatting characters.");
+            problems.Add(new("systemMessage", $"System prompt: required, at most {DraftRules.MaxInstructions} characters, no control or invisible formatting characters."));
         if (!models.Contains(form.ModelConfig))
-            problems.Add("Model: pick one of the configured models.");
+            problems.Add(new("modelConfig", "Model: pick one of the configured models."));
         if (form.Runtime is not (null or "" or "go" or "python"))
-            problems.Add("Runtime: 'go', 'python' or empty for kagent's default.");
+            problems.Add(new("runtime", "Runtime: 'go', 'python' or empty for kagent's default."));
 
         CheckMcpTools(form, options, existing, problems);
         CheckAgentTools(form, existing, callable, problems);
         CheckSkills(form, options, existing, problems);
         CheckA2a(form, problems);
+        CheckMemory(form, models, problems);
         return problems;
     }
 
     public static bool IsAgentName(string? name) => name is not null && name.Length <= MaxNameLength && AgentName().IsMatch(name);
 
-    private static void CheckMcpTools(AgentForm form, StudioOptions options, ExistingSpec? existing, List<string> problems)
+    private static void CheckMcpTools(AgentForm form, StudioOptions options, ExistingSpec? existing, List<FormProblem> problems)
     {
         if (form.McpTools.Count + form.AgentTools.Count > MaxTools)
-            problems.Add($"Tools: at most {MaxTools} MCP servers and agents together.");
+            problems.Add(new("mcpTools", $"Tools: at most {MaxTools} MCP servers and agents together."));
         if (form.McpTools.Any(t => t?.Server is null || t.Tools is null))
         {
-            problems.Add("MCP tools: each needs a server and a tool list.");
+            problems.Add(new("mcpTools", "MCP tools: each needs a server and a tool list."));
             return;
         }
         if (form.McpTools.Select(t => t.Server).Distinct().Count() != form.McpTools.Count)
-            problems.Add("MCP tools: each server once.");
+            problems.Add(new("mcpTools", "MCP tools: each server once."));
         var allowed = options.McpServers.Where(s => !s.StartsWith(StudioNames.MemoryServerPrefix, StringComparison.Ordinal)).ToHashSet();
         foreach (var choice in form.McpTools)
         {
             var kept = existing?.McpTools.GetValueOrDefault(choice.Server) is { } before && before.SetEquals(choice.Tools);
             if (!allowed.Contains(choice.Server) && !kept)
-                problems.Add($"MCP server '{choice.Server}' is not on the allow-list ({(allowed.Count == 0 ? "empty" : string.Join(", ", allowed.Order()))}).");
+                problems.Add(new("mcpTools", $"MCP server '{choice.Server}' is not on the allow-list ({(allowed.Count == 0 ? "empty" : string.Join(", ", allowed.Order()))})."));
             if (choice.Tools.Count == 0 && !kept)
-                problems.Add($"MCP server '{choice.Server}': name at least one tool.");
+                problems.Add(new("mcpTools", $"MCP server '{choice.Server}': name at least one tool."));
             if (choice.Tools.Count > DraftRules.MaxMcpTools || choice.Tools.Any(t => t is null || !DraftRules.ToolName().IsMatch(t))
                 || choice.Tools.Distinct().Count() != choice.Tools.Count)
-                problems.Add($"MCP server '{choice.Server}': at most {DraftRules.MaxMcpTools} tool names, each once.");
+                problems.Add(new("mcpTools", $"MCP server '{choice.Server}': at most {DraftRules.MaxMcpTools} tool names, each once."));
         }
     }
 
-    private static void CheckAgentTools(AgentForm form, ExistingSpec? existing, IReadOnlyCollection<string> callable, List<string> problems)
+    private static void CheckAgentTools(AgentForm form, ExistingSpec? existing, IReadOnlyCollection<string> callable, List<FormProblem> problems)
     {
         if (form.AgentTools.Distinct().Count() != form.AgentTools.Count)
-            problems.Add("Agent tools: each agent once.");
+            problems.Add(new("agentTools", "Agent tools: each agent once."));
         foreach (var agent in form.AgentTools)
             if (agent is null || agent == form.Name || !(callable.Contains(agent) || existing?.AgentTools.Contains(agent) == true))
-                problems.Add($"Agent tool '{agent}': name another agent in '{form.Namespace}' made on the Agents page or outside Skanyxx "
-                    + "(never the seed, a studio agent or one of Skanyxx's own).");
+                problems.Add(new("agentTools", $"Agent tool '{agent}': name another agent in '{form.Namespace}' made on the Agents page or outside Skanyxx "
+                    + "(never the seed, a studio agent or one of Skanyxx's own)."));
     }
 
-    private static void CheckSkills(AgentForm form, StudioOptions options, ExistingSpec? existing, List<string> problems)
+    private static void CheckSkills(AgentForm form, StudioOptions options, ExistingSpec? existing, List<FormProblem> problems)
     {
         if (form.Skills.Count > DraftRules.MaxSkills || form.Skills.Distinct().Count() != form.Skills.Count)
-            problems.Add($"Skills: at most {DraftRules.MaxSkills}, each once.");
+            problems.Add(new("skills", $"Skills: at most {DraftRules.MaxSkills}, each once."));
         // D122: a new skill runs code in the agent's pod, so only a digest from a registry the owner allow-listed.
         foreach (var skill in form.Skills.Where(s => existing?.Skills.Contains(s) != true))
             if (skill is null || !DraftRules.SkillRef().IsMatch(skill))
-                problems.Add($"Skill '{skill}': an OCI image pinned by digest (registry/repository[:tag]@sha256:…).");
+                problems.Add(new("skills", $"Skill '{skill}': an OCI image pinned by digest (registry/repository[:tag]@sha256:…)."));
             else if (!options.SkillRegistries.Any(r => r.Length > 0 && skill.StartsWith(r.TrimEnd('/') + "/", StringComparison.Ordinal)))
-                problems.Add(options.SkillRegistries.Count == 0
+                problems.Add(new("skills", options.SkillRegistries.Count == 0
                     ? "Skills are off: the owner has not allow-listed a skill registry (Studio:SkillRegistries)."
-                    : $"Skill '{skill}' is not from an allow-listed registry ({string.Join(", ", options.SkillRegistries)}).");
+                    : $"Skill '{skill}' is not from an allow-listed registry ({string.Join(", ", options.SkillRegistries)})."));
     }
 
-    private static void CheckA2a(AgentForm form, List<string> problems)
+    private static void CheckA2a(AgentForm form, List<FormProblem> problems)
     {
         if (form.A2aSkills.Count > MaxA2aSkills)
-            problems.Add($"A2A skills: at most {MaxA2aSkills}.");
+            problems.Add(new("a2aSkills", $"A2A skills: at most {MaxA2aSkills}."));
         if (form.A2aSkills.Any(s => s is null))
         {
-            problems.Add("A2A skills: no empty entries.");
+            problems.Add(new("a2aSkills", "A2A skills: no empty entries."));
             return;
         }
         if (form.A2aSkills.Select(s => s.Id).Distinct().Count() != form.A2aSkills.Count)
-            problems.Add("A2A skills: each id once.");
+            problems.Add(new("a2aSkills", "A2A skills: each id once."));
         foreach (var skill in form.A2aSkills)
         {
             if (skill.Id is null || !A2aId().IsMatch(skill.Id))
-                problems.Add("A2A skill id: letters, digits, '.', '_' or '-', at most 64.");
+                problems.Add(new("a2aSkills", "A2A skill id: letters, digits, '.', '_' or '-', at most 64."));
             if (string.IsNullOrWhiteSpace(skill.Name) || !OneLine(skill.Name, MaxA2aSkillName))
-                problems.Add($"A2A skill '{skill.Id}': a name of one line, at most {MaxA2aSkillName} characters.");
+                problems.Add(new("a2aSkills", $"A2A skill '{skill.Id}': a name of one line, at most {MaxA2aSkillName} characters."));
             if (skill.Description is not null && !OneLine(skill.Description, MaxA2aText))
-                problems.Add($"A2A skill '{skill.Id}': a description of one line, at most {MaxA2aText} characters.");
+                problems.Add(new("a2aSkills", $"A2A skill '{skill.Id}': a description of one line, at most {MaxA2aText} characters."));
             if (skill.Tags is { } tags && (tags.Count > MaxA2aItems || tags.Any(t => t is null || !OneLine(t, MaxA2aSkillName))))
-                problems.Add($"A2A skill '{skill.Id}': at most {MaxA2aItems} tags of one line, at most {MaxA2aSkillName} characters each.");
+                problems.Add(new("a2aSkills", $"A2A skill '{skill.Id}': at most {MaxA2aItems} tags of one line, at most {MaxA2aSkillName} characters each."));
             if (skill.Examples is { } examples && (examples.Count > MaxA2aItems || examples.Any(e => e is null || !OneLine(e, MaxA2aText))))
-                problems.Add($"A2A skill '{skill.Id}': at most {MaxA2aItems} examples of one line, at most {MaxA2aText} characters each.");
+                problems.Add(new("a2aSkills", $"A2A skill '{skill.Id}': at most {MaxA2aItems} examples of one line, at most {MaxA2aText} characters each."));
         }
+    }
+
+    private static void CheckMemory(AgentForm form, IReadOnlyCollection<string> models, List<FormProblem> problems)
+    {
+        if (form.Memory is not { } memory)
+            return;
+        if (!models.Contains(memory.ModelConfig))
+            problems.Add(new("memory", "Memory: pick one of the configured models for its embeddings."));
+        if (memory.TtlDays is < 1 or > DraftRules.MaxTtlDays)
+            problems.Add(new("memory", $"Memory: keep entries 1 to {DraftRules.MaxTtlDays} days."));
     }
 
     private static bool OneLine(string text, int max) => text.Length <= max && !DraftRules.HasControl(text, allowNewlines: false);

@@ -46,7 +46,7 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
             // C-2: only a form opened on what kagent holds now replaces it. kagent 0.10.2's PUT takes no precondition, so
             // a write landing between this read and that PUT is still lost (milliseconds; ISSUES.md O1).
             if (string.IsNullOrEmpty(form.Version))
-                throw AgentFailure.Invalid([AgentFailure.NoVersion]);
+                throw AgentFailure.Invalid([new FormProblem("version", AgentFailure.NoVersion)]);
             if (form.Version != AgentSpec.Version(existing))
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.Stale, "stale");
 

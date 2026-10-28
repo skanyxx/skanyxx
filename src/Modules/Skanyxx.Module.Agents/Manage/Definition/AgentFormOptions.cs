@@ -7,6 +7,8 @@ namespace Skanyxx.Module.Agents.Manage.Definition;
 /// <param name="McpServers">The allow-listed RemoteMCPServers with the tools kagent discovered.</param>
 /// <param name="Agents">Agents an agent may call as a tool.</param>
 /// <param name="SkillRegistries">Where a skill may come from; empty = skills are off.</param>
+/// <param name="Mode"><c>direct</c>: the form changes the live agent; <c>proposal</c>: it opens a Studio pull request (D312).</param>
+/// <param name="StudioConfigured">Whether a proposal can be opened at all (Studio:Git).</param>
 internal sealed record AgentFormOptions(
-    string Namespace, IReadOnlyList<string> ModelConfigs, IReadOnlyList<McpToolChoice> McpServers, IReadOnlyList<string> Agents,
-    IReadOnlyList<string> SkillRegistries);
+    string Namespace, IReadOnlyList<string> ModelConfigs, IReadOnlyList<ServerTools> McpServers, IReadOnlyList<string> Agents,
+    IReadOnlyList<string> SkillRegistries, string Mode, bool StudioConfigured);
