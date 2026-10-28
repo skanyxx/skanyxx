@@ -4,6 +4,7 @@
     ViewData["Title"] = "Not allowed";
 }
 
-<h1>Not allowed</h1>
-<p>Your role does not include this page. Ask the owner if you need it.</p>
-<p><a href="/" class="btn btn-primary">Home</a></p>
+<empty-state icon="i-alert-circle" title="This page is not part of your role">
+    <p>Your role does not include this page. Ask the owner if you need it.</p>
+    <div class="empty-state-actions"><a href="/" class="btn btn-primary">Go to your home page</a></div>
+</empty-state>

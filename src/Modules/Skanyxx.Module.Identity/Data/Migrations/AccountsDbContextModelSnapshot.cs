@@ -531,6 +531,31 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                     b.ToTable("identity_org_team_members", (string)null);
                 });
 
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.OrganizationPreference", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("UpdatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("identity_organization_preferences", null, t =>
+                        {
+                            t.HasCheckConstraint("CK_identity_organization_preferences_single_row", "\"Id\" = 1");
+                        });
+                });
+
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.PasswordReset", b =>
                 {
                     b.Property<string>("Id")
@@ -612,6 +637,23 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("identity_refresh_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.UserPreference", b =>
+                {
+                    b.Property<string>("UserId")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Json")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTimeOffset>("UpdatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("identity_user_preferences", (string)null);
                 });
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRoleClaim<string>", b =>
@@ -716,6 +758,15 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                 });
 
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.RefreshSession", b =>
+                {
+                    b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.UserPreference", b =>
                 {
                     b.HasOne("Microsoft.AspNetCore.Identity.IdentityUser", null)
                         .WithMany()

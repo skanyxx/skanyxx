@@ -3,48 +3,222 @@
 @using System.Security.Claims
 @using Skanyxx.Core.Platform
 @using Skanyxx.Core.Platform.Identity
+@using Skanyxx.Core.Platform.Preferences
 @{
     ViewData["Title"] = "Account";
+    var p = Model.Preferences.Effective;
+    var org = EffectivePreferences.Resolve(Model.Preferences.OrganizationDefaults, null);
+    var themeLabels = new Dictionary<string, string>
+    {
+        ["system"] = "Match my device", ["light"] = "Light", ["dark"] = "Dark", ["blue"] = "Blue", ["green"] = "Green",
+        ["purple"] = "Purple", ["orange"] = "Orange", ["teal"] = "Teal", ["rose"] = "Rose"
+    };
+    var accentLabels = new Dictionary<string, string>
+    {
+        ["auto"] = "Theme's own", ["indigo"] = "Indigo", ["blue"] = "Blue", ["teal"] = "Teal", ["green"] = "Green",
+        ["orange"] = "Orange", ["rose"] = "Rose", ["purple"] = "Purple"
+    };
+    var order = p.NavOrder.ToList();
+    var ordered = Model.Panels.OrderBy(l => order.IndexOf(l.Item.Key) is var i and >= 0 ? i : int.MaxValue).ToList();
+    var roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).Order().ToList();
 }
+<page-header description="Your profile, how you sign in, and how Skanyxx looks and is laid out for you." />
+
 @if (Model.Error is not null)
 {
-    <p class="text-error" role="alert">@Model.Error</p>
+    <alert tone="error">@Model.Error</alert>
 }
 @if (Model.Message is not null)
 {
-    <p class="text-success" role="status">@Model.Message</p>
+    <alert tone="success">@Model.Message</alert>
 }
-<div class="card mb-3">
-    <div class="card-header"><h3 class="card-title">@(User.FindFirst(SkanyxxClaims.DisplayName)?.Value ?? User.Identity?.Name)</h3></div>
-    <p class="text-muted">@User.Identity?.Name</p>
-    <p>Roles: @string.Join(", ", User.FindAll(ClaimTypes.Role).Select(c => c.Value).Order())</p>
-</div>
 
-<div class="card mb-3">
-    <div class="card-header"><h3 class="card-title">Microsoft account</h3></div>
-    @if (Model.Microsoft.Linked)
-    {
-        <p><span class="badge badge-info">managed by Entra</span> Linked. You sign in with Microsoft; your roles and teams come from your Microsoft groups at each Microsoft sign-in.</p>
-    }
-    else if (!Model.Microsoft.Enabled)
-    {
-        <p class="text-muted">Microsoft sign-in is not enabled on this Skanyxx.</p>
-    }
-    else if (User.IsInRole(SkanyxxRoles.Owner))
-    {
-        <p class="text-muted">The owner signs in with a password only, so a Microsoft account cannot be linked to it.</p>
-    }
-    else
-    {
-        <p class="text-muted">
-            Link your Microsoft work account to sign in with it. From then on you sign in with Microsoft only (your password
-            stops working while Microsoft sign-in is on), your roles and teams come from your Microsoft groups, and a
-            Microsoft sign-in without a mapped group ends your sessions.
-        </p>
-        <form method="post" asp-page-handler="LinkMicrosoft" class="flex gap-2 items-center">
-            <label for="linkPassword">Current password</label>
-            <input id="linkPassword" name="Password" type="password" required maxlength="1024" autocomplete="current-password" value="" />
-            <button type="submit" class="btn btn-secondary">Link Microsoft account</button>
-        </form>
-    }
-</div>
+<section class="section">
+    <div class="card mb-0">
+        <div class="card-header mb-0">
+            <div>
+                <h2 class="card-title">@(User.FindFirst(SkanyxxClaims.DisplayName)?.Value ?? User.Identity?.Name)</h2>
+                <p class="card-subtitle">@User.Identity?.Name</p>
+            </div>
+            <div class="flex flex-wrap gap-1">
+                <span class="visually-hidden">Roles:</span>
+                @foreach (var role in roles)
+                {
+                    <span class="badge badge-neutral">@role</span>
+                }
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section" aria-labelledby="microsoft-title">
+    <div class="section-header"><h2 class="section-title" id="microsoft-title">Microsoft account</h2></div>
+    <div class="card mb-0">
+        @if (Model.Microsoft.Linked)
+        {
+            <p><span class="badge badge-info">managed by Entra</span> Linked. You sign in with Microsoft; your roles and teams come from your Microsoft groups at each Microsoft sign-in.</p>
+        }
+        else if (!Model.Microsoft.Enabled)
+        {
+            <p class="text-muted">Microsoft sign-in is not enabled on this Skanyxx.</p>
+        }
+        else if (User.IsInRole(SkanyxxRoles.Owner))
+        {
+            <p class="text-muted">The owner signs in with a password only, so a Microsoft account cannot be linked to it.</p>
+        }
+        else
+        {
+            <p class="text-muted prose mb-2">
+                Link your Microsoft work account to sign in with it. From then on you sign in with Microsoft only (your password
+                stops working while Microsoft sign-in is on), your roles and teams come from your Microsoft groups, and a
+                Microsoft sign-in without a mapped group ends your sessions.
+            </p>
+            <form method="post" asp-page-handler="LinkMicrosoft" class="flex gap-2 items-center">
+                <label for="linkPassword">Current password</label>
+                <input id="linkPassword" name="Password" type="password" required maxlength="1024" autocomplete="current-password" value="" style="max-width: 320px" />
+                <button type="submit" class="btn btn-secondary">Link Microsoft account</button>
+            </form>
+        }
+    </div>
+</section>
+
+<section class="section" id="appearance" aria-labelledby="appearance-title">
+    <div class="section-header">
+        <div>
+            <h2 class="section-title" id="appearance-title">Appearance &amp; layout</h2>
+            <p class="section-description">Changes show right away so you can try them; nothing is kept until you save. Saved to your account, so they follow you to any browser.</p>
+        </div>
+    </div>
+
+    <form method="post" asp-page-handler="Appearance" id="appearance-form" class="card mb-0">
+        <fieldset class="mb-3">
+            <legend>Theme</legend>
+            <div class="swatches">
+                @foreach (var theme in PreferenceCatalog.Themes)
+                {
+                    <label class="swatch @(theme == "system" ? "swatch-system" : "")">
+                        <input type="radio" name="Appearance.Theme" value="@theme" checked="@(p.Theme == theme)" />
+                        <span class="swatch-preview" data-theme="@(theme == "system" ? null : theme)" aria-hidden="true">
+                            <span class="swatch-preview-nav"></span>
+                            <span class="swatch-preview-main">
+                                <span class="swatch-preview-line strong"></span>
+                                <span class="swatch-preview-line"></span>
+                                <span class="swatch-preview-button"></span>
+                            </span>
+                        </span>
+                        <span class="swatch-label">@themeLabels[theme]</span>
+                    </label>
+                }
+            </div>
+        </fieldset>
+
+        <fieldset class="mb-3">
+            <legend>Accent colour</legend>
+            <p class="field-hint mb-1">Buttons, links and the selected item. Every accent keeps text readable on every theme.</p>
+            <div class="accent-swatches">
+                @foreach (var accent in PreferenceCatalog.Accents)
+                {
+                    <label class="accent-swatch">
+                        <input type="radio" name="Appearance.Accent" value="@accent" checked="@(p.Accent == accent)" />
+                        <span class="accent-dot" data-accent-preview data-theme="@p.Theme" data-accent="@(accent == "auto" ? null : accent)" aria-hidden="true"></span>
+                        @accentLabels[accent]
+                    </label>
+                }
+            </div>
+        </fieldset>
+
+        <div class="form-row mb-3">
+            <fieldset>
+                <legend>Text size</legend>
+                <div class="chips">
+                    @foreach (var (value, label) in new[] { ("s", "Small"), ("m", "Medium"), ("l", "Large") })
+                    {
+                        <label class="chip"><input type="radio" name="Appearance.FontSize" value="@value" checked="@(p.FontSize == value)" />@label</label>
+                    }
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Density</legend>
+                <div class="chips">
+                    <label class="chip"><input type="radio" name="Appearance.Density" value="comfortable" checked="@(p.Density == "comfortable")" />Comfortable</label>
+                    <label class="chip"><input type="radio" name="Appearance.Density" value="compact" checked="@(p.Density == "compact")" />Compact</label>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Motion</legend>
+                <div class="chips">
+                    <label class="chip"><input type="radio" name="Appearance.Motion" value="system" checked="@(p.Motion == "system")" />Follow my device</label>
+                    <label class="chip"><input type="radio" name="Appearance.Motion" value="reduce" checked="@(p.Motion == "reduce")" />Reduce</label>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="form-row mb-3">
+            <fieldset>
+                <legend>Sidebar</legend>
+                <div class="chips">
+                    <label class="chip"><input type="radio" name="Appearance.Sidebar" value="expanded" checked="@(p.Sidebar == "expanded")" />Icons and names</label>
+                    <label class="chip"><input type="radio" name="Appearance.Sidebar" value="collapsed" checked="@(p.Sidebar == "collapsed")" />Icons only</label>
+                </div>
+            </fieldset>
+            <fieldset>
+                <legend>Chat</legend>
+                <div class="chips">
+                    <label class="chip"><input type="radio" name="Appearance.ChatDetails" value="shown" checked="@(p.ChatDetails == "shown")" />Show agent details</label>
+                    <label class="chip"><input type="radio" name="Appearance.ChatDetails" value="hidden" checked="@(p.ChatDetails == "hidden")" />Messages only</label>
+                </div>
+            </fieldset>
+        </div>
+
+        <div class="form-row mb-3">
+            <field for="landing" label="Open on" hint="The page you see after signing in.">
+                <select id="landing" name="Appearance.Landing">
+                    <option value="auto" selected="@(p.Landing == "auto")">Chat (the default)</option>
+                    @foreach (var link in Model.Panels)
+                    {
+                        <option value="@link.Item.Key" selected="@(p.Landing == link.Item.Key)">@link.Item.Label</option>
+                    }
+                </select>
+            </field>
+            <field for="pageSize" label="Rows per table page">
+                <select id="pageSize" name="Appearance.TablePageSize">
+                    @foreach (var size in PreferenceCatalog.TablePageSizes)
+                    {
+                        <option value="@size" selected="@(p.TablePageSize == size)">@size</option>
+                    }
+                </select>
+            </field>
+        </div>
+
+        <fieldset class="mb-3">
+            <legend>Sidebar items</legend>
+            <p class="field-hint mb-1">Pin up to @PreferenceCatalog.MaxPinned panels to the top of the sidebar, and put the rest in the order you use them. Only panels your role can open are listed.</p>
+            <input type="hidden" name="Appearance.NavOrder" value="@string.Join(",", ordered.Select(l => l.Item.Key))" />
+            <ol class="order-list" data-order-list>
+                @foreach (var link in ordered)
+                {
+                    <li class="order-item" data-key="@link.Item.Key">
+                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#@link.Item.Icon"/></svg></span>
+                        <span class="order-item-label">@link.Item.Label <span class="order-item-group">@link.Item.Group</span></span>
+                        <label class="check"><input type="checkbox" name="Appearance.PinnedNav" value="@link.Item.Key" checked="@p.PinnedNav.Contains(link.Item.Key)" /> Pin</label>
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-move="up" aria-label="Move @link.Item.Label up"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-up"/></svg></button>
+                        <button type="button" class="btn btn-ghost btn-icon btn-sm" data-move="down" aria-label="Move @link.Item.Label down"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-down"/></svg></button>
+                    </li>
+                }
+            </ol>
+        </fieldset>
+
+        <div class="card-footer">
+            <button type="reset" class="btn btn-ghost">Undo changes</button>
+            <button type="submit" class="btn btn-secondary" formaction="?handler=AppearanceReset" formnovalidate
+                    title="Forget your choices and use the organization's defaults">Reset to defaults</button>
+            @if (User.IsInRole(SkanyxxRoles.Owner))
+            {
+                <button type="submit" class="btn btn-secondary" formaction="?handler=OrganizationDefaults"
+                        title="Everyone who has not chosen their own gets these">Save as organization default</button>
+            }
+            <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+    </form>
+    <p class="text-muted text-sm mt-1">Organization default theme: @themeLabels[org.Theme]. Reset to defaults follows it from then on.</p>
+</section>
