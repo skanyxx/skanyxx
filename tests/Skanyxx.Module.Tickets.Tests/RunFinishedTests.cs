@@ -13,11 +13,20 @@ public sealed class RunFinishedTests(PostgresFixture postgres) : TicketsTestBase
 {
     private sealed class Recorder : INotificationHandler<TicketRunFinished>
     {
+        private readonly TaskCompletionSource _first = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public ConcurrentQueue<TicketRunFinished> Seen { get; } = new();
+
+        /// <summary>
+        /// The run's state is committed before the notice goes out (the notice is read back from the saved run), so a
+        /// test that saw the final state waits for the notice too instead of racing it.
+        /// </summary>
+        public Task FirstAsync() => _first.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 
         public Task Handle(TicketRunFinished notification, CancellationToken ct)
         {
             Seen.Enqueue(notification);
+            _first.TrySetResult();
             return Task.CompletedTask;
         }
     }
@@ -35,6 +44,7 @@ public sealed class RunFinishedTests(PostgresFixture postgres) : TicketsTestBase
         await App.DecideAsync(run.Id, "approve");
         await App.WaitForAsync(run.Id, RunState.Succeeded);
 
+        await recorder.FirstAsync();
         var finished = Assert.Single(recorder.Seen);
         Assert.Equal(run.Id, finished.RunId);
         Assert.Equal(TicketsApp.User, finished.OwnerUserId);
@@ -61,6 +71,7 @@ public sealed class RunFinishedTests(PostgresFixture postgres) : TicketsTestBase
         var run = await App.StartRunAsync(pipelineId: "boom");
         await App.WaitForAsync(run.Id, RunState.Failed);
 
+        await recorder.FirstAsync();
         var finished = Assert.Single(recorder.Seen);
         Assert.Equal(run.Id, finished.RunId);
         Assert.False(finished.Succeeded);

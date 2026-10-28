@@ -104,9 +104,10 @@ public sealed class AnswerCacheTests(PostgresFixture postgres) : ChatContextTest
         await AskedAndAnsweredAsync(Ana, "s2");
         await using (var scope = App.Services.CreateAsyncScope())
         {
-            var behavior = scope.ServiceProvider.GetServices<IPipelineBehavior<SaveModelSettingsCommand, Outcome<ModelSettings>>>().OfType<ModelChangeClearsAnswers>().Single();
-            await behavior.Handle(new SaveModelSettingsCommand(Olivia, "Ollama", "qwen3", null, null),
-                () => Task.FromResult(Outcome<ModelSettings>.Ok(new ModelSettings("kagent/default", "Ollama", "qwen3", null, false, true, null))), CancellationToken.None);
+            var behavior = scope.ServiceProvider.GetServices<IPipelineBehavior<SaveModelConfigCommand, Outcome<ModelConfigDetail>>>().OfType<ModelChangeClearsAnswers>().Single();
+            await behavior.Handle(new SaveModelConfigCommand(Olivia, "kagent", "default", Create: false, "Ollama", "qwen3", new Dictionary<string, string>(), null, false),
+                () => Task.FromResult(Outcome<ModelConfigDetail>.Ok(
+                    new ModelConfigDetail("kagent", "default", "Ollama", "qwen3", false, true, null, true, new Dictionary<string, string>(), []))), CancellationToken.None);
         }
         Assert.Null((await App.PrepareAsync(Ana, Question)).Cached);
     }

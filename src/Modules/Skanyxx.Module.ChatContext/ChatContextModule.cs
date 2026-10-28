@@ -57,7 +57,7 @@ public sealed class ChatContextModule : IModule
         services.AddSingleton<AnswerCache>();
         if (configuration.GetValue<bool>($"{ChatContextOptions.Section}:AnswerCache:Enabled"))
         {
-            services.AddTransient<IPipelineBehavior<SaveModelSettingsCommand, Outcome<ModelSettings>>, ModelChangeClearsAnswers>();
+            services.AddTransient<IPipelineBehavior<SaveModelConfigCommand, Outcome<ModelConfigDetail>>, ModelChangeClearsAnswers>();
             services.AddHealthChecks().AddCheck<AnswerStoreHealthCheck>(DashboardChecks.AnswerCache, tags: [HealthEndpoint.DiagnosticsTag]);
         }
 

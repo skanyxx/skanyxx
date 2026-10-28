@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Text.Json.Nodes;
 using MediatR;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Runtime;
 using Skanyxx.Core.Services;
 
@@ -38,7 +39,10 @@ internal sealed class HealthProbe(KAgentApiClient kagent, HealthCheckService hea
             return ((int, int)?)(list.Count(s => s["discoveredTools"] is JsonArray { Count: > 0 }), list.Count);
         });
         var models = Quietly(async () => (int?)(await kagent.GetModelConfigRefsAsync(ct)).Count);
-        var configured = Quietly(async () => (await mediator.Send(new ModelSettingsQuery(), ct)).Value?.Configured);
+        // The default model exists and kagent accepted it (the model step, D323); unknown while kagent does not answer.
+        var configured = Quietly(async () => await mediator.Send(new DefaultModelQuery(), ct) is { Status: OutcomeStatus.Ok } model
+            ? (bool?)(model.Value is { Accepted: true })
+            : null);
         await Task.WhenAll(agents, servers, models, configured, checks);
         return new HealthFacts(latency, agents.Result, servers.Result, models.Result, configured.Result, checks.Result);
     }

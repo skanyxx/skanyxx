@@ -131,7 +131,7 @@ internal sealed class ChatTurns(
     private Task RollupAsync(SendChatMessageCommand command, Agent agent, TokenUsage usage, bool newChat, bool cached, long saved, bool failed) =>
         publisher.Publish(new ChatTurnUsage(
             clock.GetUtcNow(), command.UserId, $"{agent.Namespace}/{agent.Name}",
-            agent.ModelConfig switch { "" => "unknown", var m when m.Contains('/') => m, var m => $"{agent.Namespace}/{m}" },
+            agent.ModelConfig switch { null or "" => "unknown", var m when m.Contains('/') => m, var m => $"{agent.Namespace}/{m}" },
             usage, newChat, cached, saved, failed), CancellationToken.None);
 
     private async Task DeleteSessionAsync(string userId, string sessionId)

@@ -21,7 +21,7 @@ public sealed class RateLimitTests(PostgresFixture fixture)
         var third = await client.GetAsync("/api/sandboxes", TestContext.Current.CancellationToken);
         var mcp = await client.PostAsync("/mcp/memory", new StringContent("{}"), TestContext.Current.CancellationToken);
         var chat = await client.PostAsync("/api/chat", new StringContent("{}"), TestContext.Current.CancellationToken);
-        var model = await client.GetAsync("/api/model", TestContext.Current.CancellationToken);
+        var model = await client.GetAsync("/api/models", TestContext.Current.CancellationToken);
         var health = await client.GetAsync("/health", TestContext.Current.CancellationToken);
         var studioForm = await client.PostAsync("/Studio?handler=Factory", new StringContent(""), TestContext.Current.CancellationToken); // m11: the page's forms do what api/studio does
         var studioPage = await client.GetAsync("/Studio", TestContext.Current.CancellationToken);

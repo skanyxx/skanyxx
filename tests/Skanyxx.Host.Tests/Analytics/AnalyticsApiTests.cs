@@ -112,7 +112,8 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         var org = await UsageAsync(_owner, "scope=org&range=7d");
         Assert.Equal(4, Total(org, "requests"));
         Assert.Equal(2, Total(org, "activeUsers"));
-        Assert.Equal(["kagent/default-model-config", "unknown"], org.GetProperty("tokensByModel").EnumerateArray().Select(s => s.GetProperty("name").GetString()).Order());
+        // The seed names no ModelConfig, so kagent runs it on its namespace's default-model-config (D323): same model.
+        Assert.Equal(["kagent/default-model-config"], org.GetProperty("tokensByModel").EnumerateArray().Select(s => s.GetProperty("name").GetString()));
         var rows = org.GetProperty("rows").EnumerateArray().ToDictionary(r => r.GetProperty("name").GetString()!, r => r.GetProperty("totals").GetProperty("requests").GetInt64());
         Assert.Equal(3, rows["Finance"]);
         Assert.Equal(1, rows["Not in a team"]);

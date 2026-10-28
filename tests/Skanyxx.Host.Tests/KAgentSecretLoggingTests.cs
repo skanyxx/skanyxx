@@ -8,8 +8,8 @@ using Skanyxx.Core.Services;
 namespace Skanyxx.Host.Tests;
 
 /// <summary>
-/// A kagent call that carried a secret value (a tool server's typed header values, a model API key) never logs kagent's
-/// answer: a refusal could echo what it was sent. Only the status and a fixed text; other calls keep kagent's text.
+/// A kagent call that carried a secret value (a tool server's typed header values, a model API key on create or update)
+/// never logs kagent's answer: a refusal could echo what it was sent. Only the status and a fixed text; other calls keep kagent's text.
 /// </summary>
 public sealed class KAgentSecretLoggingTests
 {
@@ -42,28 +42,40 @@ public sealed class KAgentSecretLoggingTests
         Assert.Contains("kagent says no", Assert.Single(logs));
     }
 
-    [Fact]
-    public async Task ModelKeyWrite_NeitherLogsNorThrowsKagentsText()
+    public static TheoryData<string> KeyedModelWrites() => ["create", "update"];
+
+    [Theory]
+    [MemberData(nameof(KeyedModelWrites))]
+    public async Task ModelWrite_WithAKey_NeitherLogsNorThrowsKagentsText(string write)
     {
         var (client, logs) = Client();
 
-        var refused = await Assert.ThrowsAsync<HttpRequestException>(() => client.SaveModelConfigAsync(true, new JsonObject(), Secret, Ct));
+        var refused = await Assert.ThrowsAsync<HttpRequestException>(() => write == "create"
+            ? client.CreateModelConfigAsync("kagent", "gpt", new JsonObject(), Secret, Ct)
+            : client.UpdateModelConfigAsync("kagent", "gpt", new JsonObject(), Secret, Ct));
 
+        Assert.Equal(HttpStatusCode.InternalServerError, refused.StatusCode);
         Assert.DoesNotContain(Secret, refused.Message);
         Assert.DoesNotContain("kagent says no", refused.Message);
         var line = Assert.Single(logs);
         Assert.DoesNotContain(Secret, line);
+        Assert.DoesNotContain("kagent says no", line);
+        Assert.Contains("/api/modelconfigs", line);
         Assert.Contains(KAgentApiClient.SecretCallRefused, line);
     }
 
     [Fact]
-    public async Task ModelSpecWrite_WithoutAKey_KeepsKagentsMessageForTheOwner()
+    public async Task ModelWrites_WithoutAKey_AndDelete_StillLogKagentsText()
     {
-        var (client, _) = Client();
+        var (client, logs) = Client();
 
-        var refused = await Assert.ThrowsAsync<HttpRequestException>(() => client.SaveModelConfigAsync(false, new JsonObject(), null, Ct));
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.CreateModelConfigAsync("kagent", "ollama", new JsonObject(), null, Ct));
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.UpdateModelConfigAsync("kagent", "ollama", new JsonObject(), "", Ct));
+        var deleted = await Assert.ThrowsAsync<HttpRequestException>(() => client.DeleteModelConfigAsync("kagent", "ollama", Ct));
 
-        Assert.Contains("kagent says no", refused.Message);
+        Assert.Equal(3, logs.Count);
+        Assert.All(logs, line => Assert.Contains("kagent says no", line));
+        Assert.DoesNotContain("kagent says no", deleted.Message);
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;

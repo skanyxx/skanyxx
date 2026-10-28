@@ -36,7 +36,7 @@ public sealed class OriginGuardMiddleware
             _allowed.Add(publicBase.GetLeftPart(UriPartial.Authority));
         if (_allowed.Count == 0 && !environment.IsDevelopment())
             logger.LogWarning(
-                "Neither Skanyxx:AllowedOrigins nor Identity:PublicBaseUrl is set: browser calls to /api/chat, /api/model and the " +
+                "Neither Skanyxx:AllowedOrigins nor Identity:PublicBaseUrl is set: browser calls to /api/chat, /api/models and the " +
                 "other guarded APIs are refused (403), so Chat cannot send. Set Identity:PublicBaseUrl to the address people use.");
     }
 

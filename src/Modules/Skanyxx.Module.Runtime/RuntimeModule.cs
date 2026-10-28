@@ -4,7 +4,7 @@ using Skanyxx.Core;
 
 namespace Skanyxx.Module.Runtime;
 
-/// <summary>The owner's model step: kagent's ModelConfig through kagent's API (<c>/api/model</c>, D099).</summary>
+/// <summary>Models: kagent's ModelConfigs listed, created, edited and deleted through kagent's API (<c>/api/models</c>, D099, D323).</summary>
 public class RuntimeModule : IModule
 {
     public string ModuleId => "runtime";

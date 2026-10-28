@@ -35,7 +35,7 @@ public static class NavCatalog
         new("analytics", "/Analytics", "Analytics", "i-chart", Work),
 
         new("dashboard", "/Dashboard", "Dashboard", "i-dashboard", Admin, Supervisors),
-        new("models", "/Model", "Models", "i-cpu", Admin, OwnerOnly),
+        new("models", "/Model", "Models", "i-cpu", Admin, Supervisors),
         new("toolservers", "/ToolServers", "Tool servers", "i-server", Admin, Supervisors),
         new("people", "/People", "People", "i-users", Admin, OwnerOnly),
         new("org", "/Org", "Org", "i-org", Admin, OwnerOnly),

@@ -38,7 +38,7 @@ internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioO
                 return new AgentSummary(a.Agent.Namespace, a.Agent.Name, a.Agent.Description, a.Agent.Type, a.Agent.Ready, a.Agent.Accepted,
                     AgentProtection.SourceOf(a.Agent.Name, a.Agent.Labels), a.InChat, a.Agent.Suspended,
                     writable && a.Agent.Type == "Declarative", writable, refusal,
-                    [.. a.Agent.McpToolNames.Keys.Order(StringComparer.Ordinal)], a.Agent.ModelConfig, AgentQueries.ToolCount(a.Agent));
+                    [.. a.Agent.McpToolNames.Keys.Order(StringComparer.Ordinal)], a.Agent.ModelConfig ?? "", AgentQueries.ToolCount(a.Agent));
             })]);
     }
 }
