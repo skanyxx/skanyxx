@@ -678,6 +678,8 @@
 
     // The open conversation, per browser tab: a reload continues it, a new tab starts fresh.
     const STORE_KEY = 'skanyxx.chat';
+    // kagent keeps sessions per user; Chat creates them as the signed-in person, so they are read back as that person.
+    const ME = @Json.Serialize(Model.Me);
     // ?ticket=SDB-58 (comma-separated for several) links the conversation to those Jira tickets in the chat index.
     const ticketKeys = (new URLSearchParams(location.search).get('ticket') || '').split(',')
         .map(t => t.trim()).filter(t => /^[A-Z][A-Z0-9_]{0,29}-[1-9][0-9]{0,9}$/.test(t));
@@ -971,7 +973,7 @@
         const container = document.getElementById('chatMessages');
         container.innerHTML = '';
         try {
-            const response = await fetch(`/api/sessions/${encodeURIComponent(id)}/events`);
+            const response = await fetch(`/api/sessions/${encodeURIComponent(id)}/events?user=${encodeURIComponent(ME)}`);
             if (response.status === 404) {
                 newChat();
                 return;
@@ -1001,19 +1003,21 @@
             if (typeof data === 'string') {
                 try { data = JSON.parse(data); } catch { continue; }
             }
-            if (!data || data.partial) continue;
-            const content = data.content || data;
-            const role = (content.role || data.role || data.author) === 'user' ? 'user' : 'assistant';
+            // The Python ADK writes camelCase, kagent's Go runtime PascalCase (Content, Partial, Author, Timestamp).
+            if (!data || data.partial || data.Partial) continue;
+            const content = data.content || data.Content || data;
+            const role = (content.role || data.role || data.author || data.Author) === 'user' ? 'user' : 'assistant';
             const text = (content.parts || [])
                 .filter(p => p && typeof p.text === 'string' && !p.thought
                     && !(p.metadata && (p.metadata.adk_thought || p.metadata.kagent_thought)))
                 .map(p => p.text).join('');
             if (!text.trim()) continue;
-            let time = event.timestamp || data.timestamp;
+            let time = event.timestamp || data.timestamp || data.Timestamp;
             if (typeof time === 'number' && time < 1e12) time *= 1000;
             shown.push({ role, content: role === 'user' ? withoutRelated(text) : text, timestamp: time ? new Date(time).toISOString() : new Date().toISOString() });
         }
-        return shown;
+        // kagent lists a session's events newest first.
+        return shown.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
     }
 
     function withoutRelated(text) {

@@ -103,6 +103,33 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains("sessionStorage.getItem(STORE_KEY)", page);
         Assert.Contains("await openConversation(saved.conversationId)", page);
         Assert.Contains("/api/chat/sessions?mine=true", page);
+        // kagent's Go runtime stores its events PascalCase and lists them newest first: both are read (Chrome run).
+        Assert.Contains("data.content || data.Content", page);
+        Assert.Contains("data.partial || data.Partial", page);
+        Assert.Contains("shown.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))", page);
+    }
+
+    // An owner's default session read is the console's own kagent user (D124), which does not have the owner's chats:
+    // the reopened conversation answered 404 and the page silently started a new one. It is read as the person.
+    [Fact]
+    public async Task TheChatPage_ReopensTheOwnersConversation_AsTheOwner()
+    {
+        var owner = await _host.OwnerAsync();
+        var chat = await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "Why are EU refunds slow?" });
+        var id = chat.GetProperty("conversationId").GetString()!;
+        var mine = await owner.GetFromJsonAsync<JsonElement>("/api/chat/sessions?mine=true", TestContext.Current.CancellationToken);
+        var ownerId = mine.EnumerateArray().Single().GetProperty("scope").GetString()!["personal:".Length..];
+        var browser = new Browser(_host);
+        await browser.SubmitAsync("/Login", new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword });
+
+        var page = await (await browser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var asConsole = await browser.GetAsync($"/api/sessions/{id}/events");
+        var asOwner = await browser.GetAsync($"/api/sessions/{id}/events?user={ownerId}");
+
+        Assert.Contains($"const ME = \"{ownerId}\";", page);
+        Assert.Contains("/events?user=${encodeURIComponent(ME)}", page);
+        Assert.Equal(HttpStatusCode.NotFound, asConsole.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, asOwner.StatusCode);
     }
 
     [Fact]
