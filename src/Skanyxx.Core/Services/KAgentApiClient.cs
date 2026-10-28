@@ -415,6 +415,12 @@ public class KAgentApiClient
 
     private static string Cut(string text) => text.Length <= 1_000 ? text : text[..1_000];
 
+    public const string SecretCallRefused = "its answer is not logged: the request carried a secret value";
+
+    private void LogSecretCallRefused(HttpResponseMessage response) =>
+        _logger.LogWarning("kagent {Method} {Endpoint} answered {StatusCode}; " + SecretCallRefused,
+            response.RequestMessage?.Method, response.RequestMessage?.RequestUri?.AbsolutePath, (int)response.StatusCode);
+
     /// <summary>The ModelConfig <see cref="ModelConfigRef"/> as kagent returns it (<c>{ref, spec, status}</c>), or null when absent.</summary>
     public async Task<JsonObject?> GetModelConfigAsync(CancellationToken ct)
     {
@@ -443,10 +449,10 @@ public class KAgentApiClient
             Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json")
         };
         using var response = await SendAsync(request, _controlTimeout, ct);
-        return await ModelConfigDataAsync(response, ct);
+        return await ModelConfigDataAsync(response, ct, carriesSecret: body.ContainsKey("apiKey"));
     }
 
-    private static async Task<JsonObject> ModelConfigDataAsync(HttpResponseMessage response, CancellationToken ct)
+    private async Task<JsonObject> ModelConfigDataAsync(HttpResponseMessage response, CancellationToken ct, bool carriesSecret = false)
     {
         JsonNode? body = null;
         try
@@ -459,8 +465,13 @@ public class KAgentApiClient
         var envelope = body as JsonObject;
         if (!response.IsSuccessStatusCode)
         {
-            // kagent's message names what failed (never the key: the request's key goes into a Secret, not the spec).
-            // Owner-only path, so the text is shown to the owner.
+            // A write that carried the API key gets a fixed text: kagent's message could echo what it was sent.
+            if (carriesSecret)
+            {
+                LogSecretCallRefused(response);
+                throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
+            }
+            // Otherwise kagent's message names what failed. Owner-only path, so the text is shown to the owner.
             var detail = envelope?["message"] is JsonValue m && m.TryGetValue<string>(out var text) ? $": {Cut(text)}" : "";
             throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}{detail}", null, response.StatusCode);
         }
@@ -501,7 +512,7 @@ public class KAgentApiClient
             ["type"] = "RemoteMCPServer",
             ["remoteMCPServer"] = server.DeepClone(),
             ["secrets"] = new JsonArray([.. secrets.Select(s => (JsonNode)new JsonObject { ["name"] = s.Name, ["key"] = s.Key, ["value"] = s.Value })])
-        }, ct);
+        }, ct, carriesSecret: secrets.Count > 0);
 
     /// <returns>False when kagent had no such tool server (kagent looks it up in its database, so one it never reconciled is absent too).</returns>
     public async Task<bool> DeleteRemoteMcpServerAsync(string ns, string name, CancellationToken ct) =>
@@ -515,10 +526,12 @@ public class KAgentApiClient
 
     /// <summary>
     /// A control call as this process (no person): the envelope's <c>data</c> (an empty object when there is none), or
-    /// null for a 404 when <paramref name="notFoundIsNull"/>. Bodies may carry secrets (a tool server's companion Secret):
-    /// kagent's answer is logged, the request never.
+    /// null for a 404 when <paramref name="notFoundIsNull"/>. The request is never logged; kagent's refusal is, up to 1 000
+    /// characters, unless the request <paramref name="carriesSecret"/> (a tool server's companion Secret values): kagent's
+    /// answer could echo them, so then only the status and a fixed text are logged.
     /// </summary>
-    private async Task<JsonNode?> ControlAsync(HttpMethod method, string endpoint, JsonObject? body, CancellationToken ct, bool notFoundIsNull = false)
+    private async Task<JsonNode?> ControlAsync(HttpMethod method, string endpoint, JsonObject? body, CancellationToken ct,
+        bool notFoundIsNull = false, bool carriesSecret = false)
     {
         using var request = new HttpRequestMessage(method, WithUser(endpoint, null));
         if (body is not null)
@@ -529,7 +542,10 @@ public class KAgentApiClient
             return null;
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("kagent {Method} {Endpoint} answered {StatusCode}: {Content}", method, endpoint, (int)response.StatusCode, Cut(content));
+            if (carriesSecret)
+                LogSecretCallRefused(response);
+            else
+                _logger.LogWarning("kagent {Method} {Endpoint} answered {StatusCode}: {Content}", method, endpoint, (int)response.StatusCode, Cut(content));
             throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
         }
         try
