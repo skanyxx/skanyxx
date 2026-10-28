@@ -19,6 +19,8 @@ public static class AuthenticationExtensions
 
     public const string LoginPath = "/Login";
 
+    public const string AccessDeniedPath = "/AccessDenied";
+
     private const string McpPath = "/mcp";
 
     public static IServiceCollection AddSkanyxxAuthentication(this IServiceCollection services, IHostEnvironment environment)
@@ -35,7 +37,7 @@ public static class AuthenticationExtensions
                         ? IdentityConstants.BearerScheme
                         : IdentityConstants.ApplicationScheme;
                 // Challenges and forbids always go to the cookie handler: it is the one that answers an API
-                // caller with a ProblemDetails 401/403 and a page with a redirect to the login page.
+                // caller with a ProblemDetails 401/403 and a page with a redirect to the login or access-denied page.
                 o.ForwardChallenge = IdentityConstants.ApplicationScheme;
                 o.ForwardForbid = IdentityConstants.ApplicationScheme;
             })
@@ -51,7 +53,7 @@ public static class AuthenticationExtensions
             o.ExpireTimeSpan = TimeSpan.FromHours(8);
             o.SlidingExpiration = true;
             o.LoginPath = LoginPath;
-            o.AccessDeniedPath = LoginPath;
+            o.AccessDeniedPath = AccessDeniedPath;
             o.Events.OnRedirectToLogin = context => ApiProblemOr(context, StatusCodes.Status401Unauthorized, "Sign in first.");
             o.Events.OnRedirectToAccessDenied = context => ApiProblemOr(context, StatusCodes.Status403Forbidden, "Not allowed.");
         });

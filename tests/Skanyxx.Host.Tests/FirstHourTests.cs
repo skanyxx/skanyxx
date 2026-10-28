@@ -189,7 +189,7 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, (await _host.Client().GetAsync("/api/model", TestContext.Current.CancellationToken)).StatusCode);
         var page = await employeeBrowser.GetAsync("/Model");
         Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
-        Assert.Contains("/Login", page.Headers.Location?.OriginalString);
+        Assert.Contains("/AccessDenied", page.Headers.Location?.OriginalString);
         // Everyone else's home is Chat, without asking kagent about the model.
         Assert.Equal("/Chat", (await employeeBrowser.GetAsync("/")).Headers.Location?.OriginalString);
         Assert.DoesNotContain(_kagent.Calls, c => c.Path.StartsWith("/api/modelconfigs", StringComparison.Ordinal));
@@ -654,7 +654,7 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, (await _host.Client().GetAsync("/api/settings/theme", TestContext.Current.CancellationToken)).StatusCode);
         var page = await employeeBrowser.GetAsync("/Settings");
         Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
-        Assert.Contains("/Login", page.Headers.Location?.OriginalString);
+        Assert.Contains("/AccessDenied", page.Headers.Location?.OriginalString);
         // Debug reads the owner-only system info, so it is in the owner's nav only.
         var employeeNav = await (await employeeBrowser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var ownerNav = await (await _owner.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -689,6 +689,25 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         var settingsPage = await (await _owner.GetAsync("/Settings")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.DoesNotContain(".innerHTML", settingsPage);
         Assert.Contains("textContent", settingsPage);
+    }
+
+    // A signed-in person on a page their role lacks was sent to /Login, which sends a signed-in visitor back to the
+    // return URL: an endless redirect in the browser. They land on a 403 page instead.
+    [Theory]
+    [InlineData("/Studio")]
+    [InlineData("/Sandboxes")]
+    [InlineData("/People")]
+    public async Task Employee_OnAPageTheirRoleLacks_GetsA403Page_NotALoginLoop(string path)
+    {
+        var (_, employeeBrowser) = await EmployeeAsync();
+
+        var denied = await employeeBrowser.GetAsync(path);
+        var landing = await employeeBrowser.GetAsync(denied.Headers.Location!.OriginalString);
+
+        Assert.Equal(HttpStatusCode.Redirect, denied.StatusCode);
+        Assert.StartsWith("/AccessDenied", new Uri(_host.BaseAddress, denied.Headers.Location!).AbsolutePath);
+        Assert.Equal(HttpStatusCode.Forbidden, landing.StatusCode);
+        Assert.Contains("Not allowed", await landing.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     private static async Task<(T Result, string Console)> CapturingConsoleAsync<T>(Func<Task<T>> action)

@@ -81,7 +81,7 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         Assert.Equal(HttpStatusCode.OK, ownerPage.StatusCode);
         Assert.DoesNotContain("href=\"/People\"", memberNav);
         Assert.Equal(HttpStatusCode.Redirect, memberPage.StatusCode);
-        Assert.Contains("/Login", memberPage.Headers.Location?.OriginalString);
+        Assert.Contains("/AccessDenied", memberPage.Headers.Location?.OriginalString);
         Assert.Equal(HttpStatusCode.Redirect, memberPost.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
         Assert.DoesNotContain("x@skanyxx.example", await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
