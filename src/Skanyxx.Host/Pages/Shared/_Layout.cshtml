@@ -75,10 +75,13 @@
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Infrastructure</div>
-                    <a href="/CloudTools" class="nav-item @(currentPage == "/CloudTools" ? "active" : "")" title="Cloud Tools">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cloud"/></svg></span>
-                        <span class="nav-label">Cloud Tools</span>
-                    </a>
+                    @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner))
+                    {
+                        <a href="/CloudTools" class="nav-item @(currentPage == "/CloudTools" ? "active" : "")" title="Cloud Tools">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cloud"/></svg></span>
+                            <span class="nav-label">Cloud Tools</span>
+                        </a>
+                    }
                     <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")" title="Tool Servers">
                         <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-server"/></svg></span>
                         <span class="nav-label">Tool Servers</span>

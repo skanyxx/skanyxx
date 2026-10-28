@@ -1036,10 +1036,12 @@ public sealed class PluginStudioTests(PostgresFixture fixture) : IAsyncLifetime
             if (method != "DELETE" || !path.Contains("/branches/"))
                 return;
             _git.OnRequest = null;
-            // The PR is closed by now, so a reinstall may store: the row is renewed after the close began.
+            // The PR is closed by now, so a reinstall may store: the row is renewed after the close began. Stamped with this
+            // process's clock, as the store handler does: Postgres's now() may lag it by the few ms the close takes.
             using var connection = new NpgsqlConnection(_database);
             connection.Open();
-            using var command = new NpgsqlCommand("UPDATE memory_studio_plugin_servers SET updated_at = now()", connection);
+            using var command = new NpgsqlCommand("UPDATE memory_studio_plugin_servers SET updated_at = @now", connection);
+            command.Parameters.AddWithValue("now", DateTime.UtcNow);
             command.ExecuteNonQuery();
         };
 

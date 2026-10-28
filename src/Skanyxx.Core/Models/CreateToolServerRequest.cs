@@ -1,20 +1,4 @@
 namespace Skanyxx.Core.Models;
 
-public class CreateToolServerRequest
-{
-    public string Type { get; set; } = "RemoteMCPServer";
-    public RemoteMCPServer? RemoteMCPServer { get; set; }
-    public MCPServer? McpServer { get; set; }
-}
-
-public class RemoteMCPServer
-{
-    public string Name { get; set; } = string.Empty;
-    public string Endpoint { get; set; } = string.Empty;
-}
-
-public class MCPServer
-{
-    public string Name { get; set; } = string.Empty;
-    public List<string> Command { get; set; } = new();
-}
+/// <summary>A RemoteMCPServer (streamable HTTP) to create in kagent: <c>namespace/name</c> and the server's URL.</summary>
+public sealed record CreateToolServerRequest(string? Name, string? Namespace, string? Url);

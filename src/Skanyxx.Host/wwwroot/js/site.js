@@ -82,7 +82,11 @@ function applyTheme(theme) {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM ready - site.js');
 
-    // Load theme from settings
+    // The theme is a signed-in read (ThemeController); a public page (sign-in, Privacy, Offline) keeps the default.
+    if (!document.querySelector('.header-user')) {
+        applyTheme('dark');
+        return;
+    }
     fetch('/api/settings/theme')
         .then(function(r) { return r.ok ? r.text() : 'dark'; })
         .then(function(theme) {

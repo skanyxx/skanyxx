@@ -15,12 +15,20 @@ public sealed partial class Browser(HostApp host)
 
     public async Task<HttpResponseMessage> GetAsync(string path) => await SendAsync(new HttpRequestMessage(HttpMethod.Get, path));
 
-    /// <summary>GETs <paramref name="page"/>, then posts <paramref name="fields"/> with the form's antiforgery token.</summary>
+    /// <summary>
+    /// GETs <paramref name="page"/>, then posts <paramref name="fields"/> with the form's antiforgery token and the
+    /// <c>Origin</c> a browser sends for that page: <c>null</c> under <c>Referrer-Policy: no-referrer</c> (Fetch spec),
+    /// the page's own origin otherwise. The origin guard sees the form as Chrome would post it.
+    /// </summary>
     public async Task<HttpResponseMessage> SubmitAsync(string page, Dictionary<string, string> fields, string? tokenFrom = null)
     {
-        var html = await (await GetAsync(tokenFrom ?? page)).Content.ReadAsStringAsync();
-        var token = AntiforgeryField().Match(html).Groups[1].Value;
-        return await PostFormAsync(page, new Dictionary<string, string>(fields) { ["__RequestVerificationToken"] = token });
+        var form = await GetAsync(tokenFrom ?? page);
+        var token = AntiforgeryField().Match(await form.Content.ReadAsStringAsync()).Groups[1].Value;
+        var origin = form.Headers.TryGetValues("Referrer-Policy", out var policy) && policy.Single() == "no-referrer"
+            ? "null"
+            : host.BaseAddress.GetLeftPart(UriPartial.Authority);
+        return await PostFormAsync(page, new Dictionary<string, string>(fields) { ["__RequestVerificationToken"] = token },
+            r => r.Headers.Add("Origin", origin));
     }
 
     public async Task<HttpResponseMessage> PostFormAsync(string page, Dictionary<string, string> fields, Action<HttpRequestMessage>? configure = null)

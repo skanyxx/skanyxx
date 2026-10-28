@@ -548,16 +548,6 @@ public class KAgentApiClient
         return await RequestAsync<List<ToolServer>>("/api/toolservers", HttpMethod.Get);
     }
 
-    public async Task<ToolServer> CreateToolServerAsync(CreateToolServerRequest request)
-    {
-        return await RequestAsync<ToolServer>("/api/toolservers", HttpMethod.Post, request);
-    }
-
-    public async Task DeleteToolServerAsync(string ns, string name)
-    {
-        await RequestAsync<object>($"/api/toolservers/{ns}/{name}", HttpMethod.Delete);
-    }
-
     public async Task<object> InvokeToolAsync(string serverRef, string toolName, object parameters)
     {
         return await RequestAsync<object>("/api/tools/invoke", HttpMethod.Post, new

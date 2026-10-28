@@ -218,6 +218,8 @@
 
 <script>
     let agents = [];
+    // Details opens /Debug, the owner's page (D247).
+    const canDebug = @Json.Serialize(User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner));
 
     async function loadAgents() {
         const grid = document.getElementById('agentGrid');
@@ -256,23 +258,30 @@
             const statusClass = getStatusClass(agent.status);
             const isReady = agent.status === 'Active' || agent.status === 'Ready';
             return `
-                <div class="agent-card" data-id="${agent.id}">
+                <div class="agent-card" data-id="${escapeHtml(agent.id)}">
                     <div class="agent-header">
                         <span class="agent-icon">&#x2B21;</span>
                         <div>
-                            <div class="agent-name">${agent.name}</div>
-                            <div class="agent-type text-muted">${agent.type || 'Declarative'}</div>
+                            <div class="agent-name">${escapeHtml(agent.name)}</div>
+                            <div class="agent-type text-muted">${escapeHtml(agent.type || 'Declarative')}</div>
                         </div>
-                        <span class="badge ${statusClass}">${isReady ? 'Ready' : (agent.status || 'Unknown')}</span>
+                        <span class="badge ${statusClass}">${isReady ? 'Ready' : escapeHtml(agent.status || 'Unknown')}</span>
                     </div>
-                    ${agent.description ? `<div class="agent-description">${agent.description}</div>` : ''}
+                    ${agent.description ? `<div class="agent-description">${escapeHtml(agent.description)}</div>` : ''}
                     <div class="agent-actions">
-                        <button class="btn btn-primary" onclick="startChat('${agent.name}')">Chat</button>
-                        <button class="btn btn-ghost" onclick="viewAgentDetails('${agent.id}')">Details</button>
+                        <button class="btn btn-primary" data-chat="${escapeHtml(agent.name)}">Chat</button>
+                        ${canDebug ? `<button class="btn btn-ghost" data-details="${escapeHtml(agent.id)}">Details</button>` : ''}
                     </div>
                 </div>
             `;
         }).join('');
+        grid.querySelectorAll('[data-chat]').forEach(b => b.addEventListener('click', () => startChat(b.dataset.chat)));
+        grid.querySelectorAll('[data-details]').forEach(b => b.addEventListener('click', () => viewAgentDetails(b.dataset.details)));
+    }
+
+    // Agent names and descriptions come from kagent, where anyone who can edit an Agent writes them (D246).
+    function escapeHtml(text) {
+        return String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
     }
 
     function getStatusClass(status) {

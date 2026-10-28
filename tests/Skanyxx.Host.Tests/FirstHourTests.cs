@@ -697,6 +697,8 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
     [InlineData("/Studio")]
     [InlineData("/Sandboxes")]
     [InlineData("/People")]
+    [InlineData("/Debug")]
+    [InlineData("/CloudTools")]
     public async Task Employee_OnAPageTheirRoleLacks_GetsA403Page_NotALoginLoop(string path)
     {
         var (_, employeeBrowser) = await EmployeeAsync();
@@ -708,6 +710,22 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.StartsWith("/AccessDenied", new Uri(_host.BaseAddress, denied.Headers.Location!).AbsolutePath);
         Assert.Equal(HttpStatusCode.Forbidden, landing.StatusCode);
         Assert.Contains("Not allowed", await landing.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>D247 (Chrome run): the Debug page and its API were open to every signed-in role, only its nav link was the owner's.</summary>
+    [Fact]
+    public async Task Employee_CannotReadOrWriteTheDebugLog_AndTheAgentsPageOffersNoDetailsLink()
+    {
+        var (api, browser) = await EmployeeAsync();
+
+        var logs = await api.GetAsync("/api/debug/logs", TestContext.Current.CancellationToken);
+        var write = await api.PostAsJsonAsync("/api/debug/log", new { level = "error", message = "forged" }, TestContext.Current.CancellationToken);
+        var agents = await (await browser.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, logs.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, write.StatusCode);
+        Assert.Contains("const canDebug = false;", agents);
+        Assert.DoesNotContain("href=\"/CloudTools\"", agents); // D248
     }
 
     private static async Task<(T Result, string Console)> CapturingConsoleAsync<T>(Func<Task<T>> action)

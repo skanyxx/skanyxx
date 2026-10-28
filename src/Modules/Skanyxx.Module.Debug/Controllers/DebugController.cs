@@ -1,11 +1,15 @@
 using MediatR;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Skanyxx.Core.Services;
 using Skanyxx.Core.MediatR.Requests;
 using Microsoft.Extensions.Logging;
+using Skanyxx.Core.Platform;
 
 namespace Skanyxx.Module.Debug.Controllers;
 
+// D247: kagent errors, agent names and a writable log are the owner's diagnostics, like the /Debug page.
+[Authorize(Roles = SkanyxxRoles.Owner)]
 [ApiController]
 [Route("api/[controller]")]
 public class DebugController : ControllerBase
