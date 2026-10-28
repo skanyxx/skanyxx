@@ -66,6 +66,7 @@ internal sealed class CompleteEntraSignInHandler(
 
         if (await accounts.SyncAsync(existing.Id, info.ProviderKey, mapping, ct) is not { } synced)
             return Outcome<SignedIn>.Forbidden(EntraSignInMessages.NoAccess);
+        await audit.WriteAsync(AuditActions.SignedIn, synced.Id, synced.Id, new { method = "microsoft" }, ct);
         return Outcome<SignedIn>.Ok(await sessions.StartAsync(synced, useCookie: true, ct));
     }
 }

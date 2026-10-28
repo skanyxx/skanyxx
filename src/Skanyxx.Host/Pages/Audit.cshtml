@@ -3,39 +3,561 @@
 @{
     ViewData["Title"] = "Audit";
 }
-@if (Model.Error is not null)
-{
-    <p class="text-error" role="alert">@Model.Error</p>
-}
-<div class="card mb-3">
-    <form method="get" class="flex gap-2 items-center">
-        <input name="action" value="@Model.Action" placeholder="action, e.g. person.disabled" maxlength="64" />
-        <input name="userId" value="@Model.UserId" placeholder="person id (actor or target)" maxlength="450" />
-        <button type="submit" class="btn btn-secondary">Filter</button>
+<div class="card mb-2 audit-querybar">
+    <form id="auditQuery" class="audit-row" autocomplete="off">
+        <input id="q" type="search" placeholder="Search actions, people, targets, IPs and details" maxlength="200" aria-label="Search" />
+        <select id="range" aria-label="Time range">
+            <option value="15m">Last 15 minutes</option>
+            <option value="1h">Last hour</option>
+            <option value="24h" selected>Last 24 hours</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="custom">Custom (UTC)</option>
+        </select>
+        <span id="customRange" class="audit-row" hidden>
+            <input id="from" type="datetime-local" step="1" aria-label="From (UTC)" />
+            <input id="to" type="datetime-local" step="1" aria-label="To (UTC)" />
+        </span>
+        <button type="submit" class="btn btn-primary">Refresh</button>
     </form>
-    <p class="text-muted">Identity changes and refusals, newest first. Rows older than Identity:AuditRetentionDays are removed.</p>
+    <div class="audit-row mt-1">
+        <select id="chipField" aria-label="Filter field">
+            <option value="action">action</option>
+            <option value="actor">actor</option>
+            <option value="target">target</option>
+            <option value="module">module</option>
+            <option value="outcome">outcome</option>
+            <option value="ip">ip</option>
+            <option value="role">role</option>
+        </select>
+        <select id="chipOp" aria-label="Filter operator">
+            <option value="f">is</option>
+            <option value="nf">is not</option>
+        </select>
+        <input id="chipValue" list="chipSuggestions" placeholder="value, or (none)" maxlength="450" aria-label="Filter value" />
+        <datalist id="chipSuggestions"></datalist>
+        <button type="button" id="addChip" class="btn btn-secondary">+ Add filter</button>
+        <span class="audit-spacer"></span>
+        <select id="views" aria-label="Saved views"><option value="">Saved views</option></select>
+        <button type="button" id="saveView" class="btn btn-ghost">Save view</button>
+        <button type="button" id="deleteView" class="btn btn-ghost">Delete view</button>
+    </div>
+    <div id="chips" class="audit-chips" aria-live="polite"></div>
+    <p id="error" class="text-error" role="alert" hidden></p>
 </div>
-<div class="table-container card">
-    <table>
-        <thead>
-            <tr><th>When (UTC)</th><th>Action</th><th>Actor</th><th>Target</th><th title="The connection's address: behind a reverse proxy or ingress this is the proxy, not the person.">Client (direct peer)</th><th>Details</th></tr>
-        </thead>
-        <tbody>
-            @foreach (var entry in Model.Entries)
-            {
-                <tr>
-                    <td>@entry.At.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss")</td>
-                    <td><code>@entry.Action</code></td>
-                    <td>@Model.Name(entry.ActorId)</td>
-                    <td>@Model.Name(entry.TargetId)</td>
-                    <td>@entry.RemoteIp</td>
-                    <td><code>@entry.Details?.GetRawText()</code></td>
-                </tr>
+
+<div class="card mb-2">
+    <div class="audit-row">
+        <strong id="hits">…</strong>
+        <span class="text-muted" id="rangeLabel"></span>
+        <span class="audit-spacer"></span>
+        <span class="text-muted">Drag across the chart, or click a bar, to zoom in.</span>
+    </div>
+    <div class="audit-histogram"><canvas id="histogram" aria-label="Events over time by outcome" role="img"></canvas><div id="brush" class="audit-brush" hidden></div></div>
+</div>
+
+<div class="audit-layout">
+    <aside class="card audit-fields" aria-label="Fields">
+        <h3 class="card-title mb-1">Fields</h3>
+        <div id="fields" class="text-muted">Loading…</div>
+    </aside>
+    <section>
+        <div class="audit-cards">
+            <div class="card audit-chart"><h4>Top actors</h4><canvas id="topActors"></canvas></div>
+            <div class="card audit-chart"><h4>Top actions</h4><canvas id="topActions"></canvas></div>
+            <div class="card audit-chart"><h4>Refusals and failures</h4><canvas id="refusals"></canvas></div>
+            <div class="card audit-chart"><h4>Sign-ins</h4><canvas id="signIns"></canvas></div>
+            <div class="card audit-chart"><h4>Admin changes</h4><canvas id="adminChanges"></canvas></div>
+        </div>
+        <div class="card">
+            <div class="audit-row mb-1">
+                <h3 class="card-title">Events</h3>
+                <span class="audit-spacer"></span>
+                <a id="exportCsv" class="btn btn-secondary" href="#" download>Export CSV</a>
+                <a id="exportJson" class="btn btn-secondary" href="#" download>Export JSON</a>
+            </div>
+            <p class="text-muted mb-1">Exports hold the current query (at most 10,000 rows), redacted; each export is itself audited. The client address is the connection's: behind a proxy it is the proxy.</p>
+            <div class="table-container">
+                <table class="audit-table">
+                    <thead><tr><th><button type="button" id="sort" class="audit-sort" title="Sort by time">Time (UTC) ▼</button></th><th>Action</th><th>Actor</th><th>Target</th><th>Outcome</th></tr></thead>
+                    <tbody id="rows"></tbody>
+                </table>
+            </div>
+            <button type="button" id="more" class="btn btn-ghost audit-more" hidden>Load more</button>
+        </div>
+    </section>
+</div>
+
+<script type="application/json" id="auditPeople">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.People))</script>
+<script type="application/json" id="auditUser">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.UserId))</script>
+
+<style>
+    .audit-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .audit-row input, .audit-row select { padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
+    #q { flex: 1 1 320px; }
+    .mt-1 { margin-top: 8px; }
+    .audit-spacer { flex: 1; }
+    .audit-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .audit-chip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 4px 3px 10px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); font-size: 12px; }
+    .audit-chip.exclude { border-color: var(--error-color); }
+    .audit-chip button, .audit-value button { background: none; border: 0; color: var(--text-secondary); cursor: pointer; padding: 0 6px; font-size: 14px; }
+    .audit-histogram { position: relative; height: 180px; margin-top: 8px; }
+    .audit-brush { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent-color) 25%, transparent); pointer-events: none; }
+    .audit-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .audit-fields h5 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; color: var(--text-muted); }
+    .audit-value { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; font-size: 12px; gap: 2px; }
+    .audit-value span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .audit-bar { grid-column: 1 / -1; height: 3px; background: var(--accent-color); border-radius: 2px; margin-bottom: 4px; }
+    .audit-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
+    .audit-chart { height: 220px; display: flex; flex-direction: column; padding: 12px; }
+    .audit-chart h4 { font-size: 13px; margin-bottom: 6px; }
+    .audit-chart canvas { flex: 1; min-height: 0; }
+    .audit-table td, .audit-table th { padding: 8px 12px; }
+    .audit-table tbody tr.audit-hit { cursor: pointer; }
+    .audit-detail td { background: var(--bg-primary); }
+    .audit-detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr) auto; gap: 4px 12px; font-size: 12px; margin-bottom: 8px; }
+    .audit-detail dt { color: var(--text-muted); }
+    .audit-detail dd { overflow-wrap: anywhere; }
+    .audit-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--bg-tertiary); padding: 8px; border-radius: 6px; }
+    .audit-sort { background: none; border: 0; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
+    .audit-more { width: 100%; margin-top: 8px; }
+    @@media (max-width: 900px) { .audit-layout { grid-template-columns: 1fr; } }
+</style>
+
+@section Scripts {
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+(function () {
+    'use strict';
+
+    var API = '/api/identity/audit/';
+    var RANGES = { '15m': 15 * 60e3, '1h': 3600e3, '24h': 24 * 3600e3, '7d': 7 * 86400e3, '30d': 30 * 86400e3 };
+    var ADMIN_LABELS = { roles: 'Roles', people: 'People', agents: 'Agents', models: 'Models', toolServers: 'Tool servers', org: 'Org', signInSettings: 'Sign-in settings' };
+    var people = JSON.parse(document.getElementById('auditPeople').textContent);
+    var viewsKey = 'skanyxx.audit.views.' + JSON.parse(document.getElementById('auditUser').textContent);
+    var $ = function (id) { return document.getElementById(id); };
+
+    // The query lives in the URL hash, so a view is a link and Refresh keeps a relative range relative.
+    var state = { q: '', range: '24h', from: null, to: null, f: [], nf: [], sort: 'desc' };
+    var page = { next: null, loading: false, buckets: [], interval: 0 };
+    var charts = {};
+    // Latest query wins: an answer to an older one is dropped.
+    var generation = 0;
+
+    function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
+
+    function name(id) { return id == null ? '' : (people[id] || id); }
+
+    function css(variable) { return getComputedStyle(document.documentElement).getPropertyValue(variable).trim(); }
+
+    // Read at every render, so the charts follow the theme the page is in.
+    function palette() {
+        return {
+            success: css('--success-color'), refused: css('--warning-color'), failed: css('--error-color'),
+            accent: css('--accent-color'), text: css('--text-muted'), grid: css('--border-color')
+        };
+    }
+
+    function utc(date) { return date.toISOString().replace('T', ' ').slice(0, 19); }
+
+    function window_() {
+        if (state.range === 'custom') return { from: new Date(state.from), to: new Date(state.to) };
+        var to = new Date();
+        return { from: new Date(to.getTime() - RANGES[state.range]), to: to };
+    }
+
+    function params(extra) {
+        var w = window_();
+        var p = new URLSearchParams();
+        p.set('from', w.from.toISOString());
+        p.set('to', w.to.toISOString());
+        if (state.q) p.set('q', state.q);
+        state.f.forEach(function (c) { p.append('f', c); });
+        state.nf.forEach(function (c) { p.append('nf', c); });
+        Object.keys(extra || {}).forEach(function (k) { p.set(k, extra[k]); });
+        return p;
+    }
+
+    function readHash() {
+        var h = new URLSearchParams(location.hash.slice(1));
+        state.q = h.get('q') || '';
+        state.range = h.get('range') || '24h';
+        state.from = h.get('from');
+        state.to = h.get('to');
+        state.f = h.getAll('f');
+        state.nf = h.getAll('nf');
+        state.sort = h.get('sort') === 'asc' ? 'asc' : 'desc';
+        if (state.range === 'custom' && !(state.from && state.to)) state.range = '24h';
+        if (state.range !== 'custom' && !RANGES[state.range]) state.range = '24h';
+    }
+
+    function writeHash() {
+        var h = new URLSearchParams();
+        if (state.q) h.set('q', state.q);
+        h.set('range', state.range);
+        if (state.range === 'custom') { h.set('from', state.from); h.set('to', state.to); }
+        state.f.forEach(function (c) { h.append('f', c); });
+        state.nf.forEach(function (c) { h.append('nf', c); });
+        if (state.sort === 'asc') h.set('sort', 'asc');
+        history.replaceState(null, '', '#' + h.toString());
+    }
+
+    function toInput(iso) { return iso ? iso.slice(0, 19) : ''; }
+    function fromInput(value) { return value ? new Date(value + 'Z').toISOString() : null; }
+
+    function syncForm() {
+        $('q').value = state.q;
+        $('range').value = state.range;
+        $('customRange').hidden = state.range !== 'custom';
+        if (state.range === 'custom') { $('from').value = toInput(state.from); $('to').value = toInput(state.to); }
+        $('sort').textContent = 'Time (UTC) ' + (state.sort === 'asc' ? '▲' : '▼');
+        $('chips').innerHTML = state.f.map(function (c, i) { return chip(c, 'f', i); }).concat(state.nf.map(function (c, i) { return chip(c, 'nf', i); })).join('');
+    }
+
+    function chip(c, kind, index) {
+        var field = c.slice(0, c.indexOf(':'));
+        var value = c.slice(c.indexOf(':') + 1);
+        var shown = field === 'actor' || field === 'target' ? name(value) : value;
+        return '<span class="audit-chip' + (kind === 'nf' ? ' exclude' : '') + '">' + (kind === 'nf' ? 'NOT ' : '') + esc(field) + ': ' + esc(shown) +
+            '<button type="button" data-remove="' + kind + ':' + index + '" aria-label="Remove filter">×</button></span>';
+    }
+
+    function addChip(field, value, exclude) {
+        var c = field + ':' + value;
+        var list = exclude ? state.nf : state.f;
+        var other = exclude ? state.f : state.nf;
+        if (other.indexOf(c) >= 0) other.splice(other.indexOf(c), 1);
+        if (list.indexOf(c) < 0) list.push(c);
+        run();
+    }
+
+    function getJson(path, extra) {
+        return fetch(API + path + '?' + params(extra).toString(), { headers: { Accept: 'application/json' } }).then(function (r) {
+            if (r.ok) return r.json();
+            return r.json().catch(function () { return {}; }).then(function (body) {
+                var errors = body.errors ? Object.values(body.errors).flat().join(' ') : '';
+                throw new Error(errors || body.detail || body.title || ('HTTP ' + r.status));
+            });
+        });
+    }
+
+    function showError(err) {
+        $('error').hidden = !err;
+        $('error').textContent = err ? err.message : '';
+    }
+
+    function run() {
+        writeHash();
+        syncForm();
+        showError(null);
+        var w = window_();
+        $('rangeLabel').textContent = utc(w.from) + ' → ' + utc(w.to) + ' UTC';
+        $('exportCsv').href = API + 'export?' + params({ format: 'csv', sort: state.sort }).toString();
+        $('exportJson').href = API + 'export?' + params({ format: 'json', sort: state.sort }).toString();
+        $('rows').innerHTML = '';
+        page.next = null;
+        page.loading = false;
+        var gen = ++generation;
+        var current = function (draw) { return function (data) { if (gen === generation) draw(data); }; };
+        Promise.all([loadRows(true), getJson('histogram').then(current(drawHistogram)), getJson('fields').then(current(drawFields)),
+            getJson('analytics').then(current(drawAnalytics))]).catch(showError);
+    }
+
+    // ---- results ----
+
+    function loadRows(first) {
+        if (page.loading || (!first && !page.next)) return Promise.resolve();
+        page.loading = true;
+        var gen = generation;
+        var extra = { sort: state.sort, limit: 50 };
+        if (!first) { extra.afterAt = page.next.at; extra.afterId = page.next.id; }
+        return getJson('search', extra).then(function (data) {
+            if (gen !== generation) return;
+            $('hits').textContent = data.total.toLocaleString() + (data.total === 1 ? ' hit' : ' hits');
+            if (first && data.entries.length === 0) $('rows').innerHTML = '<tr><td colspan="5" class="text-muted">No events match this query.</td></tr>';
+            data.entries.forEach(appendRow);
+            page.next = data.next;
+            $('more').hidden = !data.next;
+        }).finally(function () { if (gen === generation) page.loading = false; });
+    }
+
+    function badge(outcome) {
+        var kind = outcome === 'success' ? 'badge-success' : outcome === 'refused' ? 'badge-warning' : 'badge-error';
+        return '<span class="badge ' + kind + '">' + esc(outcome) + '</span>';
+    }
+
+    function appendRow(e) {
+        var tr = document.createElement('tr');
+        tr.className = 'audit-hit';
+        tr.tabIndex = 0;
+        tr.innerHTML = '<td>' + esc(utc(new Date(e.at))) + '</td><td><code>' + esc(e.action) + '</code></td><td>' + esc(name(e.actorId)) +
+            '</td><td>' + esc(name(e.targetId)) + '</td><td>' + badge(e.outcome) + '</td>';
+        var open = null;
+        function toggle() {
+            if (open) { open.remove(); open = null; return; }
+            open = document.createElement('tr');
+            open.className = 'audit-detail';
+            open.innerHTML = '<td colspan="5">' + detail(e) + '</td>';
+            tr.after(open);
+        }
+        tr.addEventListener('click', toggle);
+        tr.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') toggle(); });
+        $('rows').appendChild(tr);
+    }
+
+    function filterButtons(field, value) {
+        var v = value == null ? '(none)' : value;
+        return '<span><button type="button" class="btn btn-ghost" data-add="' + esc(field) + '" data-value="' + esc(v) + '" title="Filter for this value">+</button>' +
+            '<button type="button" class="btn btn-ghost" data-exclude="' + esc(field) + '" data-value="' + esc(v) + '" title="Filter out this value">−</button></span>';
+    }
+
+    function flatten(prefix, value, out) {
+        if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
+            Object.keys(value).forEach(function (k) { flatten(prefix ? prefix + '.' + k : k, value[k], out); });
+        } else {
+            out.push([prefix, Array.isArray(value) ? JSON.stringify(value) : value]);
+        }
+        return out;
+    }
+
+    function detail(e) {
+        var fields = [
+            ['time', utc(new Date(e.at)) + ' UTC', null], ['action', e.action, 'action'], ['module', e.module, 'module'], ['outcome', e.outcome, 'outcome'],
+            ['actor', e.actorId ? name(e.actorId) + (people[e.actorId] ? ' (' + e.actorId + ')' : '') : '(none)', 'actor', e.actorId],
+            ['target', e.targetId ? name(e.targetId) + (people[e.targetId] ? ' (' + e.targetId + ')' : '') : '(none)', 'target', e.targetId],
+            ['ip', e.remoteIp || '(none)', 'ip', e.remoteIp]
+        ];
+        var rows = fields.map(function (f) {
+            var value = f.length > 3 ? f[3] : f[1];
+            return '<dt>' + esc(f[0]) + '</dt><dd>' + esc(f[1]) + '</dd>' + (f[2] ? filterButtons(f[2], value) : '<span></span>');
+        });
+        if (e.details) flatten('details', e.details, []).forEach(function (kv) {
+            rows.push('<dt>' + esc(kv[0]) + '</dt><dd>' + esc(kv[1]) + '</dd><span></span>');
+        });
+        return '<dl>' + rows.join('') + '</dl><pre>' + esc(JSON.stringify(e, null, 2)) + '</pre>';
+    }
+
+    // ---- fields ----
+
+    function drawFields(stats) {
+        var suggestions = {};
+        $('fields').innerHTML = stats.map(function (s) {
+            suggestions[s.field] = s.values.map(function (v) { return v.value; });
+            var values = s.values.length === 0 ? '<div class="text-muted">No values</div>' : s.values.map(function (v) {
+                var pct = s.total ? Math.round(v.count * 1000 / s.total) / 10 : 0;
+                var shown = s.field === 'actor' || s.field === 'target' ? name(v.value) : v.value;
+                return '<div class="audit-value"><span title="' + esc(v.value) + '">' + esc(shown) + '</span><span class="text-muted">' + v.count + ' · ' + pct + '%</span>' +
+                    filterButtons(s.field, v.value) + '<div class="audit-bar" style="width:' + Math.min(pct, 100) + '%"></div></div>';
+            }).join('');
+            return '<h5>' + esc(s.field) + '</h5>' + values;
+        }).join('');
+        fieldSuggestions = suggestions;
+        suggest();
+        var by = {};
+        stats.forEach(function (st) { by[st.field] = st; });
+        topBars('topActors', by.actor, name);
+        topBars('topActions', by.action, function (v) { return v; });
+    }
+
+    var fieldSuggestions = {};
+    function suggest() {
+        $('chipSuggestions').innerHTML = (fieldSuggestions[$('chipField').value] || []).map(function (v) { return '<option value="' + esc(v) + '"></option>'; }).join('');
+    }
+
+    // ---- charts ----
+
+    // flags: stacked, horizontal, legend ('top', 'right' or false), onClick(index).
+    function chart(id, type, labels, datasets, flags) {
+        if (!window.Chart) {
+            if ($(id)) $(id).replaceWith(Object.assign(document.createElement('p'), { className: 'text-muted', textContent: 'Charts could not load.' }));
+            return;
+        }
+        if (charts[id]) charts[id].destroy();
+        var p = palette();
+        var axis = function (stacked) {
+            return { stacked: stacked, beginAtZero: true, ticks: { color: p.text, precision: 0, maxRotation: 0, autoSkipPadding: 12 }, grid: { color: p.grid } };
+        };
+        charts[id] = new window.Chart($(id), {
+            type: type,
+            data: { labels: labels, datasets: datasets },
+            options: {
+                responsive: true, maintainAspectRatio: false, animation: false,
+                indexAxis: flags.horizontal ? 'y' : 'x',
+                plugins: { legend: flags.legend ? { position: flags.legend, labels: { color: p.text, boxWidth: 10 } } : { display: false } },
+                scales: { x: axis(!!flags.stacked), y: axis(!!flags.stacked) },
+                onClick: flags.onClick && function (_, items) { if (items.length) flags.onClick(items[0].index); }
             }
-        </tbody>
-    </table>
-</div>
-@if (Model.Entries.Count == AuditModel.PageSize)
-{
-    <p><a href="/Audit?action=@Uri.EscapeDataString(Model.Action ?? "")&userId=@Uri.EscapeDataString(Model.UserId ?? "")&before=@Model.Entries[^1].Id">Older</a></p>
+        });
+    }
+
+    function bucketLabel(at, interval) {
+        var s = utc(new Date(at));
+        return interval >= 86400 ? s.slice(0, 10) : interval >= 60 ? s.slice(5, 16) : s.slice(11, 19);
+    }
+
+    function series(label, data, color, line) {
+        return line
+            ? { label: label, data: data, borderColor: color, backgroundColor: color, pointRadius: 0, tension: 0.2 }
+            : { label: label, data: data, backgroundColor: color };
+    }
+
+    function drawHistogram(h) {
+        page.buckets = h.buckets;
+        page.interval = h.intervalSeconds;
+        var p = palette();
+        var labels = h.buckets.map(function (b) { return bucketLabel(b.at, h.intervalSeconds); });
+        var count = function (key) { return h.buckets.map(function (b) { return b[key]; }); };
+        chart('histogram', 'bar', labels,
+            [series('success', count('success'), p.success), series('refused', count('refused'), p.refused), series('failed', count('failed'), p.failed)],
+            { stacked: true, legend: 'right' });
+        chart('refusals', 'line', labels,
+            [series('refused', count('refused'), p.refused, true), series('failed', count('failed'), p.failed, true)], { legend: 'top' });
+    }
+
+    // Top actors and actions come from the field stats, so they always agree with the side panel.
+    function topBars(id, stat, label) {
+        var values = stat.values.filter(function (v) { return v.value !== '(none)'; });
+        chart(id, 'bar', values.map(function (v) { return label(v.value); }), [series('events', values.map(function (v) { return v.count; }), palette().accent)],
+            { horizontal: true, onClick: function (i) { addChip(stat.field, values[i].value, false); } });
+    }
+
+    function drawAnalytics(a) {
+        var p = palette();
+        chart('signIns', 'bar', a.signIns.map(function (b) { return bucketLabel(b.at, a.intervalSeconds); }),
+            [series('succeeded', a.signIns.map(function (b) { return b.succeeded; }), p.success), series('failed', a.signIns.map(function (b) { return b.failed; }), p.failed)],
+            { stacked: true, legend: 'top' });
+        chart('adminChanges', 'bar', a.adminChanges.map(function (v) { return ADMIN_LABELS[v.value] || v.value; }),
+            [series('changes', a.adminChanges.map(function (v) { return v.count; }), p.accent)], { horizontal: true });
+    }
+
+    // ---- zoom on the histogram ----
+
+    function bucketAt(ev) {
+        var c = charts.histogram;
+        if (!c || page.buckets.length === 0) return null;
+        var x = ev.clientX - c.canvas.getBoundingClientRect().left;
+        var index = Math.round(c.scales.x.getValueForPixel(x));
+        return Math.max(0, Math.min(page.buckets.length - 1, index));
+    }
+
+    function zoom(a, b) {
+        var lo = Math.min(a, b), hi = Math.max(a, b);
+        state.range = 'custom';
+        state.from = new Date(page.buckets[lo].at).toISOString();
+        state.to = new Date(new Date(page.buckets[hi].at).getTime() + page.interval * 1000).toISOString();
+        run();
+    }
+
+    var dragStart = null, dragX = 0;
+    $('histogram').addEventListener('mousedown', function (ev) { dragStart = bucketAt(ev); dragX = ev.offsetX; });
+    $('histogram').addEventListener('mousemove', function (ev) {
+        if (dragStart == null) return;
+        var brush = $('brush');
+        brush.hidden = false;
+        brush.style.left = Math.min(dragX, ev.offsetX) + 'px';
+        brush.style.width = Math.abs(ev.offsetX - dragX) + 'px';
+    });
+    document.addEventListener('mouseup', function (ev) {
+        if (dragStart == null) return;
+        var end = ev.target === $('histogram') ? bucketAt(ev) : null;
+        $('brush').hidden = true;
+        var start = dragStart;
+        dragStart = null;
+        if (end != null && start != null) zoom(start, end);
+    });
+
+    // ---- saved views (this browser, per owner) ----
+
+    function loadViews() {
+        try { return JSON.parse(localStorage.getItem(viewsKey)) || []; } catch (e) { return []; }
+    }
+
+    function storeViews(views) {
+        try { localStorage.setItem(viewsKey, JSON.stringify(views)); } catch (e) { showError(new Error('Views cannot be saved in this browser.')); }
+        drawViews();
+    }
+
+    function drawViews() {
+        $('views').innerHTML = '<option value="">Saved views</option>' + loadViews().map(function (v, i) { return '<option value="' + i + '">' + esc(v.name) + '</option>'; }).join('');
+    }
+
+    // ---- wiring ----
+
+    $('auditQuery').addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        state.q = $('q').value.trim();
+        state.range = $('range').value;
+        if (state.range === 'custom') {
+            state.from = fromInput($('from').value) || window_().from.toISOString();
+            state.to = fromInput($('to').value) || new Date().toISOString();
+        }
+        run();
+    });
+    $('range').addEventListener('change', function () {
+        if ($('range').value === 'custom') {
+            var w = window_();
+            state.from = w.from.toISOString();
+            state.to = w.to.toISOString();
+            state.range = 'custom';
+            syncForm();
+            return;
+        }
+        state.range = $('range').value;
+        run();
+    });
+    $('chipField').addEventListener('change', suggest);
+    $('addChip').addEventListener('click', function () {
+        var value = $('chipValue').value.trim();
+        if (!value) return;
+        $('chipValue').value = '';
+        addChip($('chipField').value, value, $('chipOp').value === 'nf');
+    });
+    document.addEventListener('click', function (ev) {
+        var t = ev.target.closest('button');
+        if (!t) return;
+        if (t.dataset.remove) {
+            var parts = t.dataset.remove.split(':');
+            state[parts[0]].splice(Number(parts[1]), 1);
+            run();
+        } else if (t.dataset.add || t.dataset.exclude) {
+            ev.stopPropagation();
+            addChip(t.dataset.add || t.dataset.exclude, t.dataset.value, !!t.dataset.exclude);
+        }
+    });
+    $('sort').addEventListener('click', function () { state.sort = state.sort === 'asc' ? 'desc' : 'asc'; run(); });
+    $('more').addEventListener('click', function () { loadRows(false).catch(showError); });
+    new IntersectionObserver(function (entries) {
+        if (entries[0].isIntersecting && !$('more').hidden) loadRows(false).catch(showError);
+    }).observe($('more'));
+    $('saveView').addEventListener('click', function () {
+        var label = prompt('Name this view');
+        if (!label) return;
+        var views = loadViews().filter(function (v) { return v.name !== label; });
+        views.push({ name: label.slice(0, 80), hash: location.hash });
+        storeViews(views);
+    });
+    $('deleteView').addEventListener('click', function () {
+        var i = $('views').value;
+        if (i === '') return;
+        var views = loadViews();
+        views.splice(Number(i), 1);
+        storeViews(views);
+    });
+    $('views').addEventListener('change', function () {
+        var v = loadViews()[Number($('views').value)];
+        if (!v) return;
+        history.replaceState(null, '', v.hash);
+        readHash();
+        run();
+    });
+
+    readHash();
+    drawViews();
+    run();
+})();
+</script>
 }

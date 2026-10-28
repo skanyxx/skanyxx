@@ -18,7 +18,8 @@ internal sealed class IdentityAudit(AccountsDbContext db, ClientAddress client, 
 
     public Task WriteAsync(string action, string? actorId, string? targetId, object? details, CancellationToken ct, string? remoteIp = null)
     {
-        var json = details is null ? null : JsonSerializer.Serialize(details, Json);
+        // Redacted here, at write time: a caller's details never reach the table with a secret or prompt text in them.
+        var json = details is null ? null : AuditRedactor.Redact(JsonSerializer.SerializeToNode(details, Json))?.ToJsonString();
         var ip = remoteIp ?? client.Current?.ToString();
         return db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO identity_audit ("AtUtc", "Action", "ActorId", "TargetId", "RemoteIp", "Details")

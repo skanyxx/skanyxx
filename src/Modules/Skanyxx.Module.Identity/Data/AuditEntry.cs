@@ -18,4 +18,10 @@ public sealed class AuditEntry
 
     public string? RemoteIp { get; set; }
     public string? Details { get; set; }
+
+    /// <summary>The action's area, <c>person</c> of <c>person.disabled</c>; computed by Postgres from <see cref="Action"/>.</summary>
+    public string Module { get; private set; } = "";
+
+    /// <summary><c>refused</c>, <c>failed</c> or <c>success</c>, read off the action's last word; computed by Postgres.</summary>
+    public string Outcome { get; private set; } = "";
 }

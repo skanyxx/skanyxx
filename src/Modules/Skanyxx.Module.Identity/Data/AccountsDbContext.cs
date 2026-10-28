@@ -103,6 +103,12 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
             audit.HasIndex(a => a.ActorId);
             // The Audit page's action filter, newest first (keyset on Id).
             audit.HasIndex(a => new { a.Action, a.Id });
+            // The explorer's module and outcome filters and histogram: stored, so they are indexed like any column.
+            audit.Property(a => a.Module).HasMaxLength(64).HasComputedColumnSql(AuditColumns.ModuleSql, stored: true);
+            audit.Property(a => a.Outcome).HasMaxLength(16).HasComputedColumnSql(AuditColumns.OutcomeSql, stored: true);
+            audit.HasIndex(a => new { a.Module, a.AtUtc });
+            audit.HasIndex(a => new { a.Outcome, a.AtUtc });
+            audit.HasIndex(a => a.RemoteIp);
         });
         builder.Entity<JobRun>(run =>
         {

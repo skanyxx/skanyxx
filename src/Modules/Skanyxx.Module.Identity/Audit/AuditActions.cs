@@ -15,6 +15,8 @@ internal static class AuditActions
     public const string Enabled = "person.enabled";
     public const string EntraLoginRemoved = "person.entra_login_removed";
 
+    public const string SignedIn = "signin.succeeded";
+    public const string SignInRefused = "signin.refused";
     public const string BootstrapTokenSignIn = "signin.bootstrap_token";
     public const string ManagedPasswordRefused = "signin.managed_password_refused";
     public const string ManagedRefreshRefused = "refresh.managed_refused";
@@ -46,4 +48,5 @@ internal static class AuditActions
     public const string OwnerRouteRefused = "route.owner_refused";
 
     public const string RetentionPurged = "audit.retention_purged";
+    public const string Exported = "audit.exported";
 }

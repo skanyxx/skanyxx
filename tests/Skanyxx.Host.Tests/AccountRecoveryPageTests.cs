@@ -92,6 +92,7 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
         Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
     }
 
+    /// <summary>D275: the page is the explorer's shell with the people's emails; its data comes from the owner-only API, over the session cookie.</summary>
     [Fact]
     public async Task TheAuditPage_IsTheOwnersOnly_AndNamesPeople()
     {
@@ -100,18 +101,23 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
         var ownerNav = await (await _owner.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var page = await _owner.GetAsync("/Audit");
         var html = await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        var filtered = await (await _owner.GetAsync("/Audit?action=invite.accepted")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var all = await (await _owner.GetAsync("/api/identity/audit/search")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var filtered = await (await _owner.GetAsync("/api/identity/audit/search?f=action:invite.accepted")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var memberNav = await (await member.GetAsync("/Agents")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var memberPage = await member.GetAsync("/Audit");
+        var memberApi = await member.GetAsync("/api/identity/audit/search");
 
         Assert.Contains("href=\"/Audit\"", ownerNav);
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
-        Assert.Contains("invite.created", html);
-        Assert.Contains("invite.accepted", html);
-        Assert.Contains(HostApp.OwnerEmail, html); // the actor's id shown as their email
+        Assert.Contains("id=\"histogram\"", html);
+        Assert.Contains("chart.umd.min.js", html);
+        Assert.Contains(HostApp.OwnerEmail, html); // ids shown as emails
+        Assert.Contains("invite.created", all);
+        Assert.Contains("invite.accepted", filtered);
         Assert.DoesNotContain("invite.created", filtered);
         Assert.DoesNotContain("href=\"/Audit\"", memberNav);
         Assert.Equal(HttpStatusCode.Redirect, memberPage.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, memberApi.StatusCode);
     }
 
     /// <summary>

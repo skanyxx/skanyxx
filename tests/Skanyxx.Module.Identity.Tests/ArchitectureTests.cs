@@ -48,7 +48,7 @@ public sealed class ArchitectureTests
             .Select(i => i.GetGenericArguments()[0])
             .ToList();
 
-        Assert.Equal(35, requests.Count);
+        Assert.Equal(40, requests.Count); // D275 added the five audit explorer requests
         foreach (var request in requests)
             Assert.True(validated.Count(v => v == request) == 1, $"{request.Name} must have exactly one validator.");
     }

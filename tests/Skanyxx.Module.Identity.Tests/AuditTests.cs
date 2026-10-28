@@ -50,7 +50,8 @@ public sealed class AuditTests(PostgresFixture postgres) : IdentityTestBase(post
         await Owner().DeleteAsync($"/api/identity/org/teams/web/members/{memberId}", TestContext.Current.CancellationToken);
         await App.AcceptAsync("skx_inv_not-a-real-token");
 
-        var rows = await Postgres.AuditAsync();
+        // Sign-ins (D275) have their own tests; this one is about the admin changes around them.
+        var rows = (await Postgres.AuditAsync()).Where(r => r.Module != "signin").ToList();
         string[] expected =
         [
             AuditActions.InviteCreated, AuditActions.InviteAccepted, AuditActions.InviteCreated, AuditActions.InviteRevoked,
