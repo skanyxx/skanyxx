@@ -12,6 +12,7 @@ using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Formatting.Compact;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
 
 // `open` / `url`: the launchers' verbs, which open Skanyxx:RemoteUrl and exit without starting a host (D234).
 if (OpenCommand.Run(args) is { } exitCode)
@@ -76,7 +77,12 @@ public partial class Program
             telemetry.UseOtlpExporter();
 
         // Add services to the container.
-        builder.Services.AddRazorPages();
+        builder.Services.AddRazorPages(options =>
+        {
+            // D272: with Microsoft sign-in off for this install, /Entra has no route at all (404 for everyone).
+            if (!EntraSwitch.IsOn(builder.Configuration))
+                options.Conventions.AddPageRouteModelConvention("/Entra", page => page.Selectors.Clear());
+        });
         var mvcBuilder = builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddHttpClient();

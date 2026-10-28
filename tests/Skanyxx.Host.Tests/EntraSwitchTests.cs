@@ -40,6 +40,22 @@ public sealed class EntraSwitchTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task SwitchOff_TheEntraPageDoesNotExist_NotEvenAs403()
+    {
+        var api = await _host.OwnerAsync();
+        var invite = await api.PostAsJsonAsync("/api/identity/invites", new { email = "eli@skanyxx.example", roles = new[] { "employee" } }, Ct);
+        var token = Uri.UnescapeDataString(new Uri((await invite.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>(Ct)).GetProperty("link").GetString()!).Query.Split("token=")[1]);
+        Assert.Equal(HttpStatusCode.Created, (await _host.Client().PostAsJsonAsync("/api/identity/invites/accept", new { token, password = "a long member passphrase" }, Ct)).StatusCode);
+        var employee = new Browser(_host);
+        await employee.SubmitAsync("/Login", new() { ["Email"] = "eli@skanyxx.example", ["Password"] = "a long member passphrase" });
+
+        Assert.Equal(HttpStatusCode.NotFound, (await employee.GetAsync("/Entra")).StatusCode);
+        // Anonymous: exactly what any page that does not exist answers (the fallback policy's sign-in redirect).
+        var anonymous = new Browser(_host);
+        Assert.Equal((await anonymous.GetAsync("/NoSuchPage")).StatusCode, (await anonymous.GetAsync("/Entra")).StatusCode);
+    }
+
+    [Fact]
     public async Task SwitchOff_TheLoginPageHasNoMicrosoftButton()
     {
         await _host.OwnerAsync();
