@@ -54,7 +54,7 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         Assert.DoesNotContain(token, later);
         Assert.Contains(MemberEmail, later); // pending, without its token
         Assert.Equal(HttpStatusCode.OK, acceptPage.StatusCode);
-        Assert.Equal("no-referrer", acceptPage.Headers.GetValues("Referrer-Policy").Single());
+        Assert.Equal("strict-origin", acceptPage.Headers.GetValues("Referrer-Policy").Single());
         Assert.Contains(MemberEmail, acceptHtml);
         Assert.Contains("builder", acceptHtml);
         Assert.Equal(HttpStatusCode.Redirect, accepted.StatusCode);
@@ -76,12 +76,16 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         var memberPost = await member.SubmitAsync("/People?handler=Invite", new() { ["email"] = "x@skanyxx.example", ["roles"] = "builder" },
             tokenFrom: "/Agents");
         var anonymous = await _host.Client().GetAsync("/People", TestContext.Current.CancellationToken);
+        // Followed, the refusal is a 403 page: never the login page, which bounced a signed-in person back (a loop).
+        var landing = await member.GetAsync(memberPage.Headers.Location!.OriginalString);
 
         Assert.Contains("href=\"/People\"", ownerNav);
         Assert.Equal(HttpStatusCode.OK, ownerPage.StatusCode);
         Assert.DoesNotContain("href=\"/People\"", memberNav);
         Assert.Equal(HttpStatusCode.Redirect, memberPage.StatusCode);
-        Assert.Contains("/Login", memberPage.Headers.Location?.OriginalString);
+        Assert.Equal("/AccessDenied", new Uri(_host.BaseAddress, memberPage.Headers.Location!).AbsolutePath);
+        Assert.Equal(HttpStatusCode.Forbidden, landing.StatusCode);
+        Assert.Contains("does not have access", await landing.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.Redirect, memberPost.StatusCode);
         Assert.Equal(HttpStatusCode.Redirect, anonymous.StatusCode);
         Assert.DoesNotContain("x@skanyxx.example", await (await _owner.GetAsync("/People")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
@@ -139,9 +143,9 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         Assert.Equal(HttpStatusCode.OK, stillOpen.StatusCode);
     }
 
-    /// <summary>CR6 / SEC L2: every answer of the accept page carries no-store and no-referrer, failures included.</summary>
+    /// <summary>CR6 / SEC L2: every answer of the accept page carries no-store and strict-origin (the token never in a Referer), failures included.</summary>
     [Fact]
-    public async Task AcceptPage_FailedPosts_AreNoStoreAndNoReferrer_WithAccurateStatus()
+    public async Task AcceptPage_FailedPosts_AreNoStoreAndStrictOrigin_WithAccurateStatus()
     {
         var token = InviteToken().Match(await (await InviteAsync("builder")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Groups[1].Value;
         var member = new Browser(_host);
@@ -159,7 +163,7 @@ public sealed partial class PeoplePageTests(PostgresFixture fixture) : IAsyncLif
         Assert.All(new[] { tooShort, unknown, accepted, spent }, response =>
         {
             Assert.True(response.Headers.CacheControl?.NoStore);
-            Assert.Equal("no-referrer", response.Headers.GetValues("Referrer-Policy").Single());
+            Assert.Equal("strict-origin", response.Headers.GetValues("Referrer-Policy").Single());
         });
     }
 

@@ -5,5 +5,5 @@ namespace Skanyxx.Core.Interfaces;
 public interface IAgentService
 {
     Task<List<Agent>> GetAllAsync();
-    Task<Agent?> GetByIdAsync(string id);
+    Task<Agent?> GetAsync(string ns, string name, CancellationToken ct);
 }

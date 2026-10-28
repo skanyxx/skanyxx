@@ -252,9 +252,11 @@ public class KAgentApiClient
             throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
     }
 
-    public async Task<Agent?> GetAgentAsync(string agentId)
+    /// <summary>One agent as the list shows it, or null when kagent has none by that name.</summary>
+    public async Task<Agent?> GetAgentAsync(string ns, string name, CancellationToken ct)
     {
-        return await RequestAsync<Agent?>($"/api/agents/{agentId}", HttpMethod.Get);
+        var data = await ControlAsync(HttpMethod.Get, $"/api/agents/{Uri.EscapeDataString(ns)}/{Uri.EscapeDataString(name)}", null, ct, notFoundIsNull: true);
+        return data is null ? null : ParseAgent(JsonSerializer.SerializeToElement(data));
     }
 
     public async Task<KAgentSession> CreateSessionAsync(string agentName, string? userId = null, CancellationToken ct = default)
@@ -519,15 +521,5 @@ public class KAgentApiClient
     public async Task<List<ToolServer>> GetToolServersAsync()
     {
         return await RequestAsync<List<ToolServer>>("/api/toolservers", HttpMethod.Get);
-    }
-
-    public async Task<ToolServer> CreateToolServerAsync(CreateToolServerRequest request)
-    {
-        return await RequestAsync<ToolServer>("/api/toolservers", HttpMethod.Post, request);
-    }
-
-    public async Task DeleteToolServerAsync(string ns, string name)
-    {
-        await RequestAsync<object>($"/api/toolservers/{ns}/{name}", HttpMethod.Delete);
     }
 }

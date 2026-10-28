@@ -29,11 +29,15 @@ public sealed class ResetPasswordModel(IMediator mediator) : PageModel
 
     public string? Error { get; private set; }
 
-    /// <summary>Every response: the token is in the URL, so keep it out of caches and Referer headers.</summary>
+    /// <summary>
+    /// Every response: the token is in the URL, so keep it out of caches and Referer headers. <c>strict-origin</c>, not
+    /// <c>no-referrer</c>: under <c>no-referrer</c> a browser posts the form with <c>Origin: null</c>, which the origin
+    /// guard refuses (D312).
+    /// </summary>
     public override void OnPageHandlerExecuting(PageHandlerExecutingContext context)
     {
         Response.Headers.CacheControl = "no-store";
-        Response.Headers["Referrer-Policy"] = "no-referrer";
+        Response.Headers["Referrer-Policy"] = "strict-origin";
     }
 
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)

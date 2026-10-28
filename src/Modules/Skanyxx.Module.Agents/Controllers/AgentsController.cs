@@ -1,4 +1,5 @@
 using Skanyxx.Core.Interfaces;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Skanyxx.Core.Models;
 
@@ -22,11 +23,18 @@ public class AgentsController : ControllerBase
         return await _agentService.GetAllAsync();
     }
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<Agent>> GetById(string id)
+    [HttpGet("{namespace}/{name}")]
+    public async Task<ActionResult<Agent>> Get(string @namespace, string name, CancellationToken ct)
     {
-        var agent = await _agentService.GetByIdAsync(id);
-        if (agent == null) return NotFound();
-        return agent;
+        try
+        {
+            var agent = await _agentService.GetAsync(@namespace, name, ct);
+            if (agent == null) return NotFound();
+            return agent;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new { error = "kagent did not answer. Try again in a moment." });
+        }
     }
 }

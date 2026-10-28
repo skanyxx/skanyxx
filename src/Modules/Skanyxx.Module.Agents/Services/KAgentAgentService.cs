@@ -1,30 +1,12 @@
 using Skanyxx.Core.Interfaces;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Services;
-using Microsoft.Extensions.Logging;
 
 namespace Skanyxx.Module.Agents.Services;
 
-public class KAgentAgentService : IAgentService
+public class KAgentAgentService(KAgentApiClient kagent) : IAgentService
 {
-    private readonly KAgentApiClient _kagent;
-    private readonly ILogger<KAgentAgentService> _logger;
+    public Task<List<Agent>> GetAllAsync() => kagent.GetAgentsAsync();
 
-    public KAgentAgentService(KAgentApiClient kagent, ILogger<KAgentAgentService> logger)
-    {
-        _kagent = kagent;
-        _logger = logger;
-    }
-
-    public Task<List<Agent>> GetAllAsync() => _kagent.GetAgentsAsync();
-
-    public async Task<Agent?> GetByIdAsync(string id)
-    {
-        try { return await _kagent.GetAgentAsync(id); }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to get agent {Id}", id);
-            return null;
-        }
-    }
+    public Task<Agent?> GetAsync(string ns, string name, CancellationToken ct) => kagent.GetAgentAsync(ns, name, ct);
 }

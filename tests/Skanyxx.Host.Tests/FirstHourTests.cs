@@ -189,7 +189,7 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Unauthorized, (await _host.Client().GetAsync("/api/model", TestContext.Current.CancellationToken)).StatusCode);
         var page = await employeeBrowser.GetAsync("/Model");
         Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
-        Assert.Contains("/Login", page.Headers.Location?.OriginalString);
+        Assert.Equal("/AccessDenied", new Uri(_host.BaseAddress, page.Headers.Location!).AbsolutePath);
         // Everyone else's home is Chat, without asking kagent about the model.
         Assert.Equal("/Chat", (await employeeBrowser.GetAsync("/")).Headers.Location?.OriginalString);
         Assert.DoesNotContain(_kagent.Calls, c => c.Path.StartsWith("/api/modelconfigs", StringComparison.Ordinal));
@@ -608,7 +608,7 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains("<code>runtime</code>", page);
         Assert.Contains(_kagent.Calls, c => c.Method == "GET" && c.Path == "/health");
         Assert.Equal(HttpStatusCode.Redirect, denied.StatusCode);
-        Assert.Contains("/Login", denied.Headers.Location?.OriginalString);
+        Assert.Equal("/AccessDenied", new Uri(_host.BaseAddress, denied.Headers.Location!).AbsolutePath);
         Assert.DoesNotContain("href=\"/Debug\"", employeeNav);
         Assert.Contains("href=\"/Debug\"", ownerNav);
         Assert.False(health.GetProperty("entries").TryGetProperty("kagent", out _));

@@ -2,6 +2,8 @@
 @model Skanyxx.Host.Pages.ToolServersModel
 @{
     ViewData["Title"] = "Tool Servers";
+    // D116: only the owner changes kagent; everyone else sees the list.
+    var isOwner = User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner);
 }
 
 <div class="card mb-3">
@@ -9,7 +11,10 @@
         <h3 class="card-title">MCP Tool Servers</h3>
         <div class="header-actions">
             <button class="btn btn-secondary" id="btnRefresh">Refresh</button>
-            <button class="btn btn-primary" id="btnAddServer">+ Add Server</button>
+            @if (isOwner)
+            {
+                <button class="btn btn-primary" id="btnAddServer">+ Add Server</button>
+            }
         </div>
     </div>
     <p class="text-muted">Manage Model Context Protocol servers for AI tool integration.</p>
@@ -30,17 +35,16 @@
             <div class="form-group">
                 <label for="serverType">Server Type</label>
                 <select id="serverType" name="type" required>
-                    <option value="RemoteMCPServer">Remote MCP Server</option>
-                    <option value="MCPServer">Local MCP Server</option>
+                    <option value="RemoteMCPServer">Remote MCP Server (streamable HTTP)</option>
                 </select>
             </div>
             <div class="form-group">
                 <label for="serverName">Name</label>
-                <input type="text" id="serverName" name="name" required placeholder="my-tool-server" pattern="[a-z0-9-]+" title="Lowercase letters, numbers, and hyphens only">
+                <input type="text" id="serverName" name="name" required placeholder="my-tool-server" maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" title="Lowercase letters, numbers, and hyphens only">
             </div>
             <div class="form-group">
                 <label for="serverNamespace">Namespace</label>
-                <input type="text" id="serverNamespace" name="namespace" value="kagent" required>
+                <input type="text" id="serverNamespace" name="namespace" value="kagent" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?">
             </div>
             <div class="form-group">
                 <label for="serverUrl">Endpoint URL</label>
@@ -82,6 +86,14 @@
     'use strict';
 
     var toolServers = [];
+    var isOwner = @(isOwner ? "true" : "false");
+
+    // Names and descriptions come from kagent and from the MCP servers themselves: text, never markup.
+    function esc(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
+            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+        });
+    }
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
@@ -91,7 +103,7 @@
 
     function init() {
         document.getElementById('btnRefresh').addEventListener('click', loadToolServers);
-        document.getElementById('btnAddServer').addEventListener('click', showModal);
+        if (isOwner) document.getElementById('btnAddServer').addEventListener('click', showModal);
         document.getElementById('btnCloseModal').addEventListener('click', hideModal);
         document.getElementById('btnCancelModal').addEventListener('click', hideModal);
         document.getElementById('addServerForm').addEventListener('submit', createToolServer);
@@ -113,7 +125,10 @@
         container.innerHTML = '<div class="loading-state">Loading tool servers...</div>';
 
         fetch('/api/toolservers')
-            .then(function(r) { return r.json(); })
+            .then(function(r) {
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                return r.json();
+            })
             .then(function(data) {
                 toolServers = data || [];
                 renderToolServers();
@@ -139,19 +154,20 @@
             var statusBadge = hasTools ? '<span class="badge badge-success">Online</span>' : '<span class="badge badge-warning">No Tools</span>';
             var toolCount = server.discoveredTools ? server.discoveredTools.length : 0;
 
-            html += '<div class="server-card" data-ref="' + (server.ref || '') + '">';
+            html += '<div class="server-card" data-ref="' + esc(server.ref) + '">';
             html += '<div class="server-header">';
-            html += '<div class="server-info"><h4>' + (server.ref || server.name) + '</h4>';
-            html += '<div class="server-ref">' + (server.groupKind || 'MCP Server') + '</div></div>';
+            html += '<div class="server-info"><h4>' + esc(server.ref || server.name) + '</h4>';
+            html += '<div class="server-ref">' + esc(server.groupKind || 'MCP Server') + '</div></div>';
             html += '<div style="display: flex; gap: 8px;">' + statusBadge;
-            html += '<button class="btn btn-ghost btn-delete" data-ref="' + (server.ref || '') + '">&times;</button></div></div>';
+            if (isOwner) html += '<button class="btn btn-ghost btn-delete" data-ref="' + esc(server.ref) + '" aria-label="Delete ' + esc(server.ref) + '">&times;</button>';
+            html += '</div></div>';
             html += '<div style="font-size: 13px; color: var(--text-secondary);">' + toolCount + ' tools available</div>';
 
             if (hasTools) {
                 html += '<div class="tool-list">';
                 var showTools = server.discoveredTools.slice(0, 5);
                 showTools.forEach(function(tool) {
-                    html += '<span class="tool-tag" title="' + (tool.description || '') + '">' + tool.name + '</span>';
+                    html += '<span class="tool-tag" title="' + esc(tool.description) + '">' + esc(tool.name) + '</span>';
                 });
                 if (server.discoveredTools.length > 5) {
                     html += '<span class="tool-tag">+' + (server.discoveredTools.length - 5) + ' more</span>';
@@ -176,11 +192,9 @@
         e.preventDefault();
         var form = e.target;
         var data = {
-            type: document.getElementById('serverType').value,
-            remoteMCPServer: {
-                name: document.getElementById('serverName').value,
-                endpoint: document.getElementById('serverUrl').value
-            }
+            name: document.getElementById('serverName').value,
+            namespace: document.getElementById('serverNamespace').value,
+            url: document.getElementById('serverUrl').value
         };
 
         fetch('/api/toolservers', {
@@ -193,9 +207,11 @@
                 hideModal();
                 loadToolServers();
                 alert('Tool server created!');
-            } else {
-                throw new Error('Failed to create');
+                return;
             }
+            return r.json().catch(function() { return {}; }).then(function(body) {
+                throw new Error(body.error || 'Failed to create (HTTP ' + r.status + ')');
+            });
         })
         .catch(function(err) {
             alert('Error: ' + err.message);
@@ -208,11 +224,14 @@
         var namespace = parts[0] || 'kagent';
         var name = parts[1] || ref;
 
-        fetch('/api/toolservers/' + namespace + '/' + name, { method: 'DELETE' })
+        fetch('/api/toolservers/' + encodeURIComponent(namespace) + '/' + encodeURIComponent(name), { method: 'DELETE' })
             .then(function(r) {
-                if (r.ok) loadToolServers();
+                if (r.ok) return loadToolServers();
+                return r.json().catch(function() { return {}; }).then(function(body) {
+                    alert('Error: ' + (body.error || 'Failed to delete (HTTP ' + r.status + ')'));
+                });
             })
-            .catch(function(err) { console.error(err); });
+            .catch(function(err) { alert('Error: ' + err.message); });
     }
 })();
 </script>

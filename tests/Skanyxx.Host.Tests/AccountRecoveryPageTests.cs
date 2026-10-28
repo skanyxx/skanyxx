@@ -55,7 +55,7 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);
         Assert.Contains(MemberEmail, await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.True(page.Headers.CacheControl?.NoStore);
-        Assert.Equal("no-referrer", page.Headers.GetValues("Referrer-Policy").Single());
+        Assert.Equal("strict-origin", page.Headers.GetValues("Referrer-Policy").Single());
         Assert.Matches($"^{Regex.Escape(HostApp.AllowedOrigin)}/ResetPassword\\?token=skx_rst_", _mail.Sent.Single(m => m.Subject.Contains("password")).TextBody.Split('\n').Single(l => l.Contains("token=")).Trim());
         Assert.Equal(HttpStatusCode.Redirect, reset.StatusCode);
         Assert.Equal("/Login?reset=true", reset.Headers.Location?.OriginalString);

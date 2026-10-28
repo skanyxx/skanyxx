@@ -410,7 +410,7 @@ public sealed class PluginsApiTests(PostgresFixture fixture) : IAsyncLifetime
         var emma = await SignInAsync("eve@skanyxx.example", Password);
         var denied = await emma.GetAsync("/Plugins");
         Assert.Equal(HttpStatusCode.Redirect, denied.StatusCode);
-        Assert.Equal("/Login", new Uri(_host.BaseAddress, denied.Headers.Location!).AbsolutePath);
+        Assert.Equal("/AccessDenied", new Uri(_host.BaseAddress, denied.Headers.Location!).AbsolutePath);
         Assert.DoesNotContain("href=\"/Plugins\"", await (await emma.GetAsync("/Library")).Content.ReadAsStringAsync(Ct));
     }
 

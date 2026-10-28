@@ -34,12 +34,13 @@ public sealed class InviteModel(IMediator mediator) : PageModel
 
     /// <summary>
     /// Every response of this page, whatever the handler or branch: the token is in its URL, so keep it out of caches and
-    /// out of Referer headers.
+    /// out of Referer headers. <c>strict-origin</c>, not <c>no-referrer</c>: under <c>no-referrer</c> a browser posts the
+    /// form with <c>Origin: null</c>, which the origin guard refuses (D312).
     /// </summary>
     public override void OnPageHandlerExecuting(PageHandlerExecutingContext context)
     {
         Response.Headers.CacheControl = "no-store";
-        Response.Headers["Referrer-Policy"] = "no-referrer";
+        Response.Headers["Referrer-Policy"] = "strict-origin";
     }
 
     public async Task<IActionResult> OnGetAsync(CancellationToken ct)
