@@ -5,7 +5,8 @@ namespace Skanyxx.Host.Tests;
 
 /// <summary>
 /// The Tool Servers and Agents pages' APIs against <see cref="FakeKAgent"/> (D238, Chrome walkthrough 2026-10-28):
-/// a tool server is created in kagent's own shape, and one agent's details come from <c>namespace/name</c>.
+/// a tool server is created in kagent's own shape, and the agents list says which agents Chat offers. One agent's
+/// details and who may read them: <c>AgentsApiTests</c> (D250, D254).
 /// </summary>
 [Collection(HostCollection.Name)]
 public sealed class ToolServersAndAgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
@@ -116,20 +117,6 @@ public sealed class ToolServersAndAgentsApiTests(PostgresFixture fixture) : IAsy
         Assert.Contains("var isOwner = true;", owners);
         Assert.DoesNotContain("id=\"btnAddServer\"", employees);
         Assert.Contains("var isOwner = false;", employees);
-    }
-
-    [Fact]
-    public async Task AgentDetails_ByNamespaceAndName_ForAnyoneSignedIn_UnknownIs404()
-    {
-        var employee = await PersonAsync("eli@skanyxx.example", "employee");
-
-        var seed = await employee.GetFromJsonAsync<JsonElement>("/api/agents/team-a/seed", Ct);
-        var missing = await employee.GetAsync("/api/agents/kagent/no-such-agent", Ct);
-
-        Assert.Equal("seed", seed.GetProperty("name").GetString());
-        Assert.Equal("team-a", seed.GetProperty("namespace").GetString());
-        Assert.Equal("true", seed.GetProperty("labels").GetProperty("skanyxx.dev/merged").GetString());
-        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
     }
 
     /// <summary>Only merged agents are offered in Chat (D100); the Agents page shows Chat by this flag (D240).</summary>
