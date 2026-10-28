@@ -530,7 +530,7 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.DoesNotContain("data-merge=", html); // a builder sees no merge button
         var refused = await employee.GetAsync("/Studio");
         Assert.Equal(HttpStatusCode.Redirect, refused.StatusCode);
-        Assert.Contains("/Login", refused.Headers.Location?.OriginalString);
+        Assert.Contains("/AccessDenied", refused.Headers.Location?.OriginalString);
         Assert.DoesNotContain("href=\"/Studio\"", await (await employee.GetAsync("/Library")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         var supervisor = await SignInAsync("sue@skanyxx.example");
         Assert.Contains($"data-merge=\"{number}\"", await (await supervisor.GetAsync($"/Studio?pr={number}")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken));

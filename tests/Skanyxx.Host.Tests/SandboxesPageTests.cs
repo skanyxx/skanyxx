@@ -65,9 +65,9 @@ public sealed class SandboxesPageTests(PostgresFixture fixture) : IAsyncLifetime
         var page = await emma.GetAsync("/Sandboxes");
         var library = await (await emma.GetAsync("/Library")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        // The cookie scheme's access-denied path is the sign-in page.
+        // The cookie scheme's access-denied path is a 403 page (D236).
         Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
-        Assert.Equal("/Login", new Uri(host.BaseAddress, page.Headers.Location!).AbsolutePath);
+        Assert.Equal("/AccessDenied", new Uri(host.BaseAddress, page.Headers.Location!).AbsolutePath);
         Assert.DoesNotContain("id=\"run-form\"", await page.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.DoesNotContain("href=\"/Sandboxes\"", library);
     }

@@ -612,8 +612,9 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   and password-reset lookup and accept, and the `/Invite` and `/ResetPassword` pages (GET too), have another
   (`Skanyxx:InviteRateLimit`), so crawlers opening emailed links cannot spend the sign-in window. All windows are per client address, with IPv6 grouped per /64 (one
   host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window.
-- Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. Anonymous:
-  `/health`, static files, `/Login` (the Microsoft sign-in too), `/signin-oidc`, `/Setup`, `/Invite`, `/ForgotPassword`, `/ResetPassword`, `/Privacy`, `/Error`, `/Offline`, `GET /api/identity/status`, the
+- Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. A signed-in person
+  on a page their role lacks is redirected to `/AccessDenied`, a `403` page (D236). Anonymous:
+  `/health`, static files, `/Login` (the Microsoft sign-in too), `/signin-oidc`, `/Setup`, `/Invite`, `/ForgotPassword`, `/ResetPassword`, `/Privacy`, `/Error`, `/Offline`, `/AccessDenied`, `GET /api/identity/status`, the
   bootstrap/sign-in/refresh/unlock endpoints, `POST /api/identity/invites/{lookup,accept}` and `POST /api/identity/password/{forgot,lookup,reset}`. `/mcp/memory` needs no sign-in but an agent secret (below).
 - CSRF: every POST/PUT/PATCH/DELETE on the Host (legacy controllers included) is refused with `403` when its `Origin`
   is not listed in `Skanyxx:AllowedOrigins` (or is the origin of `Identity:PublicBaseUrl`) — except the Microsoft sign-in callback `/signin-oidc`, which Entra posts from its own origin and the OIDC handler protects (below) — (the Host's own origin — Origin host:port equal to the Host header — is allowed implicitly off the guarded prefixes; `/api/{memory,tickets,sandboxes,identity,chat,model}` and `/mcp` still need an allow-listed Origin for any browser caller); the cookie is SameSite=Lax; the Razor forms carry
