@@ -60,7 +60,8 @@ internal sealed partial class RelatedMemory(
             if (Tokens(block.Length + line.Length + Footer.Length) > maxTokens)
                 break;
             block.Append(line);
-            used.Add(new MemoryCardRef(hit.Scope, hit.Key, hit.What));
+            // The reply lists this line to the person (Chat's "Used prior work"): redacted like the prompt's.
+            used.Add(new MemoryCardRef(hit.Scope, hit.Key, SecretText.Redact(hit.What)));
         }
         if (used.Count == 0)
             return MemoryContext.None;
