@@ -35,7 +35,7 @@ public static class NavCatalog
 
         new("dashboard", "/Dashboard", "Dashboard", "i-dashboard", Admin, OwnerOnly),
         new("models", "/Model", "Models", "i-cpu", Admin, OwnerOnly),
-        new("toolservers", "/ToolServers", "Tool servers", "i-server", Admin, Builders),
+        new("toolservers", "/ToolServers", "Tool servers", "i-server", Admin, Supervisors),
         new("people", "/People", "People", "i-users", Admin, OwnerOnly),
         new("org", "/Org", "Org", "i-org", Admin, OwnerOnly),
         new("entra", "/Entra", "Microsoft sign-in", "i-signin", Admin, OwnerOnly, NeedsEntra: true),

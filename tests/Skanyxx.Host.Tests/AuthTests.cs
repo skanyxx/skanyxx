@@ -18,7 +18,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     [InlineData("/api/tickets/runs")]
     [InlineData("/api/sandboxes")]
     [InlineData("/api/identity/me")]
-    [InlineData("/api/toolservers")] // a legacy controller
+    [InlineData("/api/toolservers")]
     [InlineData("/api/no-such-route")]
     public async Task Anonymous_Api_Is401Problem(string path)
     {
@@ -43,7 +43,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public async Task Bearer_ReachesALegacyController()
+    public async Task Bearer_ReachesAnEndpoint()
     {
         var response = await (await fixture.Host.OwnerAsync()).GetAsync("/api/toolservers", TestContext.Current.CancellationToken);
 

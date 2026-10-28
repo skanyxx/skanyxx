@@ -58,7 +58,7 @@ public sealed class RebindingTests(PostgresFixture fixture)
 
     /// <summary>
     /// SEC S6: the cookie is SameSite=Lax, so a same-site origin (another port on the host, a sibling subdomain) still
-    /// sends it. Unsafe methods are origin-checked on every route, legacy controllers and pages included.
+    /// sends it. Unsafe methods are origin-checked on every route, endpoints and pages alike.
     /// </summary>
     [Theory]
     [InlineData("POST", "/api/toolservers", "http://rebind.attacker.example")]

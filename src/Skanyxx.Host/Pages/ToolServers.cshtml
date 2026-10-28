@@ -2,8 +2,6 @@
 @model Skanyxx.Host.Pages.ToolServersModel
 @{
     ViewData["Title"] = "Tool Servers";
-    // D116: only the owner changes kagent; everyone else sees the list.
-    var isOwner = User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner);
 }
 @await Component.InvokeAsync("SetupGuide", new { id = "toolservers" })
 
@@ -11,228 +9,470 @@
     <div class="card-header">
         <h3 class="card-title">MCP Tool Servers</h3>
         <div class="header-actions">
-            <button class="btn btn-secondary" id="btnRefresh">Refresh</button>
-            @if (isOwner)
+            <button class="btn btn-secondary" id="btnRefresh" type="button">Refresh</button>
+            @if (Model.IsOwner)
             {
-                <button class="btn btn-primary" id="btnAddServer">+ Add Server</button>
+                <button class="btn btn-primary" id="btnAddServer" type="button">+ Add server</button>
             }
         </div>
     </div>
-    <p class="text-muted">Manage Model Context Protocol servers for AI tool integration.</p>
-</div>
-
-<div class="table-container card" id="serversContainer">
-    <div class="loading-state">Loading tool servers...</div>
-</div>
-
-<!-- Add Server Modal -->
-<div class="modal" id="addServerModal">
-    <div class="modal-content">
-        <div class="modal-header">
-            <h3>Add Tool Server</h3>
-            <button class="btn btn-ghost" id="btnCloseModal">&times;</button>
-        </div>
-        <form id="addServerForm">
-            <div class="form-group">
-                <label for="serverType">Server Type</label>
-                <select id="serverType" name="type" required>
-                    <option value="RemoteMCPServer">Remote MCP Server (streamable HTTP)</option>
-                </select>
-            </div>
-            <div class="form-group">
-                <label for="serverName">Name</label>
-                <input type="text" id="serverName" name="name" required placeholder="my-tool-server" maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" title="Lowercase letters, numbers, and hyphens only">
-            </div>
-            <div class="form-group">
-                <label for="serverNamespace">Namespace</label>
-                <input type="text" id="serverNamespace" name="namespace" value="kagent" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?">
-            </div>
-            <div class="form-group">
-                <label for="serverUrl">Endpoint URL</label>
-                <input type="url" id="serverUrl" name="url" required placeholder="http://localhost:8080">
-            </div>
-            <div class="modal-actions">
-                <button type="button" class="btn btn-ghost" id="btnCancelModal">Cancel</button>
-                <button type="submit" class="btn btn-primary">Create Server</button>
-            </div>
-        </form>
+    <p class="text-muted">The Model Context Protocol servers kagent connects agents to, with the tools it discovered on each.
+        Skanyxx adds <strong>Remote MCP servers</strong> (Streamable HTTP or SSE); stdio MCPServers are listed, not managed here.
+        kagent rediscovers every server's tools once a minute.</p>
+    <div class="ts-toolbar">
+        <label for="tsSearch" class="ts-sr">Filter servers and tools</label>
+        <input id="tsSearch" type="search" autocomplete="off" placeholder="Filter by server, tool name or description…" />
+        <span id="tsCount" class="text-muted" role="status" aria-live="polite"></span>
     </div>
 </div>
 
+<div id="tsKagent"></div>
+<div id="tsServers" aria-label="MCP tool servers"><div class="ts-empty">Loading tool servers…</div></div>
+
+@if (Model.IsOwner)
+{
+    <div class="modal" id="tsFormModal" role="dialog" aria-modal="true" aria-labelledby="tsFormTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="tsFormTitle">Add tool server</h3>
+                <button class="btn btn-ghost" id="tsFormClose" type="button" aria-label="Close">&times;</button>
+            </div>
+            <form id="tsForm" novalidate>
+                <div class="form-group">
+                    <label for="tsKind">Type</label>
+                    <select id="tsKind" name="kind">
+                        <option value="RemoteMCPServer.kagent.dev">Remote MCP server (Streamable HTTP or SSE): supported</option>
+                        <option value="MCPServer.kagent.dev" disabled>Stdio MCP server (MCPServer): not supported here, use kubectl or kmcp</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="tsName">Name</label>
+                        <input type="text" id="tsName" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" placeholder="my-tool-server" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="tsNamespace">Namespace</label>
+                        <input type="text" id="tsNamespace" value="kagent" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="tsUrl">URL</label>
+                    <input type="url" id="tsUrl" required maxlength="2048" placeholder="http://my-mcp.tools.svc.cluster.local:8080/mcp" autocomplete="off">
+                    <small class="text-muted">kagent's controller and agent pods call it: a cluster address, or host.docker.internal for a server on your machine (localhost is the pod itself).
+                        No credentials in the URL: send them as a header.</small>
+                    <small class="text-warning" id="tsUrlWarning" hidden>This is a loopback address: inside the cluster it is the kagent pod, not your machine. Use host.docker.internal or a Service name.</small>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="tsProtocol">Protocol</label>
+                        <select id="tsProtocol">
+                            <option value="STREAMABLE_HTTP">Streamable HTTP (usually /mcp)</option>
+                            <option value="SSE">SSE (usually /sse)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="tsTimeout">Timeout (seconds)</label>
+                        <input type="number" id="tsTimeout" min="1" max="600" placeholder="30">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="tsDescription">Description</label>
+                    <input type="text" id="tsDescription" maxlength="500" placeholder="What its tools are for">
+                </div>
+                <fieldset class="form-group ts-headers">
+                    <legend>Headers</legend>
+                    <small class="text-muted">Every header value lives in a Kubernetes Secret. A value typed here goes to kagent once, into a Secret it keeps with the server;
+                        Skanyxx never stores or shows it, so an edit asks for it again.</small>
+                    <div id="tsHeaderRows"></div>
+                    <button class="btn btn-ghost" id="tsAddHeader" type="button">+ Add header</button>
+                </fieldset>
+                <div class="ts-errors" id="tsFormErrors" role="alert" hidden></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" id="tsFormCancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="tsFormSubmit">Save</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="modal" id="tsDeleteModal" role="dialog" aria-modal="true" aria-labelledby="tsDeleteTitle">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="tsDeleteTitle">Delete tool server</h3>
+            </div>
+            <div class="ts-modal-body">
+                <p id="tsDeleteText"></p>
+                <div id="tsDeleteUsage"></div>
+                <div class="ts-errors" id="tsDeleteErrors" role="alert" hidden></div>
+                <div class="modal-actions">
+                    <button type="button" class="btn btn-ghost" id="tsDeleteCancel">Cancel</button>
+                    <button type="button" class="btn btn-primary ts-danger" id="tsDeleteConfirm">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
 <style>
-    .server-name { display: flex; align-items: center; gap: 8px; font-weight: 500; }
-    .tool-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-    .tool-tag { font-size: 11px; padding: 2px 8px; background: var(--bg-tertiary); border-radius: 4px; color: var(--text-muted); }
-    .server-card { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 12px; }
-    .server-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
-    .server-info h4 { margin: 0 0 4px 0; font-size: 14px; }
-    .server-ref { font-size: 12px; color: var(--text-muted); }
-    .servers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; }
-    .empty-state { text-align: center; padding: 60px 20px; color: var(--text-muted); }
-    .loading-state { text-align: center; padding: 40px; color: var(--text-muted); }
-    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0, 0, 0, 0.6); z-index: 1000; align-items: center; justify-content: center; }
+    .ts-toolbar { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+    .ts-toolbar input { flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
+    .ts-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .ts-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+    .ts-server { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 12px; }
+    .ts-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px 16px; }
+    .ts-title { font-weight: 600; word-break: break-all; }
+    .ts-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+    .ts-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .ts-body { padding: 0 16px 14px; }
+    .ts-meta { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
+    .ts-meta dt { color: var(--text-muted); }
+    .ts-meta dd { word-break: break-all; }
+    .ts-tools summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); margin: 6px 0; }
+    .ts-tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+    .ts-tool { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; }
+    .ts-tool-name { font-family: ui-monospace, monospace; font-size: 13px; }
+    .ts-tool-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .modal { display: none; position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.6); z-index: 1000; align-items: center; justify-content: center; }
     .modal.active { display: flex; }
-    .modal-content { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 500px; max-height: 90vh; overflow-y: auto; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid var(--border-color); }
-    .modal-header h3 { margin: 0; }
-    #addServerForm { padding: 20px; }
-    .form-group { margin-bottom: 16px; }
-    .form-group label { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-    .form-group input, .form-group select { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--bg-primary); color: var(--text-primary); font-size: 14px; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 16px; border-top: 1px solid var(--border-color); }
+    .modal-content { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 92%; max-width: 640px; max-height: 92vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
+    #tsForm, .ts-modal-body { padding: 20px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .form-group { margin-bottom: 14px; border: 0; }
+    .form-group label, .form-group legend { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
+    .form-group input, .form-group select { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--bg-primary); color: var(--text-primary); font-size: 14px; }
+    .form-group small { display: block; margin-top: 4px; font-size: 12px; }
+    .ts-header-row { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 6px; margin-top: 8px; align-items: center; }
+    .ts-header-row .ts-secret { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .ts-errors { border: 1px solid var(--error-color); color: var(--error-color); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 14px; border-top: 1px solid var(--border-color); }
+    .ts-danger { background: var(--error-color); }
 </style>
 
 <script>
-(function() {
+(function () {
     'use strict';
 
-    var toolServers = [];
-    var isOwner = @(isOwner ? "true" : "false");
+    var api = '/api/toolservers';
+    var isOwner = @(Model.IsOwner ? "true" : "false");
+    var overview = null;
+    var editing = null;
+    var deleting = null;
 
-    // Names and descriptions come from kagent and from the MCP servers themselves: text, never markup.
-    function esc(value) {
-        return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
-            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    // Names, URLs, tool names and descriptions come from kagent and the MCP servers themselves: text, never markup.
+    function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text != null) node.textContent = text;
+        return node;
+    }
+
+    function button(label, onClick, className) {
+        var b = el('button', 'btn ' + (className || 'btn-ghost'), label);
+        b.type = 'button';
+        b.addEventListener('click', onClick);
+        return b;
+    }
+
+    function clear(node) { while (node.firstChild) node.removeChild(node.firstChild); }
+
+    function problemText(body, status) {
+        if (body && body.errors) return Object.keys(body.errors).reduce(function (all, k) { return all.concat(body.errors[k]); }, []);
+        if (body && (body.message || body.detail)) return [body.message || body.detail];
+        return ['The request failed (HTTP ' + status + ').'];
+    }
+
+    function send(method, url, body) {
+        return fetch(url, {
+            method: method,
+            headers: body ? { 'Content-Type': 'application/json' } : {},
+            body: body ? JSON.stringify(body) : undefined
+        }).then(function (r) {
+            return r.text().then(function (t) {
+                var json = null;
+                try { json = t ? JSON.parse(t) : null; } catch (e) { json = null; }
+                return { ok: r.ok, status: r.status, body: json };
+            });
         });
     }
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', init);
-    } else {
-        init();
+    function load() {
+        return send('GET', api).then(function (r) {
+            if (!r.ok) throw new Error(problemText(r.body, r.status).join(' '));
+            overview = r.body;
+            render();
+        }).catch(function (err) {
+            var box = document.getElementById('tsServers');
+            clear(box);
+            box.appendChild(el('div', 'ts-empty', 'Could not load tool servers: ' + err.message));
+        });
+    }
+
+    function matches(server, q) {
+        if (!q) return true;
+        if (server.ref.toLowerCase().indexOf(q) >= 0) return true;
+        return (server.tools || []).some(function (t) {
+            return t.name.toLowerCase().indexOf(q) >= 0 || (t.description || '').toLowerCase().indexOf(q) >= 0;
+        });
+    }
+
+    function render() {
+        var kagentBox = document.getElementById('tsKagent');
+        clear(kagentBox);
+        if (!overview.kAgent.reachable) kagentBox.appendChild(skxSetupGuide.render(overview.kAgent.fix, { tone: 'danger', badge: 'not working' }));
+
+        var q = document.getElementById('tsSearch').value.trim().toLowerCase();
+        var shown = overview.servers.filter(function (s) { return matches(s, q); });
+        var toolCount = shown.reduce(function (n, s) { return n + (s.tools ? s.tools.length : 0); }, 0);
+        document.getElementById('tsCount').textContent = shown.length + ' server' + (shown.length === 1 ? '' : 's') + ' · ' + toolCount + ' tool' + (toolCount === 1 ? '' : 's') + (q ? ' (filtered)' : '');
+
+        var box = document.getElementById('tsServers');
+        clear(box);
+        if (shown.length === 0) {
+            box.appendChild(el('div', 'ts-empty', q ? 'No server or tool matches.' : overview.kAgent.reachable
+                ? 'No tool servers yet.' + (isOwner ? ' Add the first one with "+ Add server".' : '')
+                : 'kagent did not answer, so its servers are not listed.'));
+            return;
+        }
+        shown.forEach(function (s) { box.appendChild(card(s, q)); });
+    }
+
+    function badge(text, kind) { return el('span', 'badge badge-' + kind, text); }
+
+    function statusKind(code) {
+        return code === 'ready' ? 'success' : code === 'unknown' ? 'info' : code === 'stdio-unsupported' ? 'info' : code === 'not-registered' ? 'error' : 'warning';
+    }
+
+    function card(s, q) {
+        var root = el('section', 'ts-server');
+        root.setAttribute('data-ref', s.ref);
+        var head = el('div', 'ts-head');
+        var info = el('div');
+        info.appendChild(el('div', 'ts-title', s.ref));
+        var badges = el('div', 'ts-badges');
+        badges.appendChild(badge(s.status.text, statusKind(s.status.code)));
+        badges.appendChild(badge(s.kindLabel, s.supported ? 'info' : 'warning'));
+        if (s.source === 'studio') badges.appendChild(badge('Studio', 'info'));
+        if (s.source === 'other') badges.appendChild(badge('Not added here', 'info'));
+        info.appendChild(badges);
+        head.appendChild(info);
+
+        var actions = el('div', 'ts-actions');
+        actions.appendChild(button('Refresh tools', function () { refresh(s.ref, this); }));
+        if (s.canEdit) actions.appendChild(button('Edit', function () { openForm(s); }));
+        if (s.canDelete) actions.appendChild(button('Delete', function () { openDelete(s); }));
+        head.appendChild(actions);
+        root.appendChild(head);
+
+        var body = el('div', 'ts-body');
+        var meta = el('dl', 'ts-meta');
+        function row(k, v) { meta.appendChild(el('dt', null, k)); meta.appendChild(el('dd', null, v)); }
+        row('Namespace', s.namespace);
+        row('URL', s.url || (s.source === 'skanyxx' ? '' : 'not reported by kagent (added outside Skanyxx)'));
+        if (s.protocol) row('Transport', s.protocol + (s.timeoutSeconds ? ' · timeout ' + s.timeoutSeconds + ' s' : ''));
+        if (s.description) row('Description', s.description);
+        if (s.headers.length) row('Headers', s.headers.map(function (h) {
+            return h.name + (h.source === 'value' ? ' (value kept by kagent in Secret ' + h.secretName + ')' : ' (from Secret ' + h.secretName + ', key ' + h.secretKey + ')');
+        }).join('; '));
+        row('Used by', s.usedBy == null ? 'unknown (kagent did not list agents)' : s.usedBy.length ? s.usedBy.join(', ') : 'no agent');
+        body.appendChild(meta);
+
+        (s.fixes || []).forEach(function (fix) { body.appendChild(skxSetupGuide.render(fix, { badge: 'not working' })); });
+
+        if (s.tools && s.tools.length) {
+            var tools = el('details', 'ts-tools');
+            if (q) tools.open = true;
+            tools.appendChild(el('summary', null, s.tools.length + ' tool' + (s.tools.length === 1 ? '' : 's')));
+            var grid = el('div', 'ts-tool-grid');
+            s.tools.forEach(function (t) {
+                if (q && s.ref.toLowerCase().indexOf(q) < 0 && t.name.toLowerCase().indexOf(q) < 0 && (t.description || '').toLowerCase().indexOf(q) < 0) return;
+                var tool = el('div', 'ts-tool');
+                tool.appendChild(el('div', 'ts-tool-name', t.name));
+                if (t.description) tool.appendChild(el('div', 'ts-tool-desc', t.description));
+                grid.appendChild(tool);
+            });
+            tools.appendChild(grid);
+            body.appendChild(tools);
+        }
+        root.appendChild(body);
+        return root;
+    }
+
+    function refresh(ref, btn) {
+        btn.disabled = true;
+        send('POST', api + '/' + ref.split('/').map(encodeURIComponent).join('/') + '/refresh').then(function (r) {
+            btn.disabled = false;
+            if (!r.ok) { btn.textContent = 'Refresh failed'; btn.title = problemText(r.body, r.status).join(' '); return; }
+            overview.servers = overview.servers.map(function (s) { return s.ref === ref ? r.body : s; });
+            render();
+        });
+    }
+
+    // --- Add / edit ---
+    function headerRow(h) {
+        var row = el('div', 'ts-header-row');
+        var name = el('input');
+        name.placeholder = 'Header, e.g. Authorization';
+        name.className = 'ts-h-name';
+        name.value = h ? h.name : '';
+        var source = el('select', 'ts-h-source');
+        [['value', 'Enter the value'], ['secret', 'From an existing Secret']].forEach(function (o) {
+            var opt = el('option', null, o[1]);
+            opt.value = o[0];
+            source.appendChild(opt);
+        });
+        source.value = h ? h.source : 'value';
+        var value = el('input', 'ts-h-value');
+        value.type = 'password';
+        value.autocomplete = 'new-password';
+        value.placeholder = h && h.source === 'value' ? 'Enter the value again' : 'Value (kept in a Secret)';
+        var secret = el('div', 'ts-secret');
+        var secretName = el('input', 'ts-h-secret');
+        secretName.placeholder = 'Secret name';
+        secretName.value = h && h.source === 'secret' ? h.secretName : '';
+        var secretKey = el('input', 'ts-h-key');
+        secretKey.placeholder = 'Key';
+        secretKey.value = h && h.source === 'secret' ? h.secretKey : '';
+        secret.appendChild(secretName);
+        secret.appendChild(secretKey);
+        function sync() { value.hidden = source.value !== 'value'; secret.hidden = source.value !== 'secret'; }
+        source.addEventListener('change', sync);
+        sync();
+        row.appendChild(name);
+        row.appendChild(source);
+        var cell = el('div');
+        cell.appendChild(value);
+        cell.appendChild(secret);
+        row.appendChild(cell);
+        row.appendChild(button('Remove', function () { row.remove(); }));
+        document.getElementById('tsHeaderRows').appendChild(row);
+    }
+
+    function openForm(server) {
+        editing = server || null;
+        var form = document.getElementById('tsForm');
+        form.reset();
+        clear(document.getElementById('tsHeaderRows'));
+        showErrors('tsFormErrors', []);
+        document.getElementById('tsFormTitle').textContent = server ? 'Edit ' + server.ref : 'Add tool server';
+        document.getElementById('tsName').disabled = !!server;
+        document.getElementById('tsNamespace').disabled = !!server;
+        if (server) {
+            document.getElementById('tsName').value = server.name;
+            document.getElementById('tsNamespace').value = server.namespace;
+            document.getElementById('tsUrl').value = server.url || '';
+            document.getElementById('tsProtocol').value = server.protocol || 'STREAMABLE_HTTP';
+            document.getElementById('tsTimeout').value = server.timeoutSeconds || '';
+            document.getElementById('tsDescription').value = server.description || '';
+            server.headers.forEach(headerRow);
+        }
+        warnUrl();
+        document.getElementById('tsFormModal').classList.add('active');
+        document.getElementById(server ? 'tsUrl' : 'tsName').focus();
+    }
+
+    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+
+    function showErrors(id, list) {
+        var box = document.getElementById(id);
+        clear(box);
+        list.forEach(function (m) { box.appendChild(el('div', null, m)); });
+        box.hidden = list.length === 0;
+    }
+
+    function warnUrl() {
+        var host = '';
+        try { host = new URL(document.getElementById('tsUrl').value).hostname; } catch (e) { host = ''; }
+        document.getElementById('tsUrlWarning').hidden = !/^(localhost|127\.|0\.0\.0\.0$|\[::1?\]$)/.test(host);
+    }
+
+    function formBody() {
+        var timeout = document.getElementById('tsTimeout').value;
+        return {
+            name: document.getElementById('tsName').value.trim(),
+            namespace: document.getElementById('tsNamespace').value.trim(),
+            url: document.getElementById('tsUrl').value.trim(),
+            protocol: document.getElementById('tsProtocol').value,
+            timeoutSeconds: timeout ? Number(timeout) : null,
+            description: document.getElementById('tsDescription').value.trim(),
+            headers: Array.prototype.map.call(document.querySelectorAll('#tsHeaderRows .ts-header-row'), function (row) {
+                var source = row.querySelector('.ts-h-source').value;
+                return {
+                    name: row.querySelector('.ts-h-name').value.trim(),
+                    source: source,
+                    value: source === 'value' ? row.querySelector('.ts-h-value').value : null,
+                    secretName: source === 'secret' ? row.querySelector('.ts-h-secret').value.trim() : null,
+                    secretKey: source === 'secret' ? row.querySelector('.ts-h-key').value.trim() : null
+                };
+            })
+        };
+    }
+
+    function submitForm(e) {
+        e.preventDefault();
+        var submit = document.getElementById('tsFormSubmit');
+        submit.disabled = true;
+        var body = formBody();
+        var request = editing
+            ? send('PUT', api + '/' + encodeURIComponent(editing.namespace) + '/' + encodeURIComponent(editing.name), body)
+            : send('POST', api, body);
+        request.then(function (r) {
+            submit.disabled = false;
+            if (!r.ok) { showErrors('tsFormErrors', problemText(r.body, r.status)); if (r.status === 502) load(); return; }
+            // Typed header values leave the page with the request; nothing keeps them.
+            clear(document.getElementById('tsHeaderRows'));
+            closeModal('tsFormModal');
+            load();
+        });
+    }
+
+    // --- Delete ---
+    function openDelete(server) {
+        deleting = server;
+        showErrors('tsDeleteErrors', []);
+        document.getElementById('tsDeleteText').textContent = 'Delete ' + server.ref + ' from kagent? Its companion Secrets go with it.';
+        var usage = document.getElementById('tsDeleteUsage');
+        clear(usage);
+        if (server.usedBy == null || server.usedBy.length) {
+            var box = el('div', 'alert alert-warning');
+            var warn = el('div', 'alert-body');
+            box.appendChild(warn);
+            warn.appendChild(el('strong', null, server.usedBy == null
+                ? 'kagent did not say which agents use this server.'
+                : 'In use by ' + server.usedBy.length + ' agent' + (server.usedBy.length === 1 ? '' : 's') + ': ' + server.usedBy.join(', ')));
+            warn.appendChild(el('p', null, 'They lose its tools until it is added again or their tool list is changed on the Agents page.'));
+            usage.appendChild(box);
+        }
+        document.getElementById('tsDeleteConfirm').textContent = server.usedBy && server.usedBy.length === 0 ? 'Delete' : 'Delete anyway';
+        document.getElementById('tsDeleteModal').classList.add('active');
+    }
+
+    function confirmDelete() {
+        var s = deleting;
+        var confirmInUse = !(s.usedBy && s.usedBy.length === 0);
+        send('DELETE', api + '/' + encodeURIComponent(s.namespace) + '/' + encodeURIComponent(s.name) + (confirmInUse ? '?confirmInUse=true' : '')).then(function (r) {
+            if (!r.ok) { showErrors('tsDeleteErrors', problemText(r.body, r.status)); return; }
+            closeModal('tsDeleteModal');
+            load();
+        });
     }
 
     function init() {
-        document.getElementById('btnRefresh').addEventListener('click', loadToolServers);
-        if (isOwner) document.getElementById('btnAddServer').addEventListener('click', showModal);
-        document.getElementById('btnCloseModal').addEventListener('click', hideModal);
-        document.getElementById('btnCancelModal').addEventListener('click', hideModal);
-        document.getElementById('addServerForm').addEventListener('submit', createToolServer);
-
-        loadToolServers();
-    }
-
-    function showModal() {
-        document.getElementById('addServerForm').reset();
-        document.getElementById('addServerModal').classList.add('active');
-    }
-
-    function hideModal() {
-        document.getElementById('addServerModal').classList.remove('active');
-    }
-
-    function loadToolServers() {
-        var container = document.getElementById('serversContainer');
-        container.innerHTML = '<div class="loading-state">Loading tool servers...</div>';
-
-        fetch('/api/toolservers')
-            .then(function(r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
-            .then(function(data) {
-                toolServers = data || [];
-                renderToolServers();
-            })
-            .catch(function(err) {
-                console.error('Error loading tool servers:', err);
-                toolServers = [];
-                renderToolServers();
-            });
-    }
-
-    function renderToolServers() {
-        var container = document.getElementById('serversContainer');
-
-        if (toolServers.length === 0) {
-            container.innerHTML = '<div class="empty-state"><h3>No Tool Servers</h3><p>Get started by adding your first MCP tool server.</p></div>';
-            return;
+        document.getElementById('btnRefresh').addEventListener('click', load);
+        document.getElementById('tsSearch').addEventListener('input', function () { if (overview) render(); });
+        if (isOwner) {
+            document.getElementById('btnAddServer').addEventListener('click', function () { openForm(null); });
+            document.getElementById('tsFormClose').addEventListener('click', function () { closeModal('tsFormModal'); });
+            document.getElementById('tsFormCancel').addEventListener('click', function () { closeModal('tsFormModal'); });
+            document.getElementById('tsForm').addEventListener('submit', submitForm);
+            document.getElementById('tsAddHeader').addEventListener('click', function () { headerRow(null); });
+            document.getElementById('tsUrl').addEventListener('input', warnUrl);
+            document.getElementById('tsDeleteCancel').addEventListener('click', function () { closeModal('tsDeleteModal'); });
+            document.getElementById('tsDeleteConfirm').addEventListener('click', confirmDelete);
         }
-
-        var html = '<div class="servers-grid">';
-        toolServers.forEach(function(server) {
-            var hasTools = server.discoveredTools && server.discoveredTools.length > 0;
-            var statusBadge = hasTools ? '<span class="badge badge-success">Online</span>' : '<span class="badge badge-warning">No Tools</span>';
-            var toolCount = server.discoveredTools ? server.discoveredTools.length : 0;
-
-            html += '<div class="server-card" data-ref="' + esc(server.ref) + '">';
-            html += '<div class="server-header">';
-            html += '<div class="server-info"><h4>' + esc(server.ref || server.name) + '</h4>';
-            html += '<div class="server-ref">' + esc(server.groupKind || 'MCP Server') + '</div></div>';
-            html += '<div style="display: flex; gap: 8px;">' + statusBadge;
-            if (isOwner) html += '<button class="btn btn-ghost btn-delete" data-ref="' + esc(server.ref) + '" aria-label="Delete ' + esc(server.ref) + '">&times;</button>';
-            html += '</div></div>';
-            html += '<div style="font-size: 13px; color: var(--text-secondary);">' + toolCount + ' tools available</div>';
-
-            if (hasTools) {
-                html += '<div class="tool-list">';
-                var showTools = server.discoveredTools.slice(0, 5);
-                showTools.forEach(function(tool) {
-                    html += '<span class="tool-tag" title="' + esc(tool.description) + '">' + esc(tool.name) + '</span>';
-                });
-                if (server.discoveredTools.length > 5) {
-                    html += '<span class="tool-tag">+' + (server.discoveredTools.length - 5) + ' more</span>';
-                }
-                html += '</div>';
-            }
-
-            html += '</div>';
-        });
-        html += '</div>';
-
-        container.innerHTML = html;
-
-        container.querySelectorAll('.btn-delete').forEach(function(btn) {
-            btn.addEventListener('click', function() {
-                deleteToolServer(this.getAttribute('data-ref'));
-            });
-        });
+        load();
     }
 
-    function createToolServer(e) {
-        e.preventDefault();
-        var form = e.target;
-        var data = {
-            name: document.getElementById('serverName').value,
-            namespace: document.getElementById('serverNamespace').value,
-            url: document.getElementById('serverUrl').value
-        };
-
-        fetch('/api/toolservers', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data)
-        })
-        .then(function(r) {
-            if (r.ok) {
-                hideModal();
-                loadToolServers();
-                alert('Tool server created!');
-                return;
-            }
-            return r.json().catch(function() { return {}; }).then(function(body) {
-                throw new Error(body.error || 'Failed to create (HTTP ' + r.status + ')');
-            });
-        })
-        .catch(function(err) {
-            alert('Error: ' + err.message);
-        });
-    }
-
-    function deleteToolServer(ref) {
-        if (!confirm('Delete this tool server?')) return;
-        var parts = ref.split('/');
-        var namespace = parts[0] || 'kagent';
-        var name = parts[1] || ref;
-
-        fetch('/api/toolservers/' + encodeURIComponent(namespace) + '/' + encodeURIComponent(name), { method: 'DELETE' })
-            .then(function(r) {
-                if (r.ok) return loadToolServers();
-                return r.json().catch(function() { return {}; }).then(function(body) {
-                    alert('Error: ' + (body.error || 'Failed to delete (HTTP ' + r.status + ')'));
-                });
-            })
-            .catch(function(err) { alert('Error: ' + err.message); });
-    }
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
 })();
 </script>

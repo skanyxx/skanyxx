@@ -881,9 +881,9 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(skill, _kagent.AgentObjects[$"{Ns}/refund-helper"]["spec"]!["skills"]!["refs"]![0]!.GetValue<string>());
     }
 
-    /// <summary>G1 + D116: what changes kagent is the owner's.</summary>
+    /// <summary>G1 + D116: what changes kagent's tool servers is the owner's.</summary>
     [Fact]
-    public async Task LegacyRoutesThatChangeKagent_AreTheOwnersOnly()
+    public async Task ToolServerWrites_AreTheOwnersOnly()
     {
         foreach (var who in new[] { _supervisor, _builder, _employee })
         {

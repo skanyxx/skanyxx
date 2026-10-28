@@ -534,9 +534,4 @@ public class KAgentApiClient
             throw new HttpRequestException("kagent answered in an unexpected shape", ex, HttpStatusCode.BadGateway);
         }
     }
-
-    public async Task<List<ToolServer>> GetToolServersAsync()
-    {
-        return await RequestAsync<List<ToolServer>>("/api/toolservers", HttpMethod.Get);
-    }
 }

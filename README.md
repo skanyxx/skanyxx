@@ -415,6 +415,7 @@ does a dependency whose DLL is missing or fails to load: disable the dependents 
 |---|---|
 | `agents` | `memory`, `identity` (the studio writes grants and secrets through memory; the form lists teams) |
 | `memory` | `identity` (team membership through `IOrgMembership`) |
+| `toolservers` | `memory` (the studio's plugin servers, and memory's database for its records; the audit is identity's, which memory needs) |
 
 Nothing depends on `agents`, `chat`, `runtime`, `tickets`, `toolservers` or `sandboxes`, so each of those can be
 disabled on its own.
@@ -513,7 +514,7 @@ Each module exposes REST endpoints under `/api/`:
 | Tickets | `/api/tickets/issues`, `/api/tickets/pipelines`, `/api/tickets/runs` |
 | Sandboxes (experimental) | `/api/sandboxes`, `/api/sandboxes/{name}`, `/api/sandboxes/workspaces`, `/api/sandboxes/models` |
 | Runtime | `/api/model` (owner: kagent ModelConfig) |
-| ToolServers | `/api/toolservers` (list; create and delete are the owner's) |
+| ToolServers | `/api/toolservers` (list and `POST {ns}/{name}/refresh`: owner and supervisor; `POST`, `PUT {ns}/{name}`, `DELETE {ns}/{name}[?confirmInUse=true]`: the owner's; D313) |
 
 Health check: `GET /health` (anonymous; overall status plus each check's name and status, e.g.
 `identity-postgres: Healthy`; no exception text). kagent's reachability is not part of it (kagent down must not take
@@ -1140,8 +1141,8 @@ in the agent repo `skanyxx-agents` carries them; only a supervisor's merge makes
   `Studio:Git:User` (`skanyxx-bot`), `Studio:Git:Owner`/`Repo`/`Branch`, `Studio:Namespace` (`kagent`),
   `Studio:MemoryMcpUrl`, `Studio:McpServers`, `Studio:ReconcileSeconds`, `Studio:FactoryModelConfig`,
   `Studio:SkillRegistries`, `Studio:MaxRemovalsPerPass`, `Studio:MaxOpenProposalsPerBuilder`, `Studio:LockWaitSeconds`.
-- `/api/agents` only reads: its kubectl writes are gone (Phase 1). Creating or deleting a tool server is the owner's
-  (D116). The Host runs no processes and holds no Kubernetes credentials.
+- `/api/agents` only reads: its kubectl writes are gone (Phase 1). Creating, editing or deleting a tool server is the owner's
+  (D116, D313). The Host runs no processes and holds no Kubernetes credentials.
 
 **Local Gitea.** `scripts/dev/first-hour.sh git` starts the compose service `gitea` (project `skanyxx`,
 `127.0.0.1:3300`, registration off, sign-in required), creates the account `skanyxx-bot` (not a site admin; it owns the
