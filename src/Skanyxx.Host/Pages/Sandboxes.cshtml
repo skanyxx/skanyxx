@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = "Sandboxes";
 }
+@await Component.InvokeAsync("SetupGuide", new { id = "sandboxes" })
 <p class="text-muted">
     <span class="badge badge-warning">Experimental</span>
     Run a container in a sandbox on Google AX, watch it start and stop it. AX is pre-1.0 and may change or break.

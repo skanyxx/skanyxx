@@ -13,6 +13,7 @@ using Serilog;
 using Serilog.Formatting.Compact;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Host.Setup;
 
 // `open` / `url`: the launchers' verbs, which open Skanyxx:RemoteUrl and exit without starting a host (D234).
 if (OpenCommand.Run(args) is { } exitCode)
@@ -86,6 +87,7 @@ public partial class Program
         var mvcBuilder = builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddHttpClient();
+        builder.Services.AddSingleton<SetupInspector>();
 
         // Module Loading
         using var loggerFactory = new Serilog.Extensions.Logging.SerilogLoggerFactory(Log.Logger);
@@ -222,6 +224,7 @@ public partial class Program
         app.MapSkanyxxHealth("/health");
 
         app.MapRazorPages();
+        app.MapSetupGuides();
         app.MapControllers();
         app.UseSkanyxxPlatform(moduleLoader.GetModules());
 

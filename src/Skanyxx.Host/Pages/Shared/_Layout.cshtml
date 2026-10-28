@@ -59,6 +59,13 @@
                             <span class="nav-label">Plugins</span>
                         </a>
                     }
+                    @if (Skanyxx.Host.Setup.SetupAccess.CanRead(User))
+                    {
+                        <a href="/SetupGuides" class="nav-item @(currentPage == "/SetupGuides" ? "active" : "")" title="Setup guides">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-guide"/></svg></span>
+                            <span class="nav-label">Setup guides</span>
+                        </a>
+                    }
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor))
                     {
                         <a href="/Sandboxes" class="nav-item @(currentPage == "/Sandboxes" ? "active" : "")" title="Sandboxes">
@@ -167,6 +174,7 @@
             });
         }
     </script>
+    <script src="~/js/setup-guide.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

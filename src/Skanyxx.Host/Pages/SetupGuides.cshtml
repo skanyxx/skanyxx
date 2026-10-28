@@ -1,0 +1,14 @@
+@page
+@model SetupGuidesModel
+@{
+    ViewData["Title"] = "Setup guides";
+}
+<p class="text-muted">
+    How to make each part of Skanyxx work, for a local run and for the Helm chart. A guide opens by itself when this
+    install is missing a setting it needs. "Copy instructions for agent" copies a ready prompt for an AI coding agent:
+    setting names and steps only, never a secret value.
+</p>
+@foreach (var guide in Model.Guides)
+{
+    @await Component.InvokeAsync("SetupGuide", new { id = guide.Id })
+}

@@ -3,6 +3,7 @@
 @{
     ViewData["Title"] = "Debug";
 }
+@await Component.InvokeAsync("SetupGuide", new { id = "dragonfly" })
 <div class="card mb-3">
     <p>Skanyxx <code>@Model.Version</code>, Host mode <code>@Model.Mode</code></p>
 </div>
