@@ -61,7 +61,7 @@ skanyxx:
     # jira | local. Jira settings and the token go in through env / extraEnvFrom (README "Configuration").
     source: jira
 
-  # Modules:Enabled:<id> — e.g. { dashboard: false }. Empty: the Host's defaults (all on, sandboxes off).
+  # Modules:Enabled:<id> — e.g. { sandboxes: true }. Empty: the Host's defaults (all on, sandboxes off).
   modules: {}
 
   # Extra env (list of EnvVar) and envFrom (list of EnvFromSource), for settings this chart does not name.
@@ -123,8 +123,7 @@ ingress:
   tls: []            # e.g. [{secretName: skanyxx-tls, hosts: [skanyxx.example.com]}]
   exactPaths: ["/"]
   # Mind the case: ingress Prefix matching is case-sensitive, ASP.NET routing is not. These are the casings the
-  # pages link to. The leftover SRE pages (Dashboard, Investigate, Alerts, Hooks, CloudTools, Analytics, Debug, Agents,
-  # ToolServers, Settings) are not published.
+  # pages link to. Every product page is listed (D271); /mcp never is (validate.sh refuses it).
   prefixPaths:
     - /api
     - /_content
@@ -146,6 +145,18 @@ ingress:
     - /People
     - /Org
     - /Entra
+    - /Agents
+    - /ToolServers
+    - /Studio
+    - /Plugins
+    - /Sandboxes
+    - /Debug
+    - /Audit
+    - /ResetPassword
+    - /ForgotPassword
+    - /AccessDenied
+    - /Privacy
+    - /Offline
 
 # The namespace is default-deny (D137): every pod refuses traffic it is not explicitly allowed, and may only send DNS
 # unless allowed more. Allowed (docs/design/cluster-security.md has the matrix): Skanyxx's http port ← the ingress
