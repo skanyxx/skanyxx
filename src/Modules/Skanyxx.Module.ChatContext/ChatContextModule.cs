@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Runtime;
 using Skanyxx.Module.ChatContext.Access;
@@ -55,7 +56,10 @@ public sealed class ChatContextModule : IModule
         services.AddSingleton<IAnswerStore, RedisAnswerStore>();
         services.AddSingleton<AnswerCache>();
         if (configuration.GetValue<bool>($"{ChatContextOptions.Section}:AnswerCache:Enabled"))
+        {
             services.AddTransient<IPipelineBehavior<SaveModelSettingsCommand, Outcome<ModelSettings>>, ModelChangeClearsAnswers>();
+            services.AddHealthChecks().AddCheck<AnswerStoreHealthCheck>(DashboardChecks.AnswerCache, tags: [HealthEndpoint.DiagnosticsTag]);
+        }
 
         services.AddHealthChecks().AddNpgSql(
             sp => sp.GetRequiredService<IOptions<ChatContextOptions>>().Value.ConnectionSettings().ConnectionString,

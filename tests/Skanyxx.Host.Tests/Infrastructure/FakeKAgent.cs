@@ -112,6 +112,9 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>Tool name → description, for the tools kagent discovers.</summary>
     public ConcurrentDictionary<string, string> ToolDescriptions { get; } = new();
 
+    /// <summary>The model usage the completed task reports (<c>metadata.kagent_usage_metadata</c>, as kagent's Python runtime); null = none.</summary>
+    public JsonObject? Usage { get; set; }
+
     public TimeSpan AgentsDelay { get; set; }
 
     public TimeSpan ModelDelay { get; set; }
@@ -368,6 +371,7 @@ public sealed class FakeKAgent : IAsyncDisposable
                     ["kind"] = "task",
                     ["contextId"] = contextId,
                     ["status"] = new JsonObject { ["state"] = "completed" },
+                    ["metadata"] = Usage is null ? null : new JsonObject { ["kagent_usage_metadata"] = Usage.DeepClone() },
                     ["artifacts"] = new JsonArray(new JsonObject
                     {
                         ["parts"] = new JsonArray(

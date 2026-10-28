@@ -153,6 +153,8 @@ ingress:
     - /Debug
     - /Audit
     - /SetupGuides
+    - /Dashboard
+    - /Analytics
     - /ResetPassword
     - /ForgotPassword
     - /AccessDenied

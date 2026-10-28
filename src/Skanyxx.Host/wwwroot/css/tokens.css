@@ -138,6 +138,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger-solid: oklch(0.5 0.19 27);
   --info: oklch(0.48 0.12 250);
   --info-tint: oklch(0.48 0.12 250 / 0.12);
+  /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+  --chart-1: var(--accent-solid);
+  --chart-2: oklch(0.55 0.13 150);
+  --chart-3: oklch(0.62 0.13 70);
+  --chart-4: oklch(0.55 0.19 27);
+  --chart-5: oklch(0.58 0.12 230);
+  --chart-6: oklch(0.55 0.17 305);
+  --chart-7: oklch(0.6 0.17 350);
+  --chart-8: oklch(0.55 0.02 260);
+  --status-ok: var(--success);
+  --status-warn: var(--warning);
+  --status-down: var(--danger);
+  --status-off: var(--text-3);
 }
 
 /* Dark: dark, true black */
@@ -172,6 +185,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger-solid: oklch(0.52 0.19 27);
   --info: oklch(0.8 0.1 250);
   --info-tint: oklch(0.8 0.1 250 / 0.18);
+  /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+  --chart-1: var(--accent-text);
+  --chart-2: oklch(0.78 0.15 150);
+  --chart-3: oklch(0.83 0.13 85);
+  --chart-4: oklch(0.72 0.16 25);
+  --chart-5: oklch(0.78 0.11 230);
+  --chart-6: oklch(0.74 0.15 305);
+  --chart-7: oklch(0.76 0.14 350);
+  --chart-8: oklch(0.7 0.02 260);
+  --status-ok: var(--success);
+  --status-warn: var(--warning);
+  --status-down: var(--danger);
+  --status-off: var(--text-3);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -206,6 +232,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
     --danger-solid: oklch(0.52 0.19 27);
     --info: oklch(0.8 0.1 250);
     --info-tint: oklch(0.8 0.1 250 / 0.18);
+    /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+    --chart-1: var(--accent-text);
+    --chart-2: oklch(0.78 0.15 150);
+    --chart-3: oklch(0.83 0.13 85);
+    --chart-4: oklch(0.72 0.16 25);
+    --chart-5: oklch(0.78 0.11 230);
+    --chart-6: oklch(0.74 0.15 305);
+    --chart-7: oklch(0.76 0.14 350);
+    --chart-8: oklch(0.7 0.02 260);
+    --status-ok: var(--success);
+    --status-warn: var(--warning);
+    --status-down: var(--danger);
+    --status-off: var(--text-3);
   }
 }
 
@@ -241,6 +280,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger-solid: oklch(0.52 0.19 27);
   --info: oklch(0.8 0.1 250);
   --info-tint: oklch(0.8 0.1 250 / 0.18);
+  /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+  --chart-1: var(--accent-text);
+  --chart-2: oklch(0.78 0.15 150);
+  --chart-3: oklch(0.83 0.13 85);
+  --chart-4: oklch(0.72 0.16 25);
+  --chart-5: oklch(0.78 0.11 230);
+  --chart-6: oklch(0.74 0.15 305);
+  --chart-7: oklch(0.76 0.14 350);
+  --chart-8: oklch(0.7 0.02 260);
+  --status-ok: var(--success);
+  --status-warn: var(--warning);
+  --status-down: var(--danger);
+  --status-off: var(--text-3);
 }
 
 /* Green: light */
@@ -275,6 +327,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger-solid: oklch(0.5 0.19 27);
   --info: oklch(0.48 0.12 250);
   --info-tint: oklch(0.48 0.12 250 / 0.12);
+  /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+  --chart-1: var(--accent-solid);
+  --chart-2: oklch(0.55 0.13 150);
+  --chart-3: oklch(0.62 0.13 70);
+  --chart-4: oklch(0.55 0.19 27);
+  --chart-5: oklch(0.58 0.12 230);
+  --chart-6: oklch(0.55 0.17 305);
+  --chart-7: oklch(0.6 0.17 350);
+  --chart-8: oklch(0.55 0.02 260);
+  --status-ok: var(--success);
+  --status-warn: var(--warning);
+  --status-down: var(--danger);
+  --status-off: var(--text-3);
 }
 
 /* Purple: dark */
@@ -309,6 +374,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger-solid: oklch(0.52 0.19 27);
   --info: oklch(0.8 0.1 250);
   --info-tint: oklch(0.8 0.1 250 / 0.18);
+  /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+  --chart-1: var(--accent-text);
+  --chart-2: oklch(0.78 0.15 150);
+  --chart-3: oklch(0.83 0.13 85);
+  --chart-4: oklch(0.72 0.16 25);
+  --chart-5: oklch(0.78 0.11 230);
+  --chart-6: oklch(0.74 0.15 305);
+  --chart-7: oklch(0.76 0.14 350);
+  --chart-8: oklch(0.7 0.02 260);
+  --status-ok: var(--success);
+  --status-warn: var(--warning);
+  --status-down: var(--danger);
+  --status-off: var(--text-3);
 }
 
 /* Orange: dark */
@@ -343,6 +421,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger-solid: oklch(0.52 0.19 27);
   --info: oklch(0.8 0.1 250);
   --info-tint: oklch(0.8 0.1 250 / 0.18);
+  /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+  --chart-1: var(--accent-text);
+  --chart-2: oklch(0.78 0.15 150);
+  --chart-3: oklch(0.83 0.13 85);
+  --chart-4: oklch(0.72 0.16 25);
+  --chart-5: oklch(0.78 0.11 230);
+  --chart-6: oklch(0.74 0.15 305);
+  --chart-7: oklch(0.76 0.14 350);
+  --chart-8: oklch(0.7 0.02 260);
+  --status-ok: var(--success);
+  --status-warn: var(--warning);
+  --status-down: var(--danger);
+  --status-off: var(--text-3);
 }
 
 /* Teal: light */
@@ -377,6 +468,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger-solid: oklch(0.5 0.19 27);
   --info: oklch(0.48 0.12 250);
   --info-tint: oklch(0.48 0.12 250 / 0.12);
+  /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+  --chart-1: var(--accent-solid);
+  --chart-2: oklch(0.55 0.13 150);
+  --chart-3: oklch(0.62 0.13 70);
+  --chart-4: oklch(0.55 0.19 27);
+  --chart-5: oklch(0.58 0.12 230);
+  --chart-6: oklch(0.55 0.17 305);
+  --chart-7: oklch(0.6 0.17 350);
+  --chart-8: oklch(0.55 0.02 260);
+  --status-ok: var(--success);
+  --status-warn: var(--warning);
+  --status-down: var(--danger);
+  --status-off: var(--text-3);
 }
 
 /* Rose: light */
@@ -411,6 +515,19 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger-solid: oklch(0.5 0.19 27);
   --info: oklch(0.48 0.12 250);
   --info-tint: oklch(0.48 0.12 250 / 0.12);
+  /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
+  --chart-1: var(--accent-solid);
+  --chart-2: oklch(0.55 0.13 150);
+  --chart-3: oklch(0.62 0.13 70);
+  --chart-4: oklch(0.55 0.19 27);
+  --chart-5: oklch(0.58 0.12 230);
+  --chart-6: oklch(0.55 0.17 305);
+  --chart-7: oklch(0.6 0.17 350);
+  --chart-8: oklch(0.55 0.02 260);
+  --status-ok: var(--success);
+  --status-warn: var(--warning);
+  --status-down: var(--danger);
+  --status-off: var(--text-3);
 }
 
 /* Accent override (after the themes, so it wins over a theme's own accent). */

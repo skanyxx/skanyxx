@@ -22,19 +22,25 @@ internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ChatTurns t
                 return started.Map<ChatResponse>(_ => null!);
             start = started.Value;
             if (start.Prepared.Cached is { } cached)
+            {
+                await turns.CachedAsync(command, start, cached);
                 return Outcome<ChatResponse>.Ok(cached);
+            }
 
             var response = await kagent.SendMessageAsync(start.Agent.Namespace, start.Agent.Name, start.SessionId, start.Prompt, command.UserId, ct, start.Images);
             response.RelatedSessions = start.Prepared.Sessions;
             response.MemoryCards = start.Memory.Cards;
-            await turns.CompleteAsync(command, start, response.Message.Content, ChatUsage.None);
+            await turns.CompleteAsync(command, start, response.Message.Content, ChatUsage.None, response.Usage);
             return Outcome<ChatResponse>.Ok(response);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             logger.LogWarning(ex, "Chat with {Namespace}/{Agent} failed for {UserId}", command.AgentNamespace, command.AgentName, command.UserId);
             if (start is not null)
+            {
                 await turns.AbandonAsync(command, start);
+                await turns.FailedAsync(command, start);
+            }
             return Outcome<ChatResponse>.Unavailable(ChatFailure.Message(ex));
         }
         catch (OperationCanceledException) when (start is { IsNew: true } && ct.IsCancellationRequested)

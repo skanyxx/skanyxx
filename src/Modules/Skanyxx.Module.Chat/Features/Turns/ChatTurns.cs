@@ -1,8 +1,10 @@
 using System.Text;
+using MediatR;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.MediatR.Requests;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Memory;
@@ -24,7 +26,7 @@ namespace Skanyxx.Module.Chat.Features.Turns;
 /// </summary>
 internal sealed class ChatTurns(
     KAgentApiClient kagent, IRelatedMemory related, ICardExtractor extractor, IChatContext context, IChatQuota quota, ChatFiles files,
-    ILogger<ChatTurns> logger)
+    IPublisher publisher, TimeProvider clock, ILogger<ChatTurns> logger)
 {
     public const int MaxTitle = 80;
 
@@ -83,8 +85,9 @@ internal sealed class ChatTurns(
             prepared.Context + memory.Block + turnFiles.Block + command.Message, turnFiles.Images));
     }
 
-    /// <summary>Not the request's token: the answer exists, so the index, the card and the quota record it even if the caller left.</summary>
-    public async Task CompleteAsync(SendChatMessageCommand command, TurnStart start, string answer, ChatUsage usage)
+    /// <summary>Not the request's token: the answer exists, so the index, the card, the quota and the usage rollup record it even if the caller left.</summary>
+    /// <param name="reported">The blocking answer's own token count (<see cref="A2AUsage"/>); a streamed turn's comes from <paramref name="usage"/>.</param>
+    public async Task CompleteAsync(SendChatMessageCommand command, TurnStart start, string answer, ChatUsage usage, TokenUsage? reported = null)
     {
         if (command.Reader is { } who)
             await context.CompletedAsync(new ChatTurnDone(
@@ -93,7 +96,17 @@ internal sealed class ChatTurns(
         await extractor.ChatTurnAsync(new ChatTurnDigest(
             command.UserId, start.Agent.Name, start.AgentRef, start.SessionId, command.Message, answer, start.IsNew), CancellationToken.None);
         await RecordUsageAsync(command, start, usage);
+        await RollupAsync(command, start.Agent, reported ?? Tokens(usage), start.IsNew, cached: false, saved: 0, failed: false);
     }
+
+    /// <summary>An answer from the cache, for the usage rollup: no tokens spent, the cache's own estimate saved.</summary>
+    public Task CachedAsync(SendChatMessageCommand command, TurnStart start, ChatResponse cached) =>
+        RollupAsync(command, start.Agent, TokenUsage.None, newChat: false, cached: true,
+            saved: (command.Message.Length + cached.Message.Content.Length) / CharsPerToken, failed: false);
+
+    /// <summary>A turn kagent failed, for the usage rollup (the quota records its tokens through <see cref="RecordUsageAsync"/>).</summary>
+    public Task FailedAsync(SendChatMessageCommand command, TurnStart start) =>
+        RollupAsync(command, start.Agent, TokenUsage.None, newChat: false, cached: false, saved: 0, failed: true);
 
     /// <summary>A failed or abandoned first turn leaves no conversation behind. Not the request's token: the caller may be gone.</summary>
     public async Task AbandonAsync(SendChatMessageCommand command, TurnStart start)
@@ -107,6 +120,19 @@ internal sealed class ChatTurns(
     /// <summary>What a turn used, also when it failed or was stopped: the tokens were spent.</summary>
     public Task RecordUsageAsync(SendChatMessageCommand command, TurnStart start, ChatUsage usage) =>
         quota.RecordAsync(command.UserId, start.AgentRef, start.SessionId, usage, CancellationToken.None);
+
+    // The answer cache's own estimate (AnswerCache.RecordHitAsync): question plus answer, 4 characters a token.
+    private const int CharsPerToken = 4;
+
+    private static TokenUsage Tokens(ChatUsage usage) =>
+        usage.Total > 0 ? new TokenUsage(usage.Prompt, usage.Completion, true) : TokenUsage.None;
+
+    /// <summary>The turn as numbers only (the analytics module's rollup). Not the request's token: the turn happened either way.</summary>
+    private Task RollupAsync(SendChatMessageCommand command, Agent agent, TokenUsage usage, bool newChat, bool cached, long saved, bool failed) =>
+        publisher.Publish(new ChatTurnUsage(
+            clock.GetUtcNow(), command.UserId, $"{agent.Namespace}/{agent.Name}",
+            agent.ModelConfig switch { "" => "unknown", var m when m.Contains('/') => m, var m => $"{agent.Namespace}/{m}" },
+            usage, newChat, cached, saved, failed), CancellationToken.None);
 
     private async Task DeleteSessionAsync(string userId, string sessionId)
     {

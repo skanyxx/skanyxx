@@ -20,6 +20,7 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
         yield return ChatStreamEvent.Session(start.SessionId, start.IsNew, start.Title);
         if (start.Prepared.Cached is { } cached)
         {
+            await turns.CachedAsync(command, start, cached);
             yield return ChatStreamEvent.Answer(cached.Message.Content);
             yield return ChatStreamEvent.Done(start.SessionId, true, ChatUsage.None, cached);
             yield break;
@@ -48,6 +49,7 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
             {
                 await turns.AbandonAsync(command, start);
                 await turns.RecordUsageAsync(command, start, turn.Usage);
+                await turns.FailedAsync(command, start);
                 yield return ChatStreamEvent.Error(failure, start.IsNew);
                 yield break;
             }

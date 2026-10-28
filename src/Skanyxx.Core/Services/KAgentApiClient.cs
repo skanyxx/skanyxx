@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Skanyxx.Core.Models;
+using Skanyxx.Core.Platform.Analytics;
 
 namespace Skanyxx.Core.Services;
 
@@ -352,9 +353,12 @@ public class KAgentApiClient
         }
 
         string answer;
+        TokenUsage usage;
         try
         {
-            answer = Answer(await response.Content.ReadFromJsonAsync<JsonNode>(ct));
+            var body = await response.Content.ReadFromJsonAsync<JsonNode>(ct);
+            answer = Answer(body);
+            usage = A2AUsage.From((body as JsonObject)?["result"]);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
         {
@@ -366,7 +370,8 @@ public class KAgentApiClient
         return new ChatResponse
         {
             ConversationId = sessionId,
-            Message = new ChatMessage { Content = answer, Role = "assistant", SessionId = sessionId, Timestamp = DateTime.UtcNow }
+            Message = new ChatMessage { Content = answer, Role = "assistant", SessionId = sessionId, Timestamp = DateTime.UtcNow },
+            Usage = usage
         };
     }
 

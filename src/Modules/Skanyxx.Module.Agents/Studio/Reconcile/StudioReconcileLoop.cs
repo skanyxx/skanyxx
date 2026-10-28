@@ -14,7 +14,8 @@ namespace Skanyxx.Module.Agents.Studio.Reconcile;
 /// creating the repo on its own request. Nothing a pass throws stops the Host (M4): it is logged and the next pass runs.
 /// </summary>
 internal sealed class StudioReconcileLoop(
-    StudioReconciler reconciler, StudioSignal signal, IServiceScopeFactory scopes, IOptions<StudioOptions> options, ILogger<StudioReconcileLoop> logger)
+    StudioReconciler reconciler, StudioSignal signal, IServiceScopeFactory scopes, IOptions<StudioOptions> options, ReconcileStatus status,
+    TimeProvider clock, ILogger<StudioReconcileLoop> logger)
     : BackgroundService
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -29,6 +30,7 @@ internal sealed class StudioReconcileLoop(
                 if (await BootstrappedAsync(stoppingToken))
                 {
                     var failures = await reconciler.ReconcileAsync(stoppingToken);
+                    status.Record(new ReconcilePass(clock.GetUtcNow(), failures, Failed: false));
                     if (failures > 0)
                         logger.LogWarning("Studio reconcile finished with {Failures} agent(s) not applied", failures);
                 }
@@ -40,12 +42,14 @@ internal sealed class StudioReconcileLoop(
             catch (Exception ex) when (ex is HttpRequestException or TimeoutException or System.Data.Common.DbException)
             {
                 logger.LogWarning(ex, "Studio reconcile could not run: {Reason}", ex.Message);
+                status.Record(new ReconcilePass(clock.GetUtcNow(), 0, Failed: true));
             }
             catch (Exception ex)
             {
                 // A person must act (the repo is gone or not the recorded one, main lost its protection), or git or
                 // kagent answered something nobody expected: loudly, and keep going.
                 logger.LogError(ex, "Studio reconcile failed: {Reason}", ex.Message);
+                status.Record(new ReconcilePass(clock.GetUtcNow(), 0, Failed: true));
             }
 
             try

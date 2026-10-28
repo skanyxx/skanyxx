@@ -17,7 +17,9 @@ public sealed partial class ThemeTokensTests
         "--surface-0", "--surface-1", "--surface-2", "--surface-3", "--surface-nav", "--overlay", "--shadow-color",
         "--border", "--border-strong", "--text", "--text-2", "--text-3", "--text-on-accent",
         "--accent-h", "--accent-c", "--accent-c-hi", "--accent-solid", "--accent-solid-hover", "--accent-text", "--accent-tint",
-        "--success", "--success-tint", "--warning", "--warning-tint", "--danger", "--danger-tint", "--danger-solid", "--info", "--info-tint"
+        "--success", "--success-tint", "--warning", "--warning-tint", "--danger", "--danger-tint", "--danger-solid", "--info", "--info-tint",
+        "--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5", "--chart-6", "--chart-7", "--chart-8",
+        "--status-ok", "--status-warn", "--status-down", "--status-off"
     ];
 
     private static readonly Css Sheet = Css.Parse(File.ReadAllText(Repo.Path("src", "Skanyxx.Host", "wwwroot", "css", "tokens.css")));
