@@ -373,6 +373,16 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.DoesNotContain("/Chat?agent=${encodeURIComponent(a.name)}", page);
     }
 
+    /// <summary>Chrome walkthrough 2026-10-28: a suspended agent's row said "In Chat: yes" while Chat skipped it (D257).</summary>
+    [Fact]
+    public async Task TheInChatColumn_SaysNoForASuspendedAgent()
+    {
+        var page = await _supervisor.GetStringAsync("/Agents", Ct);
+
+        Assert.Contains("cell(row, a.inChat ? (a.suspended ? 'no (suspended)' : 'yes') : 'no');", page);
+        Assert.DoesNotContain("cell(row, a.inChat ? 'yes' : 'no');", page);
+    }
+
     /// <summary>C-1: two entries for one server, each with its own Secret header, are never merged by a save.</summary>
     [Fact]
     public async Task AnAgentNamingOneServerTwice_IsNeverEdited_SoNoCredentialMoves()

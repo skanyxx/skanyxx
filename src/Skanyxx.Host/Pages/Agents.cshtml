@@ -154,7 +154,7 @@
                 cell(row, a.namespace);
                 cell(row, a.source);
                 cell(row, a.suspended ? 'Suspended' : (a.ready ? 'Ready' : (a.accepted ? 'Starting' : 'Not ready')));
-                cell(row, a.inChat ? 'yes' : 'no');
+                cell(row, a.inChat ? (a.suspended ? 'no (suspended)' : 'yes') : 'no');
                 const actions = cell(row, '');
                 actions.appendChild(button('Details', a.name, () => details(a.namespace, a.name)));
                 // namespace/name: two namespaces may hold the same name, and Chat picks a bare name's first match.
