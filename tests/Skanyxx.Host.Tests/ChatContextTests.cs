@@ -106,6 +106,7 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         // kagent's Go runtime stores its events PascalCase and lists them newest first: both are read (Chrome run).
         Assert.Contains("data.content || data.Content", page);
         Assert.Contains("data.partial || data.Partial", page);
+        Assert.Contains("(content.parts || []).some(p => p && (p.functionCall || p.function_call))", page);
         Assert.Contains("shown.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))", page);
     }
 

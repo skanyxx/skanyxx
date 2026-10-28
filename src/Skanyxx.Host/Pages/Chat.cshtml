@@ -999,6 +999,8 @@
             // The Python ADK writes camelCase, kagent's Go runtime PascalCase (Content, Partial, Author, Timestamp).
             if (!data || data.partial || data.Partial) continue;
             const content = data.content || data.Content || data;
+            // A tool-calling step's text is the model thinking aloud; the live view shows only the turn's answer (D274).
+            if ((content.parts || []).some(p => p && (p.functionCall || p.function_call))) continue;
             const role = (content.role || data.role || data.author || data.Author) === 'user' ? 'user' : 'assistant';
             const text = (content.parts || [])
                 .filter(p => p && typeof p.text === 'string' && !p.thought
