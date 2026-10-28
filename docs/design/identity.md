@@ -7,7 +7,7 @@
 | Path | When |
 |---|---|
 | Invite + create teams/depts in Skanyxx | Always. No Azure, no Okta, still works. |
-| **Entra ID** (OIDC + group → role **and** group → team/dept) | Optional. |
+| **Entra ID** (OIDC + group → role **and** group → team/dept) | Optional, and only on an install whose operator sets `Identity:EntraAvailable=true` (default off: no page, nav item, button or API, D272). |
 | Other IdPs (Google, Okta, …) | Same mapper pattern later. |
 
 Connecting an IdP is **not** the installer. Owner does it when ready. Break-glass owner always works.
