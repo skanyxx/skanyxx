@@ -20,7 +20,7 @@
 <div class="card mb-3">
     <div class="card-header"><h3 class="card-title">New department</h3></div>
     <form method="post" asp-page-handler="CreateDepartment" class="flex gap-2 items-center">
-        <input name="slug" placeholder="slug, e.g. finance" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@-]{0,127}" autocomplete="off" />
+        <input name="slug" placeholder="slug, e.g. finance" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@\-]{0,127}" autocomplete="off" />
         <input name="name" placeholder="Name" required maxlength="100" autocomplete="off" />
         <button type="submit" class="btn btn-primary">Create department</button>
     </form>
@@ -31,7 +31,7 @@
     <div class="card mb-3">
         <div class="card-header"><h3 class="card-title">New team</h3></div>
         <form method="post" asp-page-handler="CreateTeam" class="flex gap-2 items-center">
-            <input name="slug" placeholder="slug, e.g. billing" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@-]{0,127}" autocomplete="off" />
+            <input name="slug" placeholder="slug, e.g. billing" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@\-]{0,127}" autocomplete="off" />
             <input name="name" placeholder="Name" required maxlength="100" autocomplete="off" />
             <select name="department" required>
                 @foreach (var department in Model.Departments)

@@ -558,8 +558,8 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
     public async Task TheAgentsApi_IsReadOnly_EvenForTheOwner()
     {
         Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.PostAsJsonAsync("/api/agents", new { name = "x" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.DeleteAsync("/api/agents/kagent__NS__seed", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, (await _owner.PutAsJsonAsync("/api/agents/kagent__NS__seed/status", "Inactive", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.DeleteAsync("/api/agents/kagent/seed", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.MethodNotAllowed, (await _owner.PutAsJsonAsync("/api/agents/kagent/seed", "Inactive", cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]

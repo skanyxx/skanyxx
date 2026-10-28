@@ -16,6 +16,16 @@
     <div class="loading-state">Loading agents...</div>
 </div>
 
+<div class="modal" id="agentModal" role="dialog" aria-modal="true" aria-labelledby="agentModalTitle">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3 id="agentModalTitle">Agent</h3>
+            <button class="btn btn-ghost" id="agentModalClose" onclick="closeAgentDetails()" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body" id="agentModalBody"></div>
+    </div>
+</div>
+
 
 <style>
     .agent-grid {
@@ -207,6 +217,26 @@
         border-color: var(--accent-color);
     }
 
+    .modal-body {
+        padding: 20px;
+    }
+
+    .agent-details {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 8px 16px;
+        margin: 0;
+    }
+
+    .agent-details dt {
+        color: var(--text-muted);
+    }
+
+    .agent-details dd {
+        margin: 0;
+        word-break: break-word;
+    }
+
     .modal-actions {
         display: flex;
         justify-content: flex-end;
@@ -218,6 +248,11 @@
 
 <script>
     let agents = [];
+
+    // Names, descriptions and labels come from kagent (and from whoever proposed the agent): text, never markup.
+    function esc(value) {
+        return String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    }
 
     async function loadAgents() {
         const grid = document.getElementById('agentGrid');
@@ -256,23 +291,27 @@
             const statusClass = getStatusClass(agent.status);
             const isReady = agent.status === 'Active' || agent.status === 'Ready';
             return `
-                <div class="agent-card" data-id="${agent.id}">
+                <div class="agent-card" data-ref="${esc(agent.namespace)}/${esc(agent.name)}">
                     <div class="agent-header">
                         <span class="agent-icon">&#x2B21;</span>
                         <div>
-                            <div class="agent-name">${agent.name}</div>
-                            <div class="agent-type text-muted">${agent.type || 'Declarative'}</div>
+                            <div class="agent-name">${esc(agent.name)}</div>
+                            <div class="agent-type text-muted">${esc(agent.namespace)} · ${esc(agent.type || 'Declarative')}</div>
                         </div>
-                        <span class="badge ${statusClass}">${isReady ? 'Ready' : (agent.status || 'Unknown')}</span>
+                        <span class="badge ${statusClass}">${isReady ? 'Ready' : esc(agent.status || 'Unknown')}</span>
                     </div>
-                    ${agent.description ? `<div class="agent-description">${agent.description}</div>` : ''}
+                    ${agent.description ? `<div class="agent-description">${esc(agent.description)}</div>` : ''}
                     <div class="agent-actions">
-                        <button class="btn btn-primary" onclick="startChat('${agent.name}')">Chat</button>
-                        <button class="btn btn-ghost" onclick="viewAgentDetails('${agent.id}')">Details</button>
+                        ${agent.inChat ? '<button class="btn btn-primary" data-chat>Chat</button>' : ''}
+                        <button class="btn btn-ghost" data-details>Details</button>
                     </div>
                 </div>
             `;
         }).join('');
+        grid.querySelectorAll('.agent-card').forEach((card, i) => {
+            card.querySelector('[data-chat]')?.addEventListener('click', () => startChat(agents[i]));
+            card.querySelector('[data-details]').addEventListener('click', () => viewAgentDetails(agents[i]));
+        });
     }
 
     function getStatusClass(status) {
@@ -293,13 +332,58 @@
         }
     }
 
-    function startChat(agentName) {
-        window.location.href = `/Chat?agent=${encodeURIComponent(agentName)}`;
+    function startChat(agent) {
+        window.location.href = `/Chat?agent=${encodeURIComponent(`${agent.namespace}/${agent.name}`)}`;
     }
 
-    function viewAgentDetails(id) {
-        window.location.href = `/Debug?agent=${encodeURIComponent(id)}`;
+    // A slow answer for an agent closed meanwhile never fills the dialog of the next one.
+    let detailsRequest = 0;
+
+    async function viewAgentDetails(agent) {
+        const request = ++detailsRequest;
+        const body = document.getElementById('agentModalBody');
+        document.getElementById('agentModalTitle').textContent = `${agent.namespace}/${agent.name}`;
+        body.innerHTML = '<div class="loading-state">Loading…</div>';
+        detailsOpener = document.activeElement;
+        document.getElementById('agentModal').classList.add('active');
+        document.getElementById('agentModalClose').focus();
+        let a;
+        try {
+            const response = await fetch(`/api/agents/${encodeURIComponent(agent.namespace)}/${encodeURIComponent(agent.name)}`);
+            if (request !== detailsRequest) return;
+            if (!response.ok) {
+                body.innerHTML = `<p class="text-error">${response.status === 404 ? 'kagent no longer has this agent.' : 'kagent did not answer. Try again in a moment.'}</p>`;
+                return;
+            }
+            a = await response.json();
+            if (request !== detailsRequest) return;
+        } catch {
+            if (request !== detailsRequest) return;
+            body.innerHTML = '<p class="text-error">kagent did not answer. Try again in a moment.</p>';
+            return;
+        }
+        const tools = Object.entries(a.mcpToolNames || {});
+        const labels = Object.entries(a.labels || {});
+        body.innerHTML = `
+            <dl class="agent-details">
+                <dt>Type</dt><dd>${esc(a.type)}</dd>
+                <dt>Status</dt><dd>${a.accepted ? 'Accepted' : 'Not accepted'}, ${a.ready ? 'ready' : 'not ready'}</dd>
+                <dt>Description</dt><dd>${esc(a.description) || '<span class="text-muted">none</span>'}</dd>
+                <dt>MCP tools</dt><dd>${tools.length ? tools.map(([server, names]) => `<code>${esc(server)}</code>: ${names.length ? names.map(esc).join(', ') : 'every tool'}`).join('<br>') : '<span class="text-muted">none</span>'}</dd>
+                <dt>Labels</dt><dd>${labels.length ? labels.map(([k, v]) => `<code>${esc(k)}=${esc(v)}</code>`).join('<br>') : '<span class="text-muted">none</span>'}</dd>
+            </dl>`;
     }
+
+    let detailsOpener = null;
+
+    function closeAgentDetails() {
+        const modal = document.getElementById('agentModal');
+        if (!modal.classList.contains('active')) return;
+        modal.classList.remove('active');
+        detailsOpener?.focus();
+    }
+
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeAgentDetails(); });
 
     // Load agents on page load
     document.addEventListener('DOMContentLoaded', loadAgents);
