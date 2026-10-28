@@ -1,5 +1,6 @@
 using FluentValidation;
 using FluentValidation.Results;
+using Skanyxx.Module.Agents.Manage.Definition;
 
 namespace Skanyxx.Module.Agents.Manage.Features;
 
@@ -19,13 +20,16 @@ internal static class AgentFailure
 
     public const string Stale = "The agent changed since you opened it. Reload it and make your change again.";
 
+    /// <summary>The machine reason of a proposal refused because Studio has no agent repo (the page shows the setup guide).</summary>
+    public const string StudioNotConfigured = "studio-not-configured";
+
     public const string NoVersion = "Send the version the agent was read with (reload the agent before editing it).";
 
     public static string OtherNamespace(string ns) => $"Agents are created, edited and deleted in '{ns}' only (Studio:Namespace).";
 
     public static string Exists(string ns, string name) => $"An agent named '{name}' already exists in '{ns}'.";
 
-    /// <summary>The form's problems as one 400 (RequestProblemMiddleware), keyed <c>form</c>.</summary>
-    public static ValidationException Invalid(IEnumerable<string> problems) =>
-        new(problems.Select(p => new ValidationFailure("form", p)));
+    /// <summary>The form's problems as one 400 (RequestProblemMiddleware), each keyed by its field so the page shows it there.</summary>
+    public static ValidationException Invalid(IEnumerable<FormProblem> problems) =>
+        new(problems.Select(p => new ValidationFailure(p.Field, p.Message)));
 }

@@ -27,7 +27,7 @@ internal sealed class ProposeAgentHandler(
     public async Task<Outcome<StudioResult>> Handle(ProposeAgentCommand command, CancellationToken ct)
     {
         var (user, draft) = (command.User, command.Draft);
-        if (!user.CanPropose)
+        if (!command.MayPropose)
             return Outcome<StudioResult>.Forbidden(StudioFailure.NotBuilder);
         if (!options.Value.Configured)
             return StudioFailure.Conflict<StudioResult>(StudioFailure.NotConfigured);

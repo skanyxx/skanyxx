@@ -1,4 +1,6 @@
+using System.Text.Json.Nodes;
 using Skanyxx.Core.Models;
+using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Core.Services;
 using Skanyxx.Module.Agents.Manage.Definition;
 using Skanyxx.Module.Agents.Studio.Definition;
@@ -20,4 +22,32 @@ internal static class AgentQueries
 
     /// <summary>A route's namespace and name, both Kubernetes names; anything else is no agent at all.</summary>
     public static bool IsRef(string ns, string name) => StudioNames.IsKubeName(ns) && StudioNames.IsKubeName(name);
+
+    /// <summary>kagent's tool servers (<c>ns/name</c>) with the tools and descriptions it discovered; the first entry of a repeated ref wins.</summary>
+    public static async Task<IReadOnlyDictionary<string, IReadOnlyList<ToolInfo>>> ToolCatalogAsync(KAgentApiClient kagent, CancellationToken ct) =>
+        (await kagent.GetToolServerListAsync(ct))
+            .Select(s => (Ref: Text(s?["ref"]), Tools: (IReadOnlyList<ToolInfo>)[.. (s?["discoveredTools"] as JsonArray ?? [])
+                .Where(t => Text(t?["name"]) is not null).Select(t => new ToolInfo(Text(t!["name"])!, Text(t["description"]) ?? ""))]))
+            .Where(s => s.Ref is not null)
+            .GroupBy(s => s.Ref!)
+            .ToDictionary(g => g.Key, g => g.First().Tools);
+
+    /// <summary>A server's tools as the agent names them, with the catalog's descriptions; no names = every tool the server lists.</summary>
+    public static ServerTools Describe(McpToolChoice choice, string ns, IReadOnlyDictionary<string, IReadOnlyList<ToolInfo>> catalog)
+    {
+        var known = catalog.GetValueOrDefault($"{ns}/{choice.Server}") ?? [];
+        return new ServerTools(choice.Server, choice.Tools.Count == 0
+            ? known
+            : [.. choice.Tools.Select(t => known.FirstOrDefault(k => k.Name == t) ?? new ToolInfo(t, ""))]);
+    }
+
+    /// <summary>The agents of <paramref name="ns"/> that call <paramref name="name"/> as a tool.</summary>
+    public static IReadOnlyList<string> UsedBy(IEnumerable<Agent> agents, string ns, string name) =>
+        [.. agents.Where(a => a.Namespace == ns && a.AgentToolNames.Contains(name)).Select(a => a.Name).Order(StringComparer.Ordinal)];
+
+    /// <summary>As kagent-ui counts them: each named MCP tool (a server with none counts once) and each agent tool.</summary>
+    public static int ToolCount(Agent agent) =>
+        agent.McpToolNames.Values.Sum(t => Math.Max(1, t.Count)) + agent.AgentToolNames.Count;
+
+    private static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 }

@@ -16,7 +16,7 @@ internal sealed class EditDraftHandler(
 {
     public async Task<Outcome<AgentDraft>> Handle(EditDraftQuery query, CancellationToken ct)
     {
-        if (!query.User.CanPropose)
+        if (!query.User.CanPropose && !query.FromAgentsPage)
             return Outcome<AgentDraft>.Forbidden(StudioFailure.NotBuilder);
         if (!options.Value.Configured)
             return StudioFailure.Conflict<AgentDraft>(StudioFailure.NotConfigured);

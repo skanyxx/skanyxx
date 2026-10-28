@@ -47,8 +47,14 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>The tools kagent discovers per server (<c>ns/name</c>); a server not listed here offers memory's two.</summary>
     public ConcurrentDictionary<string, string[]> DiscoveredTools { get; } = new();
 
+    /// <summary>Each discovered tool's description is this prefix and its name.</summary>
+    public const string ToolDescriptionPrefix = "Tool that does ";
+
     /// <summary>A create racing this one: the next agent POST finds this agent already there and answers 500, as kagent does.</summary>
     public JsonObject? AgentCreatedMeanwhile { get; set; }
+
+    /// <summary>Unreachable: every connection is dropped without an answer, as a controller that is not running.</summary>
+    public bool Down { get; set; }
 
     /// <summary>How many agent creates, updates or deletes to refuse with a 500 (nothing changed).</summary>
     public int FailAgentWrites;
@@ -114,6 +120,11 @@ public sealed class FakeKAgent : IAsyncDisposable
     {
         app.Use(async (context, next) =>
         {
+            if (Down)
+            {
+                context.Abort();
+                return;
+            }
             if (context.Request.Method is "POST" or "PUT" or "DELETE" && context.Request.Path.StartsWithSegments("/api/agents")
                 && Interlocked.Decrement(ref FailAgentWrites) >= 0)
             {
@@ -192,7 +203,7 @@ public sealed class FakeKAgent : IAsyncDisposable
             {
                 ["ref"] = k, ["groupKind"] = "RemoteMCPServer.kagent.dev",
                 ["discoveredTools"] = new JsonArray([.. (DiscoveredTools.TryGetValue(k, out var tools) ? tools : ["memory_search", "memory_upsert"])
-                    .Select(t => (JsonNode)new JsonObject { ["name"] = t })])
+                    .Select(t => (JsonNode)new JsonObject { ["name"] = t, ["description"] = $"{ToolDescriptionPrefix}{t}" })])
             })])));
         app.MapPost("/api/toolservers", (JsonObject body) =>
         {

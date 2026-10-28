@@ -6,14 +6,14 @@ using Skanyxx.Module.Agents.Manage.Features;
 
 namespace Skanyxx.Module.Agents.Manage.Endpoints;
 
-/// <summary>Models, allow-listed MCP servers with their tools, agents and skill registries for the form (supervisors).</summary>
+/// <summary>Models, allow-listed MCP servers with their tools, agents and skill registries for the form (every role, D312).</summary>
 internal sealed class AgentFormOptionsEndpoint(IMediator mediator) : EndpointWithoutRequest
 {
     public override void Configure()
     {
         Get("options");
         Group<AgentsGroup>();
-        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor, SkanyxxRoles.Builder, SkanyxxRoles.Employee);
     }
 
     public override async Task HandleAsync(CancellationToken ct) =>

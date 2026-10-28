@@ -14,6 +14,9 @@ namespace Skanyxx.Module.Agents.Manage.Definition;
 /// </summary>
 internal static partial class AgentSpec
 {
+    /// <summary>What kagent keeps a memory entry when <c>ttlDays</c> is unset.</summary>
+    public const int KagentDefaultTtlDays = 15;
+
     /// <summary>A new agent: Declarative, labelled as the Agents page's and listed in Chat (D253).</summary>
     public static JsonObject NewAgent(AgentForm form) => new()
     {
@@ -70,6 +73,9 @@ internal static partial class AgentSpec
         declarative["modelConfig"] = form.ModelConfig;
         Set(declarative, "runtime", string.IsNullOrEmpty(form.Runtime) ? null : form.Runtime);
         Set(declarative, "stream", form.Stream ? true : null);
+        Set(declarative, "memory", form.Memory is { } memory
+            ? new JsonObject { ["modelConfig"] = memory.ModelConfig, ["ttlDays"] = memory.TtlDays }
+            : null);
         Set(declarative, "tools", Tools(declarative["tools"] as JsonArray ?? [], form));
         var currentSkills = (declarative["a2aConfig"]?["skills"] as JsonArray ?? []).OfType<JsonObject>().ToList();
         Set(declarative, "a2aConfig", form.A2aSkills.Count == 0 ? null : new JsonObject
@@ -147,7 +153,6 @@ internal static partial class AgentSpec
         return node;
     }
 
-    /// <summary>The agent as the API shows it: never annotations, env, headers or secret references.</summary>
     /// <summary>Suspended on the Agents page (D257): its Deployment scaled to zero.</summary>
     public static bool IsSuspended(JsonObject agent) =>
         Deployment(agent)?["replicas"] is JsonValue replicas && replicas.TryGetValue<int>(out var count) && count == 0;
@@ -176,6 +181,7 @@ internal static partial class AgentSpec
     public static string Version(JsonObject agent) =>
         Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(agent["spec"]?.ToJsonString() ?? "")))[..32];
 
+    /// <summary>The agent as the API shows it: never annotations, env, headers or secret references.</summary>
     /// <param name="read">Read from kagent (it carries a version); false for what a write just sent.</param>
     public static AgentDetail Detail(JsonObject agent, bool full, bool canWrite, bool read = true)
     {
@@ -214,8 +220,16 @@ internal static partial class AgentSpec
             full ? [.. (agent["status"]?["conditions"] as JsonArray ?? []).OfType<JsonObject>()
                 .Where(c => Token(Text(c["type"])) is not null)
                 .Select(c => new AgentCondition(Text(c["type"])!, Text(c["status"]) is "True" or "False" ? Text(c["status"])! : "Unknown", Token(Text(c["reason"]))))] : [],
-            read ? Version(agent) : null);
+            read ? Version(agent) : null)
+        {
+            Memory = Text(declarative?["memory"]?["modelConfig"]) is { } memoryModel
+                ? new AgentMemoryForm(memoryModel, Int(declarative?["memory"]?["ttlDays"]) ?? KagentDefaultTtlDays)
+                : null,
+            Replicas = Int(Deployment(agent)?["replicas"])
+        };
     }
+
+    private static int? Int(JsonNode? node) => node is JsonValue value && value.TryGetValue<int>(out var number) ? number : null;
 
     public static Dictionary<string, string> Labels(JsonObject agent) =>
         (agent["metadata"]?["labels"] as JsonObject ?? [])

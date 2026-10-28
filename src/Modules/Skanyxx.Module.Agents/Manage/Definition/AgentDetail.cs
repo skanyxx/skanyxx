@@ -36,4 +36,16 @@ internal sealed record AgentDetail(
     IReadOnlyList<string> Skills,
     IReadOnlyList<A2aSkillForm> A2aSkills,
     IReadOnlyList<AgentCondition> Conditions,
-    string? Version);
+    string? Version)
+{
+    public AgentMemoryForm? Memory { get; init; }
+
+    /// <summary><c>deployment.replicas</c> when set (0 = suspended); null = kagent's default of one.</summary>
+    public int? Replicas { get; init; }
+
+    /// <summary>The MCP tools grouped by server with kagent's descriptions (the details view).</summary>
+    public IReadOnlyList<ServerTools> ToolsByServer { get; init; } = [];
+
+    /// <summary>Agents in its namespace that call it as a tool: deleting it breaks them. Only for builders and up.</summary>
+    public IReadOnlyList<string> UsedBy { get; init; } = [];
+}

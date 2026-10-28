@@ -35,6 +35,6 @@ internal sealed class ProposeAgentValidator : AbstractValidator<ProposeAgentComm
                     context.AddFailure("draft", problem);
             })
             // Someone who may not propose gets the handler's 403, whatever the form holds.
-            .When(c => c.User is { CanPropose: true });
+            .When(c => c.User is not null && c.MayPropose);
     }
 }

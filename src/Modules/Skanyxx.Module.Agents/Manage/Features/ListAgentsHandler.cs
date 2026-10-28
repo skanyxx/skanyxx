@@ -9,7 +9,7 @@ using Skanyxx.Module.Agents.Studio.Definition;
 
 namespace Skanyxx.Module.Agents.Manage.Features;
 
-/// <summary>Every agent for builders and supervisors; the agents Chat offers for anyone else (D254).</summary>
+/// <summary>Every agent for builders and supervisors; the agents Chat offers for anyone else (D254, D312).</summary>
 internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioOptions> options, ILogger<ListAgentsHandler> logger)
     : IRequestHandler<ListAgentsQuery, Outcome<IReadOnlyList<AgentSummary>>>
 {
@@ -28,7 +28,7 @@ internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioO
         var canWrite = AgentAccess.CanWrite(query.User);
         return Outcome<IReadOnlyList<AgentSummary>>.Ok([.. agents
             .Select(a => (Agent: a, InChat: a.Labels.GetValueOrDefault(StudioNames.MergedLabel) == "true"))
-            .Where(a => AgentAccess.CanRead(query.User, a.InChat))
+            .Where(a => AgentAccess.CanRead(query.User, a.InChat, a.Agent.Suspended))
             .OrderBy(a => a.Agent.Namespace, StringComparer.Ordinal).ThenBy(a => a.Agent.Name, StringComparer.Ordinal)
             .Select(a =>
             {
@@ -38,7 +38,7 @@ internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioO
                 return new AgentSummary(a.Agent.Namespace, a.Agent.Name, a.Agent.Description, a.Agent.Type, a.Agent.Ready, a.Agent.Accepted,
                     AgentProtection.SourceOf(a.Agent.Name, a.Agent.Labels), a.InChat, a.Agent.Suspended,
                     writable && a.Agent.Type == "Declarative", writable, refusal,
-                    [.. a.Agent.McpToolNames.Keys.Order(StringComparer.Ordinal)]);
+                    [.. a.Agent.McpToolNames.Keys.Order(StringComparer.Ordinal)], a.Agent.ModelConfig, AgentQueries.ToolCount(a.Agent));
             })]);
     }
 }
