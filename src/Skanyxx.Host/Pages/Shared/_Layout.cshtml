@@ -44,10 +44,6 @@
                         <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-library"/></svg></span>
                         <span class="nav-label">Library</span>
                     </a>
-                    <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")" title="Tool Servers">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-server"/></svg></span>
-                        <span class="nav-label">Tool Servers</span>
-                    </a>
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Builder))
                     {
                         <a href="/Studio" class="nav-item @(currentPage == "/Studio" ? "active" : "")" title="Studio">
@@ -61,6 +57,10 @@
                     }
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor))
                     {
+                        <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")" title="Tool Servers">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-server"/></svg></span>
+                            <span class="nav-label">Tool Servers</span>
+                        </a>
                         <a href="/Sandboxes" class="nav-item @(currentPage == "/Sandboxes" ? "active" : "")" title="Sandboxes">
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-sandbox"/></svg></span>
                             <span class="nav-label">Sandboxes</span>

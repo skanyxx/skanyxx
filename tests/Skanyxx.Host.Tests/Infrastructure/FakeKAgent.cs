@@ -59,6 +59,12 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>The tool server list repeats a ref and has an entry without one.</summary>
     public bool DuplicateToolServerRefs { get; set; }
 
+    /// <summary>Servers kagent lists that were not created through the API (a stdio MCPServer, one applied with kubectl).</summary>
+    public ConcurrentQueue<JsonObject> ListedToolServers { get; } = new();
+
+    /// <summary>Instead of the tool server list: this status with a body naming kagent internals.</summary>
+    public int? ToolServersStatus { get; set; }
+
     /// <summary>The stored ModelConfig spec (null = absent) and the API-key Secret kagent would hold.</summary>
     public JsonObject? ModelSpec { get; set; }
 
@@ -183,7 +189,9 @@ public sealed class FakeKAgent : IAsyncDisposable
                 ? Envelope(new JsonObject())
                 : Results.Json(new JsonObject { ["error"] = "Agent not found" }, statusCode: 404));
 
-        app.MapGet("/api/toolservers", () => Envelope(new JsonArray([
+        app.MapGet("/api/toolservers", () => ToolServersStatus is { } listStatus
+            ? Results.Json(new JsonObject { ["error"] = true, ["message"] = InternalDetail }, statusCode: listStatus)
+            : Envelope(new JsonArray([
             new JsonObject { ["ref"] = "kagent/skanyxx-memory-seed", ["groupKind"] = "RemoteMCPServer.kagent.dev", ["discoveredTools"] = new JsonArray() },
             .. DuplicateToolServerRefs
                 ? new JsonNode[] { new JsonObject { ["ref"] = "kagent/skanyxx-memory-seed" }, new JsonObject { ["groupKind"] = "RemoteMCPServer.kagent.dev" } }
@@ -192,8 +200,9 @@ public sealed class FakeKAgent : IAsyncDisposable
             {
                 ["ref"] = k, ["groupKind"] = "RemoteMCPServer.kagent.dev",
                 ["discoveredTools"] = new JsonArray([.. (DiscoveredTools.TryGetValue(k, out var tools) ? tools : ["memory_search", "memory_upsert"])
-                    .Select(t => (JsonNode)new JsonObject { ["name"] = t })])
-            })])));
+                    .Select(t => (JsonNode)new JsonObject { ["name"] = t, ["description"] = $"{t} (described by the server)" })])
+            }),
+            .. ListedToolServers.Select(s => s.DeepClone())])));
         app.MapPost("/api/toolservers", (JsonObject body) =>
         {
             if (Interlocked.Decrement(ref FailToolServerCreates) >= 0)
