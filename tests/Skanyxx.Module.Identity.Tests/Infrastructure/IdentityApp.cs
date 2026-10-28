@@ -84,7 +84,9 @@ public sealed class IdentityApp : IAsyncDisposable
         {
             ["ConnectionStrings:Identity"] = connectionString,
             ["Skanyxx:SignInRateLimit:PermitLimit"] = "10000",
-            ["Skanyxx:InviteRateLimit:PermitLimit"] = "10000"
+            ["Skanyxx:InviteRateLimit:PermitLimit"] = "10000",
+            // Most identity tests exercise Microsoft sign-in; EntraSwitchTests turn it off.
+            ["Identity:EntraAvailable"] = "true"
         };
         if (environment != "Development")
             settings["Identity:PublicBaseUrl"] = PublicBaseUrl;

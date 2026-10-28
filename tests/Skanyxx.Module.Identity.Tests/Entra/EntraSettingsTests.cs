@@ -247,6 +247,20 @@ public sealed class EntraSettingsTests(PostgresFixture postgres) : IAsyncLifetim
         Assert.True(replica.Services.GetRequiredService<EntraSettingsCache>().Current.CanSignIn);
     }
 
+    /// <summary>D272: with the install's switch off, saved settings are never used and the settings API is not there.</summary>
+    [Fact]
+    public async Task SwitchOff_SavedSettingsAreUnused_AndTheApiIs404()
+    {
+        await PutAsync(Settings());
+        await using var off = await IdentityApp.StartAsync(postgres.ConnectionString, s => s["Identity:EntraAvailable"] = "false");
+        await PollAsync(off);
+        var owner = off.Client(bearer: _owner);
+
+        Assert.False(off.Services.GetRequiredService<EntraSettingsCache>().Current.CanSignIn);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync("/api/identity/entra/settings", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.PutAsJsonAsync("/api/identity/entra/settings", Settings(), TestContext.Current.CancellationToken)).StatusCode);
+    }
+
     /// <summary>SEC L1: outside Development without a Data Protection certificate, storing a secret is warned about (page/API flag and a Warning), not refused.</summary>
     [Fact]
     public async Task StoringASecret_WithUnencryptedKeys_IsWarnedAbout_NotRefused()

@@ -3,7 +3,9 @@ using MediatR;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.Extensions.Configuration;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 
@@ -12,10 +14,11 @@ namespace Skanyxx.Host.Pages;
 /// <summary>
 /// The owner's Microsoft Entra ID sign-in settings (D027): tenant, client, client secret (write-only: the page shows
 /// only whether one is set and never renders it back) and the group → roles/teams map. The same command as
-/// <c>PUT api/identity/entra/settings</c>; a save applies to the next sign-in without a restart.
+/// <c>PUT api/identity/entra/settings</c>; a save applies to the next sign-in without a restart. Not found while the
+/// install's switch is off (<see cref="EntraSwitch"/>, D272).
 /// </summary>
 [Authorize(Roles = SkanyxxRoles.Owner)]
-public sealed class EntraModel(IMediator mediator) : PageModel
+public sealed class EntraModel(IMediator mediator, IConfiguration configuration) : PageModel
 {
     /// <summary>Empty rows offered for new groups under the saved ones.</summary>
     public const int BlankRows = 3;
@@ -43,6 +46,12 @@ public sealed class EntraModel(IMediator mediator) : PageModel
     public string? Message { get; private set; }
 
     public string? Error { get; private set; }
+
+    public override void OnPageHandlerExecuting(PageHandlerExecutingContext context)
+    {
+        if (!EntraSwitch.IsOn(configuration))
+            context.Result = NotFound();
+    }
 
     public async Task OnGetAsync(CancellationToken ct) => await LoadAsync(ct);
 

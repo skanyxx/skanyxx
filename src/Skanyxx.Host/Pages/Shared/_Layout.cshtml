@@ -1,3 +1,4 @@
+@inject Microsoft.Extensions.Configuration.IConfiguration Configuration
 @{
     var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? "/Index";
 }
@@ -86,10 +87,13 @@
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-org"/></svg></span>
                             <span class="nav-label">Org</span>
                         </a>
-                        <a href="/Entra" class="nav-item @(currentPage == "/Entra" ? "active" : "")" title="Microsoft sign-in">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-signin"/></svg></span>
-                            <span class="nav-label">Microsoft sign-in</span>
-                        </a>
+                        @if (Skanyxx.Core.Platform.Identity.EntraSwitch.IsOn(Configuration))
+                        {
+                            <a href="/Entra" class="nav-item @(currentPage == "/Entra" ? "active" : "")" title="Microsoft sign-in">
+                                <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-signin"/></svg></span>
+                                <span class="nav-label">Microsoft sign-in</span>
+                            </a>
+                        }
                         <a href="/Audit" class="nav-item @(currentPage == "/Audit" ? "active" : "")" title="Audit">
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-audit"/></svg></span>
                             <span class="nav-label">Audit</span>

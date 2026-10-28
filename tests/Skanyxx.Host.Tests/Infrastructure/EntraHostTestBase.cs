@@ -51,7 +51,11 @@ public abstract class EntraHostTestBase(PostgresFixture fixture, MockIdentityPro
     public async ValueTask InitializeAsync()
     {
         ConnectionString = await fixture.NewDatabaseAsync();
-        Host = await HostApp.StartAsync(ConnectionString, HostApp.WithoutSandboxes, services: services =>
+        Host = await HostApp.StartAsync(ConnectionString, settings =>
+        {
+            HostApp.WithoutSandboxes(settings);
+            settings["Identity:EntraAvailable"] = "true";
+        }, services: services =>
         {
             services.Configure<OpenIdConnectOptions>("entra", o =>
             {

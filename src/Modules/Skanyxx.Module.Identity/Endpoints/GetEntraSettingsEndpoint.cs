@@ -1,11 +1,12 @@
 using FastEndpoints;
 using MediatR;
+using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 
 namespace Skanyxx.Module.Identity.Endpoints;
 
-internal sealed class GetEntraSettingsEndpoint(IMediator mediator) : EndpointWithoutRequest
+internal sealed class GetEntraSettingsEndpoint(IMediator mediator, IOptions<IdentityModuleOptions> options) : EndpointWithoutRequest
 {
     public override void Configure()
     {
@@ -14,6 +15,11 @@ internal sealed class GetEntraSettingsEndpoint(IMediator mediator) : EndpointWit
         Roles(SkanyxxRoles.Owner);
     }
 
-    public override async Task HandleAsync(CancellationToken ct) =>
-        await Send.ResultAsync((await mediator.Send(new GetEntraSettingsQuery(), ct)).ToHttp(s => s));
+    public override async Task HandleAsync(CancellationToken ct)
+    {
+        if (!options.Value.EntraAvailable)
+            await Send.NotFoundAsync(ct);
+        else
+            await Send.ResultAsync((await mediator.Send(new GetEntraSettingsQuery(), ct)).ToHttp(s => s));
+    }
 }

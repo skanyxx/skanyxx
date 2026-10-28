@@ -18,14 +18,16 @@ namespace Skanyxx.Module.Identity.Entra;
 /// restart (A3). The cache stores a lazy entry before building it, so removing it after publishing leaves no stale entry.
 /// </summary>
 internal sealed class EntraSettingsCache(
-    IDataProtectionProvider protection, IOptionsMonitorCache<OpenIdConnectOptions> options, ILogger<EntraSettingsCache> logger)
+    IDataProtectionProvider protection, IOptionsMonitorCache<OpenIdConnectOptions> options, IOptions<IdentityModuleOptions> identity,
+    ILogger<EntraSettingsCache> logger)
 {
     private const string SecretPurpose = "Skanyxx.Identity.Entra.ClientSecret";
 
     private readonly object _gate = new();
     private EntraConfig _current = EntraConfig.Disabled;
 
-    public EntraConfig Current => Volatile.Read(ref _current);
+    /// <summary>Disabled while the install's switch is off (D272): no sign-in, link or re-check uses the saved settings.</summary>
+    public EntraConfig Current => identity.Value.EntraAvailable ? Volatile.Read(ref _current) : EntraConfig.Disabled;
 
     public string Protect(string secret) => Protector.Protect(secret);
 
@@ -35,7 +37,7 @@ internal sealed class EntraSettingsCache(
         // One snapshot for the three reads: a save landing between them cannot mix one version's row with another's groups.
         await using var snapshot = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
         var version = await db.EntraSettings.Select(s => (int?)s.Version).SingleOrDefaultAsync(ct);
-        if (version is null || version <= Current.Version)
+        if (version is null || version <= Volatile.Read(ref _current).Version)
             return;
 
         var row = await db.EntraSettings.AsNoTracking().SingleAsync(ct);

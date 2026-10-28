@@ -1,11 +1,12 @@
 using FastEndpoints;
 using MediatR;
+using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 
 namespace Skanyxx.Module.Identity.Endpoints;
 
-internal sealed class RemoveEntraLoginEndpoint(IMediator mediator) : Endpoint<IdRequest>
+internal sealed class RemoveEntraLoginEndpoint(IMediator mediator, IOptions<IdentityModuleOptions> options) : Endpoint<IdRequest>
 {
     public override void Configure()
     {
@@ -14,6 +15,11 @@ internal sealed class RemoveEntraLoginEndpoint(IMediator mediator) : Endpoint<Id
         Roles(SkanyxxRoles.Owner);
     }
 
-    public override async Task HandleAsync(IdRequest req, CancellationToken ct) =>
-        await Send.ResultAsync((await mediator.Send(new RemoveEntraLoginCommand(Caller.UserId(User)!, req.Id), ct)).ToHttp(p => p));
+    public override async Task HandleAsync(IdRequest req, CancellationToken ct)
+    {
+        if (!options.Value.EntraAvailable)
+            await Send.NotFoundAsync(ct);
+        else
+            await Send.ResultAsync((await mediator.Send(new RemoveEntraLoginCommand(Caller.UserId(User)!, req.Id), ct)).ToHttp(p => p));
+    }
 }

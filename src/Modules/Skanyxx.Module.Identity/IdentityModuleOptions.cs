@@ -70,6 +70,12 @@ public sealed class IdentityModuleOptions
     [Range(1, 3650)]
     public int AuditRetentionDays { get; set; } = 365;
 
+    /// <summary>
+    /// The per-install switch for Microsoft sign-in (<c>Identity:EntraAvailable</c>, <see cref="Core.Platform.Identity.EntraSwitch"/>,
+    /// D272). Off by default: the Entra endpoints answer 404 and no sign-in, link or re-check uses what the owner saved.
+    /// </summary>
+    public bool EntraAvailable { get; set; }
+
     /// <summary>How often the groups of Entra-managed accounts are re-read from Microsoft Graph while Microsoft sign-in is on (D158).</summary>
     [Range(5, 24 * 60)]
     public int EntraRecheckMinutes { get; set; } = 60;
