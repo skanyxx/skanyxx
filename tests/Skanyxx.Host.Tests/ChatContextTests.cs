@@ -109,27 +109,45 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains("shown.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))", page);
     }
 
-    // An owner's default session read is the console's own kagent user (D124), which does not have the owner's chats:
-    // the reopened conversation answered 404 and the page silently started a new one. It is read as the person.
+    /// <summary>requirements.md §1.5, §3.5 (D273): cost carries the disclaimer, and no model's price is assumed (was GPT-4's for every model).</summary>
     [Fact]
-    public async Task TheChatPage_ReopensTheOwnersConversation_AsTheOwner()
+    public async Task TheChatPage_ShowsCostAsNa_WithTheDisclaimer()
+    {
+        var browser = new Browser(_host);
+        await browser.SubmitAsync("/Setup", new()
+        {
+            ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword, ["BootstrapToken"] = HostApp.BootstrapToken
+        });
+
+        var page = await (await browser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+
+        Assert.Contains("<span class=\"stat-value\" id=\"estCost\" title=\"No price is known for this agent's model\">n/a</span>", page);
+        Assert.Contains("Cost is informational only, not accurate.", page);
+        Assert.Contains("Your provider's bill is authoritative.", page);
+        Assert.DoesNotContain("GPT-4", page);
+        Assert.DoesNotContain("estCost').textContent", page);
+    }
+
+    // Chat creates each kagent session as the person, so a reload reads it back as them (D274; the owner's default
+    // kagent read is the console's own user, D124, which does not have it). Nobody else's conversation is readable.
+    [Fact]
+    public async Task TheChatPage_ReopensAConversation_AsItsOwnerOnly()
     {
         var owner = await _host.OwnerAsync();
         var chat = await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "Why are EU refunds slow?" });
         var id = chat.GetProperty("conversationId").GetString()!;
-        var mine = await owner.GetFromJsonAsync<JsonElement>("/api/chat/sessions?mine=true", TestContext.Current.CancellationToken);
-        var ownerId = mine.EnumerateArray().Single().GetProperty("scope").GetString()!["personal:".Length..];
+        var employee = await EmployeeAsync();
         var browser = new Browser(_host);
         await browser.SubmitAsync("/Login", new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword });
 
         var page = await (await browser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        var asConsole = await browser.GetAsync($"/api/sessions/{id}/events");
-        var asOwner = await browser.GetAsync($"/api/sessions/{id}/events?user={ownerId}");
+        var asOwner = await browser.GetAsync($"/api/chat/conversations/{id}/events");
+        var asEmployee = await employee.GetAsync($"/api/chat/conversations/{id}/events", TestContext.Current.CancellationToken);
 
-        Assert.Contains($"const ME = \"{ownerId}\";", page);
-        Assert.Contains("/events?user=${encodeURIComponent(ME)}", page);
-        Assert.Equal(HttpStatusCode.NotFound, asConsole.StatusCode);
+        Assert.Contains("fetch(`/api/chat/conversations/${encodeURIComponent(id)}/events`)", page);
         Assert.Equal(HttpStatusCode.OK, asOwner.StatusCode);
+        Assert.Equal(JsonValueKind.Array, (await asOwner.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)).ValueKind);
+        Assert.Equal(HttpStatusCode.NotFound, asEmployee.StatusCode);
     }
 
     [Fact]

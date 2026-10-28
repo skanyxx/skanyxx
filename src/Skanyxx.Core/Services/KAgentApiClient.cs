@@ -276,12 +276,15 @@ public class KAgentApiClient
     }
 
     /// <summary><paramref name="userId"/>'s session <paramref name="sessionId"/>; null when kagent does not know it.</summary>
-    public async Task<KAgentSession?> GetSessionAsync(string sessionId, string? userId = null, CancellationToken ct = default)
+    public async Task<KAgentSession?> GetSessionAsync(string sessionId, string? userId = null, CancellationToken ct = default) =>
+        (await GetSessionWithEventsAsync(sessionId, userId, ct))?.Session;
+
+    /// <summary>The session and its events, as <paramref name="userId"/>; null when kagent does not know it.</summary>
+    public async Task<KAgentSessionEnvelope?> GetSessionWithEventsAsync(string sessionId, string? userId = null, CancellationToken ct = default)
     {
         try
         {
-            var response = await RequestAsync<KAgentSessionEnvelope>($"/api/sessions/{Uri.EscapeDataString(sessionId)}", HttpMethod.Get, null, userId, ct);
-            return response.Session;
+            return await RequestAsync<KAgentSessionEnvelope>($"/api/sessions/{Uri.EscapeDataString(sessionId)}", HttpMethod.Get, null, userId, ct);
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
         {

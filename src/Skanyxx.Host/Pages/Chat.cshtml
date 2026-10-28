@@ -60,9 +60,14 @@
             </div>
             <div class="stat-content">
                 <span class="stat-label">Est. Cost</span>
-                <span class="stat-value" id="estCost">$0.0000</span>
+                <span class="stat-value" id="estCost" title="No price is known for this agent's model">n/a</span>
             </div>
         </div>
+        @* requirements.md §1.5, §3.5 (D273): wherever money appears, the disclaimer appears with it. *@
+        <p class="cost-disclaimer" role="note">
+            <strong>Cost is informational only, not accurate.</strong> Estimate only. Not accurate. For information only.
+            Your provider's bill is authoritative. Skanyxx has no price for this agent's model, so the cost shows n/a.
+        </p>
         <div class="stat-card">
             <div class="stat-icon" style="color: var(--accent-color);">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -248,6 +253,16 @@
 
     .analytics-panel.hidden {
         display: none;
+    }
+
+    .cost-disclaimer {
+        grid-column: 1 / -1;
+        margin: 0;
+        padding: 8px 12px;
+        border: 1px solid var(--warning-color);
+        border-radius: 8px;
+        color: var(--text-primary);
+        font-size: 13px;
     }
 
     .stat-card {
@@ -678,8 +693,6 @@
 
     // The open conversation, per browser tab: a reload continues it, a new tab starts fresh.
     const STORE_KEY = 'skanyxx.chat';
-    // kagent keeps sessions per user; Chat creates them as the signed-in person, so they are read back as that person.
-    const ME = @Json.Serialize(Model.Me);
     // ?ticket=SDB-58 (comma-separated for several) links the conversation to those Jira tickets in the chat index.
     const ticketKeys = (new URLSearchParams(location.search).get('ticket') || '').split(',')
         .map(t => t.trim()).filter(t => /^[A-Z][A-Z0-9_]{0,29}-[1-9][0-9]{0,9}$/.test(t));
@@ -781,34 +794,11 @@
 
         getStats: (messages) => {
             if (!messages || messages.length === 0) {
-                return { totalTokens: 0, userTokens: 0, assistantTokens: 0, avgTokens: 0, cost: 0 };
+                return { totalTokens: 0, avgTokens: 0 };
             }
 
-            let totalTokens = 0;
-            let userTokens = 0;
-            let assistantTokens = 0;
-
-            messages.forEach(msg => {
-                const tokens = TokenUtils.countTokens(msg.content);
-                totalTokens += tokens;
-                if (msg.role === 'user') {
-                    userTokens += tokens;
-                } else {
-                    assistantTokens += tokens;
-                }
-            });
-
-            // GPT-4 pricing estimate
-            const inputCost = (userTokens / 1000) * 0.03;
-            const outputCost = (assistantTokens / 1000) * 0.06;
-
-            return {
-                totalTokens,
-                userTokens,
-                assistantTokens,
-                avgTokens: messages.length > 0 ? Math.round(totalTokens / messages.length) : 0,
-                cost: inputCost + outputCost
-            };
+            const totalTokens = messages.reduce((sum, msg) => sum + TokenUtils.countTokens(msg.content), 0);
+            return { totalTokens, avgTokens: Math.round(totalTokens / messages.length) };
         }
     };
 
@@ -976,7 +966,7 @@
         const container = document.getElementById('chatMessages');
         container.innerHTML = '';
         try {
-            const response = await fetch(`/api/sessions/${encodeURIComponent(id)}/events?user=${encodeURIComponent(ME)}`);
+            const response = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}/events`);
             if (response.status === 404) {
                 newChat();
                 return;
@@ -1049,7 +1039,6 @@
     function updateAnalytics() {
         const stats = TokenUtils.getStats(messages);
         document.getElementById('totalTokens').textContent = stats.totalTokens.toLocaleString();
-        document.getElementById('estCost').textContent = `$${stats.cost.toFixed(4)}`;
         document.getElementById('avgTokens').textContent = stats.avgTokens.toLocaleString();
 
         // Calculate percentage of typical context window (8k tokens)
