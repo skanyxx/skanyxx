@@ -74,9 +74,10 @@ public sealed class MemoryModule : IModule, IEndpointModule
         services.AddSingleton<Dragonfly>();
         services.AddSingleton<SearchCache>();
         services.AddSingleton<UpsertRateLimiter>();
-        // Add, not TryAdd: Chat registers no-ops for both, and the last registration is the one resolved.
+        // Add, not TryAdd: Chat registers no-ops for these, and the last registration is the one resolved.
         services.AddScoped<IRelatedMemory, RelatedMemory>();
         services.AddScoped<ICardExtractor, CardExtractor>();
+        services.AddScoped<IAgentMemoryAccess, AgentMemoryAccess>();
         services.AddSingleton<CardBodies>();
         services.AddSingleton<IStudioReconcileLock, StudioReconcileLock>();
         services.AddSingleton<PluginServerValueProtector>();

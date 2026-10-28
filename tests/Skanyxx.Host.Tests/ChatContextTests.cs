@@ -87,7 +87,10 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
             (await employee.GetAsync($"/api/chat/sessions/{ownerChat.GetProperty("conversationId").GetString()}", TestContext.Current.CancellationToken)).StatusCode);
     }
 
-    /// <summary>requirements.md §3.4: a reload continues the same session. The page keeps the conversation per tab and reopens it.</summary>
+    /// <summary>
+    /// requirements.md §3.4: a reload continues the same session. The page keeps the open conversation in its URL and
+    /// in this tab's storage, and reopens it from the server (ChatPanelTests drives the API side).
+    /// </summary>
     [Fact]
     public async Task TheChatPage_ContinuesTheConversationAcrossAReload()
     {
@@ -97,17 +100,14 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
             ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword, ["BootstrapToken"] = HostApp.BootstrapToken
         });
 
-        var page = await (await browser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var page = await (await browser.GetAsync("/Chat/kagent/seed/a-conversation")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var script = await (await browser.GetAsync("/js/chat.js")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains("sessionStorage.setItem(STORE_KEY", page);
-        Assert.Contains("sessionStorage.getItem(STORE_KEY)", page);
-        Assert.Contains("await openConversation(saved.conversationId)", page);
-        Assert.Contains("/api/chat/sessions?mine=true", page);
-        // kagent's Go runtime stores its events PascalCase and lists them newest first: both are read (Chrome run).
-        Assert.Contains("data.content || data.Content", page);
-        Assert.Contains("data.partial || data.Partial", page);
-        Assert.Contains("(content.parts || []).some(p => p && (p.functionCall || p.function_call))", page);
-        Assert.Contains("shown.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))", page);
+        Assert.Contains("data-session=\"a-conversation\"", page);
+        Assert.Contains("sessionStorage.setItem(STORE_KEY", script);
+        Assert.Contains("sessionStorage.getItem(STORE_KEY)", script);
+        Assert.Contains("await openConversation(conversationId, push)", script);
+        Assert.Contains("/api/chat/conversations", script);
     }
 
     /// <summary>requirements.md §1.5, §3.5 (D273): cost carries the disclaimer, and no model's price is assumed (was GPT-4's for every model).</summary>
@@ -129,7 +129,7 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.DoesNotContain("estCost').textContent", page);
     }
 
-    // Chat creates each kagent session as the person, so a reload reads it back as them (D274; the owner's default
+    // Chat creates each kagent session as the person, so a reload reads it back as them (D274, D280; the owner's default
     // kagent read is the console's own user, D124, which does not have it). Nobody else's conversation is readable.
     [Fact]
     public async Task TheChatPage_ReopensAConversation_AsItsOwnerOnly()
@@ -141,13 +141,14 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         var browser = new Browser(_host);
         await browser.SubmitAsync("/Login", new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = HostApp.OwnerPassword });
 
-        var page = await (await browser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        var asOwner = await browser.GetAsync($"/api/chat/conversations/{id}/events");
-        var asEmployee = await employee.GetAsync($"/api/chat/conversations/{id}/events", TestContext.Current.CancellationToken);
+        var script = await (await browser.GetAsync("/js/chat.js")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var asOwner = await browser.GetAsync($"/api/chat/conversations/{id}");
+        var asEmployee = await employee.GetAsync($"/api/chat/conversations/{id}", TestContext.Current.CancellationToken);
 
-        Assert.Contains("fetch(`/api/chat/conversations/${encodeURIComponent(id)}/events`)", page);
+        Assert.Contains("call('GET', `/api/chat/conversations/${encodeURIComponent(id)}`)", script);
         Assert.Equal(HttpStatusCode.OK, asOwner.StatusCode);
-        Assert.Equal(JsonValueKind.Array, (await asOwner.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)).ValueKind);
+        Assert.Equal("Why are EU refunds slow?", (await asOwner.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken))
+            .GetProperty("items")[0].GetProperty("text").GetString());
         Assert.Equal(HttpStatusCode.NotFound, asEmployee.StatusCode);
     }
 

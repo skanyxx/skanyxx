@@ -27,4 +27,8 @@ public class KAgentSession
 
     [JsonPropertyName("name")]
     public string? Name { get; set; }
+
+    /// <summary><c>agent</c> for a session a parent agent opened on a sub-agent (not a person's chat).</summary>
+    [JsonPropertyName("source")]
+    public string? Source { get; set; }
 }

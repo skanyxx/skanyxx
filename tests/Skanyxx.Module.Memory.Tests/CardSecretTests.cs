@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Domain;
 using Skanyxx.Module.Memory.Tests.Infrastructure;
