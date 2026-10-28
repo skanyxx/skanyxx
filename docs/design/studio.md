@@ -82,3 +82,12 @@ The seed general-purpose agent is just the first file. Changing it uses the same
   preview, and the removal brake covers servers too (D213).
 - Not yet: OAuth-only MCP servers, updating kagent servers in place (kagent 0.10.2 has no update: replace), a plugin's
   skills/commands/hooks.
+
+## Direct edits on the Agents page (as built 2026-10-27, D250–D255)
+
+The Agents page is kagent-ui's CRUD for agents the studio does **not** manage: supervisors and the owner create, edit
+and delete them straight through kagent's controller API, no PR. A studio agent there is read-only and shows its file
+(`agents/<name>/agent.yaml`); its change is a Studio proposal, so git never silently diverges (D252). Direct agents
+are labelled `skanyxx.dev/managed-by: skanyxx-agents` (the reconciler leaves them alone) and `merged` (in Chat, D253).
+A name a direct agent holds cannot later be merged from the studio (the reconciler never takes over an agent it did
+not create).

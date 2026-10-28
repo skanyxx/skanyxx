@@ -4,12 +4,10 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
-using Skanyxx.Core.Interfaces;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Agents.Plugins;
 using Skanyxx.Module.Agents.Plugins.Features;
 using Skanyxx.Module.Agents.Plugins.Sources;
-using Skanyxx.Module.Agents.Services;
 using Skanyxx.Module.Agents.Studio;
 using Skanyxx.Module.Agents.Studio.Features;
 using Skanyxx.Module.Agents.Studio.Git;
@@ -20,7 +18,8 @@ namespace Skanyxx.Module.Agents;
 
 /// <summary>
 /// kagent agents. The studio (todo.md slice 3, D028–D032, D045): builders propose agents as pull requests in the agent
-/// repo, supervisors merge, and the reconciler applies main to kagent and memory. The agents API only reads.
+/// repo, supervisors merge, and the reconciler applies main to kagent and memory. <c>api/agents</c> is the direct CRUD
+/// over kagent's controller for agents the studio does not manage (D250).
 /// </summary>
 public class AgentsModule : IModule
 {
@@ -33,7 +32,6 @@ public class AgentsModule : IModule
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
-        services.AddSingleton<IAgentService, KAgentAgentService>();
 
         services.AddOptions<StudioOptions>().Bind(configuration.GetSection(StudioOptions.Section));
         services.AddHttpClient(GiteaAgentRepo.HttpClientName, (sp, client) =>

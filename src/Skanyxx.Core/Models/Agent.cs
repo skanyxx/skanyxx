@@ -12,8 +12,8 @@ public class Agent
     public bool Accepted { get; set; }
     public Dictionary<string, string> Labels { get; set; } = [];
 
-    /// <summary>Whether Chat offers it: the merged label (D100). The Agents page shows Chat only then (D240).</summary>
-    public bool InChat => Labels.TryGetValue("skanyxx.dev/merged", out var merged) && merged == "true";
+    /// <summary>Scaled to zero (<c>deployment.replicas: 0</c>): suspended on the Agents page, never offered in Chat (D257).</summary>
+    public bool Suspended { get; set; }
 
     /// <summary>The MCP servers its spec names (<c>declarative.tools</c>), each with its tool names; none = every tool the server lists.</summary>
     public Dictionary<string, List<string>> McpToolNames { get; set; } = [];

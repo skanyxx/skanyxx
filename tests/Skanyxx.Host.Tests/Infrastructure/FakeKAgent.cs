@@ -47,6 +47,12 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>The tools kagent discovers per server (<c>ns/name</c>); a server not listed here offers memory's two.</summary>
     public ConcurrentDictionary<string, string[]> DiscoveredTools { get; } = new();
 
+    /// <summary>A create racing this one: the next agent POST finds this agent already there and answers 500, as kagent does.</summary>
+    public JsonObject? AgentCreatedMeanwhile { get; set; }
+
+    /// <summary>How many agent creates, updates or deletes to refuse with a 500 (nothing changed).</summary>
+    public int FailAgentWrites;
+
     /// <summary>How many tool server creates to refuse with a 500 (nothing created), as kagent down mid-apply.</summary>
     public int FailToolServerCreates;
 
@@ -108,6 +114,13 @@ public sealed class FakeKAgent : IAsyncDisposable
     {
         app.Use(async (context, next) =>
         {
+            if (context.Request.Method is "POST" or "PUT" or "DELETE" && context.Request.Path.StartsWithSegments("/api/agents")
+                && Interlocked.Decrement(ref FailAgentWrites) >= 0)
+            {
+                Calls.Enqueue(new Call(context.Request.Method, context.Request.Path, null, null, null));
+                await Results.Json(new JsonObject { ["error"] = InternalDetail }, statusCode: 500).ExecuteAsync(context);
+                return;
+            }
             context.Request.EnableBuffering();
             JsonNode? body = null;
             if (context.Request.ContentLength > 0)
@@ -146,6 +159,11 @@ public sealed class FakeKAgent : IAsyncDisposable
                     : Results.Json(new JsonObject { ["error"] = "Agent not found" }, statusCode: 404));
         app.MapPost("/api/agents", (JsonObject agent) =>
         {
+            if (AgentCreatedMeanwhile is { } racing)
+            {
+                AgentObjects[$"{racing["metadata"]!["namespace"]!.GetValue<string>()}/{racing["metadata"]!["name"]!.GetValue<string>()}"] = racing;
+                AgentCreatedMeanwhile = null;
+            }
             var key = $"{agent["metadata"]!["namespace"]!.GetValue<string>()}/{agent["metadata"]!["name"]!.GetValue<string>()}";
             if (AgentObjects.ContainsKey(key) || FixedAgents().Any(a => a["agent"]!["metadata"]!["name"]!.GetValue<string>() == key.Split('/')[1]))
                 return Results.Json(new JsonObject { ["error"] = "Failed to create Agent in Kubernetes" }, statusCode: 500);

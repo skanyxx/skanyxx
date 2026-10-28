@@ -121,8 +121,8 @@ internal static partial class DraftRules
 
     // registry/path[:tag]@sha256:digest — no scheme, no whitespace, always a digest.
     [GeneratedRegex(@"^[a-z0-9]([a-z0-9.-]*[a-z0-9])?(:[0-9]+)?(/[a-z0-9]([a-z0-9._-]*[a-z0-9])?)+(:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?@sha256:[a-f0-9]{64}\z")]
-    private static partial Regex SkillRef();
+    internal static partial Regex SkillRef();
 
     [GeneratedRegex(@"^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}\z")]
-    private static partial Regex ToolName();
+    internal static partial Regex ToolName();
 }
