@@ -49,7 +49,7 @@ public sealed class ArchitectureTests
             .Select(i => i.GetGenericArguments()[0])
             .ToList();
 
-        Assert.Equal(40, requests.Count);
+        Assert.Equal(45, requests.Count); // the five preferences requests (design system) and the five audit explorer ones (D314)
         foreach (var request in requests)
             Assert.True(validated.Count(v => v == request) == 1, $"{request.Name} must have exactly one validator.");
     }

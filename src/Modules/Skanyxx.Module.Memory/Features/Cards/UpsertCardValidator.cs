@@ -1,6 +1,7 @@
 using System.Text;
 using FluentValidation;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Domain;
 

@@ -79,7 +79,7 @@ internal sealed class SaveEntraSettingsHandler(
         var refusalsCleared = !(command.Enabled && groups.Count > 0) || tenantChanged ? await EntraRefusal.ClearAllAsync(db, ct) : 0;
         await audit.WriteAsync(AuditActions.EntraSettingsSaved, command.ActorId, null, new
         {
-            enabled = row.Enabled, tenantId = row.TenantId, clientId = row.ClientId, secret = newSecret ? "replaced" : "kept",
+            enabled = row.Enabled, tenantId = row.TenantId, clientId = row.ClientId, secretChange = newSecret ? "replaced" : "kept",
             groups = groups.Select(g => new { g.GroupId, g.Roles, g.Teams }), turnedOn, sessionsEnded = ended,
             refusalsCleared, keyRingUnencrypted = newSecret && keyRing.Unencrypted
         }, ct);

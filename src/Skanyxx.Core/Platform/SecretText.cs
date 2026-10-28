@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Skanyxx.Module.Memory.Domain;
+namespace Skanyxx.Core.Platform;
 
 /// <summary>
 /// requirements.md §1.4: secrets never reach a response, a prompt or a log. A card is shown to people and agents, so

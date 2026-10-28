@@ -291,6 +291,20 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                     b.Property<string>("Details")
                         .HasColumnType("jsonb");
 
+                    b.Property<string>("Module")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasComputedColumnSql("split_part(\"Action\", '.', 1)", true);
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasComputedColumnSql("CASE WHEN \"Action\" LIKE '%refused' THEN 'refused' WHEN \"Action\" LIKE '%failed' THEN 'failed' ELSE 'success' END", true);
+
                     b.Property<string>("RemoteIp")
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
@@ -305,9 +319,15 @@ namespace Skanyxx.Module.Identity.Data.Migrations
 
                     b.HasIndex("AtUtc");
 
+                    b.HasIndex("RemoteIp");
+
                     b.HasIndex("TargetId");
 
                     b.HasIndex("Action", "Id");
+
+                    b.HasIndex("Module", "AtUtc");
+
+                    b.HasIndex("Outcome", "AtUtc");
 
                     b.ToTable("identity_audit", (string)null);
                 });

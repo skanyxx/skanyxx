@@ -31,11 +31,18 @@ internal sealed class SignInHandler(
                 signIn.Context.Connection.RemoteIpAddress, breakGlass ? "valid" : "wrong", verified.Status);
             // After the attempt's own transaction: whatever it was, the row stays (never the token, never the email).
             await audit.WriteAsync(AuditActions.BootstrapTokenSignIn, verified.Value?.Id, verified.Value?.Id,
-                new { token = breakGlass ? "valid" : "wrong", result = verified.Status.ToString() }, ct);
+                new { tokenCheck = breakGlass ? "valid" : "wrong", result = verified.Status.ToString() }, ct);
         }
-        return verified.Value is { } user
-            ? Outcome<SignedIn>.Ok(await sessions.StartAsync(user, command.UseCookie, ct))
-            : new Outcome<SignedIn>(verified.Status, Message: verified.Message);
+        if (verified.Value is { } user)
+        {
+            await audit.WriteAsync(AuditActions.SignedIn, user.Id, user.Id, new { method = "password" }, ct);
+            return Outcome<SignedIn>.Ok(await sessions.StartAsync(user, command.UseCookie, ct));
+        }
+        // Every refused password the same way, known account or not, so the row says nothing about which (never the
+        // email); sampled (D167) since anyone can cause one, with the count of those left out.
+        if (verified.Status == OutcomeStatus.Unauthorized)
+            await audit.WriteSampledAsync(AuditActions.SignInRefused, "password", null, null, null, ct);
+        return new Outcome<SignedIn>(verified.Status, Message: verified.Message);
     }
 
     /// <summary>
