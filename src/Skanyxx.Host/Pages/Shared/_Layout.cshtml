@@ -1,28 +1,61 @@
 @inject Microsoft.Extensions.Configuration.IConfiguration Configuration
+@inject MediatR.IMediator Mediator
+@using System.Security.Claims
+@using Skanyxx.Core.Platform
+@using Skanyxx.Core.Platform.Identity
+@using Skanyxx.Core.Platform.Preferences
+@using Skanyxx.Host.Navigation
+@using Skanyxx.Host.TagHelpers
 @{
     var currentPage = ViewContext.RouteData.Values["page"]?.ToString() ?? "/Index";
+    var title = ViewData["Title"]?.ToString() ?? "";
+    var signedIn = User.Identity?.IsAuthenticated == true;
+    // The person's appearance is applied here, on the server, so the first paint is already right (no flash).
+    var preferences = signedIn && Caller.UserId(User) is { } userId
+        ? (await Mediator.Send(new GetPreferencesQuery(userId))).Value?.Effective ?? EffectivePreferences.Defaults
+        : EffectivePreferences.Defaults;
+    var links = NavCatalog.LinksFor(User, Configuration, Url, currentPage);
+    var sections = NavCatalog.Sections(links, preferences);
+    var navItem = NavCatalog.ForPage(currentPage);
+    var fullBleed = navItem?.FullBleed == true;
+    var hasPageHeader = ViewData[PageHeaderTagHelper.Flag] is true;
+    var displayName = User.FindFirst(SkanyxxClaims.DisplayName)?.Value ?? User.Identity?.Name ?? "";
+    var initials = string.Concat(displayName.Split([' ', '.', '@'], StringSplitOptions.RemoveEmptyEntries).Take(2).Select(w => char.ToUpperInvariant(w[0])));
+    var roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).Order().ToList();
 }
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en"
+      data-theme="@preferences.Theme"
+      data-accent="@(preferences.Accent == "auto" ? null : preferences.Accent)"
+      data-density="@preferences.Density"
+      data-font-size="@preferences.FontSize"
+      data-sidebar="@preferences.Sidebar"
+      data-motion="@(preferences.Motion == "reduce" ? "reduce" : null)"
+      data-chat-details="@preferences.ChatDetails"
+      data-page-size="@preferences.TablePageSize">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#f7f7fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>@ViewData["Title"] - Skanyxx</title>
+    <title>@title - Skanyxx</title>
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <link rel="stylesheet" href="~/css/tokens.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/components.css" asp-append-version="true" />
+    <script src="~/js/ui.js" asp-append-version="true" defer></script>
 </head>
 <body>
+    <a class="skip-link" href="#main">Skip to content</a>
     <partial name="_NavIcons" />
     <div class="app-container">
-        <!-- Sidebar -->
-        <aside class="sidebar" id="sidebar">
+        <aside class="sidebar" id="sidebar" aria-label="Main">
             <div class="sidebar-header">
-                <a href="/" class="sidebar-logo">
-                    <span class="sidebar-logo-icon">S</span>
+                <a href="/" class="sidebar-logo" aria-label="Skanyxx home">
+                    <span class="sidebar-logo-icon" aria-hidden="true">S</span>
                     <div>
                         <div class="sidebar-logo-text">Skanyxx</div>
                         <div class="sidebar-subtitle">Agent Workspace</div>
@@ -30,143 +63,122 @@
                 </a>
             </div>
             <nav class="sidebar-nav">
-                <div class="nav-section">
-                    <div class="nav-section-title">AI & Agents</div>
-                    <a href="/Agents" class="nav-item @(currentPage == "/Agents" ? "active" : "")" title="Agents">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-bot"/></svg></span>
-                        <span class="nav-label">Agents</span>
-                    </a>
-                    <a href="/Chat" class="nav-item @(currentPage == "/Chat" ? "active" : "")" title="Chat">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-chat"/></svg></span>
-                        <span class="nav-label">Chat</span>
-                    </a>
-                    <a href="/Library" class="nav-item @(currentPage == "/Library" ? "active" : "")" title="Library">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-library"/></svg></span>
-                        <span class="nav-label">Library</span>
-                    </a>
-                    <a href="/ToolServers" class="nav-item @(currentPage == "/ToolServers" ? "active" : "")" title="Tool Servers">
-                        <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-server"/></svg></span>
-                        <span class="nav-label">Tool Servers</span>
-                    </a>
-                    @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Builder))
-                    {
-                        <a href="/Studio" class="nav-item @(currentPage == "/Studio" ? "active" : "")" title="Studio">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-studio"/></svg></span>
-                            <span class="nav-label">Studio</span>
-                        </a>
-                        <a href="/Plugins" class="nav-item @(currentPage == "/Plugins" ? "active" : "")" title="Plugins">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-puzzle"/></svg></span>
-                            <span class="nav-label">Plugins</span>
-                        </a>
-                    }
-                    @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor))
-                    {
-                        <a href="/Sandboxes" class="nav-item @(currentPage == "/Sandboxes" ? "active" : "")" title="Sandboxes">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-sandbox"/></svg></span>
-                            <span class="nav-label">Sandboxes</span>
-                        </a>
-                    }
-                </div>
-                @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner))
+                @foreach (var navSection in sections)
                 {
-                    <div class="nav-section">
-                        <div class="nav-section-title">System</div>
-                        <a href="/Debug" class="nav-item @(currentPage == "/Debug" ? "active" : "")" title="Debug">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-terminal"/></svg></span>
-                            <span class="nav-label">Debug</span>
-                        </a>
-                        <a href="/Model" class="nav-item @(currentPage == "/Model" ? "active" : "")" title="Model">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cpu"/></svg></span>
-                            <span class="nav-label">Model</span>
-                        </a>
-                        <a href="/People" class="nav-item @(currentPage == "/People" ? "active" : "")" title="People">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-users"/></svg></span>
-                            <span class="nav-label">People</span>
-                        </a>
-                        <a href="/Org" class="nav-item @(currentPage == "/Org" ? "active" : "")" title="Org">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-org"/></svg></span>
-                            <span class="nav-label">Org</span>
-                        </a>
-                        @if (Skanyxx.Core.Platform.Identity.EntraSwitch.IsOn(Configuration))
+                    var sectionId = "nav-" + navSection.Title.ToLowerInvariant();
+                    <div class="nav-section" role="group" aria-labelledby="@sectionId">
+                        <div class="nav-section-title" id="@sectionId">@navSection.Title</div>
+                        @foreach (var link in navSection.Links)
                         {
-                            <a href="/Entra" class="nav-item @(currentPage == "/Entra" ? "active" : "")" title="Microsoft sign-in">
-                                <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-signin"/></svg></span>
-                                <span class="nav-label">Microsoft sign-in</span>
+                            <a href="@link.Href" class="nav-item @(link.Active ? "active" : "")" aria-current="@(link.Active ? "page" : null)" title="@link.Item.Label">
+                                <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#@link.Item.Icon"/></svg></span>
+                                <span class="nav-label">@link.Item.Label</span>
                             </a>
                         }
-                        <a href="/Audit" class="nav-item @(currentPage == "/Audit" ? "active" : "")" title="Audit">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-audit"/></svg></span>
-                            <span class="nav-label">Audit</span>
-                        </a>
                     </div>
                 }
             </nav>
+            @if (signedIn)
+            {
+                <div class="sidebar-footer">
+                    <button type="button" class="btn btn-ghost sidebar-toggle" id="sidebarToggle" aria-pressed="@(preferences.Sidebar == "collapsed" ? "true" : "false")" title="Collapse or expand the sidebar">
+                        <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-panel-left"/></svg>
+                        <span class="nav-label">Collapse sidebar</span>
+                    </button>
+                </div>
+            }
         </aside>
+        <div class="nav-backdrop" id="navBackdrop" hidden></div>
 
-        <!-- Main Content -->
-        <main class="main-content">
+        <div class="main-content">
             <header class="top-header">
-                <h1 class="header-title">@ViewData["Title"]</h1>
+                <button type="button" class="btn btn-ghost btn-icon nav-open-btn" id="navOpen" aria-controls="sidebar" aria-expanded="false" aria-label="Open the menu">
+                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-menu"/></svg>
+                </button>
+                <nav class="breadcrumbs" aria-label="Breadcrumb">
+                    <ol>
+                        @if (navItem is not null)
+                        {
+                            <li>@navItem.Group</li>
+                        }
+                        @if (fullBleed)
+                        {
+                            <li aria-current="page"><h1 class="header-title">@title</h1></li>
+                        }
+                        else
+                        {
+                            <li aria-current="page">@title</li>
+                        }
+                    </ol>
+                </nav>
                 <div class="header-actions">
-                    @if (User.Identity?.IsAuthenticated == true)
+                    @if (signedIn)
                     {
-                        <a href="/Account" class="header-user" title="@User.Identity.Name">@(User.FindFirst(Skanyxx.Core.Platform.Identity.SkanyxxClaims.DisplayName)?.Value ?? User.Identity.Name)</a>
-                        <form method="post" asp-page="/Logout" class="header-signout">
-                            <button type="submit" class="btn btn-ghost">Sign out</button>
-                        </form>
+                        <details class="user-menu">
+                            <summary aria-label="Your account: @displayName">
+                                <span class="avatar" aria-hidden="true">@initials</span>
+                                <span class="user-menu-name">@displayName</span>
+                                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-chevron-down"/></svg>
+                            </summary>
+                            <div class="menu">
+                                <div class="menu-header">
+                                    <strong>@displayName</strong>
+                                    <span>@User.Identity?.Name</span>
+                                    @if (roles.Count > 0)
+                                    {
+                                        <div class="flex flex-wrap gap-1 mt-1">
+                                            @foreach (var role in roles)
+                                            {
+                                                <span class="badge badge-neutral">@role</span>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                                <a class="menu-item" href="/Account">
+                                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-user"/></svg> Account
+                                </a>
+                                <a class="menu-item" href="/Account#appearance">
+                                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-palette"/></svg> Appearance &amp; layout
+                                </a>
+                                <button type="button" class="menu-item" id="installBtn" hidden>
+                                    <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg> Install app
+                                </button>
+                                <hr class="menu-sep" />
+                                <form method="post" asp-page="/Logout">
+                                    <button type="submit" class="menu-item">
+                                        <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-logout"/></svg> Sign out
+                                    </button>
+                                </form>
+                            </div>
+                        </details>
                     }
                     else
                     {
-                        <a href="/Login" class="btn btn-ghost">Sign in</a>
+                        <a href="/Login" class="btn btn-secondary">Sign in</a>
                     }
-                    <button class="pwa-install-btn" id="installBtn" style="display: none;">
-                        <span>&#x2B07;</span>
-                        <span>Install App</span>
-                    </button>
                 </div>
             </header>
-            <div class="page-content animate-fade-in">
+            <main class="page-content" id="main" tabindex="-1">
+                @if (!fullBleed && !hasPageHeader)
+                {
+                    <header class="page-header"><div class="page-header-text"><h1 class="page-title">@title</h1></div></header>
+                }
                 @RenderBody()
-            </div>
-        </main>
+            </main>
+        </div>
     </div>
 
-    <script>
-        // PWA Install prompt
-        let deferredPrompt;
-        const installBtn = document.getElementById('installBtn');
-
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPrompt = e;
-            installBtn.style.display = 'flex';
-        });
-
-        installBtn.addEventListener('click', async () => {
-            if (deferredPrompt) {
-                deferredPrompt.prompt();
-                const { outcome } = await deferredPrompt.userChoice;
-                console.log(`User response: ${outcome}`);
-                deferredPrompt = null;
-                installBtn.style.display = 'none';
-            }
-        });
-
-        window.addEventListener('appinstalled', () => {
-            installBtn.style.display = 'none';
-            console.log('PWA installed');
-        });
-
-        // Unregister any existing service workers to fix issues
-        if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.getRegistrations().then(function(registrations) {
-                for (let registration of registrations) {
-                    registration.unregister();
-                    console.log('ServiceWorker unregistered');
-                }
-            });
-        }
-    </script>
+    <dialog class="dialog" id="skx-confirm" aria-labelledby="skx-confirm-title">
+        <form method="dialog">
+            <div class="dialog-header"><h2 class="dialog-title" id="skx-confirm-title" data-confirm-title></h2></div>
+            <div class="dialog-body"><p data-confirm-body></p></div>
+            <div class="dialog-footer">
+                <button type="submit" class="btn btn-secondary" value="cancel" data-confirm-cancel>Cancel</button>
+                <button type="submit" class="btn btn-primary" value="ok" data-confirm-ok>Confirm</button>
+            </div>
+        </form>
+    </dialog>
+    <div class="toasts" id="skx-toasts" aria-live="polite"></div>
     @await RenderSectionAsync("Scripts", required: false)
 </body>
 </html>

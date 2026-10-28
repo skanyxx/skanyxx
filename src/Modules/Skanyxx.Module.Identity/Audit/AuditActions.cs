@@ -45,5 +45,7 @@ internal static class AuditActions
 
     public const string OwnerRouteRefused = "route.owner_refused";
 
+    public const string OrganizationPreferencesSaved = "org.preferences_saved";
+
     public const string RetentionPurged = "audit.retention_purged";
 }

@@ -10,7 +10,7 @@ namespace Skanyxx.Module.Identity.Data;
 /// ASP.NET Core Identity's schema under <c>identity_*</c> table names, so it can share a database with other modules,
 /// plus the Data Protection key ring (cookies and bearer tokens are protected with it, so every replica must share it
 /// and it must survive a restart), the refresh-token chains, the owed privilege revocations, the invites, the org tree (departments ⊃ teams ⊃ members)
-/// the Microsoft Entra ID sign-in settings with their group map, the audit trail, the password-reset links and when the background jobs last ran.
+/// the Microsoft Entra ID sign-in settings with their group map, the audit trail, the password-reset links, when the background jobs last ran, and appearance preferences (each person's and the organization's defaults).
 /// </summary>
 public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> options)
     : IdentityDbContext<IdentityUser>(options), IDataProtectionKeyContext
@@ -43,6 +43,10 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
     public DbSet<PasswordReset> PasswordResets => Set<PasswordReset>();
 
     public DbSet<JobRun> JobRuns => Set<JobRun>();
+
+    public DbSet<UserPreference> UserPreferences => Set<UserPreference>();
+
+    public DbSet<OrganizationPreference> OrganizationPreferences => Set<OrganizationPreference>();
 
     /// <summary>The memory scope id shape (its CHECK constraint), so every slug is a valid <c>team:</c>/<c>department:</c> scope.</summary>
     private const string SlugCheck = "~ '^[a-z0-9][a-z0-9._@-]{0,127}$'";
@@ -164,6 +168,23 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
             group.HasKey(g => g.GroupId);
             group.Property(g => g.GroupId).HasMaxLength(36);
             group.Property(g => g.Label).HasMaxLength(100);
+        });
+
+        builder.Entity<UserPreference>(preference =>
+        {
+            preference.ToTable("identity_user_preferences");
+            preference.HasKey(p => p.UserId);
+            preference.Property(p => p.Json).HasColumnType("jsonb");
+            // A deleted user takes their preferences along.
+            preference.HasOne<IdentityUser>().WithMany().HasForeignKey(p => p.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+        builder.Entity<OrganizationPreference>(preference =>
+        {
+            preference.ToTable("identity_organization_preferences",
+                t => t.HasCheckConstraint("CK_identity_organization_preferences_single_row", $"\"Id\" = {OrganizationPreference.SingletonId}"));
+            preference.Property(p => p.Id).ValueGeneratedNever();
+            preference.Property(p => p.Json).HasColumnType("jsonb");
+            preference.Property(p => p.UpdatedBy).HasMaxLength(450);
         });
 
         // Fixed ids and stamps: seed data must be identical on every model build.

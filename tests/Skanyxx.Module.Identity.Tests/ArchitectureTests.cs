@@ -4,6 +4,7 @@ using ArchUnitNET.xUnitV3;
 using FluentValidation;
 using MediatR;
 using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Core.Platform.Preferences;
 using static ArchUnitNET.Fluent.ArchRuleDefinition;
 
 namespace Skanyxx.Module.Identity.Tests;
@@ -34,11 +35,11 @@ public sealed class ArchitectureTests
         Assert.DoesNotContain(Module.GetTypes(), t => t.BaseType is { IsGenericType: true } b
             && b.GetGenericTypeDefinition() == typeof(FastEndpoints.Validator<>));
 
-    /// <summary>The module's own requests and the identity contracts it handles for the Host (Core.Platform.Identity).</summary>
+    /// <summary>The module's own requests and the contracts it handles for the Host (Core.Platform.Identity and .Preferences).</summary>
     [Fact]
     public void EveryRequest_HasExactlyOneValidator()
     {
-        var requests = Module.GetTypes().Concat(typeof(SignInCommand).Assembly.GetTypes().Where(t => t.Namespace == typeof(SignInCommand).Namespace))
+        var requests = Module.GetTypes().Concat(typeof(SignInCommand).Assembly.GetTypes().Where(t => t.Namespace == typeof(SignInCommand).Namespace || t.Namespace == typeof(GetPreferencesQuery).Namespace))
             .Where(t => !t.IsAbstract && t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IRequest<>)))
             .ToList();
         var validated = Module.GetTypes()
@@ -48,7 +49,7 @@ public sealed class ArchitectureTests
             .Select(i => i.GetGenericArguments()[0])
             .ToList();
 
-        Assert.Equal(35, requests.Count);
+        Assert.Equal(40, requests.Count);
         foreach (var request in requests)
             Assert.True(validated.Count(v => v == request) == 1, $"{request.Name} must have exactly one validator.");
     }

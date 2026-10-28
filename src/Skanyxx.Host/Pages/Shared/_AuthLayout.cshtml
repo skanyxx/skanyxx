@@ -1,17 +1,20 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="system">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#f7f7fa" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <title>@ViewData["Title"] - Skanyxx</title>
+    <link rel="stylesheet" href="~/css/tokens.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/components.css" asp-append-version="true" />
 </head>
 <body>
     <main class="auth-page">
         <div class="card auth-card">
             <div class="sidebar-logo auth-logo">
-                <span class="sidebar-logo-icon">S</span>
+                <span class="sidebar-logo-icon" aria-hidden="true">S</span>
                 <div>
                     <div class="sidebar-logo-text">Skanyxx</div>
                     <div class="sidebar-subtitle">Agent Workspace</div>
