@@ -32,6 +32,11 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Text links: the browser's default blue is unreadable on the dark background. */
+td a, p a, dd a {
+  color: #8b91ff;
+}
+
 /* App Layout */
 .app-container {
   display: flex;
