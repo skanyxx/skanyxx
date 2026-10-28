@@ -12,16 +12,18 @@ namespace Skanyxx.Host.Tests.Infrastructure;
 
 /// <summary>
 /// The slice of kagent 0.10.2's controller API the first hour uses, on real Kestrel (random loopback port), with the
-/// shapes of the real handlers: <c>{error, data, message}</c> envelopes; agents with labels; one ModelConfig
-/// (<c>kagent/default-model-config</c>) whose create/update put an inline <c>apiKey</c> into a "Secret" and point the spec
-/// at it, as kagent does; per-user sessions (a session of another user is 404); and a blocking A2A <c>message/send</c>
+/// shapes of the real handlers: <c>{error, data, message}</c> envelopes; agents with labels; ModelConfigs whose
+/// create/update put an inline <c>apiKey</c> into a "Secret" named like the ModelConfig and point the spec at it, as kagent
+/// does, with kagent's provider and supported-model lists; per-user sessions (a session of another user is 404); and a blocking A2A <c>message/send</c>
 /// that answers with a completed task. Every request is recorded with the user kagent would see. Knobs make it slow
 /// (<see cref="AgentsDelay"/>, <see cref="ModelDelay"/>, <see cref="A2ADelay"/>), failing or odd-shaped.
 /// Start it before <see cref="HostApp.StartAsync"/>: that one captures the next host built in the process.
 /// </summary>
 public sealed class FakeKAgent : IAsyncDisposable
 {
-    public const string ModelConfigPath = "/api/modelconfigs/kagent/default-model-config";
+    public const string DefaultModel = "kagent/default-model-config";
+
+    public const string ModelConfigPath = "/api/modelconfigs/" + DefaultModel;
 
     private readonly WebApplication _app;
     private readonly ConcurrentDictionary<string, (string User, string AgentId)> _sessions = new();
@@ -59,10 +61,39 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>The tool server list repeats a ref and has an entry without one.</summary>
     public bool DuplicateToolServerRefs { get; set; }
 
-    /// <summary>The stored ModelConfig spec (null = absent) and the API-key Secret kagent would hold.</summary>
-    public JsonObject? ModelSpec { get; set; }
+    /// <summary>ModelConfigs (<c>ns/name</c> → spec). <c>other-ns/elsewhere</c> is there from the start.</summary>
+    public ConcurrentDictionary<string, JsonObject> ModelConfigs { get; } = new()
+    {
+        ["other-ns/elsewhere"] = new JsonObject { ["provider"] = "OpenAI", ["model"] = "gpt-4o" }
+    };
 
-    public Dictionary<string, string> Secret { get; } = [];
+    /// <summary>The API-key Secret kagent keeps per ModelConfig (<c>ns/name</c> → its keys).</summary>
+    public ConcurrentDictionary<string, Dictionary<string, string>> ModelSecrets { get; } = new();
+
+    /// <summary>The default ModelConfig's spec (null = absent).</summary>
+    public JsonObject? ModelSpec
+    {
+        get => ModelConfigs.GetValueOrDefault(DefaultModel);
+        set
+        {
+            if (value is null)
+                ModelConfigs.TryRemove(DefaultModel, out _);
+            else
+                ModelConfigs[DefaultModel] = value;
+        }
+    }
+
+    /// <summary>The default ModelConfig's API-key Secret.</summary>
+    public Dictionary<string, string> Secret => ModelSecrets.GetOrAdd(DefaultModel, _ => []);
+
+    /// <summary>
+    /// The ModelConfig list names the default even while it is absent (agents and studio tests pick it from the list
+    /// without creating it); off for tests of the list itself.
+    /// </summary>
+    public bool ListsAbsentDefault { get; set; } = true;
+
+    /// <summary>Instead of a ModelConfig write: this status with a body naming kagent internals and echoing the request.</summary>
+    public int? ModelWriteStatus { get; set; }
 
     public bool ModelAccepted { get; set; } = true;
 
@@ -87,9 +118,6 @@ public sealed class FakeKAgent : IAsyncDisposable
     public string? A2ABody { get; set; }
 
     public const string InternalDetail = "pod kagent-controller-7f/10.244.0.9 panicked: SECRET-INTERNAL";
-
-    /// <summary>A create racing this one: the next POST finds this spec already there and answers 409, as kagent does.</summary>
-    public JsonObject? CreatedMeanwhile { get; set; }
 
     public IReadOnlyCollection<string> SessionIds => [.. _sessions.Keys];
 
@@ -220,35 +248,67 @@ public sealed class FakeKAgent : IAsyncDisposable
             return Envelope(new JsonObject());
         });
         app.MapGet("/health", () => Results.Ok());
-        app.MapGet("/api/modelconfigs", () => Envelope(new JsonArray(
-            new JsonObject { ["ref"] = "kagent/default-model-config" }, new JsonObject { ["ref"] = "other-ns/elsewhere" })));
-
-        app.MapGet(ModelConfigPath, async (HttpContext context) =>
+        app.MapGet("/api/modelconfigs", () => Envelope(new JsonArray([
+            .. ModelConfigs.Keys.Order(StringComparer.Ordinal).Select(r => (JsonNode)ModelConfigJson(r)),
+            .. ListsAbsentDefault && !ModelConfigs.ContainsKey(DefaultModel) ? [new JsonObject { ["ref"] = DefaultModel }] : Array.Empty<JsonNode>()])));
+        app.MapGet("/api/modelconfigs/{ns}/{name}", async (HttpContext context, string ns, string name) =>
         {
             await Task.Delay(ModelDelay, context.RequestAborted);
-            return ModelSpec is null
-                ? Results.Json(new JsonObject { ["error"] = true, ["message"] = "ModelConfig not found" }, statusCode: 404)
-                : Envelope(ModelConfigJson());
+            return ModelConfigs.ContainsKey($"{ns}/{name}")
+                ? Envelope(ModelConfigJson($"{ns}/{name}"))
+                : Results.Json(new JsonObject { ["error"] = true, ["message"] = "ModelConfig not found" }, statusCode: 404);
         });
         app.MapPost("/api/modelconfigs", (JsonObject body) =>
         {
-            if (CreatedMeanwhile is not null)
-            {
-                ModelSpec = CreatedMeanwhile;
-                CreatedMeanwhile = null;
-            }
-            if (ModelSpec is not null)
+            if (ModelWriteStatus is { } status)
+                return Refused(status, body);
+            var configRef = body["ref"]!.GetValue<string>();
+            if (ModelConfigs.ContainsKey(configRef))
                 return Results.Json(new JsonObject { ["error"] = true, ["message"] = "ModelConfig already exists" }, statusCode: 409);
-            Store(body);
-            return Results.Json(new JsonObject { ["error"] = false, ["data"] = ModelConfigJson() }, statusCode: 201);
+            Store(configRef, body);
+            return Results.Json(new JsonObject { ["error"] = false, ["data"] = ModelConfigJson(configRef) }, statusCode: 201);
         });
-        app.MapPut(ModelConfigPath, (JsonObject body) =>
+        app.MapPut("/api/modelconfigs/{ns}/{name}", (string ns, string name, JsonObject body) =>
         {
-            if (ModelSpec is null)
+            if (ModelWriteStatus is { } status)
+                return Refused(status, body);
+            if (!ModelConfigs.ContainsKey($"{ns}/{name}"))
                 return Results.Json(new JsonObject { ["error"] = true, ["message"] = "ModelConfig not found" }, statusCode: 404);
-            Store(body);
-            return Envelope(ModelConfigJson());
+            Store($"{ns}/{name}", body);
+            return Envelope(ModelConfigJson($"{ns}/{name}"));
         });
+        app.MapDelete("/api/modelconfigs/{ns}/{name}", (string ns, string name) =>
+        {
+            if (ModelWriteStatus is { } status)
+                return Refused(status, null);
+            if (!ModelConfigs.TryRemove($"{ns}/{name}", out _))
+                return Results.Json(new JsonObject { ["error"] = true, ["message"] = "ModelConfig not found" }, statusCode: 404);
+            ModelSecrets.TryRemove($"{ns}/{name}", out _);
+            return Envelope(new JsonObject());
+        });
+        // kagent's own lists (handlers/modelproviderconfig.go, models.go), shortened; the Vertex blocks' inline fields
+        // come out under an empty name, as kagent's reflection reports them.
+        app.MapGet("/api/modelproviderconfigs/models", () => Envelope(new JsonArray([
+            Provider("OpenAI", [], ["baseUrl", "organization", "temperature", "maxTokens", "maxCompletionTokens", "topP", "frequencyPenalty", "presencePenalty", "seed", "n", "timeout", "reasoningEffort", "apiFormat", "tokenExchange"]),
+            Provider("Anthropic", [], ["baseUrl", "maxTokens", "temperature", "topP", "topK"]),
+            Provider("AzureOpenAI", ["azureEndpoint", "apiVersion"], ["azureDeployment", "azureAdToken", "temperature", "maxTokens", "topP"]),
+            Provider("Ollama", [], ["host", "options"]),
+            Provider("Gemini", [], ["maxOutputTokens"]),
+            Provider("GeminiVertexAI", [], ["", "maxOutputTokens", "candidateCount", "responseMimeType"]),
+            Provider("AnthropicVertexAI", [], ["", "maxTokens"]),
+            Provider("Bedrock", ["region"], ["additionalModelRequestFields", "promptCaching", "cacheTTL", "guardrail", "readTimeout", "connectTimeout"]),
+            Provider("SAPAICore", ["baseUrl"], ["resourceGroup", "authUrl"]),
+            Provider("Foundry", ["deployment", "endpoint"], ["endpointFrom", "apiVersion"]),
+            Provider("FutureProvider", [], ["x"])])));
+        app.MapGet("/api/models", () => Envelope(new JsonObject
+        {
+            ["OpenAI"] = Models("gpt-4.1", "gpt-4o"),
+            ["Anthropic"] = Models("claude-sonnet-4-6", "claude-haiku-4-5"),
+            ["AzureOpenAI"] = Models("gpt-4.1"),
+            ["Ollama"] = Models("llama3.3", "qwen2.5-coder"),
+            ["Gemini"] = Models("gemini-2.5-pro"),
+            ["Bedrock"] = Models("global.anthropic.claude-sonnet-4-6")
+        }));
 
         app.MapPost("/api/sessions", (HttpContext context, JsonObject body) =>
         {
@@ -313,26 +373,27 @@ public sealed class FakeKAgent : IAsyncDisposable
 
     // As kagent's handler: an inline key with no secret named → Secret named like the ModelConfig, <PROVIDER>_API_KEY,
     // merged into the existing Secret (StringData); after the spec flip, an owned Secret the spec stops naming is deleted.
-    private void Store(JsonObject body)
+    private void Store(string configRef, JsonObject body)
     {
-        var oldSecret = ModelSpec?["apiKeySecret"]?.GetValue<string>();
+        var name = configRef.Split('/')[1];
+        var oldSecret = ModelConfigs.GetValueOrDefault(configRef)?["apiKeySecret"]?.GetValue<string>();
         var spec = (JsonObject)body["spec"]!.DeepClone();
         var provider = spec["provider"]?.GetValue<string>() ?? "OpenAI";
         if (body["apiKey"]?.GetValue<string>() is { Length: > 0 } key && spec["apiKeySecret"] is null && provider != "Ollama")
         {
-            spec["apiKeySecret"] = "default-model-config";
+            spec["apiKeySecret"] = name;
             spec["apiKeySecretKey"] = $"{provider.ToUpperInvariant()}_API_KEY";
-            Secret[spec["apiKeySecretKey"]!.GetValue<string>()] = key;
+            ModelSecrets.GetOrAdd(configRef, _ => [])[spec["apiKeySecretKey"]!.GetValue<string>()] = key;
         }
-        ModelSpec = spec;
+        ModelConfigs[configRef] = spec;
         if (oldSecret is not null && spec["apiKeySecret"] is null)
-            Secret.Clear();
+            ModelSecrets.TryRemove(configRef, out _);
     }
 
-    private JsonObject ModelConfigJson() => new()
+    private JsonObject ModelConfigJson(string configRef) => new()
     {
-        ["ref"] = "kagent/default-model-config",
-        ["spec"] = ModelSpec!.DeepClone(),
+        ["ref"] = configRef,
+        ["spec"] = ModelConfigs[configRef].DeepClone(),
         ["status"] = new JsonObject
         {
             ["conditions"] = new JsonArray(new JsonObject
@@ -341,6 +402,20 @@ public sealed class FakeKAgent : IAsyncDisposable
             })
         }
     };
+
+    // kagent's 500 carries its Go error, which may quote what it was sent.
+    private static IResult Refused(int status, JsonObject? request) =>
+        Results.Json(new JsonObject { ["error"] = true, ["message"] = $"{InternalDetail}; request: {request?.ToJsonString()}" }, statusCode: status);
+
+    private static JsonObject Provider(string type, string[] required, string[] optional) => new()
+    {
+        ["name"] = type, ["type"] = type,
+        ["requiredParams"] = new JsonArray([.. required.Select(r => (JsonNode)r)]),
+        ["optionalParams"] = new JsonArray([.. optional.Select(o => (JsonNode)o)])
+    };
+
+    private static JsonArray Models(params string[] names) =>
+        new([.. names.Select(n => (JsonNode)new JsonObject { ["name"] = n, ["function_calling"] = true })]);
 
     private static JsonObject AgentJson(string name, JsonObject? labels, string ns = "kagent") => new()
     {

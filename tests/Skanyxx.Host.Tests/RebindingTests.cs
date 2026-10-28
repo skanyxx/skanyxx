@@ -63,7 +63,7 @@ public sealed class RebindingTests(PostgresFixture fixture)
     [Theory]
     [InlineData("POST", "/api/toolservers", "http://rebind.attacker.example")]
     [InlineData("DELETE", "/api/toolservers/kagent/some-server", "http://127.0.0.1:1")]
-    [InlineData("PUT", "/api/model", "http://localhost:3000")]
+    [InlineData("PUT", "/api/models/kagent/default-model-config", "http://localhost:3000")]
     [InlineData("POST", "/Logout", "http://grafana.localhost")]
     public async Task ForeignOrigin_UnsafeMethod_AnyRoute_Is403(string method, string path, string origin)
     {

@@ -18,6 +18,9 @@ public class Agent
     /// <summary>Scaled to zero (<c>deployment.replicas: 0</c>): suspended on the Agents page, never offered in Chat (D257).</summary>
     public bool Suspended { get; set; }
 
+    /// <summary>The ModelConfig a Declarative agent runs on, in its own namespace (kagent's <c>default-model-config</c> when unset); null for BYO.</summary>
+    public string? ModelConfig { get; set; }
+
     /// <summary>The MCP servers its spec names (<c>declarative.tools</c>), each with its tool names; none = every tool the server lists.</summary>
     public Dictionary<string, List<string>> McpToolNames { get; set; } = [];
     public int TasksToday { get; set; }

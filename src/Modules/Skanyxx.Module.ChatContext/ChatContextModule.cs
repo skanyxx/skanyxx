@@ -55,7 +55,7 @@ public sealed class ChatContextModule : IModule
         services.AddSingleton<IAnswerStore, RedisAnswerStore>();
         services.AddSingleton<AnswerCache>();
         if (configuration.GetValue<bool>($"{ChatContextOptions.Section}:AnswerCache:Enabled"))
-            services.AddTransient<IPipelineBehavior<SaveModelSettingsCommand, Outcome<ModelSettings>>, ModelChangeClearsAnswers>();
+            services.AddTransient<IPipelineBehavior<SaveModelConfigCommand, Outcome<ModelConfigDetail>>, ModelChangeClearsAnswers>();
 
         services.AddHealthChecks().AddNpgSql(
             sp => sp.GetRequiredService<IOptions<ChatContextOptions>>().Value.ConnectionSettings().ConnectionString,

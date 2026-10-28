@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace Skanyxx.Host.Tests;
 
 /// <summary>
-/// Slice 1 "first hour" (todo.md): Setup → the owner's model step (kagent ModelConfig over kagent's API, D3) → Chat with
+/// Slice 1 "first hour" (todo.md): Setup → the owner's model step (the default kagent ModelConfig, D3, D275) → Chat with
 /// merged agents only (D4), as the signed-in person (D5). Against <see cref="FakeKAgent"/>.
 /// </summary>
 [Collection(HostCollection.Name)]
@@ -13,7 +13,6 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
 {
     private const string EmployeeEmail = "eli@skanyxx.example";
     private const string EmployeePassword = "a long employee passphrase";
-    private const string ApiKey = "sk-test-0123456789abcdefSECRET";
     private const int ControlTimeoutSeconds = 2;
     private const int ChatTimeoutSeconds = 4;
 
@@ -46,17 +45,21 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Home_IsTheModelStep_UntilTheModelIsConfigured_ThenChat()
+    public async Task Home_IsTheModelStep_UntilTheDefaultModelExists_ThenChat()
     {
         Assert.Equal("/Model", (await _owner.GetAsync("/")).Headers.Location?.OriginalString);
+        var page = await (await _owner.GetAsync("/Model")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("id=\"model-form\"", page);
+        var owner = await _host.OwnerAsync();
 
-        var saved = await _owner.SubmitAsync("/Model", new()
+        var saved = await owner.PostAsJsonAsync("/api/models", new
         {
-            ["Provider"] = "Ollama", ["ModelId"] = "qwen3-coder:30b", ["BaseUrl"] = "http://host.docker.internal:11434", ["ApiKey"] = ""
-        });
+            @namespace = "kagent", name = "default-model-config", provider = "Ollama", model = "qwen3-coder:30b",
+            @params = new { host = "http://host.docker.internal:11434" }
+        }, cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Redirect, saved.StatusCode);
-        Assert.Equal("/Chat", saved.Headers.Location?.OriginalString);
+        Assert.Equal(HttpStatusCode.Created, saved.StatusCode);
+        Assert.True((await saved.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)).GetProperty("isDefault").GetBoolean());
         Assert.Equal("/Chat", (await _owner.GetAsync("/")).Headers.Location?.OriginalString);
         var create = Assert.Single(_kagent.CallsTo("POST", "/api/modelconfigs"));
         Assert.Equal("kagent/default-model-config", create.Body!["ref"]!.GetValue<string>());
@@ -71,112 +74,13 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
     {
         _kagent.ModelSpec = new JsonObject { ["provider"] = "Ollama", ["model"] = "llama3" };
         _kagent.ModelAccepted = false;
+        var owner = await _host.OwnerAsync();
 
         Assert.Equal("/Model", (await _owner.GetAsync("/")).Headers.Location?.OriginalString);
-        var page = await (await _owner.GetAsync("/Model")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.Contains("has not accepted it (secret not found)", page);
-    }
-
-    [Fact]
-    public async Task PastedKey_GoesInlineToKAgent_AndIsNeverReturned_OrLogged()
-    {
-        var owner = await _host.OwnerAsync();
-        var console = new StringWriter();
-        var original = Console.Out;
-        HttpResponseMessage response;
-        Console.SetOut(console);
-        try
-        {
-            response = await owner.PutAsJsonAsync("/api/model", new { provider = "OpenAI", model = "gpt-4.1", apiKey = ApiKey }, cancellationToken: TestContext.Current.CancellationToken);
-        }
-        finally
-        {
-            Console.SetOut(original);
-        }
-        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var settings = JsonDocument.Parse(body).RootElement;
-        Assert.True(settings.GetProperty("hasApiKey").GetBoolean());
-        Assert.True(settings.GetProperty("configured").GetBoolean());
-        Assert.DoesNotContain(ApiKey, body);
-        Assert.DoesNotContain(ApiKey, console.ToString());
-        Assert.Contains("Model settings", console.ToString());
-        var create = Assert.Single(_kagent.CallsTo("POST", "/api/modelconfigs"));
-        Assert.Equal(ApiKey, create.Body!["apiKey"]!.GetValue<string>());
-        Assert.Null(create.Body["spec"]!["apiKeySecret"]);
-        Assert.Equal(ApiKey, _kagent.Secret["OPENAI_API_KEY"]);
-    }
-
-    [Fact]
-    public async Task SameProvider_WithoutAKey_KeepsTheKeyReference_AndTheOtherSettings()
-    {
-        _kagent.ModelSpec = new JsonObject
-        {
-            ["provider"] = "Ollama", ["model"] = "llama3",
-            ["ollama"] = new JsonObject { ["host"] = "http://old:11434", ["options"] = new JsonObject { ["num_ctx"] = "32768" } }
-        };
-        var owner = await _host.OwnerAsync();
-
-        var ollama = await owner.PutAsJsonAsync("/api/model", new { provider = "Ollama", model = "qwen3-coder:30b", baseUrl = "http://new:11434" }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, ollama.StatusCode);
-        Assert.Equal("""{"provider":"Ollama","model":"qwen3-coder:30b","ollama":{"host":"http://new:11434","options":{"num_ctx":"32768"}}}""",
-            _kagent.ModelSpec.ToJsonString());
-
-        _kagent.ModelSpec = new JsonObject
-        {
-            ["provider"] = "OpenAI", ["model"] = "gpt-4o", ["apiKeySecret"] = "default-model-config", ["apiKeySecretKey"] = "OPENAI_API_KEY",
-            ["openAI"] = new JsonObject { ["temperature"] = "0.2" }
-        };
-        var openAi = await owner.PutAsJsonAsync("/api/model", new { provider = "OpenAI", model = "gpt-4.1" }, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, openAi.StatusCode);
-        var put = _kagent.CallsTo("PUT", FakeKAgent.ModelConfigPath).Last();
-        Assert.Null(put.Body!["apiKey"]);
-        Assert.Equal("""{"provider":"OpenAI","model":"gpt-4.1","apiKeySecret":"default-model-config","apiKeySecretKey":"OPENAI_API_KEY","openAI":{"temperature":"0.2"}}""",
-            put.Body["spec"]!.ToJsonString());
-    }
-
-    [Fact]
-    public async Task ProviderChange_StartsClean_AndAKeyedProviderNeedsAKey()
-    {
-        _kagent.ModelSpec = new JsonObject
-        {
-            ["provider"] = "Ollama", ["model"] = "llama3", ["ollama"] = new JsonObject { ["host"] = "http://old:11434" }
-        };
-        var owner = await _host.OwnerAsync();
-
-        var noKey = await owner.PutAsJsonAsync("/api/model", new { provider = "Anthropic", model = "claude-sonnet-4-5" }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Conflict, noKey.StatusCode);
-        Assert.Contains("Paste the Anthropic API key", await noKey.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.Empty(_kagent.CallsTo("PUT", FakeKAgent.ModelConfigPath));
-
-        var withKey = await owner.PutAsJsonAsync("/api/model", new { provider = "Anthropic", model = "claude-sonnet-4-5", apiKey = ApiKey }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, withKey.StatusCode);
-        var put = Assert.Single(_kagent.CallsTo("PUT", FakeKAgent.ModelConfigPath));
-        Assert.Equal("""{"provider":"Anthropic","model":"claude-sonnet-4-5"}""", put.Body!["spec"]!.ToJsonString());
-        Assert.Equal(ApiKey, _kagent.Secret["ANTHROPIC_API_KEY"]);
-    }
-
-    [Theory]
-    [InlineData("Ollama", "llama3", "sk-x", null)] // Ollama takes no key
-    [InlineData("Bedrock", "anthropic.claude", null, null)] // not offered
-    [InlineData("OpenAI", "gpt 4", "sk-x", null)] // not a model id
-    [InlineData("OpenAI", "gpt-4.1", "sk-LEAK x", null)] // a key with a space
-    [InlineData("Ollama", "llama3", null, null)] // Ollama needs its host
-    [InlineData("Ollama", "llama3", null, "http://ollama:11434/?x=1")] // a query
-    [InlineData("Ollama", "llama3", null, "file:///etc/passwd")]
-    [InlineData("Ollama", "llama3", null, "http://user:pw@ollama:11434")]
-    public async Task InvalidModelSettings_Are400_AndNeverReachKAgent(string provider, string model, string? apiKey, string? baseUrl)
-    {
-        var owner = await _host.OwnerAsync();
-
-        var response = await owner.PutAsJsonAsync("/api/model", new { provider, model, apiKey, baseUrl }, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
-        if (apiKey is not null)
-            Assert.DoesNotContain(apiKey, await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.DoesNotContain(_kagent.Calls, c => c.Path.StartsWith("/api/modelconfigs", StringComparison.Ordinal));
+        var list = await owner.GetFromJsonAsync<JsonElement>("/api/models", TestContext.Current.CancellationToken);
+        var model = list.GetProperty("models").EnumerateArray().Single(m => m.GetProperty("isDefault").GetBoolean());
+        Assert.False(model.GetProperty("accepted").GetBoolean());
+        Assert.Equal("secret not found", model.GetProperty("statusMessage").GetString());
     }
 
     [Fact]
@@ -184,9 +88,8 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
     {
         var (employee, employeeBrowser) = await EmployeeAsync();
 
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.GetAsync("/api/model", TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Forbidden, (await employee.PutAsJsonAsync("/api/model", new { provider = "Ollama", model = "llama3" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await _host.Client().GetAsync("/api/model", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await employee.GetAsync("/api/models", TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await _host.Client().GetAsync("/api/models", TestContext.Current.CancellationToken)).StatusCode);
         var page = await employeeBrowser.GetAsync("/Model");
         Assert.Equal(HttpStatusCode.Redirect, page.StatusCode);
         Assert.Contains("/AccessDenied", page.Headers.Location?.OriginalString);
@@ -200,10 +103,10 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
     {
         var owner = await fixture.Host.OwnerAsync();
 
-        var response = await owner.GetAsync("/api/model", TestContext.Current.CancellationToken);
+        var response = await owner.GetAsync("/api/models", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
-        Assert.Contains("kagent is not reachable", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        Assert.Contains("kagent did not answer", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -317,86 +220,6 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task NewBaseUrl_ForTheStoredKey_NeedsTheKeyAgain()
-    {
-        _kagent.ModelSpec = new JsonObject
-        {
-            ["provider"] = "OpenAI", ["model"] = "gpt-4o", ["apiKeySecret"] = "default-model-config", ["apiKeySecretKey"] = "OPENAI_API_KEY",
-            ["openAI"] = new JsonObject { ["baseUrl"] = "https://api.openai.com/v1" }
-        };
-        var owner = await _host.OwnerAsync();
-
-        var moved = await owner.PutAsJsonAsync("/api/model", new { provider = "OpenAI", model = "gpt-4.1", baseUrl = "https://attacker.example/v1" }, cancellationToken: TestContext.Current.CancellationToken);
-        var dropped = await owner.PutAsJsonAsync("/api/model", new { provider = "OpenAI", model = "gpt-4.1" }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.Conflict, moved.StatusCode);
-        Assert.Contains("Paste the OpenAI API key again", await moved.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        Assert.Equal(HttpStatusCode.Conflict, dropped.StatusCode);
-        Assert.Empty(_kagent.CallsTo("PUT", FakeKAgent.ModelConfigPath));
-
-        var same = await owner.PutAsJsonAsync("/api/model", new { provider = "OpenAI", model = "gpt-4.1", baseUrl = "https://api.openai.com/v1" }, cancellationToken: TestContext.Current.CancellationToken);
-        var movedWithKey = await owner.PutAsJsonAsync("/api/model",
-            new { provider = "OpenAI", model = "gpt-4.1", baseUrl = "https://proxy.example/v1", apiKey = ApiKey }, cancellationToken: TestContext.Current.CancellationToken);
-        Assert.Equal(HttpStatusCode.OK, same.StatusCode);
-        Assert.Equal(HttpStatusCode.OK, movedWithKey.StatusCode);
-        Assert.Equal("https://proxy.example/v1", _kagent.ModelSpec!["openAI"]!["baseUrl"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task SwitchingKeyedProviders_LeavesNoStaleKeyInKAgentsSecret()
-    {
-        _kagent.ModelSpec = new JsonObject
-        {
-            ["provider"] = "OpenAI", ["model"] = "gpt-4o", ["apiKeySecret"] = "default-model-config", ["apiKeySecretKey"] = "OPENAI_API_KEY"
-        };
-        _kagent.Secret["OPENAI_API_KEY"] = "sk-old-openai";
-        var owner = await _host.OwnerAsync();
-
-        var response = await owner.PutAsJsonAsync("/api/model", new { provider = "Anthropic", model = "claude-sonnet-4-5", apiKey = ApiKey }, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Equal(new Dictionary<string, string> { ["ANTHROPIC_API_KEY"] = ApiKey }, _kagent.Secret);
-        var puts = _kagent.CallsTo("PUT", FakeKAgent.ModelConfigPath).ToList();
-        Assert.Equal(2, puts.Count);
-        Assert.Null(puts[0].Body!["apiKey"]);
-        Assert.Equal(ApiKey, puts[1].Body!["apiKey"]!.GetValue<string>());
-    }
-
-    [Fact]
-    public async Task ACreateThatLosesTheRace_IsSavedAsAnUpdate()
-    {
-        _kagent.CreatedMeanwhile = new JsonObject { ["provider"] = "Ollama", ["model"] = "llama3", ["ollama"] = new JsonObject { ["host"] = "http://a:11434" } };
-        var owner = await _host.OwnerAsync();
-
-        var response = await owner.PutAsJsonAsync("/api/model", new { provider = "Ollama", model = "qwen3-coder:30b", baseUrl = "http://b:11434" }, cancellationToken: TestContext.Current.CancellationToken);
-
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.Single(_kagent.CallsTo("POST", "/api/modelconfigs"));
-        Assert.Single(_kagent.CallsTo("PUT", FakeKAgent.ModelConfigPath));
-        Assert.Equal("""{"provider":"Ollama","model":"qwen3-coder:30b","ollama":{"host":"http://b:11434"}}""", _kagent.ModelSpec!.ToJsonString());
-    }
-
-    [Fact]
-    public async Task ModelPage_KeepsPasswordManagersOut_AndNeverRendersTheKeyBack()
-    {
-        var page = await (await _owner.GetAsync("/Model")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        var input = System.Text.RegularExpressions.Regex.Match(page, "<input name=\"ApiKey\"[^>]*>").Value;
-        Assert.Contains("type=\"password\"", input);
-        Assert.Contains("autocomplete=\"new-password\"", input);
-        Assert.Contains("data-1p-ignore", input);
-        Assert.Contains("data-lpignore=\"true\"", input);
-        Assert.Contains("data-form-type=\"other\"", input);
-
-        var refused = await _owner.SubmitAsync("/Model", new()
-        {
-            ["Provider"] = "OpenAI", ["ModelId"] = "gpt 4", ["BaseUrl"] = "", ["ApiKey"] = ApiKey
-        });
-        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
-        var body = await refused.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.Contains("must be a model id", body);
-        Assert.DoesNotContain(ApiKey, body);
-    }
-
-    [Fact]
     public async Task ASlowKAgent_FailsControlCallsFast_AndTheHomePageDoesNotHang()
     {
         _kagent.AgentsDelay = _kagent.ModelDelay = TimeSpan.FromSeconds(ControlTimeoutSeconds + 3);
@@ -494,7 +317,7 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
 
         var chat = await owner.SendAsync(Foreign(HttpMethod.Post, "/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "hi" }), TestContext.Current.CancellationToken);
         var agents = await owner.SendAsync(Foreign(HttpMethod.Get, "/api/chat/agents"), TestContext.Current.CancellationToken);
-        var model = await owner.SendAsync(Foreign(HttpMethod.Get, "/api/model"), TestContext.Current.CancellationToken);
+        var model = await owner.SendAsync(Foreign(HttpMethod.Get, "/api/models"), TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, chat.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, agents.StatusCode);

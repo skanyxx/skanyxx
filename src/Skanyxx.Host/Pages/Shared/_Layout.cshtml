@@ -61,6 +61,10 @@
                     }
                     @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor))
                     {
+                        <a href="/Model" class="nav-item @(currentPage == "/Model" ? "active" : "")" title="Models">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cpu"/></svg></span>
+                            <span class="nav-label">Models</span>
+                        </a>
                         <a href="/Sandboxes" class="nav-item @(currentPage == "/Sandboxes" ? "active" : "")" title="Sandboxes">
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-sandbox"/></svg></span>
                             <span class="nav-label">Sandboxes</span>
@@ -74,10 +78,6 @@
                         <a href="/Debug" class="nav-item @(currentPage == "/Debug" ? "active" : "")" title="Debug">
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-terminal"/></svg></span>
                             <span class="nav-label">Debug</span>
-                        </a>
-                        <a href="/Model" class="nav-item @(currentPage == "/Model" ? "active" : "")" title="Model">
-                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-cpu"/></svg></span>
-                            <span class="nav-label">Model</span>
                         </a>
                         <a href="/People" class="nav-item @(currentPage == "/People" ? "active" : "")" title="People">
                             <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-users"/></svg></span>

@@ -1,43 +1,343 @@
 @page
 @model ModelModel
-@using Microsoft.AspNetCore.Mvc.Rendering
-@using Skanyxx.Core.Platform.Runtime
 @{
-    ViewData["Title"] = "Model";
+    ViewData["Title"] = "Models";
 }
-@if (Model.Error is not null)
-{
-    <p class="text-error" role="alert">@Model.Error</p>
-}
-<p class="text-muted">
-    Choose the model the seed agent answers with. kagent runs it: the settings go into kagent's ModelConfig
-    <code>@(Model.Current?.Ref)</code>, and an API key goes straight into the Kubernetes Secret kagent keeps for it.
-    Skanyxx does not store the key and never shows it again. Ollama needs no key.
-</p>
-@if (Model.Current is { Provider: not null } current)
-{
-    <p>
-        Now: <strong>@current.Provider</strong> · <code>@current.Model</code>
-        · API key @(current.HasApiKey ? "set" : "not set")
-        · kagent @(current.Accepted ? "accepted it" : "has not accepted it" + (current.StatusMessage is null ? "" : $" ({current.StatusMessage})"))
-        @if (current.Configured)
-        {
-            <a href="/Chat" class="btn btn-secondary">Continue to Chat</a>
+
+<section id="models" data-can-write="@(Model.CanWrite ? "true" : "false")">
+    <div class="card mb-3">
+        <div class="card-header flex items-center gap-2">
+            <h3 class="card-title">Models</h3>
+            <button type="button" class="btn btn-ghost" id="refresh">Refresh</button>
+            @if (Model.CanWrite)
+            {
+                <button type="button" class="btn btn-primary" id="new-model">New model</button>
+            }
+        </div>
+        <p class="text-muted">
+            The models in kagent (its ModelConfigs); an agent names the one it runs on. An API key goes straight into the
+            Kubernetes Secret kagent keeps for that model: Skanyxx does not store it and never shows it again. The
+            <strong>default</strong> model (<code>KAgent:ModelConfig</code>) is the one the seed agents and Chat use.
+            @if (!Model.CanWrite)
+            {
+                <span>Only the owner adds, changes or deletes models.</span>
+            }
+        </p>
+        <p id="default-note" role="status" hidden></p>
+        <p id="models-error" class="text-error" role="alert" hidden></p>
+        <p id="models-status" class="text-success" role="status" hidden></p>
+        <div class="table-container">
+            <table>
+                <thead><tr><th scope="col">Name</th><th scope="col">Namespace</th><th scope="col">Provider</th><th scope="col">Model</th><th scope="col">API key</th><th scope="col">Status</th><th scope="col" aria-label="Actions"></th></tr></thead>
+                <tbody id="model-rows"></tbody>
+            </table>
+        </div>
+        <p id="models-empty" class="text-muted" hidden>No models in kagent yet.</p>
+    </div>
+
+    <div class="card mb-3" id="detail-card" hidden>
+        <div class="card-header flex items-center gap-2">
+            <h3 class="card-title">Model <code id="detail-name"></code></h3>
+            <button type="button" class="btn btn-ghost" id="detail-close">Close</button>
+        </div>
+        <dl id="detail-fields" class="model-fields"></dl>
+    </div>
+
+    @if (Model.CanWrite)
+    {
+        <div class="card mb-3" id="form-card" hidden>
+            <div class="card-header"><h3 class="card-title" id="form-title">New model</h3></div>
+            <form id="model-form" class="flex flex-col gap-2">
+                <label for="f-namespace">Namespace (agents use models of their own namespace)</label>
+                @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
+                <input id="f-namespace" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
+                <label for="f-name">Name (lowercase letters, digits and <code>-</code>)</label>
+                <input id="f-name" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
+                <label for="f-provider">Provider</label>
+                <select id="f-provider" required></select>
+                <label for="f-model">Model (pick one kagent knows, or type any model id)</label>
+                <input id="f-model" list="f-models" required maxlength="200" autocomplete="off" spellcheck="false" />
+                <datalist id="f-models"></datalist>
+                <fieldset>
+                    <legend>Provider settings (* required; empty = the provider's default)</legend>
+                    <div id="f-params"></div>
+                </fieldset>
+                <p id="f-kept" class="text-muted" hidden></p>
+                <div id="f-key">
+                    <label for="f-apikey">API key</label>
+                    @* Never rendered back: the value is always empty; leaving it empty keeps the stored key (same provider). *@
+                    @* new-password: browsers and password managers must not fill the owner's sign-in password in here. *@
+                    <input name="ApiKey" id="f-apikey" type="password" value="" maxlength="4096" autocomplete="new-password" spellcheck="false"
+                           data-1p-ignore data-lpignore="true" data-form-type="other" />
+                    <label><input type="checkbox" id="f-nokey" /> No API key (a gateway in front of the provider adds it)</label>
+                </div>
+                <p id="f-nokey-needed" class="text-muted" hidden>This provider takes no API key.</p>
+                <div class="flex gap-2">
+                    <button type="submit" class="btn btn-primary" id="f-save">Save</button>
+                    <button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>
+                </div>
+            </form>
+        </div>
+    }
+</section>
+
+<style>
+    .model-fields { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
+    .model-fields dt { font-weight: 600; }
+    .model-fields dd { margin: 0; white-space: pre-wrap; word-break: break-word; }
+    .model-default { margin-left: 6px; padding: 1px 6px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 0.8em; }
+    #f-params { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: center; }
+</style>
+
+<script>
+(() => {
+    const root = document.getElementById('models');
+    const canWrite = root.dataset.canWrite === 'true';
+    const base = '/api/models';
+    const errorBox = document.getElementById('models-error');
+    const statusBox = document.getElementById('models-status');
+    let defaultRef = null;
+    let options = null;
+    let editing = null;
+
+    // Values from the API are only ever set with textContent.
+    const say = (box, text) => { box.textContent = text; box.hidden = !text; };
+    const fail = text => { say(statusBox, ''); say(errorBox, text); };
+    const done = text => { say(errorBox, ''); say(statusBox, text); };
+    const problemText = (problem, status) =>
+        (problem.errors ? Object.values(problem.errors).flat().join(' ') : '')
+        || problem.detail || problem.message || problem.title || `HTTP ${status}`;
+    const path = (ns, name) => `${base}/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`;
+    const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
+
+    // Content-Type only with a body: the API reads a JSON body whenever one is announced.
+    async function call(method, url, body) {
+        const init = { method };
+        if (body !== undefined) {
+            init.headers = { 'Content-Type': 'application/json' };
+            init.body = JSON.stringify(body);
         }
-    </p>
-}
-<form method="post" class="card auth-form">
-    <label asp-for="Provider">Provider</label>
-    <select asp-for="Provider" asp-items="@(new SelectList(ModelProviders.All))"></select>
-    <label asp-for="ModelId">Model</label>
-    <input asp-for="ModelId" required maxlength="200" autocomplete="off" placeholder="e.g. gpt-4.1, claude-sonnet-4-5, qwen3-coder:30b" />
-    <label asp-for="BaseUrl">Ollama host (required), or the API base URL (optional)</label>
-    <input asp-for="BaseUrl" type="url" maxlength="500" autocomplete="off" placeholder="http://ollama.example:11434 — empty = the provider's default (OpenAI, Anthropic)" />
-    <label asp-for="ApiKey">API key</label>
-    @* Never rendered back: the value is always empty; leaving it empty keeps the stored key (same provider). *@
-    @* new-password: browsers and password managers must not fill the owner's sign-in password in here. *@
-    <input name="ApiKey" id="ApiKey" type="password" value="" maxlength="4096" autocomplete="new-password" spellcheck="false"
-           data-1p-ignore data-lpignore="true" data-form-type="other"
-           placeholder="@(Model.Current?.HasApiKey == true ? "set — leave empty to keep it" : "paste the key (not needed for Ollama)")" />
-    <button type="submit" class="btn btn-primary">Save and go to Chat</button>
-</form>
+        const response = await fetch(url, init);
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw Object.assign(new Error(problemText(data, response.status)), { status: response.status, data });
+        return data;
+    }
+
+    function button(label, name, action, cls = 'btn btn-ghost') {
+        const b = el('button', label, cls);
+        b.type = 'button';
+        b.setAttribute('aria-label', `${label} ${name}`);
+        b.addEventListener('click', action);
+        return b;
+    }
+
+    function cell(row, text) { const td = el('td', text); row.appendChild(td); return td; }
+
+    const keyText = m => m.provider === 'Ollama' ? 'not needed' : (m.hasApiKey ? 'key set' : 'no key');
+    const statusText = m => m.accepted ? 'Ready' : `Not accepted${m.statusMessage ? ` (${m.statusMessage})` : ''}`;
+
+    function defaultNote(models) {
+        const note = document.getElementById('default-note');
+        const current = models.find(m => m.isDefault);
+        note.replaceChildren();
+        if (!current) {
+            note.append(`The default model ${defaultRef} does not exist yet: Chat cannot answer until it does. `);
+            if (canWrite) {
+                const [ns, ...rest] = defaultRef.split('/');
+                note.appendChild(button('Create the default model', defaultRef,
+                    () => openForm(null, { namespace: ns, name: rest.join('/') }).catch(e => fail(e.message)), 'btn btn-primary'));
+            }
+        } else if (!current.accepted) {
+            note.append(`kagent has not accepted the default model ${defaultRef}${current.statusMessage ? ` (${current.statusMessage})` : ''}.`);
+        } else {
+            note.append(`The default model ${defaultRef} is ready. `);
+            const chat = el('a', 'Continue to Chat', 'btn btn-secondary');
+            chat.href = '/Chat';
+            note.appendChild(chat);
+        }
+        note.hidden = false;
+    }
+
+    async function load() {
+        try {
+            const list = await call('GET', base);
+            defaultRef = list.defaultRef;
+            const body = document.getElementById('model-rows');
+            body.replaceChildren();
+            for (const m of list.models) {
+                const row = document.createElement('tr');
+                row.dataset.model = m.ref;
+                const name = cell(row, m.name);
+                if (m.isDefault) name.appendChild(el('span', 'default', 'model-default'));
+                cell(row, m.namespace);
+                cell(row, m.provider);
+                cell(row, m.model);
+                cell(row, keyText(m));
+                cell(row, statusText(m));
+                const actions = cell(row, '');
+                actions.appendChild(button('Details', m.ref, () => details(m)));
+                if (canWrite) actions.appendChild(button('Edit', m.ref, () => edit(m.namespace, m.name)));
+                if (canWrite && !m.isDefault) actions.appendChild(button('Delete', m.ref, () => remove(m)));
+                body.appendChild(row);
+            }
+            document.getElementById('models-empty').hidden = list.models.length > 0;
+            defaultNote(list.models);
+        } catch (e) {
+            fail(e.message);
+        }
+    }
+
+    function details(m) {
+        document.getElementById('detail-name').textContent = m.ref;
+        const fields = document.getElementById('detail-fields');
+        fields.replaceChildren();
+        const add = (label, value) => { if (value) fields.append(el('dt', label), el('dd', value)); };
+        add('Default', m.isDefault ? 'yes: the seed agents and Chat use it' : '');
+        add('Provider', m.provider);
+        add('Model', m.model);
+        add('API key', keyText(m));
+        add('Status', statusText(m));
+        for (const [key, value] of Object.entries(m.params)) add(key, value);
+        add('Also set (kept as it is)', m.kept.join(', '));
+        document.getElementById('detail-card').hidden = false;
+    }
+
+    async function remove(m) {
+        if (!confirm(`Delete the model ${m.ref}? kagent removes it and its API key; this cannot be undone.`)) return;
+        try {
+            try {
+                await call('DELETE', path(m.namespace, m.name));
+            } catch (e) {
+                // Agents still use it: the answer lists them, and the owner decides again.
+                if (e.status !== 409 || e.data?.reason !== 'in_use' || !confirm(e.message)) throw e;
+                await call('DELETE', `${path(m.namespace, m.name)}?confirm=true`);
+            }
+            done(`${m.ref} deleted.`);
+            document.getElementById('detail-card').hidden = true;
+            await load();
+        } catch (e) {
+            fail(e.message);
+        }
+    }
+
+    document.getElementById('refresh').addEventListener('click', load);
+    document.getElementById('detail-close').addEventListener('click', () => { document.getElementById('detail-card').hidden = true; });
+
+    if (!canWrite) {
+        load();
+        return;
+    }
+
+    const form = {
+        namespace: document.getElementById('f-namespace'),
+        name: document.getElementById('f-name'),
+        provider: document.getElementById('f-provider'),
+        model: document.getElementById('f-model'),
+        apiKey: document.getElementById('f-apikey'),
+        noKey: document.getElementById('f-nokey')
+    };
+
+    async function loadOptions() {
+        options ??= await call('GET', `${base}/options`);
+        return options;
+    }
+
+    const providerOf = type => options.providers.find(p => p.type === type);
+
+    function showProvider(values) {
+        const provider = providerOf(form.provider.value);
+        document.getElementById('f-models').replaceChildren(...provider.models.map(m => { const o = document.createElement('option'); o.value = m; return o; }));
+        const params = document.getElementById('f-params');
+        params.replaceChildren();
+        for (const field of provider.fields) {
+            const id = `f-param-${field.key}`;
+            const label = el('label', `${field.key}${field.required ? ' *' : ''}`);
+            label.htmlFor = id;
+            let input;
+            if (field.kind === 'boolean') {
+                input = document.createElement('select');
+                for (const v of ['', 'true', 'false']) { const o = el('option', v || '(default)'); o.value = v; input.appendChild(o); }
+            } else {
+                input = document.createElement('input');
+                if (field.kind === 'integer') { input.inputMode = 'numeric'; input.pattern = '[0-9]*'; }
+                input.autocomplete = 'off';
+                input.spellcheck = false;
+            }
+            input.id = id;
+            input.dataset.key = field.key;
+            input.required = field.required;
+            input.value = values[field.key] ?? '';
+            params.append(label, input);
+        }
+        document.getElementById('f-key').hidden = !provider.takesKey;
+        document.getElementById('f-nokey-needed').hidden = provider.takesKey;
+        // A stored key is kept only for the same provider: a switch needs a new one.
+        const keeps = editing?.hasApiKey && editing.provider === provider.type;
+        form.apiKey.placeholder = keeps ? 'set — leave empty to keep it' : 'paste the key';
+        form.noKey.checked = !!editing && editing.provider === provider.type && !editing.hasApiKey;
+    }
+
+    async function openForm(model, preset) {
+        const o = await loadOptions();
+        if (model && !providerOf(model.provider)) {
+            fail(`kagent does not offer the provider ${model.provider}; edit ${model.ref} where it was made.`);
+            return;
+        }
+        editing = model;
+        document.getElementById('form-title').textContent = model ? `Edit ${model.ref}` : 'New model';
+        form.namespace.value = model?.namespace ?? preset?.namespace ?? o.namespace;
+        form.name.value = model?.name ?? preset?.name ?? '';
+        form.namespace.readOnly = form.name.readOnly = !!model || !!preset;
+        form.provider.replaceChildren(...o.providers.map(p => { const op = el('option', p.type); op.value = p.type; return op; }));
+        form.provider.value = model?.provider ?? o.providers[0].type;
+        form.model.value = model?.model ?? '';
+        form.apiKey.value = '';
+        showProvider(model?.params ?? {});
+        say(document.getElementById('f-kept'), model?.kept.length ? `Also set and kept as it is: ${model.kept.join(', ')}.` : '');
+        document.getElementById('form-card').hidden = false;
+        document.getElementById('form-card').scrollIntoView();
+    }
+
+    async function edit(ns, name) {
+        try {
+            await openForm(await call('GET', path(ns, name)));
+        } catch (e) {
+            fail(e.message);
+        }
+    }
+
+    form.provider.addEventListener('change', () => showProvider(editing?.provider === form.provider.value ? editing.params : {}));
+    form.noKey.addEventListener('change', () => { if (form.noKey.checked) form.apiKey.value = ''; });
+    document.getElementById('new-model').addEventListener('click', () => openForm(null).catch(e => fail(e.message)));
+    document.getElementById('f-cancel').addEventListener('click', () => { form.apiKey.value = ''; document.getElementById('form-card').hidden = true; });
+    document.getElementById('model-form').addEventListener('submit', async event => {
+        event.preventDefault();
+        const takesKey = providerOf(form.provider.value).takesKey;
+        const body = {
+            namespace: form.namespace.value.trim(),
+            name: form.name.value.trim(),
+            provider: form.provider.value,
+            model: form.model.value.trim(),
+            params: Object.fromEntries([...document.querySelectorAll('#f-params [data-key]')].map(i => [i.dataset.key, i.value.trim()])),
+            apiKey: takesKey && !form.noKey.checked ? form.apiKey.value.trim() || null : null,
+            noApiKey: takesKey && form.noKey.checked
+        };
+        const save = document.getElementById('f-save');
+        save.disabled = true;
+        try {
+            if (editing) await call('PUT', path(editing.namespace, editing.name), body);
+            else await call('POST', base, body);
+            form.apiKey.value = '';
+            done(`${body.namespace}/${body.name} ${editing ? 'saved' : 'created'}.`);
+            document.getElementById('form-card').hidden = true;
+            await load();
+        } catch (e) {
+            fail(e.message);
+        } finally {
+            save.disabled = false;
+        }
+    });
+
+    load();
+})();
+</script>

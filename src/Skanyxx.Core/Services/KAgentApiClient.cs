@@ -45,7 +45,7 @@ public class KAgentApiClient
         }
     }
 
-    /// <summary>The ModelConfig the model step edits, <c>namespace/name</c> (<c>KAgent:ModelConfig</c>).</summary>
+    /// <summary>The default model, <c>namespace/name</c> (<c>KAgent:ModelConfig</c>): the one the seed agents and Chat use.</summary>
     public string ModelConfigRef => _config.ModelConfig;
 
     // kagent (auth mode unsecure) takes the user from ?user_id=, else X-User-Id. Without a userId, every call is this
@@ -189,6 +189,7 @@ public class KAgentApiClient
         var status = agentData.TryGetProperty("status", out var statusProp) ? statusProp : agentData;
 
         var name = GetStringProperty(metadata, "name") ?? GetStringProperty(agentData, "name") ?? "unknown";
+        var type = GetStringProperty(spec, "type") ?? "Declarative";
         var ns = GetStringProperty(metadata, "namespace") ?? "kagent";
 
         var isReady = item.TryGetProperty("deploymentReady", out var readyProp) && readyProp.ValueKind == JsonValueKind.True
@@ -207,16 +208,24 @@ public class KAgentApiClient
             Name = name,
             Namespace = ns,
             Revision = metadata.TryGetProperty("generation", out var generation) && generation.ValueKind == JsonValueKind.Number ? generation.GetRawText() : "",
-            Type = GetStringProperty(spec, "type") ?? "Declarative",
+            Type = type,
             Description = GetStringProperty(spec, "description") ?? "",
             Status = isReady ? "Active" : "Inactive",
             Ready = isReady,
             Accepted = isAccepted,
             Labels = labels,
             Suspended = Replicas(spec) == 0,
+            ModelConfig = type == "Declarative" ? DeclarativeModelConfig(spec) : null,
             McpToolNames = McpToolNames(spec)
         };
     }
+
+    // kagent: "If not specified, the default value is default-model-config", in the agent's namespace.
+    private static string DeclarativeModelConfig(JsonElement spec) =>
+        spec.ValueKind == JsonValueKind.Object && spec.TryGetProperty("declarative", out var declarative)
+            && GetStringProperty(declarative, "modelConfig") is { Length: > 0 } model
+            ? model
+            : "default-model-config";
 
     private static int? Replicas(JsonElement spec)
     {
@@ -398,58 +407,61 @@ public class KAgentApiClient
 
     private static string Cut(string text) => text.Length <= 1_000 ? text : text[..1_000];
 
-    /// <summary>The ModelConfig <see cref="ModelConfigRef"/> as kagent returns it (<c>{ref, spec, status}</c>), or null when absent.</summary>
-    public async Task<JsonObject?> GetModelConfigAsync(CancellationToken ct)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, WithUser($"/api/modelconfigs/{_config.ModelConfig}", null));
-        using var response = await SendAsync(request, _controlTimeout, ct);
-        if (response.StatusCode == HttpStatusCode.NotFound)
-            return null;
-        return await ModelConfigDataAsync(response, ct);
-    }
+    /// <summary>Every ModelConfig kagent has, as kagent returns them: <c>[{ref, spec, status}]</c>.</summary>
+    public async Task<JsonArray> GetModelConfigsAsync(CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Get, "/api/modelconfigs", null, ct) as JsonArray ?? throw UnexpectedShape();
+
+    /// <summary>The ModelConfig <c>{ref, spec, status}</c>, or null when kagent has none by that name.</summary>
+    public async Task<JsonObject?> GetModelConfigAsync(string ns, string name, CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Get, ModelConfigPath(ns, name), null, ct, notFoundIsNull: true) switch
+        {
+            null => null,
+            JsonObject config => config,
+            _ => throw UnexpectedShape()
+        };
 
     /// <summary>
-    /// Creates (<paramref name="create"/>) or replaces the spec of <see cref="ModelConfigRef"/>. A non-empty
-    /// <paramref name="apiKey"/> goes inline: kagent writes it into a Secret named like the ModelConfig and points the spec
-    /// at it (only when the spec names no secret). The key is never logged and never comes back.
+    /// Creates the ModelConfig (kagent answers 409 when the name is taken). A non-empty <paramref name="apiKey"/> goes
+    /// inline: kagent writes it into a Secret named like the ModelConfig and points the spec at it (only when the spec
+    /// names no secret). The request is never logged, so the key never is.
     /// </summary>
-    public async Task<JsonObject> SaveModelConfigAsync(bool create, JsonObject spec, string? apiKey, CancellationToken ct)
+    public async Task<JsonObject> CreateModelConfigAsync(string ns, string name, JsonObject spec, string? apiKey, CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Post, "/api/modelconfigs", ModelConfigBody($"{ns}/{name}", spec, apiKey), ct,
+            carriesKey: !string.IsNullOrEmpty(apiKey)) as JsonObject
+        ?? throw UnexpectedShape();
+
+    /// <summary>Replaces the ModelConfig's spec (kagent keeps no other field); the key as in <see cref="CreateModelConfigAsync"/>.</summary>
+    public async Task<JsonObject> UpdateModelConfigAsync(string ns, string name, JsonObject spec, string? apiKey, CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Put, ModelConfigPath(ns, name), ModelConfigBody(null, spec, apiKey), ct,
+            carriesKey: !string.IsNullOrEmpty(apiKey)) as JsonObject
+        ?? throw UnexpectedShape();
+
+    /// <returns>False when kagent had no such ModelConfig. Its owned key Secret goes with it (Kubernetes GC).</returns>
+    public async Task<bool> DeleteModelConfigAsync(string ns, string name, CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Delete, ModelConfigPath(ns, name), null, ct, notFoundIsNull: true) is not null;
+
+    /// <summary>The providers kagent supports: <c>[{name, type, requiredParams, optionalParams}]</c>.</summary>
+    public async Task<JsonArray> GetModelProvidersAsync(CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Get, "/api/modelproviderconfigs/models", null, ct) as JsonArray ?? throw UnexpectedShape();
+
+    /// <summary>kagent's supported models per provider: <c>{"OpenAI": [{name, function_calling}], …}</c>.</summary>
+    public async Task<JsonObject> GetSupportedModelsAsync(CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Get, "/api/models", null, ct) as JsonObject ?? throw UnexpectedShape();
+
+    private static string ModelConfigPath(string ns, string name) =>
+        $"/api/modelconfigs/{Uri.EscapeDataString(ns)}/{Uri.EscapeDataString(name)}";
+
+    private static JsonObject ModelConfigBody(string? configRef, JsonObject spec, string? apiKey)
     {
         var body = new JsonObject { ["spec"] = spec.DeepClone() };
-        if (create)
-            body["ref"] = _config.ModelConfig;
+        if (configRef is not null)
+            body["ref"] = configRef;
         if (!string.IsNullOrEmpty(apiKey))
             body["apiKey"] = apiKey;
-        using var request = new HttpRequestMessage(create ? HttpMethod.Post : HttpMethod.Put,
-            WithUser(create ? "/api/modelconfigs" : $"/api/modelconfigs/{_config.ModelConfig}", null))
-        {
-            Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json")
-        };
-        using var response = await SendAsync(request, _controlTimeout, ct);
-        return await ModelConfigDataAsync(response, ct);
+        return body;
     }
 
-    private static async Task<JsonObject> ModelConfigDataAsync(HttpResponseMessage response, CancellationToken ct)
-    {
-        JsonNode? body = null;
-        try
-        {
-            body = await response.Content.ReadFromJsonAsync<JsonNode>(ct);
-        }
-        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
-        {
-        }
-        var envelope = body as JsonObject;
-        if (!response.IsSuccessStatusCode)
-        {
-            // kagent's message names what failed (never the key: the request's key goes into a Secret, not the spec).
-            // Owner-only path, so the text is shown to the owner.
-            var detail = envelope?["message"] is JsonValue m && m.TryGetValue<string>(out var text) ? $": {Cut(text)}" : "";
-            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}{detail}", null, response.StatusCode);
-        }
-        return envelope?["data"] as JsonObject
-            ?? throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
-    }
+    private static HttpRequestException UnexpectedShape() => new("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
 
     /// <summary>The Agent CR <c>{apiVersion, kind, metadata, spec, status}</c>, or null when kagent has none by that name.</summary>
     public async Task<JsonObject?> GetAgentObjectAsync(string ns, string name, CancellationToken ct)
@@ -492,16 +504,18 @@ public class KAgentApiClient
 
     /// <summary>The refs (<c>namespace/name</c>) of every ModelConfig kagent has.</summary>
     public async Task<IReadOnlyList<string>> GetModelConfigRefsAsync(CancellationToken ct) =>
-        (await ControlAsync(HttpMethod.Get, "/api/modelconfigs", null, ct) as JsonArray ?? [])
+        (await GetModelConfigsAsync(ct))
         .Select(m => m?["ref"] is JsonValue r && r.TryGetValue<string>(out var s) ? s : null)
         .OfType<string>().ToList();
 
     /// <summary>
     /// A control call as this process (no person): the envelope's <c>data</c> (an empty object when there is none), or
     /// null for a 404 when <paramref name="notFoundIsNull"/>. Bodies may carry secrets (a tool server's companion Secret):
-    /// kagent's answer is logged, the request never.
+    /// kagent's answer is logged, the request never. With <paramref name="carriesKey"/> (a ModelConfig write with an
+    /// inline API key) kagent's answer is not logged either: its error text may quote what it was sent.
     /// </summary>
-    private async Task<JsonNode?> ControlAsync(HttpMethod method, string endpoint, JsonObject? body, CancellationToken ct, bool notFoundIsNull = false)
+    private async Task<JsonNode?> ControlAsync(HttpMethod method, string endpoint, JsonObject? body, CancellationToken ct, bool notFoundIsNull = false,
+        bool carriesKey = false)
     {
         using var request = new HttpRequestMessage(method, WithUser(endpoint, null));
         if (body is not null)
@@ -512,7 +526,8 @@ public class KAgentApiClient
             return null;
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("kagent {Method} {Endpoint} answered {StatusCode}: {Content}", method, endpoint, (int)response.StatusCode, Cut(content));
+            _logger.LogWarning("kagent {Method} {Endpoint} answered {StatusCode}: {Content}", method, endpoint, (int)response.StatusCode,
+                carriesKey ? "(not logged: the request carried an API key)" : Cut(content));
             throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
         }
         try
