@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.MediatR.Requests;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Core.Services;
@@ -19,15 +20,17 @@ namespace Skanyxx.Module.Chat.Features;
 /// cards both the person and the agent may read (memory). Every answered turn updates the index and the session's card.
 /// </summary>
 internal sealed class SendChatMessageHandler(
-    KAgentApiClient kagent, IRelatedMemory related, ICardExtractor extractor, IChatContext context, ILogger<SendChatMessageHandler> logger)
+    KAgentApiClient kagent, IRelatedMemory related, ICardExtractor extractor, IChatContext context, IPublisher publisher,
+    TimeProvider clock, ILogger<SendChatMessageHandler> logger)
     : IRequestHandler<SendChatMessageCommand, Outcome<ChatResponse>>
 {
     public async Task<Outcome<ChatResponse>> Handle(SendChatMessageCommand command, CancellationToken ct)
     {
         string? newSession = null;
+        Agent? agent = null;
         try
         {
-            var agent = (await MergedAgents.ListAsync(kagent, ct))
+            agent = (await MergedAgents.ListAsync(kagent, ct))
                 .FirstOrDefault(a => a.Namespace == command.AgentNamespace && a.Name == command.AgentName);
             if (agent is null)
                 return Outcome<ChatResponse>.NotFound("No such agent to chat with.");
@@ -39,7 +42,11 @@ internal sealed class SendChatMessageHandler(
                 ? await context.PrepareAsync(new ChatTurnStart(reader, agentRef, agent.Revision, command.Message, tickets, command.NoCache), ct)
                 : ChatPreparation.None;
             if (prepared.Cached is { } cached)
+            {
+                await RecordAsync(command, agent, TokenUsage.None, newChat: false, cached: true,
+                    saved: (command.Message.Length + cached.Message.Content.Length) / CharsPerToken, failed: false);
                 return Outcome<ChatResponse>.Ok(cached);
+            }
 
             string sessionId;
             if (isNew)
@@ -65,6 +72,7 @@ internal sealed class SendChatMessageHandler(
             await extractor.ChatTurnAsync(new ChatTurnDigest(
                 command.UserId, agent.Name, agentRef, sessionId, command.Message, response.Message.Content, isNew),
                 CancellationToken.None);
+            await RecordAsync(command, agent, response.Usage, isNew, cached: false, saved: 0, failed: false);
             return Outcome<ChatResponse>.Ok(response);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
@@ -72,6 +80,8 @@ internal sealed class SendChatMessageHandler(
             logger.LogWarning(ex, "Chat with {Namespace}/{Agent} failed for {UserId}", command.AgentNamespace, command.AgentName, command.UserId);
             if (newSession is not null)
                 await DeleteAsync(newSession, command.UserId);
+            if (agent is not null)
+                await RecordAsync(command, agent, TokenUsage.None, newChat: false, cached: false, saved: 0, failed: true);
             return Outcome<ChatResponse>.Unavailable(ChatFailure.Message(ex));
         }
         catch (OperationCanceledException) when (newSession is not null && ct.IsCancellationRequested)
@@ -81,6 +91,16 @@ internal sealed class SendChatMessageHandler(
             throw;
         }
     }
+
+    // The answer cache's own estimate (AnswerCache.RecordHitAsync): question plus answer, 4 characters a token.
+    private const int CharsPerToken = 4;
+
+    /// <summary>The turn as numbers only (the usage rollup). Not the request's token: the turn happened either way.</summary>
+    private Task RecordAsync(SendChatMessageCommand command, Agent agent, TokenUsage usage, bool newChat, bool cached, long saved, bool failed) =>
+        publisher.Publish(new ChatTurnUsage(
+            clock.GetUtcNow(), command.UserId, $"{agent.Namespace}/{agent.Name}",
+            agent.ModelConfig switch { "" => "unknown", var m when m.Contains('/') => m, var m => $"{agent.Namespace}/{m}" },
+            usage, newChat, cached, saved, failed), CancellationToken.None);
 
     // Not the request's token: the caller may be gone, the empty session should still go.
     private async Task DeleteAsync(string sessionId, string userId)

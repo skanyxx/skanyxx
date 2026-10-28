@@ -1,0 +1,168 @@
+/*
+ * Dashboard and Analytics. Colours are tokens only: the charts read --chart-1 … --chart-8 and --status-* from the
+ * document at render time (insights.js) and redraw when the theme changes, so a theme overrides these and nothing else.
+ * The defaults here follow site.css's palette; the design system's themes replace them at merge.
+ */
+:root {
+  --chart-1: var(--accent-color);
+  --chart-2: var(--success-color);
+  --chart-3: var(--warning-color);
+  --chart-4: var(--error-color);
+  --chart-5: #38bdf8;
+  --chart-6: #c084fc;
+  --chart-7: #f472b6;
+  --chart-8: #94a3b8;
+  --status-ok: var(--success-color);
+  --status-warn: var(--warning-color);
+  --status-down: var(--error-color);
+  --status-off: var(--text-muted);
+}
+
+.insights-section {
+  margin-bottom: 24px;
+}
+
+.insights-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.tile-grid,
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.health-tile {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-left: 4px solid var(--status-off);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.health-tile[data-status="ok"] { border-left-color: var(--status-ok); }
+.health-tile[data-status="warn"] { border-left-color: var(--status-warn); }
+.health-tile[data-status="down"] { border-left-color: var(--status-down); }
+
+.health-tile .tile-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background-color: var(--status-off);
+  flex: none;
+}
+
+.health-tile[data-status="ok"] .status-dot { background-color: var(--status-ok); }
+.health-tile[data-status="warn"] .status-dot { background-color: var(--status-warn); }
+.health-tile[data-status="down"] .status-dot { background-color: var(--status-down); }
+
+.health-tile .tile-summary { color: var(--text-secondary); }
+.health-tile .tile-reason { color: var(--text-muted); font-size: 13px; }
+.health-tile ol { margin: 0 0 0 18px; font-size: 13px; color: var(--text-secondary); }
+.health-tile .tile-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+
+.stat-tile {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.stat-tile .stat-value { font-size: 22px; }
+.stat-tile .stat-delta { font-size: 12px; color: var(--text-muted); }
+.stat-tile .sparkline { height: 36px; margin-top: 6px; }
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 12px;
+}
+
+.chart-card {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 14px 16px;
+  margin: 0;
+}
+
+.chart-card figcaption {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.chart-box {
+  position: relative;
+  height: 220px;
+}
+
+.chart-empty {
+  color: var(--text-muted);
+  padding: 24px 0;
+}
+
+.top-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.alert-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.alert-list li {
+  border-left: 3px solid var(--status-off);
+  padding: 4px 10px;
+}
+
+.alert-list li[data-severity="warn"] { border-left-color: var(--status-warn); }
+.alert-list li[data-severity="down"] { border-left-color: var(--status-down); }
+
+.cost-disclaimer {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--status-warn);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.analytics-filters { flex-wrap: wrap; }
+
+.segmented .btn[aria-pressed="true"] {
+  background-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.crumbs { margin-bottom: 8px; color: var(--text-secondary); }
+.crumbs button { background: none; border: none; color: var(--accent-color); cursor: pointer; padding: 0; font: inherit; }
+
+table.sortable th { cursor: pointer; user-select: none; }
+table.sortable th[aria-sort="ascending"]::after { content: " \25B2"; }
+table.sortable th[aria-sort="descending"]::after { content: " \25BC"; }
+table.sortable td.num, table.sortable th.num { text-align: right; }
+table.sortable td button { background: none; border: none; color: var(--accent-color); cursor: pointer; padding: 0; font: inherit; }
+
+/* site.css's .flex would otherwise beat the hidden attribute. */
+.insights [hidden] { display: none !important; }
+.analytics-filters select { width: auto; min-width: 240px; }
+.analytics-filters label { white-space: nowrap; }
+.stat-tile .stat-value { overflow-wrap: anywhere; }
+.health-tile ol { overflow-wrap: anywhere; }

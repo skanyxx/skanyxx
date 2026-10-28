@@ -1,0 +1,55 @@
+@page
+@model DashboardModel
+@{
+    ViewData["Title"] = "Dashboard";
+}
+<div class="insights" id="dashboard" data-owner="@(Model.IsOwner ? "true" : "false")">
+    @if (!Model.IsOwner)
+    {
+        <p class="text-muted">Read-only: the install's health, and usage of the people in your teams. Per-person lists and the audit are the owner's.</p>
+    }
+    <section class="insights-section" aria-labelledby="health-title">
+        <h2 id="health-title" class="insights-title">System health</h2>
+        <div id="health" class="tile-grid" aria-live="polite"><p class="text-muted">Checking every dependency…</p></div>
+    </section>
+
+    <section class="insights-section" aria-labelledby="alerts-title">
+        <h2 id="alerts-title" class="insights-title">Needs attention</h2>
+        <ul id="alerts" class="alert-list"><li class="text-muted">Loading…</li></ul>
+    </section>
+
+    <section class="insights-section" aria-labelledby="glance-title">
+        <h2 id="glance-title" class="insights-title">Usage at a glance</h2>
+        <div id="glance" class="stat-grid"></div>
+        <partial name="_CostDisclaimer" />
+    </section>
+
+    <section class="insights-section chart-grid" aria-label="Last 30 days">
+        <figure class="chart-card"><figcaption>Tokens per day (30 days)</figcaption><div class="chart-box"><canvas id="chart-tokens" role="img" aria-label="Tokens in and out per day"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Chats per day by agent</figcaption><div class="chart-box"><canvas id="chart-chats" role="img" aria-label="New chats per day, stacked by agent"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Failed turns per day</figcaption><div class="chart-box"><canvas id="chart-errors" role="img" aria-label="Chat turns that failed per day"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>New memory cards per day</figcaption><div class="chart-box"><canvas id="chart-cards" role="img" aria-label="Memory cards created per day"></canvas></div></figure>
+    </section>
+
+    <section class="insights-section top-grid">
+        <div class="card"><h3 class="card-title">Top agents (7 days)</h3><div id="top-agents" class="table-container"></div></div>
+        <div class="card"><h3 class="card-title">Top users (7 days)</h3><div id="top-users" class="table-container"></div></div>
+    </section>
+
+    @if (Model.IsOwner)
+    {
+        <section class="insights-section card" aria-labelledby="events-title">
+            <h2 id="events-title" class="insights-title">Recent admin events</h2>
+            <div id="events" class="table-container"></div>
+            <p class="text-muted">Who did what, without details or addresses. The full record is on <a href="/Audit">Audit</a>.</p>
+        </section>
+    }
+</div>
+@section Styles {
+    <link rel="stylesheet" href="~/css/insights.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/lib/chartjs/chart.umd.min.js" asp-append-version="true"></script>
+    <script src="~/js/insights.js" asp-append-version="true"></script>
+    <script src="~/js/dashboard.js" asp-append-version="true"></script>
+}

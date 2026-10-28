@@ -14,6 +14,7 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+    @await RenderSectionAsync("Styles", required: false)
 </head>
 <body>
     <partial name="_NavIcons" />
@@ -30,6 +31,23 @@
                 </a>
             </div>
             <nav class="sidebar-nav">
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <div class="nav-section">
+                        <div class="nav-section-title">Overview</div>
+                        @if (User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Owner) || User.IsInRole(Skanyxx.Core.Platform.SkanyxxRoles.Supervisor))
+                        {
+                            <a href="/Dashboard" class="nav-item @(currentPage == "/Dashboard" ? "active" : "")" title="Dashboard">
+                                <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-gauge"/></svg></span>
+                                <span class="nav-label">Dashboard</span>
+                            </a>
+                        }
+                        <a href="/Analytics" class="nav-item @(currentPage == "/Analytics" ? "active" : "")" title="Analytics">
+                            <span class="nav-icon"><svg aria-hidden="true" focusable="false"><use href="#i-chart"/></svg></span>
+                            <span class="nav-label">Analytics</span>
+                        </a>
+                    </div>
+                }
                 <div class="nav-section">
                     <div class="nav-section-title">AI & Agents</div>
                     <a href="/Agents" class="nav-item @(currentPage == "/Agents" ? "active" : "")" title="Agents">

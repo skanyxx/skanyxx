@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using MediatR;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Sandboxes.Features;
 using Skanyxx.Module.Sandboxes.Gateway;
@@ -58,6 +59,7 @@ public sealed class SandboxesModule : IModule
         services.AddGrpcClient<AxClient>((sp, o) =>
             o.Address = new Uri(sp.GetRequiredService<IOptions<SandboxesOptions>>().Value.Address));
         services.AddTransient<AxGateway>();
+        services.AddHealthChecks().AddCheck<AxHealthCheck>(DashboardChecks.Sandboxes, tags: [HealthEndpoint.DiagnosticsTag]);
     }
 
     /// <summary>Memory attach needs memory to sign the tokens: fail startup, not the first run, when it is not loaded.</summary>

@@ -1,9 +1,12 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
+using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Agents.Plugins;
 using Skanyxx.Module.Agents.Plugins.Features;
@@ -51,6 +54,13 @@ public class AgentsModule : IModule
         services.AddSingleton<PluginRepoReader>();
         services.AddSingleton<StudioReconciler>();
         services.AddHostedService<StudioReconcileLoop>();
+        services.AddSingleton<ReconcileStatus>();
+        services.TryAddSingleton(TimeProvider.System);
+        // The Dashboard's git and background-jobs tiles: registered only where the studio runs (absent = off).
+        if (configuration.GetSection(StudioOptions.Section).Get<StudioOptions>() is { Configured: true })
+            services.AddHealthChecks()
+                .AddCheck<StudioGitHealthCheck>(DashboardChecks.StudioGit, tags: [HealthEndpoint.DiagnosticsTag])
+                .AddCheck<StudioReconcileHealthCheck>(DashboardChecks.StudioReconciler, tags: [HealthEndpoint.DiagnosticsTag]);
         services.AddSingleton<ProposalInspector>();
         services.AddSingleton<StudioChat>();
 

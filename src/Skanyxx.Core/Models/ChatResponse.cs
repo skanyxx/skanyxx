@@ -1,3 +1,4 @@
+using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Memory;
 
@@ -16,4 +17,7 @@ public class ChatResponse
 
     /// <summary>Served from the answer cache (D265): kagent was not asked, <see cref="ConversationId"/> is the original's.</summary>
     public bool Cached { get; set; }
+
+    /// <summary>The tokens kagent reported for this turn (none for a cached answer, or when the runtime reports none).</summary>
+    public TokenUsage Usage { get; set; } = TokenUsage.None;
 }

@@ -22,6 +22,7 @@ public class ChatModule : IModule
         services.TryAddScoped<IRelatedMemory, NoRelatedMemory>();
         services.TryAddScoped<ICardExtractor, NoCardExtractor>();
         services.TryAddScoped<IChatContext, NoChatContext>();
+        services.TryAddSingleton(TimeProvider.System);
     }
 
     public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;

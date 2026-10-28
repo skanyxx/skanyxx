@@ -68,6 +68,9 @@ public sealed class FakeKAgent : IAsyncDisposable
 
     public string Answer { get; set; } = "The refund window is 30 days [card company/refund-window].";
 
+    /// <summary>The model usage the completed task reports (<c>metadata.kagent_usage_metadata</c>, as kagent's Python runtime); null = none.</summary>
+    public JsonObject? Usage { get; set; }
+
     public TimeSpan AgentsDelay { get; set; }
 
     public TimeSpan ModelDelay { get; set; }
@@ -283,6 +286,7 @@ public sealed class FakeKAgent : IAsyncDisposable
                     ["kind"] = "task",
                     ["contextId"] = body["params"]!["message"]!["contextId"]?.DeepClone(),
                     ["status"] = new JsonObject { ["state"] = "completed" },
+                    ["metadata"] = Usage is null ? null : new JsonObject { ["kagent_usage_metadata"] = Usage.DeepClone() },
                     ["artifacts"] = new JsonArray(new JsonObject
                     {
                         ["parts"] = new JsonArray(

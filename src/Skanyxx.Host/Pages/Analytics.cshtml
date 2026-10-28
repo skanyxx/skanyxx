@@ -1,0 +1,58 @@
+@page
+@model AnalyticsModel
+@{
+    ViewData["Title"] = "Analytics";
+}
+<div class="insights" id="analytics" data-owner="@(Model.IsOwner ? "true" : "false")">
+    <div class="card mb-3 analytics-controls">
+        <nav aria-label="Scope" id="crumbs" class="crumbs"></nav>
+        <div class="flex gap-2 items-center analytics-filters">
+            <label for="scope-pick">View</label>
+            <select id="scope-pick" aria-label="Scope"></select>
+            <div class="segmented" role="group" aria-label="Time range">
+                <button type="button" class="btn btn-ghost" data-range="7d">7 days</button>
+                <button type="button" class="btn btn-ghost" data-range="30d">30 days</button>
+                <button type="button" class="btn btn-ghost" data-range="90d">90 days</button>
+                <button type="button" class="btn btn-ghost" data-range="custom">Custom</button>
+            </div>
+            <span id="custom-range" class="flex gap-2 items-center" hidden>
+                <input type="date" id="from" aria-label="From" />
+                <input type="date" id="to" aria-label="To" />
+                <button type="button" class="btn btn-secondary" id="apply-range">Apply</button>
+            </span>
+            <label class="flex gap-2 items-center"><input type="checkbox" id="compare" /> Compare with the previous period</label>
+            @if (Model.IsOwner)
+            {
+                <button type="button" class="btn btn-secondary" id="export" title="Download the rows behind this view (counts only). Audited.">Export CSV</button>
+            }
+        </div>
+        <p id="error" class="text-error" role="alert" hidden></p>
+    </div>
+
+    <section class="insights-section" aria-labelledby="totals-title">
+        <h2 id="totals-title" class="insights-title"><span id="scope-name">Me</span> · <span id="range-name"></span></h2>
+        <div id="totals" class="stat-grid" aria-live="polite"></div>
+        <p id="notes" class="text-muted"></p>
+        <partial name="_CostDisclaimer" />
+    </section>
+
+    <section class="insights-section chart-grid">
+        <figure class="chart-card"><figcaption>Tokens over time by model</figcaption><div class="chart-box"><canvas id="chart-model" role="img" aria-label="Tokens per day, stacked by model"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Tokens over time by agent</figcaption><div class="chart-box"><canvas id="chart-agent" role="img" aria-label="Tokens per day, stacked by agent"></canvas></div></figure>
+        <figure class="chart-card" id="top-card"><figcaption id="top-title">Top users</figcaption><div class="chart-box"><canvas id="chart-top" role="img" aria-label="Top users or teams by tokens"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Cache savings (estimated tokens saved)</figcaption><div class="chart-box"><canvas id="chart-saved" role="img" aria-label="Estimated tokens the answer cache saved per day"></canvas></div></figure>
+    </section>
+
+    <section class="insights-section card">
+        <h2 class="insights-title" id="table-title">Breakdown</h2>
+        <div class="table-container"><table id="breakdown" class="sortable"></table></div>
+    </section>
+</div>
+@section Styles {
+    <link rel="stylesheet" href="~/css/insights.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/lib/chartjs/chart.umd.min.js" asp-append-version="true"></script>
+    <script src="~/js/insights.js" asp-append-version="true"></script>
+    <script src="~/js/analytics.js" asp-append-version="true"></script>
+}

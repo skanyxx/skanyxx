@@ -11,6 +11,8 @@
     <ProjectReference Include="..\..\src\Skanyxx.Host\Skanyxx.Host.csproj" />
     <!-- Unit tests of the studio's YAML rules (internals); the host under test still loads the module from modules/. -->
     <ProjectReference Include="..\..\src\Modules\Skanyxx.Module.Agents\Skanyxx.Module.Agents.csproj" />
+    <!-- Unit tests of the rollup, scopes and health board (internals); the host under test loads the module from modules/. -->
+    <ProjectReference Include="..\..\src\Modules\Skanyxx.Module.Analytics\Skanyxx.Module.Analytics.csproj" />
   </ItemGroup>
   <!-- Claude Code plugins for the plugin reader tests; explicit because the default globs skip .claude-plugin/ and .mcp.json. -->
   <ItemGroup>

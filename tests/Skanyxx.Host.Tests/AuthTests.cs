@@ -19,6 +19,11 @@ public sealed class AuthTests(PostgresFixture fixture)
     [InlineData("/api/sandboxes")]
     [InlineData("/api/identity/me")]
     [InlineData("/api/toolservers")] // a legacy controller
+    [InlineData("/api/analytics/usage")]
+    [InlineData("/api/analytics/scopes")]
+    [InlineData("/api/analytics/export")]
+    [InlineData("/api/dashboard/summary")]
+    [InlineData("/api/dashboard/health")]
     [InlineData("/api/no-such-route")]
     public async Task Anonymous_Api_Is401Problem(string path)
     {
@@ -52,6 +57,8 @@ public sealed class AuthTests(PostgresFixture fixture)
 
     [Theory]
     [InlineData("/Agents", "/Login?ReturnUrl=%2FAgents")]
+    [InlineData("/Dashboard", "/Login?ReturnUrl=%2FDashboard")]
+    [InlineData("/Analytics", "/Login?ReturnUrl=%2FAnalytics")]
     [InlineData("/", "/Login?ReturnUrl=%2F")]
     public async Task Anonymous_Page_RedirectsToLogin(string path, string location)
     {
