@@ -11,7 +11,6 @@ alwaysApply: false
 - Identity, Memory, Tickets, Sandboxes exist. **Extend**; do not add a second store or AX client.
 - FastEndpoints in the module. Map MCP (`/mcp/memory`) only as documented in README.
 - Connection strings: `ConnectionStrings:Identity`, `:Memory`, `:Tickets`. Empty/wrong = fail startup, do not fall back to SQLite for those engines.
-- Host `AppDbContext` SQLite is leftover local state. Do not put users, cards, or tickets there.
 
 ```csharp
 // BAD: module project references another module

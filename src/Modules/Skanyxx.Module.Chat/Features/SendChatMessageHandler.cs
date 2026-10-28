@@ -52,7 +52,7 @@ internal sealed class SendChatMessageHandler(
 
             // An agent's memory id is its kagent name (the studio grants by it).
             var memory = isNew
-                ? await related.ForNewChatAsync(new RelatedMemoryQuery(command.UserId, agent.Name, command.Message), ct)
+                ? await related.ForNewChatAsync(new RelatedMemoryQuery(command.UserId, agent.Name, command.Message, tickets), ct)
                 : MemoryContext.None;
             var response = await kagent.SendMessageAsync(
                 agent.Namespace, agent.Name, sessionId, prepared.Context + memory.Block + command.Message, command.UserId, ct);

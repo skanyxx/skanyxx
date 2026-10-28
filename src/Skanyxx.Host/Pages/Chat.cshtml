@@ -1027,7 +1027,7 @@
     function relatedNote(data) {
         const used = [
             ...(data.relatedSessions || []).map(s => `chat "${s.title}" (${new Date(s.updatedAt).toLocaleDateString()})`),
-            ...(data.memoryCards || []).map(c => `card ${c.scope}/${c.key}`)
+            ...(data.memoryCards || []).map(c => `card "${c.what}"`)
         ];
         const notes = [];
         if (data.cached) notes.push('Answered from the cache: you asked this before, so no tokens were spent.');

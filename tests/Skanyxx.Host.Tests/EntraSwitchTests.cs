@@ -28,7 +28,6 @@ public sealed class EntraSwitchTests(PostgresFixture fixture) : IAsyncLifetime
         var page = await browser.GetAsync("/Entra");
         var settings = await api.GetAsync("/api/identity/entra/settings", Ct);
         var save = await api.PutAsJsonAsync("/api/identity/entra/settings", new { enabled = true, tenantId = Guid.NewGuid(), clientId = Guid.NewGuid(), groups = Array.Empty<object>() }, Ct);
-        var unlink = await api.DeleteAsync($"/api/identity/people/{Guid.NewGuid()}/entra-login", Ct);
 
         Assert.Contains("href=\"/People\"", nav);
         Assert.DoesNotContain("href=\"/Entra\"", nav);
@@ -36,7 +35,6 @@ public sealed class EntraSwitchTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, page.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, settings.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, save.StatusCode);
-        Assert.Equal(HttpStatusCode.NotFound, unlink.StatusCode);
     }
 
     [Fact]

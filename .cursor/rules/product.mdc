@@ -11,7 +11,7 @@ Before implementing, read `AGENTS.md` and `docs/design/todo.md`. Work **in that 
 
 Do not:
 
-- Revive SRE/NOC features or grow Dashboard / Investigate / Alerts / Hooks / Cloud Tools
+- Revive SRE/NOC features (quick commands, kubectl/aws/az runners, alerts, hooks); Dashboard / Investigate / Cloud tools / Analytics come back only as new panels per `docs/design/requirements.md` §3
 - Add an in-process LLM chat that bypasses kagent
 - Store company knowledge in Redis, Dragonfly, Joicy, SQLite, or kagent TTL memory
 - Name sandbox routes `task` (clash with kagent A2A and Tickets)

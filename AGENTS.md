@@ -23,7 +23,7 @@ If the human asks to **test or run only**, do not add, edit, or “clean up” p
 - Modules live under `src/Modules/Skanyxx.Module.*` and reference **only** `Skanyxx.Core`. They never reference Host or each other. Cross-module work = MediatR / Core interfaces (`IOrgMembership`, etc.).
 - New module: `IModule` + copy DLL to `src/Skanyxx.Host/modules/` on build (see README). Declare `Dependencies`. Missing dep = fail startup, not a 500 later.
 - Identity, Memory, Tickets, Sandboxes are **built**. Extend them. Do not start a second accounts DB, card store, run engine, or AX client.
-- Prefer FastEndpoints in modules. Host Razor pages are for the current UI; do not grow leftover SRE pages (Dashboard, Investigate, Alerts, Hooks, Cloud Tools, Analytics).
+- Prefer FastEndpoints in modules. Host Razor pages are for the current UI. The SRE-era modules and pages are removed (D236, D269): do not bring their code back; Dashboard, Investigate, Analytics, Debug and Cloud tools return only as new panels built to the roadmap.
 - Secrets: never commit `appsettings.json` / real tokens. Template is `appsettings.template.json`. Local run: env `ConnectionStrings__Memory`, `__Identity`, `__Tickets` → Postgres `localhost:55432` (`docker compose`).
 
 ## Design log

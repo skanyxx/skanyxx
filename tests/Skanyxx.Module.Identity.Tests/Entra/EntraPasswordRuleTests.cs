@@ -58,6 +58,22 @@ public sealed class EntraPasswordRuleTests(PostgresFixture postgres) : IAsyncLif
         Assert.Equal(HttpStatusCode.OK, passwordWhileOff.StatusCode);
     }
 
+    /// <summary>D272: with the install's switch off, saved and enabled Microsoft sign-in does not lock a managed account out.</summary>
+    [Fact]
+    public async Task SwitchOff_AManagedAccountSignsInWithItsPassword()
+    {
+        var (tokens, managedId) = await _app.AddMemberAsync(_owner, Managed);
+        await SaveAsync(enabled: true);
+        await AddLoginAsync(managedId);
+        await using var off = await IdentityApp.StartAsync(postgres.ConnectionString, s => s["Identity:EntraAvailable"] = "false");
+
+        var password = await off.SignInAsync(Managed, IdentityApp.MemberPassword);
+        var refresh = await off.RefreshAsync(tokens.RefreshToken);
+
+        Assert.Equal(HttpStatusCode.OK, password.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, refresh.StatusCode);
+    }
+
     /// <summary>SEC N6: a refused refresh names the account and the address at Warning.</summary>
     [Fact]
     public async Task ARefusedRefresh_IsLoggedAtWarning()

@@ -71,9 +71,12 @@ internal sealed partial class RelatedMemory(
     /// <summary>The prompt's rough rule, 4 characters a token: an estimate that errs towards fewer cards for non-Latin text.</summary>
     internal static int Tokens(int characters) => (characters + 3) / 4;
 
-    private static string Line(CardHit hit) =>
+    // Square brackets are the block's fence: a card's text must not close it and talk to the agent unfenced (D270).
+    private static string Line(CardHit hit) => Fence(
         $"- {hit.Scope}/{hit.Key} ({hit.Type}): {SecretText.Redact(hit.What)} Why: {SecretText.Redact(hit.Why)}" +
-        (hit.Tickets.Length > 0 ? $" Tickets: {string.Join(", ", hit.Tickets)}." : "") + "\n";
+        (hit.Tickets.Length > 0 ? $" Tickets: {string.Join(", ", hit.Tickets)}." : "")) + "\n";
+
+    private static string Fence(string line) => line.Replace('[', '(').Replace(']', ')');
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Related memory for {UserId} failed; the chat starts without it")]
     private static partial void LogFailed(ILogger logger, string userId, Exception ex);
