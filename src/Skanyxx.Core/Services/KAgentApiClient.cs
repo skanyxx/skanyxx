@@ -273,14 +273,16 @@ public class KAgentApiClient
             throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
     }
 
-    public async Task<KAgentSession> CreateSessionAsync(string agentName, string? userId = null, CancellationToken ct = default)
+    /// <param name="name">The session's display name (Chat: the first line of the first message).</param>
+    public async Task<KAgentSession> CreateSessionAsync(string agentName, string? userId = null, CancellationToken ct = default, string? name = null)
     {
         // KAgent expects agent_ref in format "namespace/agent-name"
         var agentRef = agentName.Contains("/") ? agentName : $"kagent/{agentName}";
         return await RequestAsync<KAgentSession>("/api/sessions", HttpMethod.Post, new
         {
             user_id = userId ?? _userId,
-            agent_ref = agentRef
+            agent_ref = agentRef,
+            name
         }, userId, ct);
     }
 
@@ -313,7 +315,8 @@ public class KAgentApiClient
     /// last artifact (reasoning parts skipped). Bounded by <see cref="KAgentConfig.ChatTimeoutSeconds"/>.
     /// </summary>
     public async Task<ChatResponse> SendMessageAsync(
-        string agentNamespace, string agentName, string sessionId, string message, string userId, CancellationToken ct = default)
+        string agentNamespace, string agentName, string sessionId, string message, string userId, CancellationToken ct = default,
+        IReadOnlyList<A2AFilePart>? files = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post,
             WithUser($"/api/a2a/{Uri.EscapeDataString(agentNamespace)}/{Uri.EscapeDataString(agentName)}/", userId))
@@ -330,7 +333,7 @@ public class KAgentApiClient
                         kind = "message",
                         messageId = Guid.NewGuid().ToString(),
                         role = "user",
-                        parts = new[] { new { kind = "text", text = message } },
+                        parts = MessageParts(message, files ?? []),
                         contextId = sessionId
                     },
                     configuration = new { blocking = true }
@@ -527,6 +530,172 @@ public class KAgentApiClient
         try
         {
             return JsonNode.Parse(content) is JsonObject envelope ? envelope["data"]?.DeepClone() ?? new JsonObject() : new JsonObject();
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "kagent {Method} {Endpoint} answered invalid JSON", method, endpoint);
+            throw new HttpRequestException("kagent answered in an unexpected shape", ex, HttpStatusCode.BadGateway);
+        }
+    }
+
+    /// <summary>kagent's agent list entries as they come (<c>{agent, model, modelProvider, modelConfigRef, deploymentReady}</c>).</summary>
+    public async Task<JsonArray> GetAgentListAsync(CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Get, "/api/agents", null, ct) as JsonArray
+        ?? throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
+
+    /// <summary><paramref name="userId"/>'s sessions, as kagent lists them for that person (theirs only).</summary>
+    public async Task<List<KAgentSession>> ListSessionsAsync(string userId, CancellationToken ct) =>
+        (await AsUserAsync(HttpMethod.Get, "/api/sessions", null, userId, ct))?.Deserialize<List<KAgentSession>>() ?? [];
+
+    /// <summary>Sets the display name of <paramref name="userId"/>'s session; false when kagent has no such session for them.</summary>
+    public async Task<bool> RenameSessionAsync(string sessionId, string userId, string name, CancellationToken ct)
+    {
+        try
+        {
+            await AsUserAsync(HttpMethod.Patch, $"/api/sessions/{Uri.EscapeDataString(sessionId)}", new JsonObject { ["name"] = name }, userId, ct);
+            return true;
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// One streaming A2A <c>message/stream</c> in the session <paramref name="sessionId"/>, as <paramref name="userId"/>:
+    /// each server-sent event's JSON-RPC <c>result</c> (a task, a status update, an artifact update or a message), in
+    /// order. The whole stream is bounded by <see cref="KAgentConfig.ChatTimeoutSeconds"/>; cancelling
+    /// <paramref name="ct"/> closes it (the agent's run is cut with the connection).
+    /// </summary>
+    public async IAsyncEnumerable<JsonNode> StreamMessageAsync(
+        string agentNamespace, string agentName, string sessionId, string message, IReadOnlyList<A2AFilePart> files, string userId,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct)
+    {
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(_chatTimeout);
+        var parts = MessageParts(message, files);
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            WithUser($"/api/a2a/{Uri.EscapeDataString(agentNamespace)}/{Uri.EscapeDataString(agentName)}/", userId))
+        {
+            Content = new StringContent(new JsonObject
+            {
+                ["jsonrpc"] = "2.0",
+                ["id"] = Guid.NewGuid().ToString(),
+                ["method"] = "message/stream",
+                ["params"] = new JsonObject
+                {
+                    ["message"] = new JsonObject
+                    {
+                        ["kind"] = "message", ["messageId"] = Guid.NewGuid().ToString(), ["role"] = "user", ["parts"] = parts, ["contextId"] = sessionId
+                    }
+                }
+            }.ToJsonString(), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("A2A-Version", "0.3");
+        request.Headers.Add("X-User-Id", userId);
+        request.Headers.Accept.ParseAdd("text/event-stream");
+
+        using var response = await WithinChatDeadline(() => _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, deadline.Token), ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("kagent A2A stream {Namespace}/{Agent} answered {StatusCode}: {Content}",
+                agentNamespace, agentName, (int)response.StatusCode, Cut(await response.Content.ReadAsStringAsync(ct)));
+            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
+        }
+
+        using var reader = new StreamReader(await WithinChatDeadline(() => response.Content.ReadAsStreamAsync(deadline.Token), ct));
+        var data = new StringBuilder();
+        while (true)
+        {
+            var line = await WithinChatDeadline(() => reader.ReadLineAsync(deadline.Token).AsTask(), ct);
+            if (line is not null && line.StartsWith("data:", StringComparison.Ordinal))
+                data.Append(line.AsSpan(5).TrimStart());
+            else if ((line is null || line.Length == 0) && data.Length > 0)
+            {
+                yield return StreamResult(data.ToString(), agentNamespace, agentName);
+                data.Clear();
+            }
+            if (line is null)
+                yield break;
+        }
+    }
+
+    /// <summary>Asks kagent to stop a running task (the Stop button); kagent may already have finished it.</summary>
+    public async Task CancelTaskAsync(string agentNamespace, string agentName, string taskId, string userId, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post,
+            WithUser($"/api/a2a/{Uri.EscapeDataString(agentNamespace)}/{Uri.EscapeDataString(agentName)}/", userId))
+        {
+            Content = new StringContent(new JsonObject
+            {
+                ["jsonrpc"] = "2.0", ["id"] = Guid.NewGuid().ToString(), ["method"] = "tasks/cancel", ["params"] = new JsonObject { ["id"] = taskId }
+            }.ToJsonString(), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Add("A2A-Version", "0.3");
+        request.Headers.Add("X-User-Id", userId);
+        using var response = await SendAsync(request, _controlTimeout, ct);
+    }
+
+    // A2A message parts: the text, then each file inline (base64), as kagent hands them to the model.
+    private static JsonArray MessageParts(string message, IReadOnlyList<A2AFilePart> files) =>
+    [
+        new JsonObject { ["kind"] = "text", ["text"] = message },
+        .. files.Select(f => (JsonNode)new JsonObject
+        {
+            ["kind"] = "file",
+            ["file"] = new JsonObject { ["name"] = f.Name, ["mimeType"] = f.MimeType, ["bytes"] = Convert.ToBase64String(f.Bytes) }
+        })
+    ];
+
+    private async Task<T> WithinChatDeadline<T>(Func<Task<T>> call, CancellationToken ct)
+    {
+        try
+        {
+            return await call();
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"kagent did not finish the answer within {_chatTimeout.TotalSeconds:0} s.");
+        }
+    }
+
+    private JsonNode StreamResult(string data, string agentNamespace, string agentName)
+    {
+        JsonNode? body;
+        try
+        {
+            body = JsonNode.Parse(data);
+        }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning(ex, "kagent A2A stream {Namespace}/{Agent} sent invalid JSON", agentNamespace, agentName);
+            throw new HttpRequestException("kagent answered in an unexpected shape", ex, HttpStatusCode.BadGateway);
+        }
+        if (body?["error"] is { } error)
+        {
+            _logger.LogWarning("kagent JSON-RPC error: {Error}", Cut(error.ToJsonString()));
+            throw new HttpRequestException("kagent refused the message");
+        }
+        return body?["result"] ?? throw new HttpRequestException("kagent answered without a result", null, HttpStatusCode.BadGateway);
+    }
+
+    /// <summary>A call as <paramref name="userId"/>: the envelope's <c>data</c> (null when there is none).</summary>
+    private async Task<JsonNode?> AsUserAsync(HttpMethod method, string endpoint, JsonObject? body, string userId, CancellationToken ct)
+    {
+        using var request = new HttpRequestMessage(method, WithUser(endpoint, userId));
+        request.Headers.Add("X-User-ID", userId);
+        if (body is not null)
+            request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
+        using var response = await SendAsync(request, _controlTimeout, ct);
+        var content = await response.Content.ReadAsStringAsync(ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("kagent {Method} {Endpoint} answered {StatusCode}: {Content}", method, endpoint, (int)response.StatusCode, Cut(content));
+            throw new HttpRequestException($"kagent answered HTTP {(int)response.StatusCode}", null, response.StatusCode);
+        }
+        try
+        {
+            return JsonNode.Parse(content)?["data"]?.DeepClone();
         }
         catch (JsonException ex)
         {

@@ -192,6 +192,10 @@ spec:
               value: {{ default (printf "%s/default-model-config" .Release.Namespace) $v.kagent.modelConfig | quote }}
             - name: KAgent__ChatTimeoutSeconds
               value: {{ $v.kagent.chatTimeoutSeconds | quote }}
+            # Files people attach in Chat: the root filesystem is read-only, /data is the writable emptyDir (lost with
+            # the pod; a PVC there keeps them).
+            - name: Chat__Files__Path
+              value: /data/chat-files
             {{- with $v.kagent.tokenSecret }}
             - name: KAgent__Token
               valueFrom:

@@ -15,7 +15,10 @@ namespace Skanyxx.Host.Tests.Infrastructure;
 /// shapes of the real handlers: <c>{error, data, message}</c> envelopes; agents with labels; one ModelConfig
 /// (<c>kagent/default-model-config</c>) whose create/update put an inline <c>apiKey</c> into a "Secret" and point the spec
 /// at it, as kagent does; per-user sessions (a session of another user is 404); and a blocking A2A <c>message/send</c>
-/// that answers with a completed task. Every request is recorded with the user kagent would see. Knobs make it slow
+/// that answers with a completed task, or a <c>message/stream</c> that streams it as server-sent events (a tool call
+/// with a secret in its arguments and result when <see cref="StreamToolCall"/>). Each turn is kept as the session's
+/// events, newest first and in the Python ADK's shape, as kagent stores them; sessions can be listed per user and
+/// renamed. Every request is recorded with the user kagent would see. Knobs make it slow
 /// (<see cref="AgentsDelay"/>, <see cref="ModelDelay"/>, <see cref="A2ADelay"/>), failing or odd-shaped.
 /// Start it before <see cref="HostApp.StartAsync"/>: that one captures the next host built in the process.
 /// </summary>
@@ -24,7 +27,19 @@ public sealed class FakeKAgent : IAsyncDisposable
     public const string ModelConfigPath = "/api/modelconfigs/kagent/default-model-config";
 
     private readonly WebApplication _app;
-    private readonly ConcurrentDictionary<string, (string User, string AgentId)> _sessions = new();
+    private readonly ConcurrentDictionary<string, FakeSession> _sessions = new();
+
+    private sealed class FakeSession(string user, string agentId, string? name)
+    {
+        public string User { get; } = user;
+        public string AgentId { get; } = agentId;
+        public string? Name { get; set; } = name;
+        public DateTimeOffset CreatedAt { get; } = DateTimeOffset.UtcNow;
+        public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+
+        /// <summary>Newest first, as kagent lists them.</summary>
+        public List<JsonObject> Events { get; } = [];
+    }
 
     private FakeKAgent(WebApplication app) => _app = app;
 
@@ -79,6 +94,23 @@ public sealed class FakeKAgent : IAsyncDisposable
     public bool ModelAccepted { get; set; } = true;
 
     public string Answer { get; set; } = "The refund window is 30 days [card company/refund-window].";
+
+    /// <summary>A streamed turn first calls <c>memory_search</c>, whose arguments and result carry <see cref="StreamSecret"/>.</summary>
+    public bool StreamToolCall { get; set; }
+
+    public const string StreamSecret = "sk-live-abcdefghijklmnop1234567890";
+
+    /// <summary>A streamed turn ends in this task state instead of <c>completed</c>.</summary>
+    public string StreamFinalState { get; set; } = "completed";
+
+    /// <summary>When set, a streamed turn waits for it after its tool call (or first event), so a test can stop the turn mid-way.</summary>
+    public TaskCompletionSource? StreamGate { get; set; }
+
+    /// <summary>The model kagent reports in its agent list for a dynamic agent (<c>ns/name</c>).</summary>
+    public ConcurrentDictionary<string, string> AgentModels { get; } = new();
+
+    /// <summary>Tool name → description, for the tools kagent discovers.</summary>
+    public ConcurrentDictionary<string, string> ToolDescriptions { get; } = new();
 
     public TimeSpan AgentsDelay { get; set; }
 
@@ -159,9 +191,11 @@ public sealed class FakeKAgent : IAsyncDisposable
                 return Results.Content(raw, "application/json");
             // Two merged agents share the name "seed" in different namespaces (the reconciler may merge into several).
             return Envelope(new JsonArray([.. FixedAgents().Select(a => (JsonNode)a),
-                .. AgentObjects.Values.Select(a => (JsonNode)new JsonObject
+                .. AgentObjects.Select(a => (JsonNode)new JsonObject
                 {
-                    ["id"] = "dynamic", ["agent"] = a.DeepClone(), ["deploymentReady"] = true, ["accepted"] = true
+                    ["id"] = "dynamic", ["agent"] = a.Value.DeepClone(), ["deploymentReady"] = true, ["accepted"] = true,
+                    ["model"] = AgentModels.TryGetValue(a.Key, out var model) ? model : null,
+                    ["modelConfigRef"] = a.Value["spec"]?["declarative"]?["modelConfig"] is { } config ? $"{a.Key.Split('/')[0]}/{config}" : null
                 })]));
         });
 
@@ -211,7 +245,7 @@ public sealed class FakeKAgent : IAsyncDisposable
             {
                 ["ref"] = k, ["groupKind"] = "RemoteMCPServer.kagent.dev",
                 ["discoveredTools"] = new JsonArray([.. (DiscoveredTools.TryGetValue(k, out var tools) ? tools : ["memory_search", "memory_upsert"])
-                    .Select(t => (JsonNode)new JsonObject { ["name"] = t, ["description"] = $"{ToolDescriptionPrefix}{t}" })])
+                    .Select(t => (JsonNode)new JsonObject { ["name"] = t, ["description"] = ToolDescriptions.TryGetValue(t, out var d) ? d : $"{ToolDescriptionPrefix}{t}" })])
             }),
             .. ListedToolServers.Select(s => s.DeepClone())])));
         app.MapPost("/api/toolservers", (JsonObject body) =>
@@ -274,26 +308,57 @@ public sealed class FakeKAgent : IAsyncDisposable
         {
             var id = Guid.NewGuid().ToString();
             var agentId = body["agent_ref"]!.GetValue<string>().Replace("-", "_").Replace("/", "__NS__");
-            _sessions[id] = (UserOf(context), agentId);
+            _sessions[id] = new FakeSession(UserOf(context), agentId, body["name"]?.GetValue<string>());
             return Results.Json(new JsonObject { ["error"] = false, ["data"] = SessionJson(id) }, statusCode: 201);
         });
+        app.MapGet("/api/sessions", (HttpContext context) => Envelope(new JsonArray([.. _sessions
+            .Where(s => s.Value.User == UserOf(context))
+            .Select(s => (JsonNode)SessionJson(s.Key))])));
         app.MapGet("/api/sessions/{id}", (HttpContext context, string id) =>
             _sessions.TryGetValue(id, out var s) && s.User == UserOf(context)
-                ? Envelope(new JsonObject { ["session"] = SessionJson(id), ["events"] = new JsonArray() })
+                ? Envelope(new JsonObject
+                {
+                    ["session"] = SessionJson(id),
+                    ["events"] = new JsonArray([.. s.Events.Select(e => (JsonNode)e.DeepClone())])
+                })
                 : Results.Json(new JsonObject { ["error"] = true, ["message"] = "Session not found" }, statusCode: 404));
+        app.MapMethods("/api/sessions/{id}", ["PATCH"], (HttpContext context, string id, JsonObject body) =>
+        {
+            if (!_sessions.TryGetValue(id, out var s) || s.User != UserOf(context))
+                return Results.Json(new JsonObject { ["error"] = true, ["message"] = "Session not found" }, statusCode: 404);
+            s.Name = body["name"]?.GetValue<string>();
+            return Envelope(SessionJson(id));
+        });
 
         app.MapDelete("/api/sessions/{id}", (HttpContext context, string id) =>
             _sessions.TryGetValue(id, out var s) && s.User == UserOf(context) && _sessions.TryRemove(id, out _)
                 ? Results.Json(new JsonObject { ["error"] = false, ["message"] = "Session deleted" })
                 : Results.Json(new JsonObject { ["error"] = true, ["message"] = "Session not found" }, statusCode: 404));
 
-        app.MapPost("/api/a2a/{ns}/{name}/", async (HttpContext context, JsonObject body) =>
+        app.MapPost("/api/a2a/{ns}/{name}/", async (HttpContext context, string name, JsonObject body) =>
         {
+            if (body["method"]?.GetValue<string>() == "tasks/cancel")
+                return Results.Json(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = body["id"]!.DeepClone(), ["result"] = new JsonObject { ["kind"] = "task" } });
             await Task.Delay(A2ADelay, context.RequestAborted);
             if (A2AStatus is { } status)
                 return Results.Json(new JsonObject { ["error"] = InternalDetail }, statusCode: status);
             if (A2ABody is { } raw)
                 return Results.Content(raw, "application/json");
+            var message = body["params"]!["message"]!;
+            var contextId = message["contextId"]?.GetValue<string>();
+            Event(contextId, new JsonObject
+            {
+                ["author"] = "user", ["content"] = new JsonObject { ["role"] = "user", ["parts"] = new JsonArray(new JsonObject { ["text"] = message["parts"]![0]!["text"]!.GetValue<string>() }) }
+            });
+            if (body["method"]?.GetValue<string>() == "message/stream")
+            {
+                await StreamAsync(context, body["id"]!.DeepClone(), contextId, name);
+                return Results.Empty;
+            }
+            Event(contextId, new JsonObject
+            {
+                ["author"] = name, ["content"] = new JsonObject { ["role"] = "model", ["parts"] = new JsonArray(new JsonObject { ["text"] = Answer }) }
+            });
             return Results.Json(new JsonObject
             {
                 ["jsonrpc"] = "2.0",
@@ -301,7 +366,7 @@ public sealed class FakeKAgent : IAsyncDisposable
                 ["result"] = new JsonObject
                 {
                     ["kind"] = "task",
-                    ["contextId"] = body["params"]!["message"]!["contextId"]?.DeepClone(),
+                    ["contextId"] = contextId,
                     ["status"] = new JsonObject { ["state"] = "completed" },
                     ["artifacts"] = new JsonArray(new JsonObject
                     {
@@ -312,6 +377,88 @@ public sealed class FakeKAgent : IAsyncDisposable
                 }
             });
         });
+    }
+
+    // kagent's A2A stream (Go ADK executor): the task, status updates (a tool call and its result, partial text), the
+    // answer as an artifact, then the final status with the turn's usage.
+    private async Task StreamAsync(HttpContext context, JsonNode rpcId, string? contextId, string agent)
+    {
+        context.Response.ContentType = "text/event-stream";
+        var taskId = Guid.NewGuid().ToString();
+        async Task Send(JsonObject result)
+        {
+            result["taskId"] ??= taskId;
+            result["contextId"] = contextId;
+            await context.Response.WriteAsync($"data: {new JsonObject { ["jsonrpc"] = "2.0", ["id"] = rpcId.DeepClone(), ["result"] = result }.ToJsonString()}\n\n", context.RequestAborted);
+            await context.Response.Body.FlushAsync(context.RequestAborted);
+        }
+        JsonObject Status(string state, JsonObject? message, bool final = false) => new()
+        {
+            ["kind"] = "status-update", ["status"] = new JsonObject { ["state"] = state, ["message"] = message }, ["final"] = final
+        };
+        JsonObject AgentMessage(JsonObject? metadata, params JsonObject[] parts) => new()
+        {
+            ["kind"] = "message", ["role"] = "agent", ["messageId"] = Guid.NewGuid().ToString(), ["parts"] = new JsonArray([.. parts]), ["metadata"] = metadata
+        };
+        JsonObject Usage(int prompt, int completion) => new() { ["promptTokenCount"] = prompt, ["candidatesTokenCount"] = completion, ["totalTokenCount"] = prompt + completion };
+
+        await Send(new JsonObject { ["kind"] = "task", ["id"] = taskId, ["status"] = new JsonObject { ["state"] = "submitted" } });
+        if (StreamToolCall)
+        {
+            var args = new JsonObject { ["query"] = "refund window", ["api_key"] = StreamSecret };
+            var result = new JsonObject { ["content"] = new JsonArray(new JsonObject { ["type"] = "text", ["text"] = $"found 1 card; deploy token={StreamSecret}" }), ["isError"] = false };
+            await Send(Status("working", AgentMessage(new JsonObject { ["kagent_usage_metadata"] = Usage(100, 20) },
+                new JsonObject { ["kind"] = "text", ["text"] = "Let me look that up." },
+                new JsonObject { ["kind"] = "data", ["data"] = new JsonObject { ["id"] = "call-1", ["name"] = "memory_search", ["args"] = args.DeepClone() }, ["metadata"] = new JsonObject { ["kagent_type"] = "function_call" } })));
+            await Send(Status("working", AgentMessage(null,
+                new JsonObject { ["kind"] = "data", ["data"] = new JsonObject { ["id"] = "call-1", ["name"] = "memory_search", ["response"] = result.DeepClone() }, ["metadata"] = new JsonObject { ["kagent_type"] = "function_response" } })));
+            Event(contextId, new JsonObject
+            {
+                ["author"] = agent, ["usageMetadata"] = Usage(100, 20),
+                ["content"] = new JsonObject { ["role"] = "model", ["parts"] = new JsonArray(
+                    new JsonObject { ["text"] = "Let me look that up." },
+                    new JsonObject { ["functionCall"] = new JsonObject { ["id"] = "call-1", ["name"] = "memory_search", ["args"] = args } }) }
+            });
+            Event(contextId, new JsonObject
+            {
+                ["author"] = agent,
+                ["content"] = new JsonObject { ["role"] = "user", ["parts"] = new JsonArray(
+                    new JsonObject { ["functionResponse"] = new JsonObject { ["id"] = "call-1", ["name"] = "memory_search", ["response"] = result } }) }
+            });
+        }
+        if (StreamGate is { } gate)
+            await gate.Task.WaitAsync(context.RequestAborted);
+        var half = Answer.Length / 2;
+        foreach (var chunk in new[] { Answer[..half], Answer[half..] })
+            await Send(Status("working", AgentMessage(new JsonObject { ["adk_partial"] = true }, new JsonObject { ["kind"] = "text", ["text"] = chunk })));
+        if (StreamFinalState == "completed")
+            await Send(new JsonObject
+            {
+                ["kind"] = "artifact-update", ["lastChunk"] = true,
+                ["artifact"] = new JsonObject { ["artifactId"] = "a1", ["parts"] = new JsonArray(new JsonObject { ["kind"] = "text", ["text"] = Answer }) }
+            });
+        await Send(Status(StreamFinalState, AgentMessage(new JsonObject { ["kagent_usage_metadata"] = Usage(50, 10) },
+            new JsonObject { ["kind"] = "text", ["text"] = "thinking…", ["metadata"] = new JsonObject { ["adk_thought"] = true } },
+            new JsonObject { ["kind"] = "text", ["text"] = StreamFinalState == "completed" ? Answer : InternalDetail }), final: true));
+        if (StreamFinalState == "completed")
+            Event(contextId, new JsonObject
+            {
+                ["author"] = agent, ["usageMetadata"] = Usage(50, 10),
+                ["content"] = new JsonObject { ["role"] = "model", ["parts"] = new JsonArray(new JsonObject { ["text"] = Answer }) }
+            });
+    }
+
+    // A turn's events as kagent stores them (the Python ADK's shape, newest first).
+    private void Event(string? sessionId, JsonObject data)
+    {
+        if (sessionId is null || !_sessions.TryGetValue(sessionId, out var session))
+            return;
+        lock (session.Events)
+        {
+            data["timestamp"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 1000.0 + session.Events.Count * 0.001;
+            session.Events.Insert(0, new JsonObject { ["id"] = Guid.NewGuid().ToString(), ["data"] = data.ToJsonString() });
+            session.UpdatedAt = DateTimeOffset.UtcNow;
+        }
     }
 
     private static JsonObject[] FixedAgents() =>
@@ -328,7 +475,8 @@ public sealed class FakeKAgent : IAsyncDisposable
 
     private JsonObject SessionJson(string id) => new()
     {
-        ["id"] = id, ["user_id"] = _sessions[id].User, ["agent_id"] = _sessions[id].AgentId
+        ["id"] = id, ["user_id"] = _sessions[id].User, ["agent_id"] = _sessions[id].AgentId, ["name"] = _sessions[id].Name,
+        ["created_at"] = _sessions[id].CreatedAt.ToString("O"), ["updated_at"] = _sessions[id].UpdatedAt.ToString("O")
     };
 
     // As kagent's handler: an inline key with no secret named → Secret named like the ModelConfig, <PROVIDER>_API_KEY,

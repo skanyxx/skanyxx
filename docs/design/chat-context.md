@@ -43,6 +43,17 @@ pgvector later: an `embedding` column next to `search`, filled by a model-based 
 | `GET api/chat/tickets/{key}` | sessions, runs, related tickets (+ runs) |
 | `GET/DELETE api/chat/cache[?all=true]` | savings / clear (all = owner) |
 
+## Chat module API (D315–D317, signed-in, CORS off)
+
+| Route | |
+|---|---|
+| `GET api/chat/agents` | the picker: merged, not suspended; model, accepts images |
+| `GET api/chat/agents/{ns}/{name}` | details panel (404 for any agent Chat does not offer) |
+| `POST api/chat` / `POST api/chat/stream` | one turn, blocking / server-sent events (`session`, `delta`, `text`, `item`, `usage`, `answer`, `done` or `error`) |
+| `GET api/chat/conversations` | the caller's kagent sessions, newest first |
+| `GET/PATCH/DELETE api/chat/conversations/{id}` | reopen (items: user, step, tool_call, tool_result, assistant; redacted), rename, delete — owner only, else 404 |
+| `POST api/chat/files`, `GET/DELETE api/chat/files/{id}`, `GET api/chat/limits` | attachments, owner only |
+
 ## Rules worth remembering
 
 - A personal session is its owner's only. Supervisors and the owner do not read it (unlike cards).
