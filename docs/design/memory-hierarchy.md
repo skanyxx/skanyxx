@@ -51,3 +51,9 @@ Otherwise 100 agents “helpfully” publish everything to the company brain.
   the owner's to set (D091); an agent acting for a member still reads no team without one. A supervisor's lift out of
   a team they are not in is allowed (they gate company) and logged at Warning, as is every grant change.
 - `company` published: logged-in users (D048), still.
+
+## As built (2026-10-27, memory-impl, D301)
+
+Cards are now actually born personal: every chat session is one card `personal:{user}/chat-{session}` and every finished
+ticket run one card `personal:{owner}/run-{ticket}-{run}` (a line of what and why, ticket keys, a pointer back; never the
+transcript). They lift like any card. A lift copies tickets and keywords and drops links that point into a lower scope.

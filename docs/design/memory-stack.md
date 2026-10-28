@@ -26,3 +26,11 @@ Embeddings on every personal chat is how you get token *and* GPU cost while stil
 ## Day-one deploy (Helm umbrella)
 
 Default: bundled Postgres + MinIO + git + **one Dragonfly** (AX Redis + later memory cache). Flags to use theirs instead (D061, D068). pgvector stays off until needed.
+
+## As built (2026-10-27, memory-impl, D306)
+
+- Dragonfly is wired for memory behind `Memory:Dragonfly:Configuration` (off by default): search cache + shared write
+  counters, nothing else. Unreachable = in-process fallback.
+- Versions are kept in Postgres (`memory_card_versions`).
+- pgvector, when needed: an `embedding vector(…)` column on `memory_cards` filled from `what`+`why` only, an HNSW index,
+  and a second arm in `CardSearch`'s OR (cosine distance under a threshold) behind the same scope predicate. Not built.

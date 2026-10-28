@@ -110,7 +110,9 @@ public sealed class MemoryApp : IAsyncDisposable
             ["ConnectionStrings:Memory"] = connectionString,
             ["Memory:SearchTopK"] = "5",
             ["Memory:UpsertsPerMinute"] = upsertsPerMinute.ToString(),
-            ["Memory:UpsertsPerMinuteTotal"] = upsertsPerMinuteTotal.ToString()
+            ["Memory:UpsertsPerMinuteTotal"] = upsertsPerMinuteTotal.ToString(),
+            // Like the limits above: high, so a test that writes one card many times tests what it says; WriteRulesTests sets it low.
+            ["Memory:UpsertsPerKeyPerMinute"] = "1000"
         };
         foreach (var (key, value) in extra ?? new Dictionary<string, string?>())
             settings[key] = value;

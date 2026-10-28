@@ -9,7 +9,7 @@ namespace Skanyxx.Module.Memory.Features.Library;
 
 /// <summary>
 /// The library list (D009, D048): exactly the scopes <see cref="AccessPolicy.SearchScopesAsync"/> gives this person,
-/// narrowed to one scope only if <see cref="AccessPolicy.CanReadAsync"/> allows it.
+/// narrowed to one scope only if <see cref="AccessPolicy.CanReadAsync"/> allows it. Filters only narrow those scopes.
 /// </summary>
 internal sealed class BrowseLibraryHandler(CardSearch search, AccessPolicy access)
     : IRequestHandler<BrowseLibraryQuery, Outcome<LibraryShelf>>
@@ -31,7 +31,7 @@ internal sealed class BrowseLibraryHandler(CardSearch search, AccessPolicy acces
             within = new SearchScopes([scope.ToString()], AllTeamsAndDepartments: false);
         }
 
-        var cards = await search.LibraryAsync(query.Text, within, LibraryShelf.Limit, ct);
+        var cards = await search.LibraryAsync(query.Text, within, LibraryShelf.Limit, ct, query.Filter);
         return Outcome<LibraryShelf>.Ok(new LibraryShelf(scopes, cards));
     }
 }

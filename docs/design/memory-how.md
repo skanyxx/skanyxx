@@ -91,3 +91,16 @@ Day one: **FTS**, not embeddings. Cards are small; vectors are a later index. Jo
 - Not “record into one agent”
 - Not a file explorer of disks
 - Not something every agent may write
+
+## As built (2026-10-27, memory-impl, D301–D307)
+
+- **Turn 1 of a new chat:** Skanyxx (not the agent) searches for related published cards in scopes the person may read
+  *and* the agent may search, and prepends at most 5 whole cards within ~600 tokens. The reply lists them
+  (`memoryCards`). Later turns rely on `memory_search`.
+- **After every answered turn:** the session's personal card is created or updated (coalesced: an unchanged card is not
+  rewritten). A finished ticket run writes its own card.
+- **Many writers:** identical updates are no-ops; one caller may write one card at most 6 times a minute; per caller and
+  total limits as before. With `Memory:Dragonfly` those counters and a search cache are shared by every replica; without
+  it (or while it is down) memory runs exactly as day one.
+- The chat **index** (related sessions, answer cache) is the chat-context branch; it calls the same `IRelatedMemory` /
+  `ICardExtractor` (Core) instead of the Chat handler doing it.

@@ -1,6 +1,7 @@
 using System.Text;
 using FluentValidation;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Features.Cards;
@@ -28,5 +29,18 @@ internal sealed class UpsertCardValidator : AbstractValidator<UpsertCardCommand>
         else
             RuleFor(c => c.Body).MaximumLength(CardLimits.Body).NoNulCharacters().WellFormedUtf16();
         RuleFor(c => c.Source).MaximumLength(CardLimits.Source).NoNulCharacters().WellFormedUtf16();
+        RuleFor(c => c.Tickets).Must(t => t is null || (t.Count <= CardLimits.Tickets && t.All(CardTickets.IsValid) && t.Distinct().Count() == t.Count))
+            .WithMessage($"Tickets must be at most {CardLimits.Tickets} distinct ticket keys like 'SDB-58'.");
+        RuleFor(c => c.Links).Must(l => l is null || (l.Count <= CardLimits.Links && l.All(CardLinks.IsValid) && l.Distinct().Count() == l.Count))
+            .WithMessage($"Links must be at most {CardLimits.Links} distinct 'scope/key', 'chat:<id>', 'run:<id>' or http(s) URLs " +
+                         $"of at most {CardLimits.LinkLength} characters.");
+        RuleFor(c => c.Keywords).Must(k => k is null || (k.Count <= CardLimits.Keywords && k.All(CardLinks.IsKeyword) && k.Distinct().Count() == k.Count))
+            .WithMessage($"Keywords must be at most {CardLimits.Keywords} distinct lowercase words (a-z, 0-9, '-'), " +
+                         $"at most {CardLimits.KeywordLength} characters each.");
+        // requirements.md §1.4: a card is read back by people and agents, so it must not carry a credential.
+        RuleFor(c => c).Must(c => !new[] { c.What, c.Why, c.Body, c.Source }.Concat(c.Links ?? []).Any(SecretText.HasCredential))
+            .OverridePropertyName("card")
+            .WithMessage("The card looks like it contains a credential (a key, token or password); remove it and save again.");
+        RuleFor(c => c.ViaAgent).Must(Domain.Scope.IsValidId).When(c => c.ViaAgent is not null).WithMessage("Invalid agent id.");
     }
 }

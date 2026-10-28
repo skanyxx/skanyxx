@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skanyxx.Core;
+using Skanyxx.Core.Platform.Memory;
+using Skanyxx.Module.Chat.Features;
 
 namespace Skanyxx.Module.Chat;
 
@@ -14,6 +17,9 @@ public class ChatModule : IModule
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
+        // Chat works without memory; the memory module's own registrations win when it is loaded.
+        services.TryAddScoped<IRelatedMemory, NoRelatedMemory>();
+        services.TryAddScoped<ICardExtractor, NoCardExtractor>();
     }
 
     public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;

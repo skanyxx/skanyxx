@@ -12,7 +12,7 @@ namespace Skanyxx.Module.Tickets.Features.Runs;
 /// verdict would. The decision and note are recorded on the attempt; its verdict stays what the agent said.
 /// Only the run's creator or a supervisor may decide, as with cancel.
 /// </summary>
-internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, TimeProvider clock)
+internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, TimeProvider clock, IPublisher publisher)
     : IRequestHandler<DecideGateCommand, Outcome<Run>>
 {
     public async Task<Outcome<Run>> Handle(DecideGateCommand command, CancellationToken ct)
@@ -50,6 +50,9 @@ internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, T
             return Outcome<Run>.Conflict(null, "The run changed while deciding; re-read it.");
         }
 
+        // A rejection with on_fail: stop, or an approval of the last stage, ends the run here rather than in the worker.
+        if (RunFinishedNotice.From(run) is { } finished)
+            await publisher.Publish(finished, ct);
         signal.Notify();
         return Outcome<Run>.Ok((await db.LoadAsync(run.Id, withPrompts: false, ct))!);
     }

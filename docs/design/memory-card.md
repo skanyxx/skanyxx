@@ -53,3 +53,13 @@ Top-k **published** cards from **search-granted** collections. k is small (start
   body over the threshold lives in the bucket (`cards/sha256/<hex>`), `body` holds its first 500 characters and `source`
   the pointer `s3://<bucket>/cards/sha256/<hex>`. Neither reaches a prompt; a person who may open the card reads the
   full body at `GET /api/memory/cards/{scope}/{key}/body` (the Library links it).
+
+## As built (2026-10-27, memory-impl, D303–D305)
+
+- Extra fields, none of them on the prompt except tickets: `tickets` (≤ 20 keys), `links` (≤ 20 pointers: `scope/key`,
+  `chat:`/`run:`, http(s)), `keywords` (≤ 12), `origin` (`manual`|`chat`|`run`), `agent_id`, `superseded_by`,
+  `created_at`. An agent's hit is the card line plus its ticket keys.
+- `candidate` is real now: an agent's write into a `Memory:ReviewScopes` scope waits for a person, who publishes it with
+  `POST …/status`. `stale` + `supersededBy` is how a card is replaced without deleting it. Every replaced version is in
+  the card's history.
+- Prompt budget for the chat injection: whole cards only, top 5, ≤ 600 estimated tokens (D302).

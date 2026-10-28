@@ -20,5 +20,17 @@ public static partial class CardMapper
     [MapperIgnoreSource(nameof(Card.Body))]
     [MapperIgnoreSource(nameof(Card.Source))]
     [MapperIgnoreSource(nameof(Card.LiftedFromId))]
+    [MapperIgnoreSource(nameof(Card.Links))]
+    [MapperIgnoreSource(nameof(Card.Keywords))]
+    [MapperIgnoreSource(nameof(Card.Origin))]
+    [MapperIgnoreSource(nameof(Card.AgentId))]
+    [MapperIgnoreSource(nameof(Card.SupersededBy))]
+    [MapperIgnoreSource(nameof(Card.CreatedAt))]
     public static partial CardHit ToHit(this Card card);
+
+    public static CardVersionDto ToDto(this CardVersion version) => version.ToVersionFields();
+
+    [MapperIgnoreSource(nameof(CardVersion.Id))]
+    [MapperIgnoreSource(nameof(CardVersion.CardId))]
+    private static partial CardVersionDto ToVersionFields(this CardVersion version);
 }

@@ -31,6 +31,8 @@
     <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.15.0" />
     <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="1.15.0" />
     <PackageReference Include="Serilog.AspNetCore" Version="10.0.0" />
+    <!-- Memory's optional Dragonfly cache and shared write limits (D068); shared with modules through PluginLoadContext. -->
+    <PackageReference Include="StackExchange.Redis" Version="2.8.16" />
     <PackageReference Include="WebEssentials.AspNetCore.PWA" Version="1.0.85" />
     <!-- The agents module (studio) reads and writes agent YAML; shared so the module loads the Host's copy. -->
     <PackageReference Include="YamlDotNet" Version="16.3.0" />

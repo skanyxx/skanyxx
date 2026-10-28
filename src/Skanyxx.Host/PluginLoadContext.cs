@@ -23,7 +23,8 @@ public class PluginLoadContext : AssemblyLoadContext
         "Npgsql", "Dapper", "FastEndpoints", "FluentValidation", "ModelContextProtocol", "HealthChecks",
         "Grpc", "Google.Protobuf", "Microsoft.AspNetCore.Identity", "Microsoft.AspNetCore.DataProtection",
         "Microsoft.AspNetCore.Authentication.OpenIdConnect", "Microsoft.IdentityModel", "System.IdentityModel.Tokens.Jwt",
-        "YamlDotNet", "MailKit", "MimeKit", "BouncyCastle.Cryptography", "AWSSDK"
+        "YamlDotNet", "MailKit", "MimeKit", "BouncyCastle.Cryptography", "AWSSDK", "StackExchange.Redis",
+        "Pipelines.Sockets.Unofficial"
     ];
 
     public static bool IsShared(string? name) =>

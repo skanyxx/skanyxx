@@ -24,6 +24,33 @@ public sealed class MemoryOptions
     [Range(1, 100_000)]
     public int UpsertsPerMinuteTotal { get; set; } = 300;
 
+    /// <summary>
+    /// Writes per minute by one caller to one card (memory-writes.md §4: same agent + same key coalesce instead of
+    /// writing 50 times a minute). An identical rewrite costs nothing: it is not a write.
+    /// </summary>
+    [Range(1, 1_000)]
+    public int UpsertsPerKeyPerMinute { get; set; } = 6;
+
+    /// <summary>Cards one personal scope may hold (memory-store.md): extraction makes room by dropping its oldest card.</summary>
+    [Range(1, 1_000_000)]
+    public int MaxCardsPerPersonalScope { get; set; } = 2_000;
+
+    /// <summary>Cards a team, department or company scope may hold.</summary>
+    [Range(1, 10_000_000)]
+    public int MaxCardsPerScope { get; set; } = 50_000;
+
+    /// <summary>
+    /// D011, per scope: an agent's write into one of these lands as a <c>candidate</c> that a person publishes. People's
+    /// writes are published. Empty (the default): an upsert grant is trusted, as D040 hands it out like a deploy key.
+    /// </summary>
+    public string[] ReviewScopes { get; set; } = [];
+
+    public InjectionOptions Injection { get; set; } = new();
+
+    public ExtractionOptions Extraction { get; set; } = new();
+
+    public DragonflyOptions Dragonfly { get; set; } = new();
+
     /// <summary>Connections in memory's own Npgsql pool (distinct from tickets' by its Application Name).</summary>
     [Range(1, 1_000)]
     public int MaxPoolSize { get; set; } = 40;
