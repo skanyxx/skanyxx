@@ -5,5 +5,7 @@ public sealed class UnlimitedChatQuota : IChatQuota
 {
     public Task<ChatQuotaAdmission> AdmitAsync(string userId, string agentRef, CancellationToken ct) => Task.FromResult(ChatQuotaAdmission.Admitted());
 
+    public Task<string?> RefusalAsync(string userId, CancellationToken ct) => Task.FromResult<string?>(null);
+
     public Task RecordAsync(ChatQuotaUsage usage, CancellationToken ct) => Task.CompletedTask;
 }

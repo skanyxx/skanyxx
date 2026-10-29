@@ -101,9 +101,35 @@ public sealed class WorkflowRulesTests
     [Fact]
     public void Render_FillsInputAndEarlierAnswers_AndLeavesOtherBracesAlone()
     {
-        var text = PromptTemplate.Render("Q: {{input}} / A: {{ steps.s1 }} / B: {{steps.s9}} / {{other}}", "why?", new Dictionary<string, string> { ["s1"] = "because" });
+        var text = PromptTemplate.Render("Q: {{input}} / A: {{ steps.s1 }} / B: {{steps.s9}} / {{other}}", "why?", new Dictionary<string, string> { ["s1"] = "because" }, 100_000, Prompts.Nonce);
 
         Assert.Equal($"Q: {Prompts.Input("why?")} / A: {Prompts.Step("s1", "because")} / B: {Prompts.Step("s9", "")} / {{{{other}}}}", text);
         Assert.Equal(["s1", "s9"], PromptTemplate.References("{{steps.s1}} {{steps.s9}} {{steps.s1}}"));
+    }
+
+    [Fact]
+    public void Render_OverTheCeiling_CutsTheLongValueInsideItsEnvelope_AndKeepsTheTemplateAndMarkers()
+    {
+        var outputs = new Dictionary<string, string> { ["s1"] = new string('a', 50_000), ["s2"] = "short answer" };
+
+        var text = PromptTemplate.Render("Q: {{input}}\nA: {{steps.s1}}\nB: {{steps.s2}}\nAnswer in one line.", "why?", outputs, 5_000, Prompts.Nonce);
+
+        Assert.True(text.Length <= 5_000, $"{text.Length}");
+        Assert.EndsWith(PromptTemplate.End(Prompts.Nonce) + "\nAnswer in one line.", text);
+        Assert.Equal(3, text.Split(PromptTemplate.End(Prompts.Nonce)).Length - 1);
+        Assert.Contains(Prompts.Input("why?"), text);
+        Assert.Contains(Prompts.Step("s2", "short answer"), text);
+        var cut = System.Text.RegularExpressions.Regex.Match(text, @"\n(?<kept>a+)\n\[…truncated (?<cut>\d+) characters\]\n<<<END-SKANYXX-DATA:n>>>\nB:");
+        Assert.True(cut.Success, text[..300]);
+        Assert.Equal(50_000, cut.Groups["kept"].Length + int.Parse(cut.Groups["cut"].Value));
+    }
+
+    [Fact]
+    public void Render_WithinTheCeiling_CutsNothing()
+    {
+        var text = PromptTemplate.Render("{{input}}", "why?", new Dictionary<string, string>(), 1_000, Prompts.Nonce);
+
+        Assert.Equal(Prompts.Input("why?"), text);
+        Assert.DoesNotContain("truncated", text);
     }
 }

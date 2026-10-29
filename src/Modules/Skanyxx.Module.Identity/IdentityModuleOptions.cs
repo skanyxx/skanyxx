@@ -65,9 +65,10 @@ public sealed class IdentityModuleOptions
     public int PasswordResetMinutes { get; set; } = 60;
 
     /// <summary>
-    /// Audit rows, and invites that are no longer pending, older than this are deleted by the retention job (D155).
+    /// Audit rows, and invites that are no longer pending, older than this are deleted by the retention job (D155). Never
+    /// under <see cref="Skanyxx.Core.Platform.Settings.InstallationSettings.MinAuditDays"/> (D376, D387), from any source.
     /// </summary>
-    [Range(1, 3650)]
+    [Range(Skanyxx.Core.Platform.Settings.InstallationSettings.MinAuditDays, 3650)]
     public int AuditRetentionDays { get; set; } = 365;
 
     /// <summary>

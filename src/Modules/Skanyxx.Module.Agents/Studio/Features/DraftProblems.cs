@@ -31,11 +31,32 @@ internal sealed class DraftProblems(StudioReconciler reconciler, IOptions<Studio
             }
         }
         problems.AddRange(DraftRules.Check(draft, o, pluginServers));
-        problems.AddRange(Licensing(draft));
+        problems.AddRange(Licensing(draft, await MainAsync(draft, pluginServers, ct)));
         return problems;
     }
 
-    /// <summary>What a valid shape may still not hold: paid cloud tools without the licence, and credentials in its text.</summary>
-    public IReadOnlyList<string> Licensing(AgentDraft draft) =>
-        [.. CloudToolRules.Check(draft, options.Value, cloudTools.IsOn), .. TextSecrets.Check(draft)];
+    /// <summary>
+    /// What a valid shape may still not hold: paid cloud tools without the licence (except those <paramref name="main"/>
+    /// already gives the agent, unchanged), and credentials in its text.
+    /// </summary>
+    public IReadOnlyList<string> Licensing(AgentDraft draft, AgentDraft? main) =>
+        [.. CloudToolRules.Check(draft, options.Value, cloudTools.IsOn, main), .. TextSecrets.Check(draft)];
+
+    /// <summary>
+    /// The agent as main has it, read only when the cloud tools rule needs it (it is off and the draft names a paid
+    /// server). Null when there is none or main cannot be read: then a kept paid server is refused like a new one.
+    /// </summary>
+    public async Task<AgentDraft?> MainAsync(AgentDraft draft, IReadOnlyDictionary<string, string> pluginServers, CancellationToken ct)
+    {
+        if (cloudTools.IsOn || !options.Value.Configured || !draft.McpTools.Any(t => CloudToolRules.IsPaid(t.Server, options.Value)))
+            return null;
+        try
+        {
+            return (await reconciler.ReadAgentAsync(draft.Name, options.Value.Git.Branch, pluginServers, [], ct)).Draft;
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException or StudioApplyException)
+        {
+            return null;
+        }
+    }
 }

@@ -11,10 +11,18 @@ namespace Skanyxx.Module.Chat.Features.Turns;
 /// <summary>
 /// A started turn, streamed from kagent's <c>message/stream</c>. A failure becomes an <c>error</c> event (and a first
 /// turn's session is deleted, as for a blocking turn). Cancelling — the Stop button, or the person leaving — closes
-/// kagent's stream, asks kagent to cancel the task, and deletes a first turn's session.
+/// kagent's stream, asks kagent to cancel the task, and deletes a first turn's session. Disposing it gives the quota's
+/// in-flight place back also when the events were never read (D387): a throw before the first read must not hold it.
 /// </summary>
 internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start, KAgentApiClient kagent, ChatTurns turns, ILogger<ChatStream> logger)
+    : IAsyncDisposable
 {
+    public ValueTask DisposeAsync()
+    {
+        start.Admission.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
     public async IAsyncEnumerable<ChatStreamEvent> EventsAsync([EnumeratorCancellation] CancellationToken ct)
     {
         try

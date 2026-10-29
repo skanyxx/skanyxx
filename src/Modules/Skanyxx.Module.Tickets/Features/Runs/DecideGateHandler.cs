@@ -1,6 +1,7 @@
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Domain;
 using Skanyxx.Module.Tickets.Engine;
@@ -10,9 +11,10 @@ namespace Skanyxx.Module.Tickets.Features.Runs;
 /// <summary>
 /// A person answers the gate. Approve moves on; reject follows the stage's <c>on_fail</c>, exactly as a failed
 /// verdict would. The decision and note are recorded on the attempt; its verdict stays what the agent said.
-/// Only the run's creator or a supervisor may decide, as with cancel.
+/// Only the run's creator or a supervisor may decide, as with cancel. A decision that sends the run on to more stages
+/// is admitted against its starter's token quota first, as the start was (D387): over it, the run stays at its gate.
 /// </summary>
-internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, TimeProvider clock, IPublisher publisher)
+internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, IChatQuota quota, TimeProvider clock, IPublisher publisher)
     : IRequestHandler<DecideGateCommand, Outcome<Run>>
 {
     public async Task<Outcome<Run>> Handle(DecideGateCommand command, CancellationToken ct)
@@ -39,6 +41,10 @@ internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, T
             RunTransitions.Pass(run);
         else
             RunTransitions.Fail(run, gated);
+        if (run.State == RunState.Running && await quota.RefusalAsync(run.CreatedBy, ct) is { } refusal)
+            return Outcome<Run>.RateLimited(run.CreatedBy == command.UserId
+                ? refusal
+                : "The person who started this run is over their token limit, so it cannot go on now. It stays at this gate until they have tokens again.");
         run.UpdatedAt = now;
         run.Version++;
         try

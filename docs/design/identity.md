@@ -113,7 +113,7 @@ owner copies the link). Core's `IEmailSender` is the seam; tests use a fake.
 **Durable audit (D152, D155).** `identity_audit`: who, what, to whom, from where, when, and details without secrets —
 one row for every Warning-level audit line in the module, written in the same transaction as the change (a failed
 change leaves no row; a refusal's row stands on its own). Append-only (a trigger refuses updates). The owner reads it on
-the **Audit** page or `GET api/identity/audit`. A retention job (`Identity:AuditRetentionDays`, 365) removes old rows,
+the **Audit** page or `GET api/identity/audit`. A retention job (`Identity:AuditRetentionDays`, 365, never under 90: D376, D387) removes old rows,
 invites that stopped being pending before the cutoff, and expired reset links, and records what it removed.
 
 **Password reset (D156, D157).** "Forgot your password?" (with SMTP) answers the same for every email and emails a

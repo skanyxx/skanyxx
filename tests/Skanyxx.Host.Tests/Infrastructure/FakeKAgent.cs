@@ -138,8 +138,14 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>A streamed turn's final status message (with its usage) is sent twice under one message id, as kagent may repeat it.</summary>
     public bool RepeatFinalMessage { get; set; }
 
-    /// <summary>Blocking turns' A2A tasks (id → session, user, state): working while the turn runs, as kagent stores them.</summary>
-    public ConcurrentDictionary<string, (string? Session, string User, string State)> Tasks { get; } = new();
+    /// <summary>
+    /// Blocking turns' A2A tasks (id → session, user, state, the message that started it): working while the turn runs,
+    /// as kagent stores them, with that message in the task's history.
+    /// </summary>
+    public ConcurrentDictionary<string, (string? Session, string User, string State, string? MessageId)> Tasks { get; } = new();
+
+    /// <summary>The <c>A2A-Version</c> header of every task listing.</summary>
+    public ConcurrentQueue<string?> TaskListVersions { get; } = new();
 
     /// <summary>When set, a streamed turn waits for it after its tool call (or first event), so a test can stop the turn mid-way.</summary>
     public TaskCompletionSource? StreamGate { get; set; }
@@ -401,12 +407,16 @@ public sealed class FakeKAgent : IAsyncDisposable
         });
 
         app.MapGet("/api/sessions/{id}/tasks", (HttpContext context, string id) =>
-            _sessions.TryGetValue(id, out var s) && s.User == UserOf(context)
+        {
+            TaskListVersions.Enqueue(context.Request.Headers["A2A-Version"].FirstOrDefault());
+            return _sessions.TryGetValue(id, out var s) && s.User == UserOf(context)
                 ? Envelope(new JsonArray([.. Tasks.Where(t => t.Value.Session == id).Select(t => (JsonNode)new JsonObject
                 {
-                    ["kind"] = "task", ["id"] = t.Key, ["contextId"] = id, ["status"] = new JsonObject { ["state"] = t.Value.State }
+                    ["kind"] = "task", ["id"] = t.Key, ["contextId"] = id, ["status"] = new JsonObject { ["state"] = t.Value.State },
+                    ["history"] = new JsonArray(new JsonObject { ["kind"] = "message", ["role"] = "user", ["messageId"] = t.Value.MessageId })
                 })]))
-                : Results.Json(new JsonObject { ["error"] = true, ["message"] = "Session not found" }, statusCode: 404));
+                : Results.Json(new JsonObject { ["error"] = true, ["message"] = "Session not found" }, statusCode: 404);
+        });
         app.MapDelete("/api/sessions/{id}", (HttpContext context, string id) =>
             _sessions.TryGetValue(id, out var s) && s.User == UserOf(context) && _sessions.TryRemove(id, out _)
                 ? Results.Json(new JsonObject { ["error"] = false, ["message"] = "Session deleted" })
@@ -423,7 +433,8 @@ public sealed class FakeKAgent : IAsyncDisposable
             }
             var blockingTask = Guid.NewGuid().ToString();
             if (body["method"]?.GetValue<string>() == "message/send")
-                Tasks[blockingTask] = (body["params"]?["message"]?["contextId"]?.GetValue<string>(), UserOf(context), "working");
+                Tasks[blockingTask] = (body["params"]?["message"]?["contextId"]?.GetValue<string>(), UserOf(context), "working",
+                    body["params"]?["message"]?["messageId"]?.GetValue<string>());
             await Task.Delay(A2ADelay, context.RequestAborted);
             if (Tasks.TryGetValue(blockingTask, out var done) && done.State == "working")
                 Tasks[blockingTask] = done with { State = A2AStatus is null && A2ABody is null ? "completed" : "failed" };

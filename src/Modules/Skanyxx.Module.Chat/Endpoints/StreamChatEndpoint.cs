@@ -24,11 +24,12 @@ internal sealed class StreamChatEndpoint(IMediator mediator) : Endpoint<SendChat
     public override async Task HandleAsync(SendChatRequest req, CancellationToken ct)
     {
         var outcome = await mediator.Send(new StreamChatMessageCommand(req.Command(User)), ct);
-        if (outcome.Value is not { } stream)
+        if (outcome.Value is not { } started)
         {
             await Send.ResultAsync(outcome.ToHttp(_ => ""));
             return;
         }
+        await using var stream = started;
         var response = HttpContext.Response;
         response.ContentType = "text/event-stream";
         response.Headers.CacheControl = "no-cache, no-transform";

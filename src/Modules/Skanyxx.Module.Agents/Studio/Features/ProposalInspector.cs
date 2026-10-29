@@ -54,10 +54,11 @@ internal sealed class ProposalInspector(
                 problems.Add(StudioFailure.PluginOwned(agent, owner));
             var (head, headProblems) = await reconciler.ReadAgentAsync(agent, pull.HeadSha, mainTree.ServerPlugins, [], ct);
             problems.AddRange(headProblems);
-            // D364, D361: paid cloud tools need the licence at merge too, and a credential never merges into git.
-            if (head is not null)
-                problems.AddRange(draftProblems.Licensing(head));
             var (main, _) = await reconciler.ReadAgentAsync(agent, Options.Git.Branch, mainTree.ServerPlugins, [], ct);
+            // D364, D361: paid cloud tools need the licence at merge too (unless main already has them, D388), and a
+            // credential never merges into git.
+            if (head is not null)
+                problems.AddRange(draftProblems.Licensing(head, main));
             var principal = await reconciler.PrincipalAsync(agent, ct);
             if (principal.Taken)
                 problems.Add(StudioFailure.NameTaken(agent));

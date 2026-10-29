@@ -322,10 +322,11 @@ public class KAgentApiClient
     /// <paramref name="sessionId"/> (its <c>contextId</c>), as <paramref name="userId"/>: kagent forwards that user to the
     /// agent as <c>X-User-Id</c>, which the seed passes on to the memory MCP (D084). The answer is the completed task's
     /// last artifact (reasoning parts skipped). Bounded by <see cref="KAgentConfig.ChatTimeoutSeconds"/>.
+    /// <paramref name="messageId"/> names the message, so <see cref="CancelBlockingTurnAsync"/> can find its task.
     /// </summary>
     public async Task<ChatResponse> SendMessageAsync(
         string agentNamespace, string agentName, string sessionId, string message, string userId, CancellationToken ct = default,
-        IReadOnlyList<A2AFilePart>? files = null)
+        IReadOnlyList<A2AFilePart>? files = null, string? messageId = null)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post,
             WithUser($"/api/a2a/{Uri.EscapeDataString(agentNamespace)}/{Uri.EscapeDataString(agentName)}/", userId))
@@ -340,7 +341,7 @@ public class KAgentApiClient
                     message = new
                     {
                         kind = "message",
-                        messageId = Guid.NewGuid().ToString(),
+                        messageId = messageId ?? Guid.NewGuid().ToString(),
                         role = "user",
                         parts = MessageParts(message, files ?? []),
                         contextId = sessionId
@@ -655,7 +656,11 @@ public class KAgentApiClient
         }
     }
 
-    /// <summary>Asks kagent to stop a running task (the Stop button); kagent may already have finished it.</summary>
+    /// <summary>
+    /// Asks kagent to stop a running task (the Stop button, a turn the caller left); kagent may already have finished it.
+    /// A refusal (an HTTP error or a JSON-RPC error) is logged, without kagent's words, and not thrown: there is nothing
+    /// more to do about a turn nobody waits for.
+    /// </summary>
     public async Task CancelTaskAsync(string agentNamespace, string agentName, string taskId, string userId, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post,
@@ -669,20 +674,64 @@ public class KAgentApiClient
         request.Headers.Add("A2A-Version", "0.3");
         request.Headers.Add("X-User-Id", userId);
         using var response = await SendAsync(request, _controlTimeout, ct);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("kagent did not cancel task {TaskId} of {Namespace}/{Agent}: HTTP {StatusCode}", taskId, agentNamespace, agentName, (int)response.StatusCode);
+            return;
+        }
+        JsonNode? body = null;
+        try
+        {
+            body = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct));
+        }
+        catch (JsonException)
+        {
+            // Logged below as an answer of another shape.
+        }
+        if (body is not JsonObject rpc || rpc["error"] is not null)
+            _logger.LogWarning("kagent did not cancel task {TaskId} of {Namespace}/{Agent}: {Reason}", taskId, agentNamespace, agentName,
+                body is JsonObject ? "a JSON-RPC error" : "an answer of another shape");
     }
 
     /// <summary>
-    /// The ids of <paramref name="userId"/>'s tasks in <paramref name="sessionId"/> that have not ended (kagent's
-    /// <c>GET /api/sessions/{id}/tasks</c>, A2A tasks with <c>status.state</c>): what a blocking turn the caller left is
-    /// still running, so it can be cancelled (D381). Any other shape is no tasks.
+    /// Stops the blocking turn that sent <paramref name="messageId"/> in <paramref name="sessionId"/>, when the caller left
+    /// it or our deadline passed (D381, D388): only that turn's task, never another turn running in the same session. Best
+    /// effort, so never throws; a failure is logged.
     /// </summary>
-    public async Task<IReadOnlyList<string>> RunningTaskIdsAsync(string sessionId, string userId, CancellationToken ct) =>
-        [.. (await AsUserAsync(HttpMethod.Get, $"/api/sessions/{Uri.EscapeDataString(sessionId)}/tasks", null, userId, ct) as JsonArray ?? [])
+    public async Task CancelBlockingTurnAsync(string agentNamespace, string agentName, string sessionId, string messageId, string userId)
+    {
+        try
+        {
+            foreach (var task in await RunningTaskIdsAsync(sessionId, userId, messageId, CancellationToken.None))
+                await CancelTaskAsync(agentNamespace, agentName, task, userId, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
+        {
+            _logger.LogWarning("kagent did not cancel the turn in {SessionId} ({Error}); it may have finished", sessionId, ex.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// The ids of <paramref name="userId"/>'s tasks in <paramref name="sessionId"/> that have not ended and that
+    /// <paramref name="messageId"/> started (kagent's <c>GET /api/sessions/{id}/tasks</c>: A2A tasks with
+    /// <c>status.state</c> and <c>history</c>). Asked on the 0.3 wire explicitly, and the v1 <c>TASK_STATE_*</c> names
+    /// are read too. When kagent keeps no history, the one running task, if there is exactly one; otherwise none.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> RunningTaskIdsAsync(string sessionId, string userId, string messageId, CancellationToken ct)
+    {
+        var running = (await AsUserAsync(HttpMethod.Get, $"/api/sessions/{Uri.EscapeDataString(sessionId)}/tasks", null, userId, ct, a2aWire: true) as JsonArray ?? [])
             .OfType<JsonObject>()
-            .Where(t => t["status"]?["state"] is JsonValue state && state.TryGetValue<string>(out var s)
-                && s is not ("completed" or "failed" or "rejected" or "canceled"))
-            .Select(t => t["id"] is JsonValue id && id.TryGetValue<string>(out var v) ? v : null)
-            .OfType<string>()];
+            .Where(t => t["status"]?["state"] is JsonValue state && state.TryGetValue<string>(out var s) && !Ended(s))
+            .ToList();
+        var mine = running.Where(t => t["history"] is JsonArray history
+            && history.OfType<JsonObject>().Any(m => m["messageId"] is JsonValue id && id.TryGetValue<string>(out var v) && v == messageId)).ToList();
+        if (mine.Count == 0 && running is [{ } only] && only["history"] is not JsonArray)
+            mine = running;
+        return [.. mine.Select(t => t["id"] is JsonValue id && id.TryGetValue<string>(out var v) ? v : null).OfType<string>()];
+    }
+
+    private static bool Ended(string state) =>
+        state.Replace("TASK_STATE_", "", StringComparison.OrdinalIgnoreCase).ToLowerInvariant() is "completed" or "failed" or "rejected" or "canceled" or "cancelled";
 
     // A2A message parts: the text, then each file inline (base64), as kagent hands them to the model.
     private static JsonArray MessageParts(string message, IReadOnlyList<A2AFilePart> files) =>
@@ -728,10 +777,13 @@ public class KAgentApiClient
     }
 
     /// <summary>A call as <paramref name="userId"/>: the envelope's <c>data</c> (null when there is none).</summary>
-    private async Task<JsonNode?> AsUserAsync(HttpMethod method, string endpoint, JsonObject? body, string userId, CancellationToken ct)
+    private async Task<JsonNode?> AsUserAsync(HttpMethod method, string endpoint, JsonObject? body, string userId, CancellationToken ct, bool a2aWire = false)
     {
         using var request = new HttpRequestMessage(method, WithUser(endpoint, userId));
         request.Headers.Add("X-User-ID", userId);
+        // kagent's default for a missing header is the 0.3 wire, marked "revisit" upstream: never rely on it.
+        if (a2aWire)
+            request.Headers.Add("A2A-Version", "0.3");
         if (body is not null)
             request.Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json");
         using var response = await SendAsync(request, _controlTimeout, ct);

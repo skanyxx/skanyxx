@@ -14,5 +14,6 @@ internal sealed class MergedAgents(KAgentApiClient kagent) : IInvestigationAgent
         [.. (await kagent.GetAgentsAsync(ct))
             .Where(a => a.Labels.TryGetValue(Label, out var merged) && merged == "true" && !a.Suspended)
             .OrderBy(a => a.Namespace, StringComparer.Ordinal).ThenBy(a => a.Name, StringComparer.Ordinal)
-            .Select(a => new AgentChoice($"{a.Namespace}/{a.Name}", a.Namespace, a.Name, a.Description, [.. a.McpToolNames.Keys], a.AgentToolNames.Count > 0))];
+            .Select(a => new AgentChoice($"{a.Namespace}/{a.Name}", a.Namespace, a.Name, a.Description, a.Type == "Declarative",
+                [.. a.McpToolNames.Keys], a.AgentToolNames.Count > 0, a.ModelConfig))];
 }

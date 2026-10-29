@@ -14,7 +14,7 @@ namespace Skanyxx.Module.Investigate.Features.Runs;
 /// it sees the request within <see cref="InvestigateOptions.WatchMilliseconds"/>; the answer is 202 until it has.
 /// A finished run is a 409.
 /// </summary>
-internal sealed class CancelRunHandler(InvestigateDbContext db, OrgTeams org, InvestigateAudit audit, TimeProvider clock) : IRequestHandler<CancelRunCommand, Outcome<RunDto>>
+internal sealed class CancelRunHandler(InvestigateDbContext db, OrgTeams org, InvestigateAudit audit) : IRequestHandler<CancelRunCommand, Outcome<RunDto>>
 {
     public async Task<Outcome<RunDto>> Handle(CancelRunCommand command, CancellationToken ct)
     {
@@ -22,10 +22,9 @@ internal sealed class CancelRunHandler(InvestigateDbContext db, OrgTeams org, In
         if (run is null || !WorkflowAccess.CanSee(run, command.Viewer, await org.ReachAsync(command.Viewer, ct)))
             return Outcome<RunDto>.NotFound("No such investigation run.");
 
-        var now = clock.GetUtcNow().UtcDateTime;
         var dequeued = await db.Runs.Where(r => r.Id == run.Id && r.State == RunState.Queued)
             .ExecuteUpdateAsync(s => s.SetProperty(r => r.State, RunState.Cancelled).SetProperty(r => r.CancelRequested, true)
-                .SetProperty(r => r.Failure, "Cancelled.").SetProperty(r => r.EndedAt, now), ct) == 1;
+                .SetProperty(r => r.Failure, "Cancelled.").SetProperty(r => r.EndedAt, r => DateTime.UtcNow), ct) == 1; // the database's clock (D373)
         if (dequeued)
             await db.StepRuns.Where(s => s.RunId == run.Id).ExecuteUpdateAsync(s => s.SetProperty(x => x.State, StepState.Skipped), ct);
         var asked = dequeued || await db.Runs.Where(r => r.Id == run.Id && r.State == RunState.Running)

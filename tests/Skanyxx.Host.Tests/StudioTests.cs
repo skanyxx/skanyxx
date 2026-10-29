@@ -178,8 +178,8 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
     {
         var number = await ProposeAsync(_builder, Draft());
         var builderMerge = await MergeAsync(_builder, number);
+        // Refused by the endpoint's roles (D375, D388), before the handler: a plain 403.
         Assert.Equal(HttpStatusCode.Forbidden, builderMerge.StatusCode);
-        Assert.Contains("Only a supervisor", await builderMerge.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
         Assert.True(_git.Pulls.Single().Open);
         Assert.Empty(StudioAgents());
         Assert.Empty(_kagent.CallsTo("POST", "/api/toolservers"));
@@ -528,6 +528,28 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(1, me.GetProperty("turns").GetInt64());
         Assert.True(me.GetProperty("used").GetInt64() >= "a refund helper".Length / 4);
         Assert.Single(_kagent.CallsTo("POST", $"/api/a2a/{Ns}/skanyxx-factory/"));
+    }
+
+    [Fact]
+    public async Task AFactoryTurnTheCallerLeaves_IsCountedOnce_AndKAgentsTaskIsCancelled()
+    {
+        _kagent.A2ADelay = TimeSpan.FromSeconds(20);
+        using var leave = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        var turn = _builder.PostAsJsonAsync("/api/studio/factory", new { request = "a refund helper" }, leave.Token);
+        await WaitUntilAsync(() => !_kagent.Tasks.IsEmpty, "the factory turn reaching kagent");
+        await leave.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => turn);
+
+        await WaitUntilAsync(() => _kagent.Tasks.Values.Single().State == "canceled", "kagent's task being cancelled");
+        var turns = 0L;
+        for (var i = 0; i < 100 && turns == 0; i++)
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+            turns = (await _builder.GetFromJsonAsync<JsonElement>("/api/quotas/me", TestContext.Current.CancellationToken)).GetProperty("quota").GetProperty("turns").GetInt64();
+        }
+        Assert.Equal(1, turns);
+        Assert.All(_kagent.TaskListVersions, v => Assert.Equal("0.3", v));
     }
 
     // --- Pages ---

@@ -204,6 +204,18 @@ public sealed class SettingsPageTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public void AnAuditHistorySavedUnderTheFloor_BeforeTheFloorExisted_AppliesAsTheFloor()
+    {
+        var provider = new InstallationSettingsProvider();
+        provider.Apply(new Dictionary<string, string> { [InstallationSettings.AuditDays] = "1", [InstallationSettings.ChatDays] = "99999" });
+
+        Assert.True(provider.TryGet("Identity:AuditRetentionDays", out var audit));
+        Assert.Equal("90", audit);
+        Assert.True(provider.TryGet("ChatContext:SessionRetentionDays", out var chat));
+        Assert.Equal("3650", chat);
+    }
+
+    [Fact]
     public async Task SavedSettings_AreInTheConfiguration_BeforeTheFirstRequest_AfterARestart()
     {
         var api = await _host.OwnerAsync();

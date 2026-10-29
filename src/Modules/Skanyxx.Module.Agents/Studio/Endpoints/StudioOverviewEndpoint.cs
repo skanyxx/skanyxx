@@ -7,7 +7,11 @@ namespace Skanyxx.Module.Agents.Studio.Endpoints;
 
 internal sealed class StudioOverviewEndpoint(IMediator mediator) : EndpointWithoutRequest
 {
-    public override void Configure() => Get("api/studio");
+    public override void Configure()
+    {
+        Get("api/studio");
+        Roles(StudioRoles.People);
+    }
 
     public override async Task HandleAsync(CancellationToken ct) =>
         await Send.ResultAsync((await mediator.Send(new StudioOverviewQuery(StudioUser.From(User)), ct)).ToHttp());

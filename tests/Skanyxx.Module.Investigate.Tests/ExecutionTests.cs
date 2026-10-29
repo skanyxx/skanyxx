@@ -26,7 +26,7 @@ public sealed class ExecutionTests(PostgresFixture postgres) : InvestigateTestBa
             "Find: " + Prompts.Input("slow checkout"),
             "Weigh: " + Prompts.Step("s1", $"{Researcher} says: Find: " + Prompts.Input("slow checkout")),
             "Write: " + Prompts.Step("s2", $"{Analyst} says: Weigh: " + Prompts.Step("s1", $"{Researcher} says: Find: " + Prompts.Input("slow checkout")))
-        ], App.Agents.Calls.Select(c => c.Prompt));
+        ], App.Agents.Calls.Select(c => Prompts.Plain(c.Prompt)));
         Assert.All(done.StepRuns, s => Assert.Equal(StepState.Succeeded, s.State));
         Assert.All(done.StepRuns, s => Assert.True(s.EndedAt >= s.StartedAt));
         var s1 = done.StepRuns.Single(s => s.StepId == "s1");
@@ -53,7 +53,7 @@ public sealed class ExecutionTests(PostgresFixture postgres) : InvestigateTestBa
         App.Agents.Answers[Researcher] = Gate;
         App.Agents.Answers[Analyst] = Gate;
         App.Agents.Answers["kagent/researcher-2"] = Gate;
-        App.Agents.Agents.Add(new("kagent/researcher-2", "kagent", "researcher-2", ""));
+        App.Agents.Agents.Add(ReadOnly("kagent/researcher-2"));
         var workflow = await App.CreateAsync(Builder, "Fan out",
         [
             Group("g1", GroupMode.Parallel, Agent("p1", Researcher, "a"), Agent("p2", Analyst, "b"), Agent("p3", "kagent/researcher-2", "c")),
@@ -65,7 +65,7 @@ public sealed class ExecutionTests(PostgresFixture postgres) : InvestigateTestBa
 
         Assert.Equal(RunState.Succeeded, done.State);
         Assert.Equal(Writer, App.Agents.Calls.Last().Agent);
-        Assert.Equal($"{Prompts.Step("p1", "seen a")} | {Prompts.Step("p2", "seen b")} | {Prompts.Step("p3", "seen c")}", App.Agents.Calls.Last().Prompt);
+        Assert.Equal($"{Prompts.Step("p1", "seen a")} | {Prompts.Step("p2", "seen b")} | {Prompts.Step("p3", "seen c")}", Prompts.Plain(App.Agents.Calls.Last().Prompt));
         var group = done.StepRuns.Single(s => s.StepId == "g1");
         Assert.Equal(StepState.Succeeded, group.State);
         Assert.True(done.StepRuns.Single(s => s.StepId == "s4").StartedAt >= group.EndedAt);
@@ -142,7 +142,7 @@ public sealed class ExecutionTests(PostgresFixture postgres) : InvestigateTestBa
 
         Assert.Equal(HttpStatusCode.Accepted, rerun.StatusCode);
         Assert.NotEqual(first.Id, second.Id);
-        Assert.Equal([Prompts.Input("same question"), Prompts.Input("same question")], App.Agents.Calls.Select(c => c.Prompt));
+        Assert.Equal([Prompts.Input("same question"), Prompts.Input("same question")], App.Agents.Calls.Select(c => Prompts.Plain(c.Prompt)));
     }
 
     [Fact]

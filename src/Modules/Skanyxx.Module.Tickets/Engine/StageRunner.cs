@@ -11,7 +11,8 @@ namespace Skanyxx.Module.Tickets.Engine;
 /// answer), and returns the unsaved attempt. The stage's output is the LAST agent's; every agent's turn is kept.
 /// An unreachable agent yields a deterministic fallback and a warning, never a hung or failed run. A run cancelled
 /// while an agent works calls no further agent of the stage. Every agent asked is counted against the token quota of the
-/// person who started the run (D383): kagent's tokens, else an estimate, also for a failed call.
+/// person who started the run (D383): kagent's tokens, else an estimate, also for a failed call, priced on the agent's
+/// ModelConfig when kagent names it (D387).
 /// </summary>
 public sealed class StageRunner(
     TicketsDbContext db, PromptBuilder prompts, IStageAgentClient agents, IChatQuota quota, IOptions<TicketsOptions> options, TimeProvider clock)
@@ -39,6 +40,7 @@ public sealed class StageRunner(
             if (message.Length > options.Value.MaxPromptChars)
                 message = Capped(message, options.Value.MaxPromptChars, $"the message to '{agent.Id}' (prompt plus handoff) was", result.Warnings);
             var turn = new AgentTurn { AgentId = agent.Id, Agent = agent.Agent, Prompt = message, Output = "", StartedAt = Now };
+            var model = await agents.ModelRefAsync(agent, ct);
             var asked = false;
             StageAnswer? answer = null;
             try
@@ -60,7 +62,7 @@ public sealed class StageRunner(
             {
                 // Not the run's token: a cancelled call was paid for too.
                 if (asked)
-                    await quota.RecordAsync(ChatQuotaUsage.Measure(run.CreatedBy, agent.Agent, ChatQuotaUsage.ModelRef(agent.Namespace, null),
+                    await quota.RecordAsync(ChatQuotaUsage.Measure(run.CreatedBy, agent.Agent, model,
                         run.Id.ToString(), answer?.Usage ?? ChatUsage.None, message, answer?.Text ?? ""), CancellationToken.None);
             }
 

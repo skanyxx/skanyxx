@@ -231,7 +231,7 @@ public sealed class StudioDeliveryTests(PostgresFixture fixture) : IAsyncLifetim
     }
 
     [Fact]
-    public async Task EditingAnAgentWithALockedCloudTool_KeepsTheTicks_SoSavingSaysWhatToRemove()
+    public async Task EditingAnAgentWithALockedCloudTool_KeepsIt_AndCanUntickIt_ButAddsNoOther()
     {
         var paid = new AgentDraft("costs5", "Answers refund questions", "default-model-config", "Answer refund questions from company memory.", [],
             [new McpToolChoice("aws-cost", ["get_costs"])], [new StudioGrant("company", true, false)], null);
@@ -242,8 +242,16 @@ public sealed class StudioDeliveryTests(PostgresFixture fixture) : IAsyncLifetim
         var owner = await SignInAsync(HostApp.OwnerEmail, HostApp.OwnerPassword);
         var page = await (await owner.GetAsync("/Studio?edit=costs5")).Content.ReadAsStringAsync(Ct);
 
-        Assert.Contains("value=\"aws-cost/get_costs\" checked=\"checked\" disabled=\"disabled\"", page);
-        Assert.Contains("<input type=\"hidden\" name=\"Tools\" value=\"aws-cost/get_costs\" data-locked-kept", page);
+        var paidTool = new[] { new { server = "aws-cost", tools = new[] { "get_costs" } } };
+        var kept = await _builder.PostAsJsonAsync("/api/studio/proposals", Draft("costs5", tools: paidTool, description: "Answers refund and cost questions"), Ct);
+        var added = await _builder.PostAsJsonAsync("/api/studio/proposals", Draft("costs6", tools: paidTool), Ct);
+
+        Assert.Contains("value=\"aws-cost/get_costs\" checked=\"checked\" data-locked-kept", page);
+        Assert.DoesNotContain("value=\"aws-cost/get_costs\" checked=\"checked\" disabled", page);
+        Assert.DoesNotContain("type=\"hidden\" name=\"Tools\"", page);
+        Assert.Equal(HttpStatusCode.Created, kept.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, added.StatusCode);
+        Assert.Contains("paid feature", await added.Content.ReadAsStringAsync(Ct));
     }
 
     // --- Checks (D362) and the timeline (D365) ---
@@ -552,10 +560,10 @@ public sealed class StudioDeliveryTests(PostgresFixture fixture) : IAsyncLifetim
 
     // --- helpers ---
 
-    private static object Draft(string name, object[]? grants = null, object[]? tools = null) => new
+    private static object Draft(string name, object[]? grants = null, object[]? tools = null, string description = "Answers refund questions") => new
     {
         name,
-        description = "Answers refund questions",
+        description,
         modelConfig = "default-model-config",
         instructions = "Answer refund questions from company memory.",
         skills = Array.Empty<string>(),

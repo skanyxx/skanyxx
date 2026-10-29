@@ -9,8 +9,9 @@ namespace Skanyxx.Module.Agents.Studio.Features;
 /// <summary>
 /// One turn with a studio agent that is not in Chat (a preview, the factory), as the signed-in person, the way Chat talks
 /// to merged agents (D101): kagent sessions are per user, a continued conversation must be the caller's and this
-/// agent's, and a failed first turn deletes the session it created. The token quota admits the turn and counts it,
-/// also when it failed (D383).
+/// agent's, and a failed first turn deletes the session it created. The token quota admits the turn and counts it once
+/// whatever ended it, a malformed answer included (D383, D388). When our deadline passes or the caller leaves, kagent is
+/// asked to stop this turn's task, as Chat does (D381).
 /// </summary>
 internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, ILogger<StudioChat> logger)
 {
@@ -22,7 +23,18 @@ internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, ILogg
         using var admission = await quota.AdmitAsync(userId, agentRef, ct);
         if (admission.Refusal is { } refusal)
             return Outcome<ChatResponse>.RateLimited(refusal);
+        var messageId = Guid.NewGuid().ToString();
         string? created = null, sent = null;
+        ChatResponse? response = null;
+        var recorded = false;
+        async Task RecordOnceAsync()
+        {
+            if (sent is null || recorded)
+                return;
+            recorded = true;
+            await RecordAsync(userId, agentRef, model, sent, response is null ? ChatUsage.None : ChatUsage.Of(response.Usage), message, response?.Message.Content ?? "");
+        }
+
         try
         {
             string sessionId;
@@ -34,15 +46,17 @@ internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, ILogg
             else
                 return Outcome<ChatResponse>.NotFound("No such conversation.");
             sent = sessionId;
-            var response = await kagent.SendMessageAsync(ns, agent, sessionId, message, userId, ct);
-            await RecordAsync(userId, agentRef, model, sessionId, ChatUsage.Of(response.Usage), message, response.Message.Content);
+            response = await kagent.SendMessageAsync(ns, agent, sessionId, message, userId, ct, messageId: messageId);
+            await RecordOnceAsync();
             return Outcome<ChatResponse>.Ok(response);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             logger.LogWarning(ex, "Studio chat with {Namespace}/{Agent} failed for {UserId}", ns, agent, userId);
-            if (sent is not null)
-                await RecordAsync(userId, agentRef, model, sent, ChatUsage.None, message, "");
+            await RecordOnceAsync();
+            // Our deadline passed, not kagent's: it may still be working.
+            if (ex is TimeoutException && sent is not null)
+                await kagent.CancelBlockingTurnAsync(ns, agent, sent, messageId, userId);
             if (created is not null)
                 await DeleteAsync(created, userId);
             return Outcome<ChatResponse>.Unavailable(ex is TimeoutException
@@ -51,8 +65,15 @@ internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, ILogg
         }
         catch (OperationCanceledException) when (sent is not null && ct.IsCancellationRequested)
         {
-            await RecordAsync(userId, agentRef, model, sent, ChatUsage.None, message, "");
+            await RecordOnceAsync();
+            await kagent.CancelBlockingTurnAsync(ns, agent, sent, messageId, userId);
+            if (created is not null)
+                await DeleteAsync(created, userId);
             throw;
+        }
+        finally
+        {
+            await RecordOnceAsync();
         }
     }
 

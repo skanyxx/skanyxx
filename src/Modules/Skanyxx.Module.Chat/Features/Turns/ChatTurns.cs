@@ -163,19 +163,23 @@ internal sealed class ChatTurns(
 
     /// <summary>
     /// The caller left or the turn ran out of time: kagent should stop working for nobody. A streamed turn knows its task;
-    /// a blocking one asks kagent which of the session's tasks still run (D381). Not the request's token (it is cancelled).
+    /// a blocking one asks kagent for the running task its own message started, and no other (D381, D388). Not the
+    /// request's token (it is cancelled).
     /// </summary>
     public async Task CancelKAgentAsync(SendChatMessageCommand command, TurnStart start, string? taskId)
     {
+        if (taskId is null)
+        {
+            await kagent.CancelBlockingTurnAsync(start.Agent.Namespace, start.Agent.Name, start.SessionId, start.MessageId, command.UserId);
+            return;
+        }
         try
         {
-            IReadOnlyList<string> tasks = taskId is not null ? [taskId] : await kagent.RunningTaskIdsAsync(start.SessionId, command.UserId, CancellationToken.None);
-            foreach (var task in tasks)
-                await kagent.CancelTaskAsync(start.Agent.Namespace, start.Agent.Name, task, command.UserId, CancellationToken.None);
+            await kagent.CancelTaskAsync(start.Agent.Namespace, start.Agent.Name, taskId, command.UserId, CancellationToken.None);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
-            logger.LogInformation(ex, "kagent did not cancel the turn in {SessionId} (it may have finished)", start.SessionId);
+            logger.LogWarning("kagent did not cancel the turn in {SessionId} ({Error}); it may have finished", start.SessionId, ex.GetType().Name);
         }
     }
 

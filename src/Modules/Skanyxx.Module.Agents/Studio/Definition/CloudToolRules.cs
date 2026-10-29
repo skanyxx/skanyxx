@@ -14,8 +14,13 @@ internal static class CloudToolRules
 
     public static bool IsPaid(string server, StudioOptions options) => options.CloudToolServers.Contains(server, StringComparer.Ordinal);
 
-    public static IReadOnlyList<string> Check(AgentDraft draft, StudioOptions options, bool cloudToolsOn) =>
-        cloudToolsOn ? [] : [.. Refusals(draft.McpTools.Select(t => t.Server), options)];
+    /// <param name="main">The agent as main has it, if it exists: a paid server main already gives it, with the same
+    /// tools, is kept rather than added, as on the Agents page (D388), so editing the rest of the agent stays possible.</param>
+    public static IReadOnlyList<string> Check(AgentDraft draft, StudioOptions options, bool cloudToolsOn, AgentDraft? main = null) =>
+        cloudToolsOn ? [] : [.. Refusals(draft.McpTools.Where(t => !Kept(t, main)).Select(t => t.Server), options)];
+
+    private static bool Kept(McpToolChoice choice, AgentDraft? main) =>
+        main?.McpTools.FirstOrDefault(m => m.Server == choice.Server) is { } before && before.Tools.ToHashSet().SetEquals(choice.Tools);
 
     /// <summary>One sentence per paid server in <paramref name="servers"/>, for when cloud tools are off.</summary>
     public static IEnumerable<string> Refusals(IEnumerable<string> servers, StudioOptions options) =>

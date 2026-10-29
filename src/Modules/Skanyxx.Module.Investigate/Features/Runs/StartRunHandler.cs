@@ -16,7 +16,7 @@ namespace Skanyxx.Module.Investigate.Features.Runs;
 /// wakes the worker. Each run costs model turns, so one person and everyone together have caps, counted under one lock.
 /// </summary>
 internal sealed class StartRunHandler(
-    InvestigateDbContext db, OrgTeams org, AgentCheck agents, RunSignal signal, InvestigateAudit audit, IOptions<InvestigateOptions> options, TimeProvider clock)
+    InvestigateDbContext db, OrgTeams org, AgentCheck agents, RunSignal signal, InvestigateAudit audit, IOptions<InvestigateOptions> options)
     : IRequestHandler<StartRunCommand, Outcome<RunDto>>
 {
     // All advisory-lock keys are listed in one place: Skanyxx.Module.Memory's MemoryMigrator.
@@ -31,11 +31,10 @@ internal sealed class StartRunHandler(
         if (await agents.RefuseAsync<RunDto>(workflow.Steps, workflow.AllowChainedWrites, ct) is { } refused)
             return refused;
 
-        var now = clock.GetUtcNow().UtcDateTime;
         var run = new InvestigationRun
         {
             Id = Guid.NewGuid(), WorkflowId = workflow.Id, WorkflowName = workflow.Name, Steps = workflow.Steps, Input = command.Input,
-            State = RunState.Queued, CreatedBy = viewer.UserId, CreatedAt = now,
+            State = RunState.Queued, CreatedBy = viewer.UserId,
             StepRuns = [.. WorkflowTree.Flatten(workflow.Steps).Select(n => new StepRun { StepId = n.Step.Id, State = StepState.Pending })]
         };
 
@@ -49,6 +48,7 @@ internal sealed class StartRunHandler(
                 return Outcome<RunDto>.RateLimited($"You already have {mine} investigations running or queued; wait for one to finish or cancel it.");
             if (await unfinished.CountAsync(ct) >= limits.MaxActiveRuns)
                 return Outcome<RunDto>.RateLimited("Too many investigations are running or queued; try again in a few minutes.");
+            run.CreatedAt = await DbClock.NowAsync(db, ct);
             db.Runs.Add(run);
             await db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);

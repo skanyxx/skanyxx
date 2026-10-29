@@ -14,6 +14,7 @@ internal sealed class FactoryDraftEndpoint(IMediator mediator) : Endpoint<Factor
     {
         Post("api/studio/factory");
         Options(b => b.WithMetadata(new RequestSizeLimitAttribute(16 * 1024)));
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Builder);
     }
 
     public override async Task HandleAsync(FactoryRequest req, CancellationToken ct) =>

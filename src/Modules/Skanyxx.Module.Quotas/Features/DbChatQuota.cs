@@ -23,9 +23,7 @@ internal sealed class DbChatQuota(
 
     public async Task<ChatQuotaAdmission> AdmitAsync(string userId, string agentRef, CancellationToken ct)
     {
-        var month = QuotaMonth.Of(clock.GetUtcNow());
-        var org = await membership.ForUserAsync(userId, ct);
-        var quota = (await ledger.BookAsync(month, [userId], ct)).For(userId, org.Teams, org.Departments);
+        var (quota, month) = await QuotaAsync(userId, ct);
         if (quota.Quota.Limit is null)
             return ChatQuotaAdmission.Admitted();
         if (quota.Over)
@@ -33,6 +31,19 @@ internal sealed class DbChatQuota(
         return inFlight.TryEnter(userId) is { } place
             ? new ChatQuotaAdmission(null, () => inFlight.Leave(userId, place))
             : ChatQuotaAdmission.Refused(Busy);
+    }
+
+    public async Task<string?> RefusalAsync(string userId, CancellationToken ct)
+    {
+        var (quota, month) = await QuotaAsync(userId, ct);
+        return quota.Quota.Limit is not null && quota.Over ? Refusal(quota, month, "so no agent can work for you now") : null;
+    }
+
+    private async Task<(PersonQuota Quota, DateOnly Month)> QuotaAsync(string userId, CancellationToken ct)
+    {
+        var month = QuotaMonth.Of(clock.GetUtcNow());
+        var org = await membership.ForUserAsync(userId, ct);
+        return ((await ledger.BookAsync(month, [userId], ct)).For(userId, org.Teams, org.Departments), month);
     }
 
     public async Task RecordAsync(ChatQuotaUsage usage, CancellationToken ct)
@@ -49,7 +60,7 @@ internal sealed class DbChatQuota(
         }
     }
 
-    public static string Refusal(PersonQuota quota, DateOnly month)
+    public static string Refusal(PersonQuota quota, DateOnly month, string blocked = "so no agent can answer this now")
     {
         var binding = quota.Quota.Binding!;
         var whose = binding.Kind switch
@@ -59,7 +70,7 @@ internal sealed class DbChatQuota(
             _ => "your department's limit"
         };
         return string.Create(CultureInfo.InvariantCulture,
-            $"You have used {quota.Used:N0} of your {quota.Quota.Limit:N0} tokens this month ({whose}), so no agent can answer this now. " +
+            $"You have used {quota.Used:N0} of your {quota.Quota.Limit:N0} tokens this month ({whose}), {blocked}. " +
             $"Use \"Request more\" (on Chat or your account page) to ask for more tokens, or wait until the quota resets on {QuotaMonth.ResetsOn(month):d MMMM} (UTC).");
     }
 }

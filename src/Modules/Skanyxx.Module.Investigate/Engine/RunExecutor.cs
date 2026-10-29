@@ -8,6 +8,7 @@ using Skanyxx.Module.Investigate.Agents;
 using Skanyxx.Module.Investigate.Audit;
 using Skanyxx.Module.Investigate.Data;
 using Skanyxx.Module.Investigate.Domain;
+using Skanyxx.Module.Investigate.Features;
 using Skanyxx.Module.Investigate.Rules;
 
 namespace Skanyxx.Module.Investigate.Engine;
@@ -20,12 +21,15 @@ namespace Skanyxx.Module.Investigate.Engine;
 /// fails the run at once rather than leaving its siblings to their timeouts. Answers and reasons pass through
 /// <see cref="SecretText.Redact"/> before they are stored or read by a later step (D373). A success leaves a memory
 /// card. Every step's turn is admitted against the starter's token quota before kagent is asked (a refusal fails the
-/// step) and counted to them afterwards, also when it failed, timed out or was cancelled (D385). Never throws.
+/// step) and counted to them afterwards, also when it failed, timed out or was cancelled (D385), priced on the agent's
+/// ModelConfig when its spec names one. Before the first step the agents are checked again (D386): one may have gained a
+/// write tool or grant, or been suspended, while the run was queued. Never throws.
 /// </summary>
 internal sealed partial class RunExecutor(
     IDbContextFactory<InvestigateDbContext> dbs,
     IInvestigationAgentClient agents,
     IChatQuota quota,
+    AgentCheck check,
     StepWriter steps,
     InvestigateAudit audit,
     ICardExtractor cards,
@@ -43,7 +47,16 @@ internal sealed partial class RunExecutor(
             await using (var db = await dbs.CreateDbContextAsync(stopping))
                 run = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == runId, stopping);
 
-            using var context = new RunContext(runId, run.CreatedBy, run.Input, _options.MaxParallelSteps, stopping);
+            var (refusal, allowed) = await CheckAgentsAsync(run, stopping);
+            if (refusal is not null)
+            {
+                await EndAsync(runId, RunState.Failed, refusal);
+                await audit.RunAsync(InvestigateAudit.RunFinished, run.CreatedBy, run.Id, run.WorkflowId, run.WorkflowName, "failed");
+                return;
+            }
+
+            var models = allowed.ToDictionary(a => a.Ref, a => ChatQuotaUsage.ModelRef(a.Namespace, a.ModelConfig));
+            using var context = new RunContext(runId, run.CreatedBy, run.Input, models, _options.MaxParallelSteps, stopping);
             using var watching = CancellationTokenSource.CreateLinkedTokenSource(stopping);
             var watch = WatchAsync(context, watching.Token);
             try
@@ -67,6 +80,16 @@ internal sealed partial class RunExecutor(
             LogRunCrashed(logger, runId, ex);
             await EndAsync(runId, RunState.Failed, $"The run stopped on an internal error ({ex.GetType().Name}).");
         }
+    }
+
+    /// <summary>The start's check, with the workflow's allowance as it is now (none once the workflow is deleted).</summary>
+    private async Task<(string? Refusal, IReadOnlyList<AgentChoice> Allowed)> CheckAgentsAsync(InvestigationRun run, CancellationToken ct)
+    {
+        bool allow;
+        await using (var db = await dbs.CreateDbContextAsync(ct))
+            allow = await db.Workflows.Where(w => w.Id == run.WorkflowId).Select(w => w.AllowChainedWrites).SingleOrDefaultAsync(ct);
+        var (refusal, allowed) = await check.CheckAsync<bool>(run.Steps, allow, ct);
+        return (refusal?.Message, allowed);
     }
 
     /// <returns>Succeeded when every step did; otherwise the state of the step that stopped the sequence.</returns>
@@ -130,7 +153,7 @@ internal sealed partial class RunExecutor(
             await steps.StartedAsync(context.RunId, step.Id);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.Token);
             deadline.CancelAfter(TimeSpan.FromSeconds(_options.StepTimeoutSeconds));
-            var prompt = TextCut.Take(PromptTemplate.Render(step.Prompt!, context.Input, context.Outputs), _options.MaxRenderedPromptChars);
+            var prompt = PromptTemplate.Render(step.Prompt!, context.Input, context.Outputs, _options.MaxRenderedPromptChars);
             var asked = false;
             AgentAnswer? answer = null;
             try
@@ -164,7 +187,7 @@ internal sealed partial class RunExecutor(
             {
                 // Not the run's token: a timed-out or cancelled call was paid for too.
                 if (asked)
-                    await quota.RecordAsync(ChatQuotaUsage.Measure(context.StartedBy, step.Agent!, ChatQuotaUsage.ModelRef(AgentRef.Split(step.Agent!).Namespace, null),
+                    await quota.RecordAsync(ChatQuotaUsage.Measure(context.StartedBy, step.Agent!, context.Models[step.Agent!],
                         context.RunId.ToString(), answer?.Usage ?? ChatUsage.None, prompt, answer?.Text ?? ""), CancellationToken.None);
             }
         }
@@ -237,12 +260,11 @@ internal sealed partial class RunExecutor(
     {
         try
         {
-            var now = clock.GetUtcNow().UtcDateTime;
             await using var db = await dbs.CreateDbContextAsync(CancellationToken.None);
             await db.StepRuns.Where(s => s.RunId == runId && s.State == StepState.Pending)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.State, StepState.Skipped), CancellationToken.None);
             await db.StepRuns.Where(s => s.RunId == runId && s.State == StepState.Running)
-                .ExecuteUpdateAsync(s => s.SetProperty(x => x.State, StepState.Cancelled).SetProperty(x => x.EndedAt, now), CancellationToken.None);
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.State, StepState.Cancelled).SetProperty(x => x.EndedAt, x => DateTime.UtcNow), CancellationToken.None);
             await db.Runs.Where(r => r.Id == runId && r.State == RunState.Running)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.State, state)

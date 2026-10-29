@@ -103,4 +103,47 @@ public sealed class SupervisorScopeTests(PostgresFixture postgres) : Investigate
         Assert.Equal(HttpStatusCode.BadRequest, (await App.Client(Builder).PostAsJsonAsync("/api/investigate/workflows",
             new { name = "Too long", description = "", sharedTeam = slug + "y", steps = OneStep }, Json, Ct)).StatusCode);
     }
+
+    [Fact]
+    public async Task ASupervisor_DoesNotReachTheOwnerOrAnotherSupervisor_InTheirOwnTeam()
+    {
+        App.Org.Teams[0] = new TeamDto("billing", "Billing", "finance", [Builder, Supervisor, Owner, OtherSupervisor]);
+        var olga = await RunAsync(Owner);
+        var sue = await RunAsync(OtherSupervisor);
+        var shared = await App.CreateAsync(OtherSupervisor, "Sue's shared", OneStep, "billing");
+        var sam = App.Client(Supervisor);
+
+        var runs = await sam.GetFromJsonAsync<List<RunSummaryDto>>("/api/investigate/runs", Json, Ct);
+        var workflows = await sam.GetFromJsonAsync<List<WorkflowSummaryDto>>("/api/investigate/workflows", Json, Ct);
+        HttpResponseMessage[] hidden =
+        [
+            await sam.GetAsync($"/api/investigate/runs/{olga.Run.Id}", Ct),
+            await sam.GetAsync($"/api/investigate/runs/{sue.Run.Id}", Ct),
+            await sam.PutAsJsonAsync($"/api/investigate/workflows/{olga.Workflow.Id}", new { name = "Taken", description = "", steps = OneStep }, Json, Ct),
+            await sam.PutAsJsonAsync($"/api/investigate/workflows/{sue.Workflow.Id}", new { name = "Taken", description = "", steps = OneStep }, Json, Ct),
+        ];
+        var editShared = await sam.PutAsJsonAsync($"/api/investigate/workflows/{shared.Id}",
+            new { name = "Taken", description = "", sharedTeam = "billing", allowChainedWrites = true, steps = OneStep }, Json, Ct);
+
+        Assert.Empty(runs!);
+        Assert.Equal(shared.Id, Assert.Single(workflows!).Id);
+        Assert.False(Assert.Single(workflows!).CanEdit);
+        Assert.All(hidden, r => Assert.Equal(HttpStatusCode.NotFound, r.StatusCode));
+        Assert.Equal(HttpStatusCode.Forbidden, editShared.StatusCode);
+        Assert.Equal("Sue's shared", (await App.Client(OtherSupervisor).GetFromJsonAsync<WorkflowDto>($"/api/investigate/workflows/{shared.Id}", Json, Ct))!.Name);
+    }
+
+    [Fact]
+    public async Task WhenTeamsCannotBeListed_ASupervisorKeepsTheirTeamShares_AndReachesNoOneElsesWork()
+    {
+        var bea = await RunAsync(Builder);
+        var shared = await App.CreateAsync(Builder, "Bea's shared", OneStep, "billing");
+        App.Org.TeamsListable = false;
+        var sam = App.Client(Supervisor);
+
+        var workflows = await sam.GetFromJsonAsync<List<WorkflowSummaryDto>>("/api/investigate/workflows", Json, Ct);
+
+        Assert.Equal(shared.Id, Assert.Single(workflows!).Id);
+        Assert.Equal(HttpStatusCode.NotFound, (await sam.GetAsync($"/api/investigate/runs/{bea.Run.Id}", Ct)).StatusCode);
+    }
 }

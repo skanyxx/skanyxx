@@ -38,6 +38,12 @@ public sealed class FakeKAgent : IAsyncDisposable
         var app = builder.Build();
         var fake = new FakeKAgent(app);
         app.MapPost("/api/a2a/{ns}/{agent}/", fake.HandleAsync);
+        // Every stage agent is declarative on kagent's default ModelConfig, as the seed's are.
+        app.MapGet("/api/agents/{ns}/{agent}", () => Results.Json(new JsonObject
+        {
+            ["error"] = false,
+            ["data"] = new JsonObject { ["agent"] = new JsonObject { ["spec"] = new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject() } } }
+        }));
         await app.StartAsync();
         return fake;
     }

@@ -203,6 +203,8 @@ public sealed class RobustnessTests(PostgresFixture postgres) : TicketsTestBase(
             throw new InvalidOperationException("bug");
         }
 
+        public Task<string> ModelRefAsync(StageAgent agent, CancellationToken ct) => Real().ModelRefAsync(agent, ct);
+
         private KAgentStageClient Real() =>
             new(factory.CreateClient(nameof(IStageAgentClient)), options,
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<KAgentStageClient>.Instance);

@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Quotas.Data;
@@ -493,10 +494,16 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
 
         var turn = _ann.PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "helper", message = Question }, leave.Token);
         Assert.True(await UntilAsync(() => Task.FromResult(!_kagent.Tasks.IsEmpty)), "the turn never reached kagent");
+        var (ownId, own) = _kagent.Tasks.Single();
+        // Another turn of ann's running in the same conversation (a streamed one in another tab) is not this turn's to stop.
+        _kagent.Tasks["other-turn"] = own with { MessageId = "another-message" };
         await leave.CancelAsync();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => turn);
 
-        Assert.True(await UntilAsync(() => Task.FromResult(_kagent.Tasks.Values.Single().State == "canceled")), "kagent's task was not cancelled");
+        Assert.True(await UntilAsync(() => Task.FromResult(_kagent.Tasks[ownId].State == "canceled")), "kagent's task was not cancelled");
+        Assert.Equal("working", _kagent.Tasks["other-turn"].State);
+        Assert.All(_kagent.TaskListVersions, v => Assert.Equal("0.3", v));
+        Assert.NotEmpty(_kagent.TaskListVersions);
         Assert.True(await UntilAsync(async () => (await MeAsync(_ann)).GetProperty("estimatedTurns").GetInt64() == 1), "the abandoned turn was not counted");
     }
 
@@ -590,7 +597,7 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         var store = new QuotaStore(db);
         // 1 November 01:30 in Jerusalem is still 31 October in UTC.
         var clock = new QuotaClock(new DateTimeOffset(2026, 11, 1, 1, 30, 0, TimeSpan.FromHours(2)));
-        var quota = new DbChatQuota(new NoMembership(), new QuotaLedger(store), store, new QuotaInFlight(clock), clock,
+        var quota = new DbChatQuota(new NoMembership(), new QuotaLedger(store), store, new QuotaInFlight(clock, TimeSpan.FromMinutes(10)), clock,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<DbChatQuota>.Instance);
         await store.SetLimitAsync(QuotaScopes.User, "zed", 100, "owner", clock.GetUtcNow(), Ct);
         await quota.RecordAsync(new ChatQuotaUsage("zed", "kagent/helper", Model, "c", new ChatUsage(80, 40, 120), false), Ct);
@@ -605,6 +612,42 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
             Assert.Null(admitted.Refusal);
         Assert.Empty(await store.UsageAsync(new DateOnly(2026, 11, 1), ["zed"], Ct));
         Assert.Single(await store.UsageAsync(new DateOnly(2026, 10, 1), ["zed"], Ct));
+    }
+
+    [Fact]
+    public void AnInFlightPlace_NobodyGaveBack_FreesItself_AfterTheChatDeadlinePlusAMargin()
+    {
+        var clock = new QuotaClock(new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero));
+        var expiry = QuotaInFlight.ExpiryFor(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["KAgent:ChatTimeoutSeconds"] = "1800" }).Build());
+        var inFlight = new QuotaInFlight(clock, expiry);
+
+        Assert.NotNull(inFlight.TryEnter("zed"));
+        Assert.NotNull(inFlight.TryEnter("zed"));
+        Assert.Null(inFlight.TryEnter("zed"));
+        clock.Now += TimeSpan.FromMinutes(30);
+        Assert.Null(inFlight.TryEnter("zed")); // a 30-minute turn may still be running
+        clock.Now += QuotaInFlight.Margin;
+
+        Assert.Equal(TimeSpan.FromMinutes(35), expiry);
+        Assert.NotNull(inFlight.TryEnter("zed"));
+    }
+
+    [Fact]
+    public async Task AStreamNeverRead_GivesItsInFlightPlaceBack_WhenDisposed()
+    {
+        var released = 0;
+        var start = new Skanyxx.Module.Chat.Features.Turns.TurnStart(new Skanyxx.Core.Models.Agent(), "kagent/helper", "s1", true, "t",
+            Skanyxx.Core.Platform.ChatContext.ChatPreparation.None, Skanyxx.Core.Platform.Memory.MemoryContext.None, "p", [],
+            new ChatQuotaAdmission(null, () => released++));
+        var stream = new Skanyxx.Module.Chat.Features.Turns.ChatStream(
+            new Skanyxx.Core.MediatR.Requests.SendChatMessageCommand("ann", "p", "kagent", "helper", null), start, null!, null!,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<Skanyxx.Module.Chat.Features.Turns.ChatStream>.Instance);
+
+        await stream.DisposeAsync();
+        await stream.DisposeAsync();
+
+        Assert.Equal(1, released);
     }
 
     private sealed class NoMembership : IOrgMembership

@@ -496,14 +496,14 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | `KAgent` | KAgent API connection (BaseUrl, Port, Protocol, Token), `ControlTimeoutSeconds` (10; every agents/sessions/ModelConfig call, including the owner's `/` probe), `ChatTimeoutSeconds` (300; one blocking chat turn waits for the whole answer), `ModelConfig` (`kagent/default-model-config`; the one the owner's model step edits). No kagent call is ever retried: a chat turn and a model save are not idempotent |
 | `Modules` | Plugin directory and enable/disable flags |
 | `ConnectionStrings:Identity` | Postgres for accounts, roles and the Data Protection key ring (required). **Use a separate database role (or database) from the other modules** — whoever can read the key ring can mint sessions |
-| `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `MaxPoolSize` (20), `InviteDays` (7, 1–30), `PublicBaseUrl` (where people reach Skanyxx, e.g. `https://skanyxx.example.com`; invite links are built on it. Optional for startup: **unset outside Development, the app starts and logs a warning, and creating an invite is refused (`409`) until it is set**; Development without it uses the request's scheme and host. When set it must be written exactly — no leading or trailing spaces, backslashes, query, fragment or user info — and absolute `https://`, except a loopback host such as the desktop installs' `http://localhost:5282`, whose links never leave the machine; anything else stops startup. The template ships `http://localhost:5282`, so a server install must change it: a loopback value while Skanyxx listens on a non-loopback address is warned about at startup, and the People page shows the host each new link points at). Validated at startup. (`SecurityStampValidationSeconds` is gone: cookies are checked on every request, and the key is ignored.) `PasswordResetMinutes` (60, 5–1440; how long a reset link works), `AuditRetentionDays` (365, 1–3650; audit rows and finished invites older than this are deleted), `EntraRecheckMinutes` (60, 5–1440; the Graph re-check interval while Microsoft sign-in is on), `Smtp` (outgoing email; `Host` empty = off — see "Email" below) |
+| `Identity` | `BootstrapToken` (`""`; needed outside Development to create or unlock the owner — empty does **not** stop startup, but outside Development `/Setup` and bootstrap answer `403`, unlock `404`, and there is no break-glass sign-in; a malformed token (under 32 characters, or with leading or trailing whitespace) stops startup; also guards `unlock` and the owner's break-glass sign-in — see Identity below), `PasswordMinLength` (12, at least 12), `LockoutMaxFailedAttempts` (5), `LockoutMinutes` (15), `SessionDays` (`7, 1–90`; absolute cap on a cookie session and on a refresh-token chain), `DataProtectionCertificatePath` / `DataProtectionCertificatePassword` (`""`; a certificate that encrypts the key ring at rest; a warning is logged outside Development when unset), `MaxPoolSize` (20), `InviteDays` (7, 1–30), `PublicBaseUrl` (where people reach Skanyxx, e.g. `https://skanyxx.example.com`; invite links are built on it. Optional for startup: **unset outside Development, the app starts and logs a warning, and creating an invite is refused (`409`) until it is set**; Development without it uses the request's scheme and host. When set it must be written exactly — no leading or trailing spaces, backslashes, query, fragment or user info — and absolute `https://`, except a loopback host such as the desktop installs' `http://localhost:5282`, whose links never leave the machine; anything else stops startup. The template ships `http://localhost:5282`, so a server install must change it: a loopback value while Skanyxx listens on a non-loopback address is warned about at startup, and the People page shows the host each new link points at). Validated at startup. (`SecurityStampValidationSeconds` is gone: cookies are checked on every request, and the key is ignored.) `PasswordResetMinutes` (60, 5–1440; how long a reset link works), `AuditRetentionDays` (365, 90–3650; audit rows and finished invites older than this are deleted; under 90 stops startup, D387), `EntraRecheckMinutes` (60, 5–1440; the Graph re-check interval while Microsoft sign-in is on), `Smtp` (outgoing email; `Host` empty = off — see "Email" below) |
 | `ConnectionStrings:Memory` | Postgres for the memory engine (required; startup fails without it) |
 | `Memory` | `SearchTopK` (5), `UpsertsPerMinute` (30, per caller), `UpsertsPerMinuteTotal` (300, all callers), `MaxPoolSize` (40), `SandboxMcpPort` (unset; set: the sandbox listener — `/mcp/memory` for sandbox tokens only, every other path 404, agent secrets and identity headers ignored; needs `SandboxTokenKey`, ≥ 32 characters, from a secret store; D190), `SandboxTokenHours` (24, 1–720; D191), `McpPort` (unset; set: `/mcp/memory` is served on that Kestrel port only and is absent from every other, and every other path answers 404 on it, as the Helm chart does with 8081 — the Host must also listen there, e.g. `ASPNETCORE_HTTP_PORTS=8080;8081`). Supervisors (write/lift into `company`, set agent grants) are users with role `owner` or `supervisor` |
 | `ConnectionStrings:Tickets` | Postgres for ticket pipelines (required; may be the same database as memory) |
 | `Tickets` | `Source` (`jira` \| `local`), `LocalPath` (JSON file, required when `local`), `Jira` (`Site` — https only, `Email`, `ApiToken`, `Project` or `Jql` (overrides `Project`), `TimeoutSeconds` (20)), `KAgentUserId` (`skanyxx-tickets`; the kagent user that owns every stage session), `StageTimeoutSeconds` (600), `PollSeconds` (5), `MaxTicketChars` (20000), `MaxPromptChars` (96000), `MaxAnswerChars` (100000), `MaxStageAttemptsPerRun` (30), `MaxActiveRunsPerUser` (5), `MaxActiveRuns` (20, all users), `MaxPoolSize` (40), `AllowedAgents` (`namespace/name`; empty = the five ticket agents; a list replaces that default). Editing and deleting pipelines needs role `owner` or `supervisor` |
 | `Sandboxes` | `Address` (AX gRPC, h2c; `http://ax-server.ax-system.svc:8080`), `Atespace` (`default`), `AllowedImages` (`[]`; registry/repo prefixes, empty = nothing runs, a configured list replaces the default), `RequireDigest` (`false`; on = image must be `@sha256:`), `MaxCpu` (`4`), `MaxMemory` (`8Gi`), `DefaultCpuRequest` (`250m`), `DefaultMemoryRequest` (`256Mi`), `DefaultCpuLimit` (`1`), `DefaultMemoryLimit` (`1Gi`), `MaxActiveTasksPerUser` (`3`), `MaxActiveTasks` (`50`, whole atespace), `CountBudgetSeconds` (`30`), `NetworkIsolationConfirmed` (`false`; must be `true` for a non-empty `AllowedImages`), `MemoryMcpUrl` (`""` = memory attach off; startup refuses any value but the sandbox listener's `/mcp/memory` — its port must be `Memory:SandboxMcpPort`, with `Memory:SandboxTokenKey` set; D193, see "Sandboxes and memory"), `TimeoutSeconds` (`15`), `WatchSeconds` (`120`), `KeepAliveSeconds` (`15`), `MaxWatchesPerUser` (`2`), `MaxWatches` (`50`) |
 
-**Installation settings (D350, D352, D354, D356).** The owner's `/Settings` page (and `GET`/`PUT /api/identity/settings`) holds installation-wide choices in the identity database: installation name, default theme, landing page per role (owner and supervisor land on the Dashboard by default), Microsoft sign-in (off by default; feeds `Identity:EntraAvailable`), Cloud tools (a paid feature: locked unless `Skanyxx:Licence:CloudTools=true`; Studio, templates and the Agents page offer cloud tool servers only while both the licence and this switch are on, read on every request, D370), audit history days (`Identity:AuditRetentionDays`, at least 90, D376) and chat history index days (`ChatContext:SessionRetentionDays`, 0 = keep). A saved value overrides appsettings and environment variables; an unsaved one falls through to them. Saves apply without a restart (every replica within 30 seconds) and each change writes a `settings.changed` audit row with the key and its old and new values. Sandboxes are shown read-only: they are deployment configuration.
+**Installation settings (D350, D352, D354, D356).** The owner's `/Settings` page (and `GET`/`PUT /api/identity/settings`) holds installation-wide choices in the identity database: installation name, default theme, landing page per role (owner and supervisor land on the Dashboard by default), Microsoft sign-in (off by default; feeds `Identity:EntraAvailable`), Cloud tools (a paid feature: locked unless `Skanyxx:Licence:CloudTools=true`; Studio, templates and the Agents page offer cloud tool servers only while both the licence and this switch are on, read on every request, D370), audit history days (`Identity:AuditRetentionDays`, at least 90, D376; a value saved before the floor applies as 90, D387) and chat history index days (`ChatContext:SessionRetentionDays`, 0 = keep). A saved value overrides appsettings and environment variables; an unsaved one falls through to them. Saves apply without a restart (every replica within 30 seconds) and each change writes a `settings.changed` audit row with the key and its old and new values. Sandboxes are shown read-only: they are deployment configuration.
 
 **Debug page (D353).** The owner's `/Debug`: build and uptime, connectivity (kagent, AX, each module's Postgres, Dragonfly), health checks, modules, the last 100 warnings and errors and request timings (per route template, never the raw path, D377) since this replica started, and the configuration sources with Skanyxx's own keys — passwords, tokens, keys, certificates and connection strings shown as `[redacted]`. It only reads; older logs are in the pod's logs.
 
@@ -1164,7 +1164,9 @@ in the agent repo `skanyxx-agents` carries them; only a supervisor's merge makes
   the shipped `validate-agents` check to pass (a status under another name never counts, D374). A merge git answers
   405 "try again later" (Gitea still computing mergeability) is retried a few times within about 4 s. Cloud tools
   (`Studio:CloudToolServers`) are paid: locked unless `Skanyxx:Licence:CloudTools=true` and Settings → Features →
-  Cloud tools is on (D370).
+  Cloud tools is on (D370). While locked, an agent that already has one in main keeps it on edit (propose, CI and
+  merge all allow it unchanged), and the form lets you untick it but not add one (D388). Every Studio endpoint names
+  the roles its handler allows (D375).
 - `/api/agents` only reads: its kubectl writes are gone (Phase 1). Creating, editing or deleting a tool server is the owner's
   (D116, D313). The Host runs no processes and holds no Kubernetes credentials.
 
@@ -1308,15 +1310,22 @@ the servers and agents into kagent through the studio's pull-request gate; it is
 
 ## Token quotas
 
-Monthly token budgets (D331–D339, D380–D384). The owner sets a limit on a person, a team or a department on **/Quotas**
+Monthly token budgets (D331–D339, D380–D385, D387, D388). The owner sets a limit on a person, a team or a department on **/Quotas**
 (`PUT api/quotas/limits/{user|team|department}/{id}`); each limit is what every member may use in a UTC month, and the
 **tightest** limit that applies to a person binds (the page and `GET api/quotas/me` name which one). Every model turn run
 in a person's name counts: Chat (streamed and `POST api/chat`), Studio previews and factory drafts, and the stage turns of
 the ticket runs they started. kagent's reported tokens count; when kagent reports none (or the turn failed, ran out of
 time or was stopped first), the turn's own estimate (characters / 4, at least the prompt) counts and is marked
-**estimated** wherever usage is shown. At the limit Chat, Studio and new ticket runs are refused (429) with a **Request
-more** action; ticket runs already going finish. A person with a limit runs at most 2 turns at once per replica, which
-bounds how far parallel turns can pass the limit. Everyone sees their own percentage on Chat and on their account page.
+**estimated** wherever usage is shown. The estimate counts only what Skanyxx sent and got back: it leaves out the
+conversation history kagent replays to the model and any attached images, so a follow-up turn kagent did not report
+can be well under its real cost. At the limit Chat, Studio and new ticket runs are refused (429) with a **Request
+more** action; a ticket run parked at a human gate does not go on to more stages while its starter is over the limit
+(the decision is refused and the run waits at the gate); stages already running finish. A person with a limit runs at
+most 2 turns at once per replica, which bounds how far parallel turns can pass the limit; a place a crashed turn never
+gave back frees itself after `KAgent:ChatTimeoutSeconds` plus 5 minutes. Starting or resuming a ticket run takes no such
+place, so chat answers on their way never refuse one. A blocking turn the caller leaves, or that runs out of time
+(Chat, Studio previews, the factory), is cancelled in kagent: only that turn's task, found by its message id.
+Everyone sees their own percentage on Chat and on their account page.
 
 - **Requests** (`POST api/quotas/requests`, amount + reason): the owner approves or denies any; a supervisor only their own
   teams' members (never themselves, the owner or another supervisor) and only while the person stays within their cap,
@@ -1326,8 +1335,9 @@ bounds how far parallel turns can pass the limit. Everyone sees their own percen
   it stands, which a supervisor may only lower. Team and department limits and prices are the owner's. Every rule is
   enforced by the API, not the page.
 - **Cost** is optional: the owner's USD price per 1,000 tokens per ModelConfig (`PUT api/quotas/prices/{ns}/{name}`). It is
-  an estimate, never a bill, and is always shown with that disclaimer. Ticket stage and Investigate step turns are not
-  priced (their model is not known to the pipeline or the workflow).
+  an estimate, never a bill, and is always shown with that disclaimer. Ticket stage and Investigate step turns are
+  priced by the ModelConfig the agent's spec names (kagent's `default-model-config` when a declarative spec names none);
+  a BYO agent's, or one kagent does not describe, stays unpriced (`unknown`).
 - **Audit**: `quota.limit.set`, `quota.price.set`, `quota.requested`, `quota.request.approved|denied`, with names and
   numbers only (never a reason or chat text).
 - **New features that call a model** go through Core's `IChatQuota` (`AdmitAsync` before the turn, `RecordAsync` after,
@@ -1412,20 +1422,25 @@ time, nested up to `Investigate:MaxDepth` (4) levels and `Investigate:MaxSteps` 
   replica within `Investigate:WatchMilliseconds`.
 - Reports: `GET /api/investigate/runs/{id}/report.json` (everything) and `report.pdf` (a plain PDF written in-process,
   D345). A succeeded run leaves a memory card `investigation-<run>` in the starter's personal scope (D343).
-- Access (D341, D371): the owner sees and edits everything; a supervisor the workflows and runs (input and answers
-  included) of the people in their own teams, as Analytics scopes them; a builder sees their own workflows and those
-  shared with one of their teams, edits and deletes only their own, and sees only their own runs. Employees get 403;
-  anything out of reach is 404.
-- Untrusted data (D372): `{{input}}` and `{{steps.<id>}}` reach a prompt inside a fixed `SKANYXX-DATA` envelope that
-  says the enclosed text is data, not instructions. A step that reads an earlier answer may call a *write-capable* agent
-  (it names an MCP server not on `Investigate:ReadOnlyToolServers`, calls other agents, or has an explicit memory
-  upsert grant) only on a workflow the owner or a supervisor saved with "Allow chained writes"
-  (`investigate.chained_writes_allowed` in the audit); checked on save and again on start.
+- Access (D341, D371, D386): the owner sees and edits everything; a supervisor the workflows and runs (input and
+  answers included) of the people in their own teams, except the owner and other supervisors, and everyone the
+  workflows shared with one of their teams; a builder sees their own workflows and those shared with one of their
+  teams, edits and deletes only their own, and sees only their own runs. Employees get 403; anything out of reach is 404.
+- Untrusted data (D372, D386, D389): `{{input}}` and `{{steps.<id>}}` reach a prompt inside a `SKANYXX-DATA:<nonce>`
+  envelope (a random nonce for each prompt, so no earlier text can close it) that says the enclosed text is data, not
+  instructions. Over `Investigate:MaxRenderedPromptChars` (100,000) each value is cut inside its own envelope, the
+  longest first, ending `[…truncated N characters]`; the template's own text and the markers are never cut. A step that
+  reads an earlier answer may call a *write-capable* agent (not declarative, tools unknown, it names an MCP server not on
+  `Investigate:ReadOnlyToolServers`, calls other agents, or names a `skanyxx-memory-<x>` server whose agent `x` has an
+  explicit memory upsert grant) only on a workflow the owner or a supervisor saved with "Allow chained writes"
+  (`investigate.chained_writes_allowed` in the audit); checked on save, on start and again when the worker picks the
+  run up (a queued run whose agent gained a write tool fails before its first step).
 - Limits (D373): `Investigate:MaxParallelSteps` (4) agent calls at once per run, `Investigate:MaxWorkflowsPerUser`
   (100); answers and failure reasons are redacted (`SecretText.Redact`) before they are stored or read by a later step.
 - Token quota (D385): every agent step is admitted against the run starter's quota before kagent is asked (over it,
   the step fails with the quota's reason and the run fails) and counted to them afterwards, failed, timed-out and
-  cancelled steps included.
+  cancelled steps included, priced by the agent's ModelConfig (D387).
+- Times: a run's and its steps' created, started, ended and cancel times all come from the database's clock (D373).
 - The identity audit records `investigate.*` rows with ids, names and states only, never prompts, inputs or answers (D344).
 
 ## Sandboxes on Google AX (Experimental)

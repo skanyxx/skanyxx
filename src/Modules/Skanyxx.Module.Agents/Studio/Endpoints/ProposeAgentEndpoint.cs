@@ -14,6 +14,7 @@ internal sealed class ProposeAgentEndpoint(IMediator mediator) : Endpoint<AgentD
     {
         Post("api/studio/proposals");
         Options(b => b.WithMetadata(new RequestSizeLimitAttribute(64 * 1024)));
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Builder);
     }
 
     public override async Task HandleAsync(AgentDraft req, CancellationToken ct) =>

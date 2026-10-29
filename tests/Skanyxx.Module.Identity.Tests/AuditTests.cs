@@ -196,6 +196,18 @@ public sealed class AuditTests(PostgresFixture postgres) : IdentityTestBase(post
         Assert.Contains("(\"Action\", \"Id\")", definition);
     }
 
+    /// <summary>D376, D387: deployment configuration cannot put the audit history under the 90-day floor either.</summary>
+    [Fact]
+    public void AuditRetention_Under90Days_FailsValidation()
+    {
+        var options = new IdentityModuleOptions();
+        var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+        var context = new System.ComponentModel.DataAnnotations.ValidationContext(options) { MemberName = nameof(options.AuditRetentionDays) };
+
+        Assert.False(System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(89, context, results));
+        Assert.True(System.ComponentModel.DataAnnotations.Validator.TryValidateProperty(90, context, results));
+    }
+
     /// <summary>CR L9 / D169: the purge deletes in batches until nothing old is left.</summary>
     [Fact]
     public async Task Retention_DeletesInBatches_UntilNothingOldIsLeft()

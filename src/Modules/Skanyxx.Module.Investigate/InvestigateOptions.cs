@@ -33,7 +33,10 @@ public sealed class InvestigateOptions
     [Range(100, 200_000)]
     public int MaxInputChars { get; set; } = 20_000;
 
-    /// <summary>A rendered prompt (template, input and earlier outputs) is cut to this before it is sent.</summary>
+    /// <summary>
+    /// A rendered prompt's ceiling (template, input and earlier outputs). Over it, each substituted value is cut inside its
+    /// own envelope and says so; the template and the markers are never cut (D389).
+    /// </summary>
     [Range(1_000, 1_000_000)]
     public int MaxRenderedPromptChars { get; set; } = 100_000;
 

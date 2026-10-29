@@ -31,7 +31,7 @@ internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ChatTurns t
                 return Outcome<ChatResponse>.Ok(cached);
             }
 
-            var response = await kagent.SendMessageAsync(start.Agent.Namespace, start.Agent.Name, start.SessionId, start.Prompt, command.UserId, ct, start.Images);
+            var response = await kagent.SendMessageAsync(start.Agent.Namespace, start.Agent.Name, start.SessionId, start.Prompt, command.UserId, ct, start.Images, start.MessageId);
             response.RelatedSessions = start.Prepared.Sessions;
             response.MemoryCards = start.Memory.Cards;
             await turns.CompleteAsync(command, start, response.Message.Content, ChatUsage.None, response.Usage);

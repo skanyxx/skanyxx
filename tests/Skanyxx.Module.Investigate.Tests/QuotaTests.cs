@@ -28,6 +28,8 @@ public sealed class QuotaTests(PostgresFixture postgres) : InvestigateTestBase(p
             return Task.FromResult(Refuse ? ChatQuotaAdmission.Refused(Refusal) : ChatQuotaAdmission.Admitted());
         }
 
+        public Task<string?> RefusalAsync(string userId, CancellationToken ct) => Task.FromResult(Refuse ? Refusal : null);
+
         public Task RecordAsync(ChatQuotaUsage usage, CancellationToken ct)
         {
             Recorded.Enqueue(usage);
@@ -77,7 +79,7 @@ public sealed class QuotaTests(PostgresFixture postgres) : InvestigateTestBase(p
         {
             Assert.Equal(Builder, u.UserId);
             Assert.Equal(run.Id.ToString(), u.ConversationId);
-            Assert.Equal("unknown", u.Model);
+            Assert.Equal($"{u.AgentRef.Split('/')[0]}/default-model-config", u.Model);
             Assert.Equal(new ChatUsage(40, 10, 50), u.Usage);
             Assert.False(u.Estimated);
         });

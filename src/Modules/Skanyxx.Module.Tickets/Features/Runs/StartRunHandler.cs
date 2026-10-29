@@ -25,9 +25,9 @@ internal sealed class StartRunHandler(
         var pipeline = await db.Pipelines.AsNoTracking().SingleOrDefaultAsync(p => p.Id == command.PipelineId, ct);
         if (pipeline is null)
             return Outcome<Run>.NotFound($"No pipeline '{command.PipelineId}'.");
-        using (var admission = await quota.AdmitAsync(command.UserId!, $"pipeline/{pipeline.Id}", ct))
-            if (admission.Refusal is { } refusal)
-                return Outcome<Run>.RateLimited(refusal);
+        // Refused over the limit only: the stages' turns come later, so a chat answer on its way takes no place from it.
+        if (await quota.RefusalAsync(command.UserId!, ct) is { } refusal)
+            return Outcome<Run>.RateLimited(refusal);
 
         Ticket ticket;
         try

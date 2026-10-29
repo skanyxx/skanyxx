@@ -7,7 +7,11 @@ namespace Skanyxx.Module.Agents.Studio.Endpoints;
 
 internal sealed class ProposalEndpoint(IMediator mediator) : Endpoint<ProposalRoute>
 {
-    public override void Configure() => Get("api/studio/proposals/{number}");
+    public override void Configure()
+    {
+        Get("api/studio/proposals/{number}");
+        Roles(StudioRoles.People);
+    }
 
     public override async Task HandleAsync(ProposalRoute req, CancellationToken ct) =>
         await Send.ResultAsync((await mediator.Send(new ProposalQuery(StudioUser.From(User), req.Number), ct)).ToHttp());

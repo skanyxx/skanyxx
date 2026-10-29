@@ -3,8 +3,9 @@ using Skanyxx.Module.Investigate.Domain;
 namespace Skanyxx.Module.Investigate.Rules;
 
 /// <summary>
-/// The one place deciding who may do what (D341, D371). The owner reaches everything; a supervisor the work of the people
-/// in their own teams; everyone their own, and the workflows shared to their teams. Something one may not reach is "not
+/// The one place deciding who may do what (D341, D371, D386). The owner reaches everything; a supervisor the work of the
+/// people in their own teams, never the owner's or another supervisor's; everyone their own, and the workflows shared to
+/// their teams. Something one may not reach is "not
 /// found", never "forbidden": its name and existence are not theirs to learn.
 /// </summary>
 public static class WorkflowAccess

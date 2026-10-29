@@ -32,7 +32,7 @@ public sealed class QuotasModule : IModule
         services.AddScoped<QuotaStore>();
         services.AddScoped<QuotaLedger>();
         services.AddScoped<OrgReader>();
-        services.AddSingleton<QuotaInFlight>();
+        services.AddSingleton(sp => new QuotaInFlight(sp.GetRequiredService<TimeProvider>(), QuotaInFlight.ExpiryFor(configuration)));
         // Not TryAdd: this replaces Chat's unlimited default whichever module registers first.
         services.AddScoped<IChatQuota, DbChatQuota>();
     }

@@ -389,18 +389,15 @@
                             }
                             @if (locked)
                             {
-                                <p class="lock-note" data-locked>Calls a cloud provider's API. Cloud tools are a paid feature that is not turned on; the owner turns it on (the licence Skanyxx:Licence:CloudTools, then Settings → Features). Tools already ticked stay in the form, so saving says what to remove instead of dropping them.</p>
+                                <p class="lock-note" data-locked>Calls a cloud provider's API. Cloud tools are a paid feature that is not turned on; the owner turns it on (the licence Skanyxx:Licence:CloudTools, then Settings → Features). Tools the agent already has stay ticked and keep working; you can untick them, not add more.</p>
                             }
                             <div class="checks">
                                 @foreach (var tool in server.Tools)
                                 {
                                     var value = $"{server.Server}/{tool}";
-                                    <label class="check"><input type="checkbox" name="Tools" value="@value" checked="@Model.Ticked(Model.Tools, value)" disabled="@locked" /> @tool</label>
-                                    @* A disabled checkbox is never posted: a ticked locked tool rides along hidden, so the save refuses it in words instead of removing it silently. *@
-                                    @if (locked && Model.Ticked(Model.Tools, value))
-                                    {
-                                        <input type="hidden" name="Tools" value="@value" data-locked-kept />
-                                    }
+                                    var ticked = Model.Ticked(Model.Tools, value);
+                                    @* Locked: an unticked tool cannot be added, a ticked one can still be unticked (D388); kept as main has it, the save allows it. *@
+                                    <label class="check"><input type="checkbox" name="Tools" value="@value" checked="@ticked" disabled="@(locked && !ticked)" data-locked-kept="@(locked && ticked ? "" : null)" /> @tool</label>
                                 }
                             </div>
                         </div>

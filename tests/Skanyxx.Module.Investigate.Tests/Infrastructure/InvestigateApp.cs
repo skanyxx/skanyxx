@@ -29,13 +29,15 @@ public sealed class InvestigateApp : IAsyncDisposable
     public const string Builder = "bea";
     public const string OtherBuilder = "ben";
     public const string Employee = "eli";
+    public const string OtherSupervisor = "sue";
 
     public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    private static readonly Dictionary<string, string> RolesOf = new()
+    public static readonly Dictionary<string, string> RolesOf = new()
     {
         [Owner] = SkanyxxRoles.Owner, [Supervisor] = SkanyxxRoles.Supervisor, [Builder] = SkanyxxRoles.Builder,
-        [OtherBuilder] = SkanyxxRoles.Builder, [Employee] = SkanyxxRoles.Employee
+        [OtherBuilder] = SkanyxxRoles.Builder, [Employee] = SkanyxxRoles.Employee,
+        [OtherSupervisor] = SkanyxxRoles.Supervisor
     };
 
     private readonly WebApplication _app;
@@ -90,6 +92,7 @@ public sealed class InvestigateApp : IAsyncDisposable
         builder.Services.AddSingleton<IOrgMembership>(org);
         builder.Services.AddSingleton<IRequestHandler<ListTeamsQuery, Outcome<IReadOnlyList<TeamDto>>>>(org);
         builder.Services.AddSingleton<IRequestHandler<PersonTeamsQuery, Outcome<IReadOnlyList<TeamDto>>>>(org);
+        builder.Services.AddSingleton<IRequestHandler<ListPeopleQuery, Outcome<IReadOnlyList<PersonDto>>>>(org);
         builder.Services.AddSingleton<IRequestHandler<RecordAuditCommand>>(audit);
         builder.Services.AddSingleton<ICardExtractor>(cards);
         builder.Services.AddSingleton<IAgentMemoryAccess>(memory);

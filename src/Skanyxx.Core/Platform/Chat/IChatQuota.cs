@@ -14,5 +14,12 @@ public interface IChatQuota
     /// </summary>
     Task<ChatQuotaAdmission> AdmitAsync(string userId, string agentRef, CancellationToken ct);
 
+    /// <summary>
+    /// Why <paramref name="userId"/> may not start more work now (over a limit), or null; holds no in-flight place (D387).
+    /// For work whose turns come later, a ticket run starting or resuming after its gate: a chat answer on its way must
+    /// not refuse it.
+    /// </summary>
+    Task<string?> RefusalAsync(string userId, CancellationToken ct);
+
     Task RecordAsync(ChatQuotaUsage usage, CancellationToken ct);
 }

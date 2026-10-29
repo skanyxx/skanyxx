@@ -15,6 +15,7 @@ internal sealed class PreviewChatEndpoint(IMediator mediator) : Endpoint<Preview
     {
         Post("api/studio/proposals/{number}/chat");
         Options(b => b.WithMetadata(new DisableCorsAttribute(), new RequestSizeLimitAttribute(64 * 1024)));
+        Roles(StudioRoles.People);
     }
 
     public override async Task HandleAsync(PreviewChatRequest req, CancellationToken ct) =>

@@ -9,13 +9,18 @@ namespace Skanyxx.Core.Platform.Settings;
 /// </summary>
 public sealed class InstallationSettingsProvider : ConfigurationProvider
 {
-    /// <summary>Replaces the saved values (setting key → value). Unknown keys are ignored.</summary>
+    /// <summary>
+    /// Replaces the saved values (setting key → value). Unknown keys are ignored. A number is held to its row's range
+    /// (D387): a value saved before a floor existed (an audit history under 90 days) applies as the floor, not as saved.
+    /// </summary>
     public void Apply(IReadOnlyDictionary<string, string> saved)
     {
         var data = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         foreach (var (key, value) in saved)
-            if (InstallationSettings.Find(key)?.ConfigKey is { } configKey)
-                data[configKey] = value;
+            if (InstallationSettings.Find(key) is { ConfigKey: { } configKey } setting)
+                data[configKey] = setting.Kind == SettingKind.Number && int.TryParse(value, out var n)
+                    ? Math.Clamp(n, setting.Min, setting.Max).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    : value;
 
         var current = Data;
         if (current.Count == data.Count && data.All(d => current.TryGetValue(d.Key, out var v) && v == d.Value))

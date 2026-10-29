@@ -76,6 +76,27 @@ public sealed partial class KAgentStageClient(HttpClient http, IOptions<TicketsO
         }
     }
 
+    public async Task<string> ModelRefAsync(StageAgent agent, CancellationToken ct)
+    {
+        try
+        {
+            using var response = await http.GetAsync($"api/agents/{Uri.EscapeDataString(agent.Namespace)}/{Uri.EscapeDataString(agent.Name)}", ct);
+            if (!response.IsSuccessStatusCode)
+                return ChatQuotaUsage.ModelRef(agent.Namespace, null);
+            var spec = (await response.Content.ReadFromJsonAsync<JsonNode>(ct))?["data"]?["agent"]?["spec"];
+            // kagent: a declarative agent that names no ModelConfig runs on default-model-config, in its own namespace.
+            var model = spec?["type"]?.GetValue<string>() is null or "Declarative"
+                ? spec?["declarative"]?["modelConfig"]?.GetValue<string>() is { Length: > 0 } named ? named : "default-model-config"
+                : null;
+            return ChatQuotaUsage.ModelRef(agent.Namespace, spec is null ? null : model);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or FormatException
+                                       || ex is TaskCanceledException && !ct.IsCancellationRequested)
+        {
+            return ChatQuotaUsage.ModelRef(agent.Namespace, null);
+        }
+    }
+
     private string Answer(JsonNode body)
     {
         if (body["error"] is { } error)

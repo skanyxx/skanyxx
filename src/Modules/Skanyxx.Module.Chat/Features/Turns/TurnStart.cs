@@ -17,6 +17,9 @@ internal sealed record TurnStart(
 {
     private int _recorded;
 
+    /// <summary>The A2A message id a blocking turn sends, so a cancel stops this turn's task and no other (D388).</summary>
+    public string MessageId { get; } = Guid.NewGuid().ToString();
+
     /// <summary>True the first time only: a turn's usage is recorded once, whichever path reaches it first.</summary>
     public bool FirstRecord() => Interlocked.Exchange(ref _recorded, 1) == 0;
 }

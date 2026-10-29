@@ -16,10 +16,17 @@ public sealed class ScriptedAgents : IInvestigationAgents, IInvestigationAgentCl
 
     public List<AgentChoice> Agents { get; } =
     [
-        new(Researcher, "kagent", "researcher", "Looks things up"),
-        new(Analyst, "kagent", "analyst", "Reads numbers"),
-        new(Writer, "team-a", "writer", "Writes the summary"),
+        ReadOnly(Researcher, "Looks things up"),
+        ReadOnly(Analyst, "Reads numbers"),
+        ReadOnly(Writer, "Writes the summary"),
     ];
+
+    /// <summary>A declarative agent that names the given tool servers (none by default) and calls no other agent.</summary>
+    public static AgentChoice ReadOnly(string agentRef, string description = "", params string[] toolServers)
+    {
+        var (ns, name) = (agentRef.Split('/')[0], agentRef.Split('/')[1]);
+        return new AgentChoice(agentRef, ns, name, description, true, toolServers, false, "default-model-config");
+    }
 
     public bool Down { get; set; }
 

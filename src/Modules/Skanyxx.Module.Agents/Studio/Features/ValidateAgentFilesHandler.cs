@@ -51,7 +51,7 @@ internal sealed class ValidateAgentFilesHandler(
         else
             notes.Add("The studio has no agent repo configured: plugin servers were not considered.");
 
-        List<string> problems = [.. DraftRules.Check(shape, o, pluginServers, ownServers), .. draftProblems.Licensing(shape)];
+        List<string> problems = [.. DraftRules.Check(shape, o, pluginServers, ownServers), .. draftProblems.Licensing(shape, await draftProblems.MainAsync(shape, pluginServers, ct))];
         return Outcome<AgentFilesCheck>.Ok(new AgentFilesCheck(problems.Count == 0, problems, notes));
     }
 }
