@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Studio CI/CD end to end (owner decision 2026-10-28): template → agent repo → pull request → CI checks → supervisor
-# merge → Argo CD (or, with --argo off, the reconciler) → kagent → "Deployed" on /Studio; then the agent is removed again.
+# merge → the reconciler → kagent, reported by Argo CD (D546; --argo off: by kagent) → "Deployed" on /Studio; then the
+# agent is removed again.
 #
 #   scripts/e2e/studio-cicd.sh [--cluster skx-day0 | --context <ctx>] [--ci runner|emulate|off] [--argo on|off]
 #

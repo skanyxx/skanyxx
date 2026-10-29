@@ -1711,7 +1711,7 @@ a 401 whatever it names; and a sandbox token is a 401 on every other port.
 
 Requirements §5 as repeatable runs on a throwaway cluster (D542): `scripts/day0` (install the umbrella on kind
 `skx-day0` or an explicit `--context`, then smoke it), `scripts/day1` (git, CI runner, Argo CD, model providers),
-`scripts/day2` (people, knowledge base, an agent from a template through PR → CI → merge → Argo CD → kagent, chat and
+`scripts/day2` (people, knowledge base, an agent from a template through PR → CI → merge → kagent, reported by Argo CD, chat and
 history, RBAC, cleanup). `scripts/e2e/studio-cicd.sh` runs the Studio CI/CD path alone; `scripts/e2e/run-all.sh --down`
 runs everything and removes it again. Each folder has a README; state and generated credentials stay in
 `~/.config/skanyxx-e2e/<target>` (0600), never printed.

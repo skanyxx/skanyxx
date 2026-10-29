@@ -114,7 +114,7 @@ GET api/studio/templates (builder) → POST api/studio/proposals → skanyxx-age
 | Argo read-only account | `p, skanyxx, applications, get, skanyxx-agents/skanyxx-agents, allow` in the AppProject `skanyxx-agents` (kagent Agents in one namespace from this repo only); its token is `Studio:Argo:Token` |
 | Who deploys | the reconciler on merge, the only writer; Argo is the deploy record (diff against main, drift, health), never applies (D546) |
 
-Not built: a Helm chart per agent in the repo (the repo holds kagent Agent YAML, which is what both the reconciler and
-Argo apply), Argo sync triggering from Skanyxx (it only reads), removing an agent from the UI (D115; the e2e cleanup
+Not built: a Helm chart per agent in the repo (the repo holds kagent Agent YAML: the reconciler applies it, Argo compares
+it), Argo applying (D546: it only reports; an owner question), removing an agent from the UI (D115; the e2e cleanup
 removes the folder by a pull request in git and the owner confirms the pass). Studio agent edits on the Agents page
 stay read-only (open owner question: block vs write back as a PR).

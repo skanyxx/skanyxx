@@ -11,6 +11,9 @@
 # Also needed (scripts/day1/day1.sh does all of it): a repository Secret with a read-only git token, a read-only Argo
 # account for Skanyxx (`p, skanyxx, applications, get, skanyxx-agents/skanyxx-agents, allow`) and a health check for
 # kagent.dev/Agent in argocd-cm (argocd-agent-health.lua next to this file), without which Argo never says Healthy.
+# The tracking id the reconciler sets assumes Argo's default annotation tracking (no installationID) and this
+# Application in Argo's own namespace. To remove the Application, delete it without cascade: the policy refuses Argo's
+# deletes of Agents, so a cascading delete waits on its finalizer.
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:

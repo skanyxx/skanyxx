@@ -7,7 +7,7 @@
 #
 # run: people (supervisor, builder, employee) → company cards (the knowledge base) → the builder's agent from the
 # "support" template as a pull request (instructions, $SKILL_REF, a company search grant) → CI checks → supervisor
-# merge → Argo CD / reconciler → kagent → "Deployed" on /Studio → the employee chats (answers only the cards hold) and
+# merge → reconciler → kagent, reported by Argo CD → "Deployed" on /Studio → the employee chats (answers only the cards hold) and
 # finds the chat in their history; RBAC refusals on the way; screenshots with Playwright when PLAYWRIGHT_MODULE is set.
 # Needs day0 and day1 (same --cluster/--context, same --ci/--argo as day1).
 # Env: AGENT (e2e-test-support), SKILL_REF (ghcr.io/agentregistry-dev/skills/brand-guidelines pinned by digest; empty =

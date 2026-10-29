@@ -115,7 +115,7 @@ public sealed class StudioDeliveryMappingTests
     [InlineData("Synced", "Progressing", "Succeeded", DeployState.Syncing)]
     [InlineData("Synced", "Degraded", "Succeeded", DeployState.Failed)]
     [InlineData("OutOfSync", "Missing", "Running", DeployState.Waiting)]
-    [InlineData("OutOfSync", "Healthy", "Failed", DeployState.Failed)]
+    [InlineData("OutOfSync", "Healthy", "Failed", DeployState.Syncing)]
     [InlineData("Synced", "Suspended", "Succeeded", DeployState.Suspended)]
     public void Argo_ResourceStatus_Maps(string sync, string health, string phase, DeployState expected)
     {
@@ -125,11 +125,12 @@ public sealed class StudioDeliveryMappingTests
     }
 
     [Fact]
-    public void Argo_WithoutTheAgentsResource_IsWaiting_UnlessTheSyncFailed()
+    public void Argo_WithoutTheAgentsResource_IsWaiting()
     {
         var app = FakeArgo.Application("other", "Synced", "Healthy");
         Assert.Equal(DeployState.Waiting, ArgoStatusMap.For(app, "helper", "kagent").State);
-        Assert.Equal(DeployState.Failed, ArgoStatusMap.For(FakeArgo.Application("other", "Synced", "Healthy", "Error"), "helper", "kagent").State);
+        // D547: a failed operation is a refused manual Sync (Argo never syncs studio agents), not this agent's failure.
+        Assert.Equal(DeployState.Waiting, ArgoStatusMap.For(FakeArgo.Application("other", "Synced", "Healthy", "Error"), "helper", "kagent").State);
         Assert.Equal(DeployState.Unknown, ArgoStatusMap.For(new JsonObject(), "helper", "kagent").State);
         // Same name in another namespace is not this agent.
         Assert.Equal(DeployState.Waiting, ArgoStatusMap.For(app, "other", "elsewhere").State);

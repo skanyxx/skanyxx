@@ -1,6 +1,6 @@
 // Day 2 (requirements §5): people use what Day 1 connected. A supervisor adds the knowledge base (company cards), a
 // builder makes an agent from a template (instructions, a skill, a company grant) as a pull request, CI checks it,
-// a supervisor merges it, Argo CD (or the reconciler) deploys it to kagent, Studio shows it deployed, an employee
+// a supervisor merges it, the reconciler deploys it to kagent and Argo CD reports it (D546), Studio shows it deployed, an employee
 // chats with it and finds the chat in their history; RBAC refusals on the way. Run by day2.sh (and e2e/studio-cicd.sh).
 //
 // Env: AGENT (e2e-test-support), STAGES (kb,studio,chat,ui; studio-cicd.sh runs "studio"), CI (runner|emulate|off),

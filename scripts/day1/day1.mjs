@@ -1,5 +1,5 @@
 // Day 1: the owner's integrations, verified through Skanyxx: git (the agent repo), CI (the workflow in the repo and
-// its settings), Argo CD (the Application syncing the repo) and model providers (/api/models). Run by day1.sh.
+// its settings), Argo CD (the Application reporting on the repo) and model providers (/api/models). Run by day1.sh.
 import fs from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { BASE, NAMESPACE, call, check, finish, kubectlJson, note, ownerToken, stateFile, until, ensurePerson } from '../e2e/skx.mjs';
@@ -54,7 +54,7 @@ if (CI !== 'off') {
   check('CI: a builder may not install CI (403)', refused.status === 403, `HTTP ${refused.status}`);
 }
 
-// --- Argo CD: the Application syncs the repo (empty agents/ is fine); Skanyxx reads it with its read-only token.
+// --- Argo CD: the Application compares the repo (empty agents/ is fine); Skanyxx reads it with its read-only token.
 if (ARGO === 'on') {
   const app = await until(() => {
     const a = kubectlJson('-n', 'argocd', 'get', 'application', 'skanyxx-agents');
