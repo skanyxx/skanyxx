@@ -311,7 +311,8 @@
             if (loaded) return fail(`The plugins could not be refreshed: ${e.message}`);
             skx.state.error(installed, { title: 'The plugins could not be loaded', detail: e.message, retry: load });
             document.getElementById('open-table').hidden = true;
-            skx.state.error(openState, { title: 'The open proposals could not be loaded', retry: load });
+            // One alert per failure: Installed carries it and its retry; this section only says it is not loaded.
+            skx.state.empty(openState, { icon: 'i-alert-circle', title: 'Not loaded', body: 'The plugin list above could not be read; Try again there loads both.' });
         }
     }
 

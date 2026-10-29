@@ -6,7 +6,7 @@
 <page-header description="Departments contain teams, and people belong to teams. Company memory is shared along these lines: a team's cards, a department's cards.">
     @if (Model.Departments.Count > 0)
     {
-        <button type="button" class="btn btn-secondary" data-dialog-open="new-team"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New team</button>
+        <button type="button" class="btn btn-secondary" data-dialog-open="new-team" data-dialog-set="team-new-dept" data-dialog-value="@Model.Departments[0].Slug"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New team</button>
     }
     <button type="button" class="btn btn-primary" data-dialog-open="new-department"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New department</button>
 </page-header>

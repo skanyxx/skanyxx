@@ -281,8 +281,14 @@
         if (canProposeChanges && a.source === 'studio') actions.appendChild(button('Propose change', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }));
         if (canWrite && a.canDelete) actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name), 'btn btn-danger-ghost btn-sm'));
         c.append(head, el('p', a.description || 'No description.', 'text-secondary clamp'), meta, actions);
-        // A click anywhere else on the card opens it too, as a mouse convenience.
-        c.addEventListener('click', e => { if (!e.target.closest('a, button')) link.click(); });
+        // A click anywhere else on the card opens it too, as a mouse convenience; it waits out a double-click and gives
+        // way to a selection, so selecting a word or the model line to copy it never navigates.
+        let pending = 0;
+        c.addEventListener('click', e => {
+            clearTimeout(pending);
+            if (e.target.closest('a, button') || e.detail > 1) return;
+            pending = setTimeout(() => { if (getSelection().isCollapsed) link.click(); }, 250);
+        });
         return c;
     }
 

@@ -120,6 +120,8 @@
     }
 
     // ---------- Screen-reader announcements ----------
+    // The layout renders the region up front (a region inserted with its first words is often not read).
+    let announcing = 0;
     function announce(text) {
         let region = document.getElementById('skx-announce');
         if (!region) {
@@ -129,8 +131,9 @@
             document.body.append(region);
         }
         region.textContent = '';
-        // A new text node after a tick, so the same words twice are still read.
-        setTimeout(() => { region.textContent = text; }, 50);
+        clearTimeout(announcing);
+        // The words after a tick, so the same words twice are still read.
+        announcing = setTimeout(() => { region.textContent = text; }, 50);
     }
 
     // ---------- States ----------
@@ -138,7 +141,6 @@
         loading(target, { rows = 4 } = {}) {
             const box = el('div', 'skeleton-rows');
             box.setAttribute('role', 'status');
-            box.setAttribute('aria-busy', 'true');
             box.append(el('span', 'visually-hidden', 'Loading…'));
             for (let i = 0; i < rows; i++)
                 box.append(el('span', `skeleton skeleton-line${i % 3 === 2 ? ' medium' : ''}`));
@@ -309,7 +311,8 @@
                 form.requestSubmit(submitter);
                 return;
             }
-            if (form.hasAttribute('data-once') || form.dataset.confirmed === 'true') {
+            // A page script that took the submit over (preventDefault, then fetch) decides itself what may go again.
+            if (!e.defaultPrevented && (form.hasAttribute('data-once') || form.dataset.confirmed === 'true')) {
                 delete form.dataset.confirmed;
                 form.dataset.sent = 'true';
                 (e.submitter || form.querySelector('[type=submit]'))?.setAttribute('aria-busy', 'true');
