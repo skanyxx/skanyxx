@@ -416,8 +416,9 @@ does a dependency whose DLL is missing or fails to load: disable the dependents 
 | `agents` | `memory`, `identity` (the studio writes grants and secrets through memory; the form lists teams) |
 | `memory` | `identity` (team membership through `IOrgMembership`) |
 | `toolservers` | `memory` (the studio's plugin servers, and memory's database for its records; the audit is identity's, which memory needs) |
+| `investigate` | `identity`, `memory` (teams and the audit; memory's database for workflows and runs, and the finding's card) |
 
-Nothing depends on `agents`, `chat`, `runtime`, `tickets`, `toolservers` or `sandboxes`, so each of those can be
+Nothing depends on `agents`, `chat`, `runtime`, `tickets`, `toolservers`, `investigate` or `sandboxes`, so each of those can be
 disabled on its own.
 
 ## Adding a New Module
@@ -515,6 +516,7 @@ Each module exposes REST endpoints under `/api/`:
 | Sandboxes (experimental) | `/api/sandboxes`, `/api/sandboxes/{name}`, `/api/sandboxes/workspaces`, `/api/sandboxes/models` |
 | Runtime | `/api/model` (owner: kagent ModelConfig) |
 | ToolServers | `/api/toolservers` (list and `POST {ns}/{name}/refresh`: owner and supervisor; `POST`, `PUT {ns}/{name}`, `DELETE {ns}/{name}[?confirmInUse=true]`: the owner's; D313) |
+| Investigate | `/api/investigate/options`, `/workflows` (+ `{id}`, `{id}/duplicate`), `/runs` (+ `{id}`, `{id}/cancel`, `{id}/rerun`, `{id}/report.json`, `{id}/report.pdf`): owner, supervisor and builder only (D340, D341) |
 
 Health check: `GET /health` (anonymous; overall status plus each check's name and status, e.g.
 `identity-postgres: Healthy`; no exception text). kagent's reachability is not part of it (kagent down must not take
@@ -1345,6 +1347,23 @@ dotnet test tests/Skanyxx.Module.Tickets.Tests     # needs Docker; kagent is fak
   model-backed `acceptance_criteria` skill, the SSE progress stream, the `/stage-kinds` and `/skills` listings,
   and per-agent provider/model overrides (the model is the kagent
   agent's `ModelConfig`, so dataset rows name the agent, not the model).
+
+## Investigate
+
+`/Investigate` (owner, supervisors, builders; D340–D346): a **workflow** is a tree of steps. An agent step is one A2A
+`message/send` to a merged kagent agent (the ones Chat offers) with a prompt that may use `{{input}}` (what the run
+starts with) and `{{steps.<id>}}` (an earlier step's answer); a group runs its steps one after another or at the same
+time, nested up to `Investigate:MaxDepth` (4) levels and `Investigate:MaxSteps` (40) steps.
+
+- A run copies the workflow, queues, and a background worker executes it (up to `Investigate:MaxConcurrentRuns` at
+  once per replica; each run is claimed by exactly one replica). Each step has `Investigate:StepTimeoutSeconds` (300);
+  the first failed or timed-out step fails the run with a readable reason and stops the rest; cancel works from any
+  replica within `Investigate:WatchMilliseconds`.
+- Reports: `GET /api/investigate/runs/{id}/report.json` (everything) and `report.pdf` (a plain PDF written in-process,
+  D345). A succeeded run leaves a memory card `investigation-<run>` in the starter's personal scope (D343).
+- Access (D341): the owner and supervisors see and edit everything; a builder sees their own workflows and those shared
+  with one of their teams, edits and deletes only their own, and sees only their own runs. Employees get 403.
+- The identity audit records `investigate.*` rows with ids, names and states only, never prompts, inputs or answers (D344).
 
 ## Sandboxes on Google AX (Experimental)
 

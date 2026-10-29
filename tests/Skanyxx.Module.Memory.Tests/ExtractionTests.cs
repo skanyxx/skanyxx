@@ -142,6 +142,26 @@ public sealed class ExtractionTests(PostgresFixture postgres) : MemoryTestBase(p
     }
 
     [Fact]
+    public async Task AnInvestigation_IsACardInItsStartersPersonalScope_PointingBackAtTheRun_WithSecretsRedacted()
+    {
+        var run = new InvestigationFinished(Guid.NewGuid(), "ana", "Checkout latency",
+            "Why is checkout slow since SDB-58? token sk-live-abcdefghijklmnop1234567890", "The new fraud check adds 2 s per order.");
+
+        var card = await App.InvestigationAsync(run);
+
+        Assert.NotNull(card);
+        Assert.Equal(("personal:ana", $"investigation-{run.RunId:N}"), (card.Scope, card.Key));
+        await using var db = Postgres.CreateDbContext();
+        var stored = await db.Cards.SingleAsync(TestContext.Current.CancellationToken);
+        Assert.Equal(CardOrigin.Run, stored.Origin);
+        Assert.Equal($"investigation:{run.RunId}", stored.Source);
+        Assert.StartsWith("Investigation Checkout latency: Why is checkout slow", stored.What);
+        Assert.Contains("fraud check", stored.Why);
+        Assert.Equal(["SDB-58"], stored.Tickets);
+        Assert.DoesNotContain("sk-live-abcdefghijklmnop1234567890", stored.What);
+    }
+
+    [Fact]
     public async Task ARefusedExtraction_AtTheQuota_DeletesNothing()
     {
         // C-2: the second session is refused by the write limiter; the first session's card must survive it.

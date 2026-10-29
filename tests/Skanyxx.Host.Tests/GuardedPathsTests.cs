@@ -40,6 +40,7 @@ public sealed class GuardedPathsTests
     [InlineData("/api/me/preferences", true)]
     [InlineData("/api/setup/guides/models", true)]
     [InlineData("/api/memory/cards", true)]
+    [InlineData("/api/investigate/runs", true)]
     [InlineData("/api/meta", false)]
     [InlineData("/health", false)]
     public void RateLimitedAndOriginGuarded(string path, bool guarded) => Assert.Equal(guarded, GuardedPaths.Contains(path));

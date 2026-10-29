@@ -1,0 +1,151 @@
+@page
+@model Skanyxx.Host.Pages.InvestigateModel
+@{
+    ViewData["Title"] = "Investigate";
+}
+<page-header description="Look into a question with a workflow of agents: steps run one after another or at the same time, and the finding becomes a report and a memory card.">
+    <button class="btn btn-primary" id="invNew" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New workflow</button>
+</page-header>
+@await Component.InvokeAsync("SetupGuide", new { id = "investigate" })
+
+<div id="investigate" data-supervisor="@(Model.IsSupervisor ? "true" : "false")">
+    <div class="tabs" role="tablist" aria-label="Investigate">
+        <button type="button" class="tab" role="tab" id="invTabWorkflows" aria-controls="invPanelWorkflows" aria-selected="true">Workflows</button>
+        <button type="button" class="tab" role="tab" id="invTabRuns" aria-controls="invPanelRuns" aria-selected="false" tabindex="-1">History</button>
+    </div>
+
+    <section id="invPanelWorkflows" role="tabpanel" aria-labelledby="invTabWorkflows">
+        <div class="toolbar" role="search">
+            <div class="search">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg>
+                <input id="invSearch" type="search" autocomplete="off" placeholder="Filter workflows by name or agent" aria-label="Filter workflows" />
+            </div>
+            <span class="spacer"></span>
+            <span id="invCount" class="text-muted text-sm" role="status" aria-live="polite"></span>
+        </div>
+        <div id="invAgentsDown"></div>
+        <div id="invWorkflows" class="card-grid" aria-label="Workflows"></div>
+    </section>
+
+    <section id="invPanelRuns" role="tabpanel" aria-labelledby="invTabRuns" hidden>
+        <div class="toolbar inv-filters">
+            <div class="field">
+                <label for="invFilterWorkflow">Workflow</label>
+                <select id="invFilterWorkflow"><option value="">All workflows</option></select>
+            </div>
+            <div class="field">
+                <label for="invFilterState">Status</label>
+                <select id="invFilterState">
+                    <option value="">Any status</option>
+                    <option value="queued">Queued</option>
+                    <option value="running">Running</option>
+                    <option value="succeeded">Succeeded</option>
+                    <option value="failed">Failed</option>
+                    <option value="cancelled">Cancelled</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="invFilterText">Name contains</label>
+                <input id="invFilterText" type="search" autocomplete="off" maxlength="120" />
+            </div>
+            @if (Model.IsSupervisor)
+            {
+                <label class="check inv-mine"><input type="checkbox" id="invFilterMine" /> Only mine</label>
+            }
+            <span class="spacer"></span>
+            <button class="btn btn-secondary btn-sm" id="invRunsRefresh" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>Refresh</button>
+        </div>
+        <div id="invRuns" class="table-container" aria-live="polite"></div>
+    </section>
+</div>
+
+<details class="details-admin mt-3">
+    <summary>Details for administrators</summary>
+    <p>Each agent step is one kagent turn (A2A <code>message/send</code>) to a merged agent, the same agents Chat offers. Runs execute in the
+        background, one replica at a time each, with a timeout per step (Investigate:StepTimeoutSeconds). A builder sees their own workflows
+        and those shared with their teams, and only their own runs; the owner and supervisors see everything. The audit records names, ids
+        and states, never prompts, inputs or answers.</p>
+</details>
+
+<dialog class="dialog dialog-side inv-wide" id="invEditor" aria-labelledby="invEditorTitle">
+    <form id="invEditorForm" class="dialog-form" novalidate>
+        <div class="dialog-header">
+            <h2 class="dialog-title" id="invEditorTitle">New workflow</h2>
+        </div>
+        <div class="dialog-body">
+            <div class="alert alert-error" id="invEditorErrors" role="alert" hidden></div>
+            <div class="field">
+                <label for="invName">Name</label>
+                <input type="text" id="invName" required maxlength="120" autocomplete="off" placeholder="Why did checkout slow down?" />
+            </div>
+            <div class="field">
+                <label for="invDescription">Description <span class="field-optional">(optional)</span></label>
+                <textarea id="invDescription" rows="2" maxlength="1000" placeholder="What this workflow looks into and when to use it"></textarea>
+            </div>
+            <div class="field">
+                <label for="invShare">Share with a team <span class="field-optional">(optional)</span></label>
+                <select id="invShare" aria-describedby="invShareHint"><option value="">Not shared: only you (and supervisors)</option></select>
+                <p class="field-hint" id="invShareHint">Team members can run and copy it; only you and supervisors can change it.</p>
+            </div>
+            <fieldset class="form-section">
+                <legend>Steps</legend>
+                <p class="form-section-hint" id="invStepsHint">Top-level steps run one after another. A group runs its own steps one after another or at the same time.
+                    In a prompt, <code>{{input}}</code> is what the investigation starts with and <code>{{steps.s1}}</code> is the answer of step s1.</p>
+                <ol class="inv-tree" id="invTree" aria-describedby="invStepsHint"></ol>
+                <div class="form-actions">
+                    <button class="btn btn-secondary btn-sm" id="invAddStep" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Add agent step</button>
+                    <button class="btn btn-secondary btn-sm" id="invAddGroup" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Add group</button>
+                    <span class="text-muted text-sm" id="invStepCount"></span>
+                </div>
+            </fieldset>
+        </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" id="invEditorCancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="invEditorSave">Save</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="dialog" id="invStart" aria-labelledby="invStartTitle">
+    <form id="invStartForm" class="dialog-form" novalidate>
+        <div class="dialog-header"><h2 class="dialog-title" id="invStartTitle">Start an investigation</h2></div>
+        <div class="dialog-body">
+            <div class="alert alert-error" id="invStartErrors" role="alert" hidden></div>
+            <div class="field">
+                <label for="invInput">What should it look into?</label>
+                <textarea id="invInput" rows="6" required aria-describedby="invInputHint"></textarea>
+                <p class="field-hint" id="invInputHint">Every step can read this as <code>{{input}}</code>. Paste text only; never a password or key.</p>
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" id="invStartCancel">Cancel</button>
+            <button type="submit" class="btn btn-primary" id="invStartGo">Start</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="dialog dialog-side inv-wide" id="invRun" aria-labelledby="invRunTitle">
+    <div class="dialog-header">
+        <h2 class="dialog-title" id="invRunTitle">Investigation</h2>
+        <div class="badges mt-1" id="invRunBadges"></div>
+    </div>
+    <div class="dialog-body">
+        <div id="invRunFailure"></div>
+        <dl class="kv" id="invRunMeta"></dl>
+        <div class="form-actions mt-2" id="invRunActions"></div>
+        <h3 class="section-title mt-3">Input</h3>
+        <div class="text-block subcard" id="invRunInput"></div>
+        <h3 class="section-title mt-3">Steps</h3>
+        <ol class="inv-tree inv-progress" id="invRunSteps" aria-live="polite"></ol>
+    </div>
+    <div class="dialog-footer">
+        <button type="button" class="btn btn-secondary" id="invRunClose">Close</button>
+    </div>
+</dialog>
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/investigate.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/investigate.js" asp-append-version="true"></script>
+}

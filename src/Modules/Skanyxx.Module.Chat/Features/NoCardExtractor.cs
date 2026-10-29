@@ -8,4 +8,6 @@ internal sealed class NoCardExtractor : ICardExtractor
     public Task<MemoryCardRef?> ChatTurnAsync(ChatTurnDigest turn, CancellationToken ct) => Task.FromResult<MemoryCardRef?>(null);
 
     public Task<MemoryCardRef?> TicketRunAsync(TicketRunFinished run, CancellationToken ct) => Task.FromResult<MemoryCardRef?>(null);
+
+    public Task<MemoryCardRef?> InvestigationAsync(InvestigationFinished run, CancellationToken ct) => Task.FromResult<MemoryCardRef?>(null);
 }

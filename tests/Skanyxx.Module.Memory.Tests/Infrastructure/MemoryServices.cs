@@ -3,7 +3,7 @@ using Skanyxx.Core.Platform.Memory;
 
 namespace Skanyxx.Module.Memory.Tests.Infrastructure;
 
-/// <summary>The Core interfaces other modules call (Chat, chatcontext, Tickets), each in its own scope like a request.</summary>
+/// <summary>The Core interfaces other modules call (Chat, chatcontext, Tickets, Investigate), each in its own scope like a request.</summary>
 public static class MemoryServices
 {
     public static async Task<MemoryCardRef?> ChatTurnAsync(this MemoryApp app, ChatTurnDigest turn)
@@ -16,6 +16,12 @@ public static class MemoryServices
     {
         await using var scope = app.Services.CreateAsyncScope();
         return await scope.ServiceProvider.GetRequiredService<ICardExtractor>().TicketRunAsync(run, CancellationToken.None);
+    }
+
+    public static async Task<MemoryCardRef?> InvestigationAsync(this MemoryApp app, InvestigationFinished run)
+    {
+        await using var scope = app.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<ICardExtractor>().InvestigationAsync(run, CancellationToken.None);
     }
 
     public static async Task<MemoryContext> RelatedAsync(this MemoryApp app, string userId, string agentId, string text, params string[] tickets)

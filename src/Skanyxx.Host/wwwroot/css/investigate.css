@@ -1,0 +1,54 @@
+/*
+ * Investigate: the step tree (editor and live progress). Colours are tokens only, so every theme in tokens.css applies.
+ */
+.inv-wide { width: min(860px, 100vw); }
+
+.inv-tree {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+}
+
+.inv-tree .inv-tree {
+  margin-top: var(--space-2);
+  padding-inline-start: var(--space-4);
+  border-inline-start: 2px solid var(--border);
+}
+
+.inv-node-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.inv-node-head .inv-title { flex: 1 1 14rem; min-width: 0; }
+
+.inv-ref {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--text-3);
+}
+
+.inv-node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.inv-node textarea { width: 100%; min-height: 5rem; font-family: var(--font-mono); font-size: var(--text-sm); }
+
+.inv-filters { flex-wrap: wrap; align-items: flex-end; gap: var(--space-3); }
+.inv-filters .field { margin: 0; min-width: 10rem; }
+.inv-mine { padding-bottom: var(--space-2); }
+
+.inv-progress .inv-output { margin-top: var(--space-2); }
+.inv-step-meta { color: var(--text-3); font-size: var(--text-xs); }
+
+@media (max-width: 640px) {
+  .inv-tree .inv-tree { padding-inline-start: var(--space-2); }
+  .inv-filters .field { min-width: 100%; }
+}

@@ -16,7 +16,7 @@ namespace Skanyxx.Module.Memory.Sessions;
 /// Finished work → one card in its owner's personal scope, written as that person through the one upsert path (so the
 /// owner rule, versions, dedupe, rate limits and history all hold). A chat session is <c>chat-&lt;session&gt;</c>: born
 /// on its first turn with the question as its <c>what</c>, its <c>why</c> following the latest answer, its tickets
-/// accumulating. A run is <c>run-&lt;ticket&gt;-&lt;run&gt;</c>. A full personal scope makes room by dropping its oldest
+/// accumulating. A run is <c>run-&lt;ticket&gt;-&lt;run&gt;</c>, an investigation <c>investigation-&lt;run&gt;</c>. A full personal scope makes room by dropping its oldest
 /// extracted card, never one a person wrote — in the same transaction as the new card (<see cref="ScopeCapacity"/>). Never throws for a memory failure: the work it records is already done.
 /// </summary>
 internal sealed partial class CardExtractor(
@@ -74,6 +74,26 @@ internal sealed partial class CardExtractor(
                 Tickets: Merge([run.TicketKey], run.RelatedTickets.Where(CardTickets.IsValid), CardLimits.Tickets),
                 Links: run.TicketUrl is { } url && CardLinks.IsValid(url) && !SecretText.HasCredential(url) ? [url] : [],
                 Keywords: Merge(null, labels.Concat(SessionText.Keywords(title)), CardLimits.Keywords),
+                Origin: CardOrigin.Run), ct);
+        });
+    }
+
+    public Task<MemoryCardRef?> InvestigationAsync(InvestigationFinished run, CancellationToken ct)
+    {
+        if (!_options.Extraction.Runs || !Identifier.IsValid(run.OwnerUserId))
+            return Task.FromResult<MemoryCardRef?>(null);
+        return GuardAsync(run.OwnerUserId, async () =>
+        {
+            var scope = Scope.Personal(run.OwnerUserId).ToString();
+            var key = SessionText.Slug($"investigation-{run.RunId:N}");
+            var (name, input, finding) = (SecretText.Redact(run.WorkflowName), SecretText.Redact(run.Input), SecretText.Redact(run.Finding));
+            return await WriteAsync(scope, key, existing => new UpsertCardCommand(
+                new MemoryCaller(run.OwnerUserId, null), scope, key, existing?.Version ?? 0, "fact",
+                SessionText.Line($"Investigation {name}: {input}", CardLimits.What),
+                Why(finding, "No finding."),
+                Source: $"investigation:{run.RunId}",
+                Tickets: CardTickets.FindIn($"{input}\n{finding}", CardLimits.Tickets),
+                Keywords: Merge(null, SessionText.Keywords(name).Concat(SessionText.Keywords(input)), CardLimits.Keywords),
                 Origin: CardOrigin.Run), ct);
         });
     }

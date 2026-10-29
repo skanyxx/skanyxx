@@ -59,6 +59,7 @@ public sealed class AuthTests(PostgresFixture fixture)
     [InlineData("/Agents", "/Login?ReturnUrl=%2FAgents")]
     [InlineData("/Dashboard", "/Login?ReturnUrl=%2FDashboard")]
     [InlineData("/Analytics", "/Login?ReturnUrl=%2FAnalytics")]
+    [InlineData("/Investigate", "/Login?ReturnUrl=%2FInvestigate")]
     [InlineData("/", "/Login?ReturnUrl=%2F")]
     public async Task Anonymous_Page_RedirectsToLogin(string path, string location)
     {
