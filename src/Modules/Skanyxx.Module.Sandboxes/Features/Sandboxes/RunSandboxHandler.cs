@@ -19,13 +19,17 @@ namespace Skanyxx.Module.Sandboxes.Features.Sandboxes;
 /// its agent id in its env (a replace re-issues it, so the previous one stops working); a run without one gets none, and
 /// the previous activation's token is revoked first either way — before AX is told, so a failed save fails closed.
 /// Under the sandbox lock, just before AX is told, the caller is checked again against identity (D395): a request let in
-/// before its maker's role was saved away must not start a sandbox the revocation has already swept for.
+/// before its maker's role was saved away must not start a sandbox the revocation has already swept for. The sweep lists AX
+/// without this lock, so a demotion that commits during the AX call is missed by both checks; identity is therefore asked
+/// once more after AX answers, still under the lock, and a maker who lost the role gets the sandbox (and its memory token)
+/// deleted again (D526).
 /// </summary>
 internal sealed class RunSandboxHandler(
     AxGateway ax, KeyedLock locks, MemoryAccess memory, IPersonStanding standing, IOptions<SandboxesOptions> options, ILogger<RunSandboxHandler> logger)
     : IRequestHandler<RunSandboxCommand, Outcome<Sandbox>>
 {
     private static readonly string[] Runners = [SkanyxxRoles.Owner, SkanyxxRoles.Supervisor];
+    private static readonly Outcome<Sandbox> NoLongerRuns = Outcome<Sandbox>.Forbidden("Your account may no longer run sandboxes.");
 
     public Task<Outcome<Sandbox>> Handle(RunSandboxCommand command, CancellationToken ct) =>
         AxErrors.Guard(logger, ct, () => locks.RunAsync(KeyedLock.ForSandbox(command.Name), () => RunAsync(command, ct), ct));
@@ -48,8 +52,8 @@ internal sealed class RunSandboxHandler(
 
     private async Task<Outcome<Sandbox>> UpsertAsync(RunSandboxCommand command, AxTask? existing, string? keptAgentId, CancellationToken ct)
     {
-        if (!(await standing.ActiveRolesAsync(command.UserId!, ct)).Overlaps(Runners))
-            return Outcome<Sandbox>.Forbidden("Your account may no longer run sandboxes.");
+        if (!await MayRunAsync(command.UserId!, ct))
+            return NoLongerRuns;
         var agentId = keptAgentId ?? SandboxEnv.NewAgentId(command.Name);
         (string Url, string Token)? access = null;
         if (memory.On)
@@ -70,8 +74,23 @@ internal sealed class RunSandboxHandler(
         var saved = await ax.UpdateSandboxAsync(AxMapper.ToAxTask(command.Name, command.UserId!, agentId,
             command.Image, command.Command, command.Env, command.Workspaces, ResourcePolicy.Apply(command.Resources, options.Value),
             existing?.Spec?.Suspend ?? false, access), ct);
+        // Not the caller's token: a client gone now must not leave a demoted maker's sandbox running.
+        if (!await MayRunAsync(command.UserId!, CancellationToken.None))
+            return await UndoAsync(command.Name, agentId);
         var sandbox = AxMapper.ToSandbox(saved);
         return existing is null ? Outcome<Sandbox>.Accepted(sandbox) : Outcome<Sandbox>.Ok(sandbox);
+    }
+
+    private async Task<bool> MayRunAsync(string user, CancellationToken ct) =>
+        (await standing.ActiveRolesAsync(user, ct)).Overlaps(Runners);
+
+    /// <summary>The revocation sweep may have listed AX before this sandbox existed: stop it as the sweep would have.</summary>
+    private async Task<Outcome<Sandbox>> UndoAsync(string name, string agentId)
+    {
+        logger.LogWarning("Sandbox {Sandbox} was started as its maker lost the right to run sandboxes; stopping it.", name);
+        await memory.RevokeAsync(agentId, CancellationToken.None);
+        await ax.DeleteSandboxAsync(name, CancellationToken.None);
+        return NoLongerRuns;
     }
 
     /// <summary>Whether any workspace the run binds carries the <c>skanyxx-memory</c> MCP entry (a supervisor's attachMemory).</summary>

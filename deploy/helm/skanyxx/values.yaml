@@ -73,7 +73,8 @@ skanyxx:
   # limits, the request log and the audit key on the person, not on the ingress pod every request comes from (empty:
   # one shared window per ingress pod). Set it to the ingress controller pod IPs only (a /32 per pod, or a node pool
   # range that holds nothing else), never the pod network: any pod inside the range could then forge the header.
-  # D397: no range broader than /16 (IPv4) or /48 (IPv6) is accepted (schema and startup), and ingress-nginx's
+  # D525: no range broader than /24 (IPv4) or /112 (IPv6) is accepted, an IPv4-mapped one (::ffff:a.b.c.d) as IPv4
+  # (schema, checks.yaml and startup), and ingress-nginx's
   # use-forwarded-headers must stay false, or the hop Skanyxx reads is the one the client wrote. extraEnvFrom may not use
   # a prefix that sets Skanyxx__TrustedProxies__*; keys inside a ConfigMap or Secret are not seen at render time.
   trustedProxies: []

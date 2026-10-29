@@ -380,6 +380,21 @@ public sealed class SecretScanTests
         Assert.Contains("Sum'mer2024abc", line); // not named like a credential: kept, and not escaped
     }
 
+    /// <summary>Review nit 4 (D524): a credential name blanks its value whatever its JSON kind, not only a scalar.</summary>
+    [Theory]
+    [InlineData("""{"apiKey":["hunter2-long"]}""", "apiKey")]
+    [InlineData("""{"password":{"v":"x9plain"}}""", "password")]
+    [InlineData("""{"data":{"client_secret":[{"inner":"x9plain"}],"n":1}}""", "client_secret")]
+    [InlineData("""[{"name":"DB_PASSWORD","value":["x9plain"]}]""", "value")]
+    public void RedactJson_BlanksAnArrayOrObjectUnderACredentialName(string json, string key)
+    {
+        var line = SecretScan.RedactJson(System.Text.Json.Nodes.JsonNode.Parse(json));
+
+        Assert.DoesNotContain("hunter2", line);
+        Assert.DoesNotContain("x9plain", line);
+        Assert.Contains($"\"{key}\":\"{SecretScan.Redacted}\"", line);
+    }
+
     /// <summary>
     /// CR M1: 20,000 word characters timed the old named-value pattern out (1 s, then an exception out of a logging call).
     /// 200 KB of the worst shapes now takes well under a second for both calls.
