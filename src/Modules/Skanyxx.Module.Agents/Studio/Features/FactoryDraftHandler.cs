@@ -4,6 +4,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
 using Skanyxx.Module.Agents.Studio.Reconcile;
@@ -34,7 +35,8 @@ internal sealed class FactoryDraftHandler(
             return Outcome<AgentDraft>.Unavailable(StudioFailure.Unavailable);
         }
 
-        var answer = await chat.SendAsync(options.Value.Namespace, StudioNames.FactoryAgent, command.User.UserId!, command.Request, null, ct);
+        var answer = await chat.SendAsync(options.Value.Namespace, StudioNames.FactoryAgent,
+            ChatQuotaUsage.ModelRef(options.Value.Namespace, options.Value.FactoryModelConfig), command.User.UserId!, command.Request, null, ct);
         if (answer.Value is not { } response)
             return new Outcome<AgentDraft>(answer.Status, Message: answer.Message);
         return Parse(response.Message.Content, options.Value.FactoryModelConfig) is { } draft

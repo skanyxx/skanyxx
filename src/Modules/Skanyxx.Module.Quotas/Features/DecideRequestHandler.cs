@@ -9,7 +9,7 @@ namespace Skanyxx.Module.Quotas.Features;
 
 /// <summary>
 /// The owner decides any request; a supervisor those of their own teams' members (never their own), and approves only
-/// while the person stays within their team and department quotas (D333). Deciding is one conditional update, so a
+/// while the person stays within their cap (D333, D339). Deciding is one conditional update, so a
 /// request is decided once. Audited with the amount, never the reason.
 /// </summary>
 internal sealed class DecideRequestHandler(OrgReader orgs, QuotaLedger ledger, QuotaStore store, IMediator mediator, TimeProvider clock)
@@ -39,17 +39,18 @@ internal sealed class DecideRequestHandler(OrgReader orgs, QuotaLedger ledger, Q
             var limit = book.For(request.UserId, teams, departments).Quota.Limit;
             if (cap is { } c && limit is { } l && l + request.Amount > c)
                 return Outcome<QuotaRequestDto>.Forbidden(string.Create(CultureInfo.InvariantCulture,
-                    $"Approving this would take {org.PersonName(request.UserId)} above their team or department quota of {c:N0} tokens. Only the owner can approve it."));
+                    $"Approving this would give {org.PersonName(request.UserId)} more than {c:N0} tokens a month: their team or department limit, or with none, their personal limit. Only the owner can approve it."));
         }
 
         var status = command.Approve ? RequestStatuses.Approved : RequestStatuses.Denied;
         if (!await store.DecideAsync(request.Id, status, viewer.UserId, now, month, ct))
-            return Outcome<QuotaRequestDto>.Conflict(null, "This request was already decided.", "decided");
+            return Outcome<QuotaRequestDto>.Conflict(QuotaRequestDto.From((await store.RequestAsync(request.Id, CancellationToken.None))!, org),
+                "This request was already decided.", "decided");
         await mediator.Send(new RecordAuditCommand($"quota.request.{status}", viewer.UserId, request.UserId, new
         {
             requestId = request.Id, person = org.PersonName(request.UserId), amount = request.Amount
         }), CancellationToken.None);
         return Outcome<QuotaRequestDto>.Ok(QuotaRequestDto.From(
-            (await store.RequestAsync(request.Id, ct))!, org));
+            (await store.RequestAsync(request.Id, CancellationToken.None))!, org));
     }
 }

@@ -65,7 +65,7 @@
         const q = data.quota;
         const notes = [];
         if (q.limit === null) notes.push(h('span', { text: 'You have no token limit.' }));
-        else notes.push(h('span', { text: `${binding(q)} Resets on ${new Date(data.resetsOn + 'T00:00:00Z').toLocaleDateString(undefined, { day: 'numeric', month: 'long', timeZone: 'UTC' })}.` }));
+        else notes.push(h('span', { text: `${binding(q)} Resets on ${new Date(data.resetsOn + 'T00:00:00Z').toLocaleDateString(undefined, { day: 'numeric', month: 'long', timeZone: 'UTC' })} (UTC).` }));
         if (q.over) notes.push(h('strong', { text: 'You have reached your limit: Chat will not send messages until you get more or the month ends.' }));
         if (q.estimatedTurns > 0)
             notes.push(h('span', { text: `About ${number(q.estimatedTokens)} of these tokens are estimated: kagent did not report usage for ${number(q.estimatedTurns)} of your ${number(q.turns)} turns, so Chat counted characters instead.` }));
@@ -83,7 +83,7 @@
 
         const list = meter.querySelector('[data-quota-requests]');
         if (data.requests.length === 0) {
-            list.replaceChildren(h('p', { class: 'text-muted text-sm', text: 'You have not asked for more tokens.' }));
+            skx.state.empty(list, { title: 'No requests yet', body: q.limit === null ? 'You have no limit to ask more of.' : 'Use "Request more" when you need more tokens this month.' });
             return;
         }
         list.replaceChildren(h('ul', { class: 'list-plain' }, ...data.requests.map(r => h('li', {},
@@ -92,21 +92,29 @@
             h('span', { class: 'table-cell-sub', text: r.reason })))));
     }
 
+    const target = meter => meter.querySelector('[data-quota-body]') ?? meter;
+    let loaded = false;
+
     async function load() {
+        // The first load shows a placeholder; a reload after a turn keeps the last numbers until the new ones arrive.
+        if (!loaded) for (const meter of meters) {
+            meter.hidden = false;
+            skx.state.loading(target(meter), { rows: meter.dataset.quotaMeter === 'compact' ? 1 : 3 });
+        }
         let data;
         try {
             data = await skx.api('GET', '/api/quotas/me');
         } catch (e) {
-            // No quotas module: nothing to show. Anything else is said, never hidden.
+            // No quotas module: nothing to show. Anything else is said, with a way to try again, never hidden.
             for (const meter of meters) {
                 meter.hidden = e.status === 404;
-                if (e.status !== 404) {
-                    const target = meter.querySelector('[data-quota-body]') ?? meter;
-                    target.replaceChildren(h('span', { class: 'text-muted', text: `Your token usage could not be loaded: ${e.message}` }));
-                }
+                if (e.status !== 404)
+                    skx.state.error(target(meter), { title: 'Your token usage could not be loaded', detail: e.message, retry: load });
             }
+            loaded = false;
             return;
         }
+        loaded = true;
         for (const meter of meters) {
             meter.hidden = false;
             if (meter.dataset.quotaMeter === 'compact') compact(meter, data);

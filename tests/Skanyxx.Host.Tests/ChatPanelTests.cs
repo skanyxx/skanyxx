@@ -681,7 +681,8 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
 
         public static volatile bool Refuse;
 
-        public Task<string?> RefusalAsync(string userId, string agentRef, CancellationToken ct) => Task.FromResult(Refuse ? Refusal : null);
+        public Task<ChatQuotaAdmission> AdmitAsync(string userId, string agentRef, CancellationToken ct) =>
+            Task.FromResult(Refuse ? ChatQuotaAdmission.Refused(Refusal) : ChatQuotaAdmission.Admitted());
 
         public Task RecordAsync(ChatQuotaUsage usage, CancellationToken ct) => Task.CompletedTask;
     }

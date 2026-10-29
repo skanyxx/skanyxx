@@ -11,7 +11,7 @@ namespace Skanyxx.Module.Quotas;
 
 /// <summary>
 /// Monthly token quotas per person, team and department (the tightest one binds), what each person used, requests for
-/// more and the owner's per-model prices. Replaces Chat's unlimited <see cref="IChatQuota"/>. Memory's database; the org
+/// more and the owner's per-model prices. Replaces the unlimited <see cref="IChatQuota"/> (Chat, Studio, Tickets). Memory's database; the org
 /// tree from identity.
 /// </summary>
 public sealed class QuotasModule : IModule
@@ -32,6 +32,7 @@ public sealed class QuotasModule : IModule
         services.AddScoped<QuotaStore>();
         services.AddScoped<QuotaLedger>();
         services.AddScoped<OrgReader>();
+        services.AddSingleton<QuotaInFlight>();
         // Not TryAdd: this replaces Chat's unlimited default whichever module registers first.
         services.AddScoped<IChatQuota, DbChatQuota>();
     }

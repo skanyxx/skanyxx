@@ -646,7 +646,11 @@
             if (done) await finish(turn, done, text);
             document.dispatchEvent(new CustomEvent('skx:quota-changed'));
         } catch (e) {
-            if (e.name === 'AbortError') stopped(turn, wasNew, text);
+            if (e.name === 'AbortError') {
+                stopped(turn, wasNew, text);
+                // A stopped turn counts too (its prompt at least): the meter reloads.
+                document.dispatchEvent(new CustomEvent('skx:quota-changed'));
+            }
             else fail('The connection to Skanyxx was lost before the answer finished. Try again.');
         } finally {
             state.streaming = null;

@@ -3,7 +3,9 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Skanyxx.Core.Platform.Chat;
+using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Quotas.Data;
+using Skanyxx.Module.Quotas.Features;
 
 namespace Skanyxx.Host.Tests.Quotas;
 
@@ -168,6 +170,7 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
     [Fact]
     public async Task ARequest_IsApprovedByTheTeamsSupervisor_AddsToTheLimit_AndIsAuditedWithNumbersOnly()
     {
+        Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_owner, "team", "billing", 5000)).StatusCode); // the supervisor's room
         Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_owner, "user", _annId, 200)).StatusCode);
         await ChatAsync(_ann);
         await ChatAsync(_ann);
@@ -188,7 +191,7 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("approved", me.GetProperty("requests")[0].GetProperty("status").GetString());
         Assert.Equal(HttpStatusCode.OK, (await ChatAsync(_ann)).StatusCode);
 
-        var set = Assert.Single((await AuditAsync("quota.limit.set")).EnumerateArray());
+        var set = Assert.Single((await AuditAsync("quota.limit.set")).EnumerateArray(), r => r.GetProperty("details").GetProperty("kind").GetString() == "user");
         Assert.Equal(200, set.GetProperty("details").GetProperty("monthlyTokens").GetInt64());
         var requested = Assert.Single((await AuditAsync("quota.requested")).EnumerateArray());
         Assert.Equal(1000, requested.GetProperty("details").GetProperty("amount").GetInt64());
@@ -376,5 +379,237 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.DoesNotContain("href=\"/Quotas\"", chat);
         var account = await (await ann.GetAsync("/Account")).Content.ReadAsStringAsync(Ct);
         Assert.Contains("data-quota-meter=\"full\"", account);
+    }
+
+    // --- QA round 1 (D339, D380-D384) ---
+
+    private static async Task<HttpResponseMessage> OpenStreamAsync(HttpClient client, CancellationToken ct)
+    {
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/chat/stream")
+        {
+            Content = JsonContent.Create(new { agentNamespace = "kagent", agentName = "helper", message = Question })
+        };
+        return await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+    }
+
+    private static async Task ReadUntilAsync(HttpResponseMessage response, string line, CancellationToken ct)
+    {
+        var reader = new StreamReader(await response.Content.ReadAsStreamAsync(ct));
+        while (await reader.ReadLineAsync(ct) is { } read && read != line) { }
+    }
+
+    private static async Task<bool> UntilAsync(Func<Task<bool>> condition)
+    {
+        for (var i = 0; i < 100; i++)
+        {
+            if (await condition())
+                return true;
+            await Task.Delay(100, Ct);
+        }
+        return false;
+    }
+
+    [Fact]
+    public async Task WithoutATeamOrDepartmentLimit_ASupervisorMayOnlyLowerThePersonalLimit_AndApprovesNothingAboveIt()
+    {
+        Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_owner, "user", _annId, 1000)).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await SetLimitAsync(_sue, "user", _annId, 2000)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SetLimitAsync(_sue, "user", _annId, null)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_sue, "user", _annId, 500)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SetLimitAsync(_sue, "user", _annId, 800)).StatusCode); // the cap is the limit as it stands
+        var id = await RequestAsync(_ann, 100);
+        Assert.Equal(HttpStatusCode.Forbidden, (await _sue.PostAsync($"/api/quotas/requests/{id}/approve", null, Ct)).StatusCode);
+        Assert.Equal(500, (await MeAsync(_ann)).GetProperty("limit").GetInt64());
+        Assert.Equal(HttpStatusCode.OK, (await _owner.PostAsync($"/api/quotas/requests/{id}/approve", null, Ct)).StatusCode);
+        Assert.Equal(600, (await MeAsync(_ann)).GetProperty("limit").GetInt64());
+
+        // Nobody set any limit on eve: she is unlimited, so her supervisor can only give her one.
+        Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_tom, "user", _eveId, 100)).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await SetLimitAsync(_tom, "user", _eveId, null)).StatusCode);
+    }
+
+    [Fact]
+    public async Task AStoppedStreamedTurn_CountsItsPromptOnce()
+    {
+        _kagent.StreamGate = new TaskCompletionSource();
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var response = await OpenStreamAsync(_ann, stop.Token);
+        await ReadUntilAsync(response, "event: session", stop.Token);
+        await stop.CancelAsync();
+        response.Dispose();
+
+        Assert.True(await UntilAsync(async () => (await MeAsync(_ann)).GetProperty("turns").GetInt64() > 0), "the stopped turn was not counted");
+        await Task.Delay(500, Ct);
+        var me = await MeAsync(_ann);
+        Assert.Equal(1, me.GetProperty("turns").GetInt64());
+        Assert.Equal(1, me.GetProperty("estimatedTurns").GetInt64());
+        Assert.True(me.GetProperty("estimatedTokens").GetInt64() >= Question.Length / 4);
+    }
+
+    [Fact]
+    public async Task AFailedStreamedTurn_CountsOnce()
+    {
+        _kagent.StreamFinalState = "failed";
+
+        var response = await _ann.PostAsJsonAsync("/api/chat/stream", new { agentNamespace = "kagent", agentName = "helper", message = Question }, Ct);
+        Assert.Contains("event: error", await response.Content.ReadAsStringAsync(Ct));
+
+        var me = await MeAsync(_ann);
+        Assert.Equal(1, me.GetProperty("turns").GetInt64());
+        Assert.True(me.GetProperty("used").GetInt64() >= Question.Length / 4);
+    }
+
+    [Fact]
+    public async Task AStreamedMessageKAgentSendsTwice_CountsOnce()
+    {
+        _kagent.RepeatFinalMessage = true;
+
+        var response = await _ann.PostAsJsonAsync("/api/chat/stream", new { agentNamespace = "kagent", agentName = "helper", message = Question }, Ct);
+        Assert.Contains("event: done", await response.Content.ReadAsStringAsync(Ct));
+
+        var me = await MeAsync(_ann);
+        Assert.Equal(50, me.GetProperty("promptTokens").GetInt64());
+        Assert.Equal(10, me.GetProperty("completionTokens").GetInt64());
+    }
+
+    [Fact]
+    public async Task ABlockingTurnKAgentFails_CountsItsPrompt()
+    {
+        _kagent.A2AStatus = 500;
+
+        Assert.Equal(HttpStatusCode.BadGateway, (await ChatAsync(_ann)).StatusCode);
+
+        var me = await MeAsync(_ann);
+        Assert.Equal(1, me.GetProperty("estimatedTurns").GetInt64());
+        Assert.True(me.GetProperty("estimatedTokens").GetInt64() >= Question.Length / 4);
+    }
+
+    [Fact]
+    public async Task ABlockingTurnTheCallerLeaves_IsCounted_AndKAgentsTaskIsCancelled()
+    {
+        _kagent.A2ADelay = TimeSpan.FromSeconds(20);
+        using var leave = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+
+        var turn = _ann.PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "helper", message = Question }, leave.Token);
+        Assert.True(await UntilAsync(() => Task.FromResult(!_kagent.Tasks.IsEmpty)), "the turn never reached kagent");
+        await leave.CancelAsync();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => turn);
+
+        Assert.True(await UntilAsync(() => Task.FromResult(_kagent.Tasks.Values.Single().State == "canceled")), "kagent's task was not cancelled");
+        Assert.True(await UntilAsync(async () => (await MeAsync(_ann)).GetProperty("estimatedTurns").GetInt64() == 1), "the abandoned turn was not counted");
+    }
+
+    [Fact]
+    public async Task APersonWithALimit_RunsAtMostTwoTurnsAtOnce()
+    {
+        Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_owner, "user", _annId, 1_000_000)).StatusCode);
+        _kagent.StreamGate = new TaskCompletionSource();
+        using var first = await OpenStreamAsync(_ann, Ct);
+        using var second = await OpenStreamAsync(_ann, Ct);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+
+        var third = await ChatAsync(_ann);
+        Assert.Equal(HttpStatusCode.TooManyRequests, third.StatusCode);
+        Assert.Contains("answers on their way", await third.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(HttpStatusCode.OK, (await ChatAsync(_eve)).StatusCode); // eve has no limit: never held back
+
+        _kagent.StreamGate.SetResult();
+        await ReadUntilAsync(first, "event: done", Ct);
+        await ReadUntilAsync(second, "event: done", Ct);
+        Assert.True(await UntilAsync(async () => (await ChatAsync(_ann)).StatusCode == HttpStatusCode.OK), "the places were not given back");
+    }
+
+    [Fact]
+    public async Task ConcurrentFirstWrites_OfALimitAndAPrice_AllSucceed()
+    {
+        var limits = await Task.WhenAll(Enumerable.Range(1, 8).Select(i => SetLimitAsync(_owner, "team", "billing", i * 100)));
+        var prices = await Task.WhenAll(Enumerable.Range(1, 8).Select(i =>
+            _owner.PutAsJsonAsync("/api/quotas/prices/kagent/default-model-config", new { pricePer1K = i / 1000m }, Ct)));
+
+        Assert.All(limits.Concat(prices), r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        var overview = await _owner.GetFromJsonAsync<JsonElement>("/api/quotas/overview", Ct);
+        Assert.Single(overview.GetProperty("limits").EnumerateArray(), l => l.GetProperty("kind").GetString() == "team");
+        Assert.Single(overview.GetProperty("prices").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task ASupervisor_SeesOnlyANameAndAPercentage_ForTeamMatesTheyMayNotActFor()
+    {
+        var people = (await _owner.GetFromJsonAsync<JsonElement>("/api/identity/people", Ct)).EnumerateArray().ToList();
+        var tomId = people.Single(p => p.GetProperty("email").GetString() == "tom@skanyxx.example").GetProperty("id").GetString()!;
+        Assert.Equal(HttpStatusCode.OK, (await _owner.PutAsync($"/api/identity/org/teams/billing/members/{tomId}", null, Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_owner, "user", tomId, 1000)).StatusCode);
+        await ChatAsync(_tom);
+
+        var overview = await _sue.GetFromJsonAsync<JsonElement>("/api/quotas/overview", Ct);
+        var tom = overview.GetProperty("people").EnumerateArray().Single(p => p.GetProperty("userId").GetString() == tomId);
+        Assert.True(tom.GetProperty("masked").GetBoolean());
+        Assert.Equal(15, tom.GetProperty("percent").GetInt32());
+        Assert.Equal("", tom.GetProperty("email").GetString());
+        Assert.Equal(0, tom.GetProperty("used").GetInt64());
+        Assert.Empty(tom.GetProperty("teams").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, tom.GetProperty("limit").ValueKind);
+        Assert.DoesNotContain(overview.GetProperty("limits").EnumerateArray(), l => l.GetProperty("id").GetString() == tomId);
+        var ann = overview.GetProperty("people").EnumerateArray().Single(p => p.GetProperty("userId").GetString() == _annId);
+        Assert.False(ann.GetProperty("masked").GetBoolean());
+        Assert.Equal("ann@skanyxx.example", ann.GetProperty("email").GetString());
+        var owners = await _owner.GetFromJsonAsync<JsonElement>("/api/quotas/overview", Ct);
+        Assert.All(owners.GetProperty("people").EnumerateArray(), p => Assert.False(p.GetProperty("masked").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task ADemotedSupervisor_CanNoLongerChangeQuotas_WithTheSessionTheyHad()
+    {
+        Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_sue, "user", _annId, 100)).StatusCode);
+
+        (await _owner.PutAsJsonAsync($"/api/identity/people/{_sueId}/roles", new { roles = new[] { "employee" } }, Ct)).EnsureSuccessStatusCode();
+
+        // The security stamp is checked on every request (identity, StaleRoleTests): the old token is refused outright.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await SetLimitAsync(_sue, "user", _annId, 50)).StatusCode);
+        Assert.Equal(100, (await MeAsync(_ann)).GetProperty("limit").GetInt64());
+    }
+
+    [Fact]
+    public async Task MyQuota_NamesWhoDecidedARequest()
+    {
+        Assert.Equal(HttpStatusCode.OK, (await SetLimitAsync(_owner, "user", _annId, 100)).StatusCode);
+        var id = await RequestAsync(_ann, 50);
+        Assert.Equal(HttpStatusCode.OK, (await _sue.PostAsync($"/api/quotas/requests/{id}/deny", null, Ct)).StatusCode);
+
+        var me = await _ann.GetFromJsonAsync<JsonElement>("/api/quotas/me", Ct);
+        Assert.Equal("sue@skanyxx.example", me.GetProperty("requests")[0].GetProperty("decidedBy").GetString());
+    }
+
+    [Fact]
+    public async Task TheQuota_RollsOverAtTheUtcMonthBoundary_NotTheLocalOne()
+    {
+        var options = new DbContextOptionsBuilder<QuotaDbContext>().UseNpgsql(_database).Options;
+        await using var db = new QuotaDbContext(options);
+        var store = new QuotaStore(db);
+        // 1 November 01:30 in Jerusalem is still 31 October in UTC.
+        var clock = new QuotaClock(new DateTimeOffset(2026, 11, 1, 1, 30, 0, TimeSpan.FromHours(2)));
+        var quota = new DbChatQuota(new NoMembership(), new QuotaLedger(store), store, new QuotaInFlight(clock), clock,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<DbChatQuota>.Instance);
+        await store.SetLimitAsync(QuotaScopes.User, "zed", 100, "owner", clock.GetUtcNow(), Ct);
+        await quota.RecordAsync(new ChatQuotaUsage("zed", "kagent/helper", Model, "c", new ChatUsage(80, 40, 120), false), Ct);
+
+        using (var refused = await quota.AdmitAsync("zed", "kagent/helper", Ct))
+        {
+            Assert.NotNull(refused.Refusal);
+            Assert.Contains("resets on 1 November (UTC)", refused.Refusal);
+        }
+        clock.Now = new DateTimeOffset(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+        using (var admitted = await quota.AdmitAsync("zed", "kagent/helper", Ct))
+            Assert.Null(admitted.Refusal);
+        Assert.Empty(await store.UsageAsync(new DateOnly(2026, 11, 1), ["zed"], Ct));
+        Assert.Single(await store.UsageAsync(new DateOnly(2026, 10, 1), ["zed"], Ct));
+    }
+
+    private sealed class NoMembership : IOrgMembership
+    {
+        public Task<OrgMembership> ForUserAsync(string userId, CancellationToken ct) =>
+            Task.FromResult(new OrgMembership(new HashSet<string>(), new HashSet<string>()));
     }
 }

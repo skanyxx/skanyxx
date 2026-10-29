@@ -23,10 +23,18 @@
         return e;
     };
 
+    // One full-width cell for a table's loading, empty or error state (skx.state).
+    const tableState = (id, show) => {
+        const cell = h('td', { 'data-label': '' });
+        $(id).replaceChildren(h('tbody', {}, h('tr', {}, cell)));
+        show(cell);
+    };
+    const tables = ['peopleTable', 'requestsTable', 'scopesTable', 'pricesTable'];
+
     const table = (id, heads, rows, emptyText) => {
         const t = $(id);
         if (rows.length === 0) {
-            t.replaceChildren(h('tbody', {}, h('tr', {}, h('td', { 'data-label': '', class: 'text-muted', text: emptyText }))));
+            tableState(id, cell => skx.state.empty(cell, { title: emptyText }));
             return;
         }
         t.replaceChildren(
@@ -54,10 +62,21 @@
     // The overview names whom the viewer may act for (never themselves, the owner or a fellow supervisor); the server refuses the rest.
     const mayActFor = userId => data.actFor.includes(userId);
 
+    // Someone a supervisor may not act for (a fellow supervisor, the owner): the server sends their name and percentage only.
+    const maskedRow = p => h('tr', {},
+        h('td', { text: p.name }),
+        h('td', { class: 'text-muted', text: 'Not shown' }),
+        h('td', {}, h('div', { class: 'quota-cell' },
+            h('span', { text: p.percent === null ? 'no limit' : `${p.percent}% of their limit` }),
+            p.percent === null ? null : bar(p))),
+        h('td', { class: 'text-muted', text: 'Not yours to manage' }),
+        h('td', { class: 'num text-muted', text: 'Not shown' }),
+        h('td', {}));
+
     function renderPeople() {
-        $('monthLine').textContent = `Month ${data.month} (UTC). Usage resets on ${data.resetsOn}.`;
+        $('monthLine').textContent = `Month ${data.month} (UTC). Usage resets on ${data.resetsOn} (UTC).`;
         table('peopleTable', [['Person'], ['Teams'], ['Used this month'], ['Limit set by'], ['Est. cost', 'num'], ['', '']],
-            data.people.map(p => h('tr', {},
+            data.people.map(p => p.masked ? maskedRow(p) : h('tr', {},
                 h('td', {}, h('span', { text: p.name }), h('span', { class: 'table-cell-sub', text: p.email })),
                 h('td', { text: p.teams.join(', ') || 'No team' }),
                 h('td', {}, h('div', { class: 'quota-cell' },
@@ -116,9 +135,13 @@
 
     async function load() {
         $('quotasError').replaceChildren();
+        if (!data) for (const id of tables) tableState(id, cell => skx.state.loading(cell, { rows: 3 }));
         try {
             data = await skx.api('GET', '/api/quotas/overview');
         } catch (e) {
+            // Never an empty table that reads as "nobody": the tables say the data is missing, the box says why.
+            data = null;
+            for (const id of tables) tableState(id, cell => skx.state.empty(cell, { icon: 'i-alert-circle', title: 'Not loaded' }));
             skx.state.error($('quotasError'), { title: 'Quotas could not be loaded', detail: e.message, retry: load });
             return;
         }
@@ -163,8 +186,9 @@
         value.value = current ?? '';
         const answer = await skx.ask($('priceDialog'), model ? value : modelInput);
         if (answer !== 'save' && answer !== 'clear') return;
-        const [ns, name] = modelInput.value.split('/');
-        if (!ns || !name) { skx.toast('A model is its ModelConfig as namespace/name.', { tone: 'error' }); return; }
+        const slash = modelInput.value.indexOf('/');
+        const [ns, name] = slash < 0 ? ['', ''] : [modelInput.value.slice(0, slash), modelInput.value.slice(slash + 1)];
+        if (!ns || !name || name.includes('/')) { skx.toast('A model is its ModelConfig as namespace/name.', { tone: 'error' }); return; }
         if (answer === 'save' && value.value === '') { skx.toast('Type a price, or use Remove price.', { tone: 'error' }); return; }
         const pricePer1K = answer === 'clear' ? null : Number(value.value);
         await save(trigger, 'PUT', `/api/quotas/prices/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`, { pricePer1K },

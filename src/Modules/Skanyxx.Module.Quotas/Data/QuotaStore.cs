@@ -40,45 +40,40 @@ internal sealed class QuotaStore(QuotaDbContext db)
     public async Task<IReadOnlyList<QuotaLimit>> LimitsAsync(CancellationToken ct) =>
         await db.Limits.AsNoTracking().ToListAsync(ct);
 
-    /// <summary>Sets (or with null clears) a limit; answers the previous value.</summary>
+    /// <summary>
+    /// Sets (or with null clears) a limit; answers the previous value (read just before, for the audit). One upsert, so
+    /// two first-time writes of the same scope at once both succeed and the later one stands.
+    /// </summary>
     public async Task<long?> SetLimitAsync(string kind, string id, long? tokens, string actor, DateTimeOffset now, CancellationToken ct)
     {
-        var limit = await db.Limits.FindAsync([kind, id], ct);
-        var previous = limit?.MonthlyTokens;
+        var limit = db.Limits.Where(l => l.Kind == kind && l.ScopeId == id);
+        var previous = await limit.Select(l => (long?)l.MonthlyTokens).FirstOrDefaultAsync(ct);
         if (tokens is null)
-        {
-            if (limit is not null)
-                db.Limits.Remove(limit);
-        }
+            await limit.ExecuteDeleteAsync(ct);
         else
-        {
-            if (limit is null)
-                db.Limits.Add(limit = new QuotaLimit { Kind = kind, ScopeId = id });
-            (limit.MonthlyTokens, limit.SetBy, limit.SetAt) = (tokens.Value, actor, now);
-        }
-        await db.SaveChangesAsync(ct);
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO quota_limits (kind, scope_id, monthly_tokens, set_by, set_at) VALUES ({kind}, {id}, {tokens.Value}, {actor}, {now})
+                ON CONFLICT (kind, scope_id) DO UPDATE SET
+                    monthly_tokens = EXCLUDED.monthly_tokens, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at
+                """, ct);
         return previous;
     }
 
     public async Task<IReadOnlyList<QuotaPrice>> PricesAsync(CancellationToken ct) =>
         await db.Prices.AsNoTracking().OrderBy(p => p.Model).ToListAsync(ct);
 
+    /// <summary>As <see cref="SetLimitAsync"/>: one upsert, the previous price read just before.</summary>
     public async Task<decimal?> SetPriceAsync(string model, decimal? price, string actor, DateTimeOffset now, CancellationToken ct)
     {
-        var row = await db.Prices.FindAsync([model], ct);
-        var previous = row?.PricePer1K;
+        var row = db.Prices.Where(p => p.Model == model);
+        var previous = await row.Select(p => (decimal?)p.PricePer1K).FirstOrDefaultAsync(ct);
         if (price is null)
-        {
-            if (row is not null)
-                db.Prices.Remove(row);
-        }
+            await row.ExecuteDeleteAsync(ct);
         else
-        {
-            if (row is null)
-                db.Prices.Add(row = new QuotaPrice { Model = model });
-            (row.PricePer1K, row.SetBy, row.SetAt) = (price.Value, actor, now);
-        }
-        await db.SaveChangesAsync(ct);
+            await db.Database.ExecuteSqlAsync($"""
+                INSERT INTO quota_prices (model, price_per_1k, set_by, set_at) VALUES ({model}, {price.Value}, {actor}, {now})
+                ON CONFLICT (model) DO UPDATE SET price_per_1k = EXCLUDED.price_per_1k, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at
+                """, ct);
         return previous;
     }
 

@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Domain;
 
@@ -9,10 +10,11 @@ namespace Skanyxx.Module.Tickets.Engine;
 /// Runs one attempt of one stage: builds the prompt, asks each agent in order (each handed the previous
 /// answer), and returns the unsaved attempt. The stage's output is the LAST agent's; every agent's turn is kept.
 /// An unreachable agent yields a deterministic fallback and a warning, never a hung or failed run. A run cancelled
-/// while an agent works calls no further agent of the stage.
+/// while an agent works calls no further agent of the stage. Every agent asked is counted against the token quota of the
+/// person who started the run (D383): kagent's tokens, else an estimate, also for a failed call.
 /// </summary>
 public sealed class StageRunner(
-    TicketsDbContext db, PromptBuilder prompts, IStageAgentClient agents, IOptions<TicketsOptions> options, TimeProvider clock)
+    TicketsDbContext db, PromptBuilder prompts, IStageAgentClient agents, IChatQuota quota, IOptions<TicketsOptions> options, TimeProvider clock)
 {
     public async Task<StageRun> RunAsync(Run run, CancellationToken ct)
     {
@@ -37,19 +39,29 @@ public sealed class StageRunner(
             if (message.Length > options.Value.MaxPromptChars)
                 message = Capped(message, options.Value.MaxPromptChars, $"the message to '{agent.Id}' (prompt plus handoff) was", result.Warnings);
             var turn = new AgentTurn { AgentId = agent.Id, Agent = agent.Agent, Prompt = message, Output = "", StartedAt = Now };
+            var asked = false;
+            StageAnswer? answer = null;
             try
             {
                 // Re-checked here: a run's pipeline is a snapshot, and the allow-list may have shrunk since.
                 if (!options.Value.AllowedAgents.Contains(agent.Agent))
                     throw new StageAgentException("the agent is not in Tickets:AllowedAgents");
-                turn.Output = Capped(await agents.AskAsync(agent, message, ct), options.Value.MaxAnswerChars,
-                    $"agent '{agent.Id}' answered", result.Warnings);
+                asked = true;
+                answer = await agents.AskAsync(agent, message, ct);
+                turn.Output = Capped(answer.Text, options.Value.MaxAnswerChars, $"agent '{agent.Id}' answered", result.Warnings);
             }
             catch (StageAgentException ex)
             {
                 turn.Degraded = true;
                 turn.Output = StageFallback.For(stage, run.Ticket, prior);
                 result.Warnings.Add($"agent '{agent.Id}' ({agent.Agent}): {ex.Message}; wrote a deterministic fallback");
+            }
+            finally
+            {
+                // Not the run's token: a cancelled call was paid for too.
+                if (asked)
+                    await quota.RecordAsync(ChatQuotaUsage.Measure(run.CreatedBy, agent.Agent, ChatQuotaUsage.ModelRef(agent.Namespace, null),
+                        run.Id.ToString(), answer?.Usage ?? ChatUsage.None, message, answer?.Text ?? ""), CancellationToken.None);
             }
 
             turn.EndedAt = Now;

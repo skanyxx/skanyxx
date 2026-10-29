@@ -512,6 +512,24 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.DoesNotContain("skanyxx-factory", await _employee.GetStringAsync("/api/chat/agents", TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    public async Task TheFactory_CountsAgainstTheBuildersTokenQuota_AndIsRefusedOverIt()
+    {
+        _kagent.Answer = """{"name":"refund-helper","description":"Refunds","instructions":"Answer refunds."}""";
+        Assert.Equal(HttpStatusCode.OK, (await _owner.PutAsJsonAsync($"/api/quotas/limits/user/{_builderId}", new { monthlyTokens = 1 }, TestContext.Current.CancellationToken)).StatusCode);
+
+        var first = await _builder.PostAsJsonAsync("/api/studio/factory", new { request = "a refund helper" }, TestContext.Current.CancellationToken);
+        var second = await _builder.PostAsJsonAsync("/api/studio/factory", new { request = "another one" }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, second.StatusCode);
+        Assert.Contains("Request more", await second.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+        var me = (await _builder.GetFromJsonAsync<JsonElement>("/api/quotas/me", TestContext.Current.CancellationToken)).GetProperty("quota");
+        Assert.Equal(1, me.GetProperty("turns").GetInt64());
+        Assert.True(me.GetProperty("used").GetInt64() >= "a refund helper".Length / 4);
+        Assert.Single(_kagent.CallsTo("POST", $"/api/a2a/{Ns}/skanyxx-factory/"));
+    }
+
     // --- Pages ---
 
     [Fact]

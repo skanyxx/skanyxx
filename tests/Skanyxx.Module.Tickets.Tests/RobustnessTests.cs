@@ -196,7 +196,7 @@ public sealed class RobustnessTests(PostgresFixture postgres) : TicketsTestBase(
         /// <summary>How many calls to ticket-boom throw before it answers; int.MaxValue = always.</summary>
         public static int FailFirst = int.MaxValue;
 
-        public Task<string> AskAsync(StageAgent agent, string prompt, CancellationToken ct)
+        public Task<StageAnswer> AskAsync(StageAgent agent, string prompt, CancellationToken ct)
         {
             if (agent.Name != "ticket-boom" || Interlocked.Increment(ref Calls) > FailFirst)
                 return Real().AskAsync(agent, prompt, ct);

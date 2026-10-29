@@ -10,4 +10,10 @@ internal sealed class OrgReader(IMediator mediator)
         (await mediator.Send(new ListPeopleQuery(), ct)).Value!,
         (await mediator.Send(new ListTeamsQuery(), ct)).Value!,
         (await mediator.Send(new ListDepartmentsQuery(), ct)).Value!);
+
+    /// <summary>Teams and departments only, for their names: no list of everyone.</summary>
+    public async Task<OrgSnapshot> WithoutPeopleAsync(CancellationToken ct) => new(
+        [],
+        (await mediator.Send(new ListTeamsQuery(), ct)).Value!,
+        (await mediator.Send(new ListDepartmentsQuery(), ct)).Value!);
 }

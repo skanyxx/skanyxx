@@ -135,6 +135,12 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>A streamed turn ends in this task state instead of <c>completed</c>.</summary>
     public string StreamFinalState { get; set; } = "completed";
 
+    /// <summary>A streamed turn's final status message (with its usage) is sent twice under one message id, as kagent may repeat it.</summary>
+    public bool RepeatFinalMessage { get; set; }
+
+    /// <summary>Blocking turns' A2A tasks (id → session, user, state): working while the turn runs, as kagent stores them.</summary>
+    public ConcurrentDictionary<string, (string? Session, string User, string State)> Tasks { get; } = new();
+
     /// <summary>When set, a streamed turn waits for it after its tool call (or first event), so a test can stop the turn mid-way.</summary>
     public TaskCompletionSource? StreamGate { get; set; }
 
@@ -394,6 +400,13 @@ public sealed class FakeKAgent : IAsyncDisposable
             return Envelope(SessionJson(id));
         });
 
+        app.MapGet("/api/sessions/{id}/tasks", (HttpContext context, string id) =>
+            _sessions.TryGetValue(id, out var s) && s.User == UserOf(context)
+                ? Envelope(new JsonArray([.. Tasks.Where(t => t.Value.Session == id).Select(t => (JsonNode)new JsonObject
+                {
+                    ["kind"] = "task", ["id"] = t.Key, ["contextId"] = id, ["status"] = new JsonObject { ["state"] = t.Value.State }
+                })]))
+                : Results.Json(new JsonObject { ["error"] = true, ["message"] = "Session not found" }, statusCode: 404));
         app.MapDelete("/api/sessions/{id}", (HttpContext context, string id) =>
             _sessions.TryGetValue(id, out var s) && s.User == UserOf(context) && _sessions.TryRemove(id, out _)
                 ? Results.Json(new JsonObject { ["error"] = false, ["message"] = "Session deleted" })
@@ -402,8 +415,18 @@ public sealed class FakeKAgent : IAsyncDisposable
         app.MapPost("/api/a2a/{ns}/{name}/", async (HttpContext context, string name, JsonObject body) =>
         {
             if (body["method"]?.GetValue<string>() == "tasks/cancel")
+            {
+                var cancelled = body["params"]!["id"]!.GetValue<string>();
+                if (Tasks.TryGetValue(cancelled, out var known))
+                    Tasks[cancelled] = known with { State = "canceled" };
                 return Results.Json(new JsonObject { ["jsonrpc"] = "2.0", ["id"] = body["id"]!.DeepClone(), ["result"] = new JsonObject { ["kind"] = "task" } });
+            }
+            var blockingTask = Guid.NewGuid().ToString();
+            if (body["method"]?.GetValue<string>() == "message/send")
+                Tasks[blockingTask] = (body["params"]?["message"]?["contextId"]?.GetValue<string>(), UserOf(context), "working");
             await Task.Delay(A2ADelay, context.RequestAborted);
+            if (Tasks.TryGetValue(blockingTask, out var done) && done.State == "working")
+                Tasks[blockingTask] = done with { State = A2AStatus is null && A2ABody is null ? "completed" : "failed" };
             if (A2AStatus is { } status)
                 return Results.Json(new JsonObject { ["error"] = InternalDetail }, statusCode: status);
             if (A2ABody is { } raw)
@@ -502,9 +525,12 @@ public sealed class FakeKAgent : IAsyncDisposable
                 ["kind"] = "artifact-update", ["lastChunk"] = true,
                 ["artifact"] = new JsonObject { ["artifactId"] = "a1", ["parts"] = new JsonArray(new JsonObject { ["kind"] = "text", ["text"] = Answer }) }
             });
-        await Send(Status(StreamFinalState, AgentMessage(new JsonObject { ["kagent_usage_metadata"] = Usage(50, 10) },
+        var last = AgentMessage(new JsonObject { ["kagent_usage_metadata"] = Usage(50, 10) },
             new JsonObject { ["kind"] = "text", ["text"] = "thinking…", ["metadata"] = new JsonObject { ["adk_thought"] = true } },
-            new JsonObject { ["kind"] = "text", ["text"] = StreamFinalState == "completed" ? Answer : InternalDetail }), final: true));
+            new JsonObject { ["kind"] = "text", ["text"] = StreamFinalState == "completed" ? Answer : InternalDetail });
+        if (RepeatFinalMessage)
+            await Send(Status("working", (JsonObject)last.DeepClone()));
+        await Send(Status(StreamFinalState, last, final: true));
         if (StreamFinalState == "completed")
             Event(contextId, new JsonObject
             {

@@ -17,6 +17,20 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
 {
     public async IAsyncEnumerable<ChatStreamEvent> EventsAsync([EnumeratorCancellation] CancellationToken ct)
     {
+        try
+        {
+            await foreach (var e in TurnAsync(ct))
+                yield return e;
+        }
+        finally
+        {
+            // However the turn ended (also a cached answer, or a caller gone before kagent was asked).
+            start.Admission.Dispose();
+        }
+    }
+
+    private async IAsyncEnumerable<ChatStreamEvent> TurnAsync([EnumeratorCancellation] CancellationToken ct)
+    {
         yield return ChatStreamEvent.Session(start.SessionId, start.IsNew, start.Title);
         if (start.Prepared.Cached is { } cached)
         {
@@ -47,8 +61,9 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
             finished = true;
             if (failure is not null)
             {
-                await turns.AbandonAsync(command, start);
+                // Counted before anything is cleaned up: the cleanup may fail, the tokens were spent.
                 await turns.RecordUsageAsync(command, start, turn.Usage, turn.Answer);
+                await turns.AbandonAsync(command, start);
                 await turns.FailedAsync(command, start);
                 yield return ChatStreamEvent.Error(failure, start.IsNew);
                 yield break;
@@ -60,13 +75,14 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
         finally
         {
             await results.DisposeAsync();
-            // Stopped, or the person left (also mid-write): kagent stops working for nobody, a first turn leaves nothing.
+            // Stopped, or the person left (also mid-write): counted first, then kagent stops working for nobody, and a
+            // first turn leaves nothing.
             if (!finished)
             {
-                if (turn.TaskId is { } task)
-                    await CancelTaskAsync(task);
-                await turns.AbandonAsync(command, start);
                 await turns.RecordUsageAsync(command, start, turn.Usage, turn.Answer);
+                if (turn.TaskId is { } task)
+                    await turns.CancelKAgentAsync(command, start, task);
+                await turns.AbandonAsync(command, start);
             }
         }
     }
@@ -82,19 +98,6 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
         {
             logger.LogWarning(ex, "Streamed chat with {AgentRef} failed for {UserId}", start.AgentRef, command.UserId);
             return (false, ChatFailure.Message(ex));
-        }
-    }
-
-    // Not the request's token (it is cancelled): kagent should stop working for nobody.
-    private async Task CancelTaskAsync(string taskId)
-    {
-        try
-        {
-            await kagent.CancelTaskAsync(start.Agent.Namespace, start.Agent.Name, taskId, command.UserId, CancellationToken.None);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
-        {
-            logger.LogInformation(ex, "kagent did not cancel task {TaskId} (it may have finished)", taskId);
         }
     }
 }

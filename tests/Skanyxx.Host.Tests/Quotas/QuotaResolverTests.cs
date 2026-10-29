@@ -57,10 +57,11 @@ public sealed class QuotaResolverTests
     }
 
     [Fact]
-    public void ASupervisorsCap_IsTheTightestTeamOrDepartmentLimit_NeverThePersonalOne()
+    public void ASupervisorsCap_IsTheTightestTeamOrDepartmentLimit_ElseThePersonalOne_ElseNone()
     {
         Assert.Equal(500, QuotaResolver.SupervisorCap(Ann("billing")));
-        Assert.Null(QuotaResolver.SupervisorCap([new ScopeLimit(QuotaScopes.User, "ann", 5)]));
+        Assert.Equal(5, QuotaResolver.SupervisorCap([new ScopeLimit(QuotaScopes.User, "ann", 5)]));
+        Assert.Null(QuotaResolver.SupervisorCap([]));
     }
 
     [Fact]

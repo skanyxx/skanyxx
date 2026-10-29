@@ -1285,25 +1285,32 @@ the servers and agents into kagent through the studio's pull-request gate; it is
 
 ## Token quotas
 
-Monthly token budgets (D331–D339). The owner sets a limit on a person, a team or a department on **/Quotas**
+Monthly token budgets (D331–D339, D380–D384). The owner sets a limit on a person, a team or a department on **/Quotas**
 (`PUT api/quotas/limits/{user|team|department}/{id}`); each limit is what every member may use in a UTC month, and the
-**tightest** limit that applies to a person binds (the page and `GET api/quotas/me` name which one). Chat counts the
-prompt and completion tokens kagent reports for every turn, also failed and stopped ones; when kagent reports none, Chat
-records its own estimate (characters / 4) and marks it **estimated** wherever usage is shown. At the limit Chat refuses the
-next turn (429) with a **Request more** action. Everyone sees their own percentage on Chat and on their account page.
+**tightest** limit that applies to a person binds (the page and `GET api/quotas/me` name which one). Every model turn run
+in a person's name counts: Chat (streamed and `POST api/chat`), Studio previews and factory drafts, and the stage turns of
+the ticket runs they started. kagent's reported tokens count; when kagent reports none (or the turn failed, ran out of
+time or was stopped first), the turn's own estimate (characters / 4, at least the prompt) counts and is marked
+**estimated** wherever usage is shown. At the limit Chat, Studio and new ticket runs are refused (429) with a **Request
+more** action; ticket runs already going finish. A person with a limit runs at most 2 turns at once per replica, which
+bounds how far parallel turns can pass the limit. Everyone sees their own percentage on Chat and on their account page.
 
 - **Requests** (`POST api/quotas/requests`, amount + reason): the owner approves or denies any; a supervisor only their own
-  teams' members (never themselves, the owner or another supervisor) and only while the person stays within their
-  team and department limits, approved extras included. An approved
-  amount adds to the person's limit for the month it was approved.
-- **Supervisors** see their teams' members and set their personal limits, never above the team or department limit; team
-  and department limits and prices are the owner's. Every rule is enforced by the API, not the page.
+  teams' members (never themselves, the owner or another supervisor) and only while the person stays within their cap,
+  approved extras included. An approved amount adds to the person's limit for the month it was approved.
+- **Supervisors** see their teams' members (in full only those they may act for; others as a name and a percentage) and
+  set their personal limits within the cap: the tightest team or department limit, or with none, the personal limit as
+  it stands, which a supervisor may only lower. Team and department limits and prices are the owner's. Every rule is
+  enforced by the API, not the page.
 - **Cost** is optional: the owner's USD price per 1,000 tokens per ModelConfig (`PUT api/quotas/prices/{ns}/{name}`). It is
-  an estimate, never a bill, and is always shown with that disclaimer.
+  an estimate, never a bill, and is always shown with that disclaimer. Ticket stage turns are not priced (their model is
+  not known to the pipeline).
 - **Audit**: `quota.limit.set`, `quota.price.set`, `quota.requested`, `quota.request.approved|denied`, with names and
   numbers only (never a reason or chat text).
+- **New features that call a model** go through Core's `IChatQuota` (`AdmitAsync` before the turn, `RecordAsync` after,
+  `ChatQuotaUsage.Measure` for the count). Investigate (on its own branch) must do the same when it is merged.
 - Storage: memory's database, tables `quota_*`, own history `__quotas_migrations`. Disable with `Modules:Enabled:quotas=false`
-  (Chat then has no limits).
+  (no limits anywhere then).
 
 ## Ticket pipelines
 

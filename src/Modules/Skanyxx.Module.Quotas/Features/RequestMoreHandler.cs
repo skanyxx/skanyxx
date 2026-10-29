@@ -22,6 +22,6 @@ internal sealed class RequestMoreHandler(IOrgMembership membership, OrgReader or
             return Outcome<QuotaRequestDto>.Conflict(null, "You already have a request waiting for an answer.", "pending");
         await mediator.Send(new RecordAuditCommand("quota.requested", me, me, new { requestId = request.Id, amount = request.Amount }),
             CancellationToken.None);
-        return Outcome<QuotaRequestDto>.Created(QuotaRequestDto.From(request, await orgs.ReadAsync(ct)));
+        return Outcome<QuotaRequestDto>.Created(QuotaRequestDto.From(request, await orgs.ReadAsync(CancellationToken.None)));
     }
 }

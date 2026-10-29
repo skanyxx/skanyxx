@@ -26,9 +26,14 @@ public static class QuotaResolver
     public static EffectiveQuota Resolve(IEnumerable<ScopeLimit> applicable, long extra) =>
         Tightest(applicable) is { } binding ? new EffectiveQuota(binding.MonthlyTokens + extra, binding, extra) : EffectiveQuota.Unlimited;
 
-    /// <summary>The most a supervisor may let a person have: their tightest team or department limit; null = no such limit.</summary>
-    public static long? SupervisorCap(IEnumerable<ScopeLimit> applicable) =>
-        Tightest(applicable.Where(l => l.Kind != QuotaScopes.User))?.MonthlyTokens;
+    /// <summary>
+    /// The most a supervisor may let a person have (D339): their tightest team or department limit; with none, their
+    /// personal limit as it stands (a supervisor may only lower it; raising or removing it is the owner's); with neither,
+    /// null: the person is unlimited, so nothing a supervisor does can give them more.
+    /// </summary>
+    public static long? SupervisorCap(IReadOnlyCollection<ScopeLimit> applicable) =>
+        Tightest(applicable.Where(l => l.Kind != QuotaScopes.User))?.MonthlyTokens
+        ?? applicable.FirstOrDefault(l => l.Kind == QuotaScopes.User)?.MonthlyTokens;
 
     private static ScopeLimit? Tightest(IEnumerable<ScopeLimit> limits) =>
         limits.OrderBy(l => l.MonthlyTokens).ThenBy(l => Rank(l.Kind)).ThenBy(l => l.Id, StringComparer.Ordinal).FirstOrDefault();

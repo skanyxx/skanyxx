@@ -10,7 +10,8 @@ namespace Skanyxx.Module.Quotas.Features;
 /// <summary>
 /// Team and department limits are the owner's. A person's limit: the owner's for anyone; a supervisor's only for the
 /// members of their own teams (never themselves, the owner or another supervisor), and never so that the person's effective
-/// limit, approved extras included, ends above their team or department limit (D333, D338).
+/// limit, approved extras included, ends above their cap: their team or department limit, else their personal limit as
+/// it stands (D333, D338, D339).
 /// Audited with names and numbers only.
 /// </summary>
 internal sealed class SetLimitHandler(OrgReader orgs, QuotaLedger ledger, QuotaStore store, IMediator mediator, TimeProvider clock)
@@ -37,10 +38,10 @@ internal sealed class SetLimitHandler(OrgReader orgs, QuotaLedger ledger, QuotaS
             var current = QuotaResolver.Resolve(applicable, extra).Limit;
             IEnumerable<ScopeLimit> personal = command.MonthlyTokens is { } t ? [new ScopeLimit(QuotaScopes.User, id, t)] : [];
             var proposed = QuotaResolver.Resolve(applicable.Where(l => l.Kind != QuotaScopes.User).Concat(personal), extra).Limit;
-            // Approved extras count: the person's effective limit may not end above the cap, unless it only goes down.
-            if (cap is { } c && proposed > c && !(proposed <= current))
-                return Outcome<LimitResult>.Forbidden(string.Create(CultureInfo.InvariantCulture,
-                    $"That would take {org.PersonName(id)} above their team or department quota of {c:N0} tokens (approved extras included). Only the owner can go higher."));
+            // Approved extras count, and no limit is above any cap; lowering the effective limit is always allowed.
+            var lowers = proposed is { } p && (current is null || p <= current);
+            if (cap is { } c && !lowers && (proposed is null || proposed > c))
+                return Outcome<LimitResult>.Forbidden(AboveCap(org.PersonName(id), c));
         }
 
         var previous = await store.SetLimitAsync(kind, id, command.MonthlyTokens, viewer.UserId, clock.GetUtcNow(), ct);
@@ -50,4 +51,7 @@ internal sealed class SetLimitHandler(OrgReader orgs, QuotaLedger ledger, QuotaS
         }), CancellationToken.None);
         return Outcome<LimitResult>.Ok(new LimitResult(kind, id, command.MonthlyTokens));
     }
+
+    public static string AboveCap(string person, long cap) => string.Create(CultureInfo.InvariantCulture,
+        $"That would give {person} more than {cap:N0} tokens a month, approved extras included: their team or department limit, or with none, the personal limit you may only lower. Only the owner can go higher or remove it.");
 }

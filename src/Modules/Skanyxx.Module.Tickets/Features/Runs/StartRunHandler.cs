@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Domain;
 using Skanyxx.Module.Tickets.Engine;
@@ -9,9 +10,12 @@ using Skanyxx.Module.Tickets.Sources;
 
 namespace Skanyxx.Module.Tickets.Features.Runs;
 
-/// <summary>Snapshots the ticket and the pipeline, queues the run and wakes the worker. The work itself is async.</summary>
+/// <summary>
+/// Snapshots the ticket and the pipeline, queues the run and wakes the worker. The work itself is async. A person over
+/// their token quota starts no new run; runs already going are not stopped (D383).
+/// </summary>
 internal sealed class StartRunHandler(
-    TicketsDbContext db, ITicketSource source, RunSignal signal, IOptions<TicketsOptions> options, TimeProvider clock)
+    TicketsDbContext db, ITicketSource source, RunSignal signal, IChatQuota quota, IOptions<TicketsOptions> options, TimeProvider clock)
     : IRequestHandler<StartRunCommand, Outcome<Run>>
 {
     private const int RunLockKey = 0x544B5401;
@@ -21,6 +25,9 @@ internal sealed class StartRunHandler(
         var pipeline = await db.Pipelines.AsNoTracking().SingleOrDefaultAsync(p => p.Id == command.PipelineId, ct);
         if (pipeline is null)
             return Outcome<Run>.NotFound($"No pipeline '{command.PipelineId}'.");
+        using (var admission = await quota.AdmitAsync(command.UserId!, $"pipeline/{pipeline.Id}", ct))
+            if (admission.Refusal is { } refusal)
+                return Outcome<Run>.RateLimited(refusal);
 
         Ticket ticket;
         try
