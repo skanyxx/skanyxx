@@ -121,6 +121,26 @@ internal sealed class StudioReconciler(
             }
         }
 
+        // D545: an invalid folder keeps the agent the studio last applied, but one only Argo applied (never adopted) is
+        // whatever the file said: out of kagent until the folder is valid again.
+        if (_options.Argo.Configured)
+            foreach (var name in folders.Where(f => !desired.ContainsKey(f)))
+            {
+                try
+                {
+                    if (await kagent.GetAgentObjectAsync(Ns, name, ct) is { } applied && ArgoCreated(applied, name))
+                    {
+                        logger.LogError("Studio removes {Agent}: Argo CD applied its folder, which the studio refuses", name);
+                        await RemoveFromKagentAsync(name, ct);
+                    }
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    failures++;
+                    logger.LogWarning(ex, "Studio could not remove the Argo-applied agent {Agent}; retrying on the next pass", name);
+                }
+            }
+
         var pulls = await repo.OpenPullsAsync(ct);
         var open = pulls.Select(p => p.Number).ToHashSet();
         var managed = (await kagent.GetAgentsAsync(ct))

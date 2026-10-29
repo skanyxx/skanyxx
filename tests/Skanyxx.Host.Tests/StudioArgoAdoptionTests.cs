@@ -102,6 +102,22 @@ public sealed class StudioArgoAdoptionTests(PostgresFixture fixture) : IAsyncLif
             && a["metadata"]?["labels"]?["skanyxx.dev/merged"]?.GetValue<string>() == "true", "the adopted agent after the resume");
     }
 
+    /// <summary>D545: a folder the studio refuses that Argo applied anyway (a push to main) does not stay running.</summary>
+    [Fact]
+    public async Task AnInvalidFolderArgoApplied_IsRemoved_WhileAValidAgentWithAnInvalidEditKeepsRunning()
+    {
+        await ApplyAsync("refund-helper");
+        _git.Main()["agents/evil/agent.yaml"] = "apiVersion: kagent.dev/v1alpha2\nkind: Agent\n";
+        _git.Main()["agents/evil/grants.yaml"] = "agent: evil\ngrants: []\n";
+        ArgoRecreates("evil", Tracking("skanyxx-agents", "evil"));
+        _git.Main()["agents/refund-helper/agent.yaml"] = "kind: ConfigMap\n";
+
+        Assert.Equal(0, await ReconcileAsync());
+
+        Assert.False(_kagent.AgentObjects.ContainsKey($"{Ns}/evil"));
+        Assert.True(_kagent.AgentObjects.ContainsKey($"{Ns}/refund-helper"));
+    }
+
     private const string ArgoAnnotation = "argocd.argoproj.io/tracking-id";
 
     private static string Tracking(string application, string agent) => $"{application}:kagent.dev/Agent:{Ns}/{agent}";

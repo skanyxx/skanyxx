@@ -80,9 +80,13 @@ if (ARGO === 'on') {
   override.spec.declarative.deployment = { replicas: 1, serviceAccountName: 'default' };
   const headers = structuredClone(shape);
   headers.spec.declarative.tools[0].headersFrom = [{ name: 'Authorization', valueFrom: { type: 'Secret', name: 'any', key: 'token' } }];
-  const verdicts = [asArgo(shape), asArgo(override), asArgo(headers)];
-  check('Argo CD: from git only the studio\'s Agent shape is admitted (deployment and secret headers refused)',
-    verdicts.join(',') === 'admitted,denied,denied', verdicts.join(', '));
+  const victim = structuredClone(shape);
+  victim.spec.declarative.tools[0].mcpServer.name = 'skanyxx-memory-another-agent';
+  const skill = structuredClone(shape);
+  skill.spec.skills = { refs: ['docker.io/someone/skill@sha256:' + '0'.repeat(64)] };
+  const verdicts = [asArgo(shape), asArgo(override), asArgo(headers), asArgo(victim), asArgo(skill)];
+  check('Argo CD: from git only what the studio form could make is admitted (deployment, secret headers, another agent\'s memory server, an unlisted skill registry refused)',
+    verdicts.join(',') === 'admitted,denied,denied,denied,denied', verdicts.join(', '));
   const env = kubectlJson('-n', NAMESPACE, 'get', 'deploy', process.env.SKX_RELEASE || 'skanyxx')?.spec?.template?.spec?.containers?.[0]?.env ?? [];
   check('Argo CD: Skanyxx is configured with Studio:Argo:BaseUrl (status reads, D363)', env.some(e => e.name === 'Studio__Argo__BaseUrl'), env.find(e => e.name === 'Studio__Argo__BaseUrl')?.value ?? 'unset');
 }

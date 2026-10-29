@@ -47,6 +47,7 @@ ARGO_VERSION=${ARGO_VERSION:-v3.5.6}
 OLLAMA_MODEL=${OLLAMA_MODEL:-qwen3-coder:30b}
 OLLAMA_PORT=${OLLAMA_PORT:-11434}
 ARGO_PF_PORT=${ARGO_PF_PORT:-18431}
+SKILL_REGISTRY=${SKILL_REGISTRY:-ghcr.io/agentregistry-dev/skills/}
 GITEA_LOCAL=http://127.0.0.1:$GITEA_PORT
 for n in "$GITEA_NAME" "$RUNNER_NAME"; do
   case $n in skanyxx-gitea-1 | skanyxx-postgres-1 | skx-integration-pg | kind-registry) die "$n is not ours" ;; esac
@@ -141,7 +142,9 @@ argo() {
     | "${KUBECTL[@]}" label --local -f - argocd.argoproj.io/secret-type=repository -o yaml \
     | "${KUBECTL[@]}" apply --server-side --force-conflicts --field-manager=skanyxx-day1 -f - >/dev/null
   # What Argo may apply (D544) before the Application that applies it.
-  sed -e "s#NAMESPACE#$NAMESPACE#" "$ROOT/docs/templates/agents-repo/argocd-agent-policy.yaml" | "${KUBECTL[@]}" apply -f - >/dev/null
+  # The lists are Skanyxx's Studio:McpServers (none here) and Studio:SkillRegistries (the one in day1-values.yaml).
+  sed -e "s#NAMESPACE#$NAMESPACE#" -e "s#MCP_SERVERS_LIST#[]#" -e "s#SKILL_REGISTRIES_LIST#['$SKILL_REGISTRY']#" \
+    "$ROOT/docs/templates/agents-repo/argocd-agent-policy.yaml" | "${KUBECTL[@]}" apply -f - >/dev/null
   sed -e "s#REPO_URL#$repo#" -e "s#NAMESPACE#$NAMESPACE#" "$ROOT/docs/templates/agents-repo/argocd-application.yaml" \
     | "${KUBECTL[@]}" apply -f - >/dev/null
   # Skanyxx's read-only Argo token, minted with the initial admin password; both stay in memory and the Secret.
@@ -172,7 +175,7 @@ skanyxx:
     - {name: Studio__MemoryMcpUrl, value: "http://$RELEASE.$NAMESPACE.svc:8081/mcp/memory"}
     - {name: Studio__RequireChecks, value: "$require"}
     - {name: Studio__ReconcileSeconds, value: "20"}
-    - {name: Studio__SkillRegistries__0, value: "ghcr.io/agentregistry-dev/skills/"}
+    - {name: Studio__SkillRegistries__0, value: "$SKILL_REGISTRY"}
 $argo_env
 networkPolicy:
   skanyxxEgress:
@@ -251,6 +254,8 @@ down() {
     "${KUBECTL[@]}" delete appproject -n argocd skanyxx-agents --ignore-not-found >/dev/null 2>&1 || true
     "${KUBECTL[@]}" delete validatingadmissionpolicybinding,validatingadmissionpolicy skanyxx-agents-from-argo --ignore-not-found >/dev/null || true
     "${KUBECTL[@]}" delete namespace argocd --wait=false >/dev/null || true
+    # Its CRDs too: a later `up` refuses a cluster that already has Argo CD's.
+    "${KUBECTL[@]}" delete crd applications.argoproj.io applicationsets.argoproj.io appprojects.argoproj.io --ignore-not-found --wait=false >/dev/null || true
   fi
   rm -f "$STATE"/gitea-* "$STATE"/argo-token "$STATE"/ci-token "$STATE"/runner-config.yaml "$STATE"/day1-*
 }
