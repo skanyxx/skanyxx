@@ -11,8 +11,9 @@
 #   straight back. A later commit to main re-creates it; Skanyxx adopts what this Application created (D541) and
 #   keeps a suspended agent out again.
 # - its own AppProject: Argo applies main's files with its own (cluster-wide) rights, so the project lets it create
-#   only kagent Agents, only in NAMESPACE, only from this repo. Whoever can write main can then do no more through Argo
-#   than add or change an Agent — which the reconciler re-applies in the studio's strict shape anyway.
+#   only kagent Agents, only in NAMESPACE, only from this repo; argocd-agent-policy.yaml (an admission policy, apply it
+#   first) admits from Argo only Agents of the studio's shape. Together, a write to main can do no more through Argo
+#   than the studio's form could.
 # Also needed (scripts/day1/day1.sh does all of it): a repository Secret with a read-only git token, a read-only Argo
 # account for Skanyxx (`p, skanyxx, applications, get, skanyxx-agents/skanyxx-agents, allow`) and a health check for
 # kagent.dev/Agent in argocd-cm (argocd-agent-health.lua next to this file), without which Argo never says Healthy.

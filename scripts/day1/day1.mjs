@@ -1,6 +1,7 @@
 // Day 1: the owner's integrations, verified through Skanyxx: git (the agent repo), CI (the workflow in the repo and
 // its settings), Argo CD (the Application syncing the repo) and model providers (/api/models). Run by day1.sh.
 import fs from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { BASE, NAMESPACE, call, check, finish, kubectlJson, note, ownerToken, stateFile, until, ensurePerson } from '../e2e/skx.mjs';
 
 const { HOST_IP, OLLAMA_MODEL, OLLAMA_PORT, MODEL_KEY_FILE, CI, ARGO, GITEA_LOCAL, GITEA_TOKEN_FILE, UI_PORT, VERIFY_ONLY } = process.env;
@@ -62,6 +63,26 @@ if (ARGO === 'on') {
   const last = app ?? kubectlJson('-n', 'argocd', 'get', 'application', 'skanyxx-agents');
   check('Argo CD: Application skanyxx-agents is Synced and Healthy on the agent repo', !!app,
     `sync ${last?.status?.sync?.status}, health ${last?.status?.health?.status}, revision ${last?.status?.sync?.revision?.slice(0, 8) ?? '-'}${last?.status?.conditions ? ', ' + last.status.conditions.map(c => c.type).join(',') : ''}`);
+  // D544: as Argo's controller, the studio's shape is admitted and a deployment override is refused (server dry runs).
+  const asArgo = agent => {
+    try {
+      execFileSync('kubectl', ['--context', process.env.SKX_CONTEXT, 'create', '--dry-run=server', '-f', '-',
+        '--as=system:serviceaccount:argocd:argocd-application-controller'], { input: JSON.stringify(agent), stdio: ['pipe', 'pipe', 'pipe'] });
+      return 'admitted';
+    } catch (e) { return /denied request/.test(e.stderr?.toString() ?? '') ? 'denied' : 'error'; }
+  };
+  const shape = {
+    apiVersion: 'kagent.dev/v1alpha2', kind: 'Agent', metadata: { name: 'e2e-test-policy', namespace: NAMESPACE },
+    spec: { type: 'Declarative', description: 'd', declarative: { modelConfig: 'default-model-config', systemMessage: 's',
+      tools: [{ type: 'McpServer', mcpServer: { name: 'skanyxx-memory-e2e-test-policy', kind: 'RemoteMCPServer', apiGroup: 'kagent.dev', toolNames: ['memory_search'] } }] } },
+  };
+  const override = structuredClone(shape);
+  override.spec.declarative.deployment = { replicas: 1, serviceAccountName: 'default' };
+  const headers = structuredClone(shape);
+  headers.spec.declarative.tools[0].headersFrom = [{ name: 'Authorization', valueFrom: { type: 'Secret', name: 'any', key: 'token' } }];
+  const verdicts = [asArgo(shape), asArgo(override), asArgo(headers)];
+  check('Argo CD: from git only the studio\'s Agent shape is admitted (deployment and secret headers refused)',
+    verdicts.join(',') === 'admitted,denied,denied', verdicts.join(', '));
   const env = kubectlJson('-n', NAMESPACE, 'get', 'deploy', process.env.SKX_RELEASE || 'skanyxx')?.spec?.template?.spec?.containers?.[0]?.env ?? [];
   check('Argo CD: Skanyxx is configured with Studio:Argo:BaseUrl (status reads, D363)', env.some(e => e.name === 'Studio__Argo__BaseUrl'), env.find(e => e.name === 'Studio__Argo__BaseUrl')?.value ?? 'unset');
 }

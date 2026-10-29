@@ -1,0 +1,52 @@
+# What Argo CD may apply from the agent repo (D544): only Agents of the studio's shape. Argo applies main's files with
+# its own rights and without the studio's strict read (AgentManifest), so without this a write to main (a leaked git
+# token, a repo admin) could run an Agent with its own image, env, volumes or service account. Requests from Argo's
+# application controller only; Skanyxx's reconciler (through kagent's API) is not matched. Replace NAMESPACE.
+# Needs Kubernetes 1.30+ (ValidatingAdmissionPolicy v1).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: skanyxx-agents-from-argo
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [kagent.dev]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [agents]
+  matchConditions:
+    - name: argo-application-controller
+      expression: request.userInfo.username == 'system:serviceaccount:argocd:argocd-application-controller'
+  # An allow-list of exactly the keys the studio renders (AgentManifest): anything else kagent offers — byo images,
+  # deployment, systemMessageFrom, headersFrom, sandbox, executeCodeBlocks, git/S3 skills, a tool in another
+  # namespace — is refused when it comes from Argo.
+  validations:
+    - expression: object.spec.type == 'Declarative' && has(object.spec.declarative) && object.spec.all(k, k in ['type', 'description', 'declarative', 'skills'])
+      message: Only a Declarative agent with the studio's fields (type, description, declarative, skills).
+    # runtime: kagent's CRD defaults it to go.
+    - expression: >-
+        object.spec.declarative.all(k, k in ['modelConfig', 'systemMessage', 'tools', 'memory', 'runtime'])
+        && (!has(object.spec.declarative.runtime) || object.spec.declarative.runtime == 'go')
+      message: The agent may set only its model, instructions, tools and kagent memory.
+    - expression: >-
+        !has(object.spec.declarative.tools) || object.spec.declarative.tools.all(t, t.all(k, k in ['type', 'mcpServer'])
+        && t.type == 'McpServer' && t.mcpServer.all(k, k in ['name', 'kind', 'apiGroup', 'toolNames'])
+        && t.mcpServer.kind == 'RemoteMCPServer' && t.mcpServer.apiGroup == 'kagent.dev')
+      message: Tools are kagent RemoteMCPServers in the agent's namespace, by name and tool names only.
+    - expression: >-
+        !has(object.spec.skills) || (object.spec.skills.all(k, k == 'refs')
+        && object.spec.skills.refs.all(r, r.contains('@sha256:')))
+      message: Skills are digest-pinned OCI references only.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: skanyxx-agents-from-argo
+spec:
+  policyName: skanyxx-agents-from-argo
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: NAMESPACE

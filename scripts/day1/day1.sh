@@ -95,7 +95,7 @@ git_server() {
   # The password reaches the container on stdin only.
   docker exec -i -u git "$GITEA_NAME" sh -c 'read -r p; gitea admin user change-password --username skanyxx-bot --password "$p" --must-change-password=false' \
     <"$STATE/gitea-bot-password" >/dev/null
-  if [[ ! -s $STATE/gitea-bot-token ]] || ! curl -fsS -m 5 -K <(printf 'header = "Authorization: token %s"\n' "$(cat "$STATE/gitea-bot-token")") "$GITEA_LOCAL/api/v1/repos/search?limit=1" >/dev/null 2>&1; then
+  if [[ ! -s $STATE/gitea-bot-token || ! -s $STATE/gitea-read-token ]] || ! curl -fsS -m 5 -K <(printf 'header = "Authorization: token %s"\n' "$(cat "$STATE/gitea-bot-token")") "$GITEA_LOCAL/api/v1/repos/search?limit=1" >/dev/null 2>&1; then
     log "token for Skanyxx (write:organization, write:repository) → $STATE/gitea-bot-token"
     as_bot -X POST "$GITEA_LOCAL/api/v1/users/skanyxx-bot/tokens" \
       -d "{\"name\":\"skanyxx-$(date +%s)\",\"scopes\":[\"write:organization\",\"write:repository\"]}" | jq -jer .sha1 | secret_write "$STATE/gitea-bot-token"
@@ -112,6 +112,10 @@ argo() {
   if "${KUBECTL[@]}" get namespace argocd >/dev/null 2>&1; then
     owned argocd scripts/day1 || die "$CONTEXT already has an argocd namespace this script did not create: not touching it"
   else
+    # Argo's install applies cluster-wide CRDs and roles: never over an Argo CD running in another namespace.
+    if "${KUBECTL[@]}" get crd applications.argoproj.io >/dev/null 2>&1; then
+      die "$CONTEXT already runs an Argo CD (applications.argoproj.io exists): use --argo off"
+    fi
     "${KUBECTL[@]}" create namespace argocd >/dev/null
     own argocd scripts/day1
   fi
@@ -136,6 +140,8 @@ argo() {
     --from-literal=username=skanyxx-bot --from-file=password="$STATE/gitea-read-token" --dry-run=client -o yaml \
     | "${KUBECTL[@]}" label --local -f - argocd.argoproj.io/secret-type=repository -o yaml \
     | "${KUBECTL[@]}" apply --server-side --force-conflicts --field-manager=skanyxx-day1 -f - >/dev/null
+  # What Argo may apply (D544) before the Application that applies it.
+  sed -e "s#NAMESPACE#$NAMESPACE#" "$ROOT/docs/templates/agents-repo/argocd-agent-policy.yaml" | "${KUBECTL[@]}" apply -f - >/dev/null
   sed -e "s#REPO_URL#$repo#" -e "s#NAMESPACE#$NAMESPACE#" "$ROOT/docs/templates/agents-repo/argocd-application.yaml" \
     | "${KUBECTL[@]}" apply -f - >/dev/null
   # Skanyxx's read-only Argo token, minted with the initial admin password; both stay in memory and the Secret.
@@ -243,6 +249,7 @@ down() {
   if owned argocd scripts/day1; then
     "${KUBECTL[@]}" -n argocd delete application skanyxx-agents --ignore-not-found >/dev/null || true
     "${KUBECTL[@]}" delete appproject -n argocd skanyxx-agents --ignore-not-found >/dev/null 2>&1 || true
+    "${KUBECTL[@]}" delete validatingadmissionpolicybinding,validatingadmissionpolicy skanyxx-agents-from-argo --ignore-not-found >/dev/null || true
     "${KUBECTL[@]}" delete namespace argocd --wait=false >/dev/null || true
   fi
   rm -f "$STATE"/gitea-* "$STATE"/argo-token "$STATE"/ci-token "$STATE"/runner-config.yaml "$STATE"/day1-*
@@ -250,6 +257,7 @@ down() {
 
 case $cmd in
   up)
+    owned "$NAMESPACE" "scripts/day0 release $RELEASE" || die "release $RELEASE in $CONTEXT/$NAMESPACE was not installed by scripts/day0: not configuring it"
     HOST_IP=$(host_ip)
     git_server; argo; skanyxx; ci_runner; models_and_ci ;;
   verify) HOST_IP=$(host_ip); VERIFY_ONLY=1 models_and_ci ;;

@@ -141,6 +141,7 @@ down() {
     owned "$NAMESPACE" "scripts/day0 release $RELEASE" || die "release $RELEASE in $CONTEXT/$NAMESPACE was not installed by this script: not uninstalling it"
     log "helm uninstall $RELEASE from $CONTEXT/$NAMESPACE (kept Secrets and PVCs stay: D139)"
     "${HELM[@]}" -n "$NAMESPACE" uninstall "$RELEASE" --wait || true
+    "${KUBECTL[@]}" -n "$NAMESPACE" delete configmap skanyxx-e2e-owner --ignore-not-found >/dev/null
   fi
   rm -rf "$STATE"
   log "state $STATE removed"

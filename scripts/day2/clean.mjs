@@ -19,7 +19,7 @@ const tree = await gitea('GET', `${REPO}/git/trees/main?recursive=true`);
 const files = (tree.json?.tree ?? []).filter(f => f.type === 'blob' && /^agents\/e2e-test-[a-z0-9-]+\//.test(f.path));
 const agents = process.env.AGENTS ? process.env.AGENTS.split(',') : [...new Set(files.map(f => f.path.split('/')[1]))];
 for (const open of (await call('GET', '/api/studio', { token: owner })).json?.open ?? []) {
-  if (open.agent?.startsWith('e2e-test-') && agents.includes(open.agent)) {
+  if (open.agent?.startsWith('e2e-test-') && (!process.env.AGENTS || agents.includes(open.agent))) {
     const r = await call('POST', `/api/studio/proposals/${open.number}/close`, { token: owner });
     check(`agents: open proposal #${open.number} (${open.agent}) closed`, [200, 204].includes(r.status), `HTTP ${r.status}`);
   }

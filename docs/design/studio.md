@@ -110,7 +110,7 @@ GET api/studio/templates (builder) → POST api/studio/proposals → skanyxx-age
 | Piece | Where |
 |---|---|
 | CI workflow | `docs/templates/agents-repo/validate-agents.yaml` (embedded, committed by "Add CI to the agent repo") |
-| Argo Application + Agent health check | `docs/templates/agents-repo/argocd-application.yaml`, `argocd-agent-health.lua` (D541) |
+| Argo Application + Agent health check + admission policy | `docs/templates/agents-repo/argocd-application.yaml`, `argocd-agent-health.lua` (D541), `argocd-agent-policy.yaml` (only the studio's Agent shape from Argo, D544) |
 | Argo read-only account | `p, skanyxx, applications, get, skanyxx-agents/skanyxx-agents, allow` in the AppProject `skanyxx-agents` (kagent Agents in one namespace from this repo only); its token is `Studio:Argo:Token` |
 | Who deploys | the reconciler on merge (always); Argo tracks and re-syncs the same file. An Agent Argo creates first is adopted (D541) |
 
