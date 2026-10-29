@@ -160,6 +160,8 @@ public class KAgentApiClient
                 agentsArray.AddRange(itemsElement.EnumerateArray());
             else if (root.ValueKind == JsonValueKind.Array)
                 agentsArray.AddRange(root.EnumerateArray());
+            else if (IsEmptyList(root))
+                return [];
             else
             {
                 _logger.LogWarning("kagent GET /api/agents answered without an agent list");
@@ -437,8 +439,7 @@ public class KAgentApiClient
             response.RequestMessage?.Method, response.RequestMessage?.RequestUri?.AbsolutePath, (int)response.StatusCode);
 
     /// <summary>Every ModelConfig kagent has, as kagent returns them: <c>[{ref, spec, status}]</c>.</summary>
-    public async Task<JsonArray> GetModelConfigsAsync(CancellationToken ct) =>
-        await ControlAsync(HttpMethod.Get, "/api/modelconfigs", null, ct) as JsonArray ?? throw UnexpectedShape();
+    public Task<JsonArray> GetModelConfigsAsync(CancellationToken ct) => ControlListAsync("/api/modelconfigs", ct);
 
     /// <summary>The ModelConfig <c>{ref, spec, status}</c>, or null when kagent has none by that name.</summary>
     public async Task<JsonObject?> GetModelConfigAsync(string ns, string name, CancellationToken ct) =>
@@ -471,7 +472,7 @@ public class KAgentApiClient
 
     /// <summary>The providers kagent supports: <c>[{name, type, requiredParams, optionalParams}]</c>.</summary>
     public async Task<JsonArray> GetModelProvidersAsync(CancellationToken ct) =>
-        await ControlAsync(HttpMethod.Get, "/api/modelproviderconfigs/models", null, ct) as JsonArray ?? throw UnexpectedShape();
+        await ControlListAsync("/api/modelproviderconfigs/models", ct);
 
     /// <summary>kagent's supported models per provider: <c>{"OpenAI": [{name, function_calling}], …}</c>.</summary>
     public async Task<JsonObject> GetSupportedModelsAsync(CancellationToken ct) =>
@@ -518,9 +519,7 @@ public class KAgentApiClient
         await ControlAsync(HttpMethod.Delete, $"/api/agents/{Uri.EscapeDataString(ns)}/{Uri.EscapeDataString(name)}", null, ct, notFoundIsNull: true) is not null;
 
     /// <summary>kagent's tool servers: <c>[{ref: "ns/name", groupKind, discoveredTools: [{name, description}]}]</c>.</summary>
-    public async Task<JsonArray> GetToolServerListAsync(CancellationToken ct) =>
-        await ControlAsync(HttpMethod.Get, "/api/toolservers", null, ct) as JsonArray
-        ?? throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
+    public Task<JsonArray> GetToolServerListAsync(CancellationToken ct) => ControlListAsync("/api/toolservers", ct);
 
     /// <summary>
     /// Creates a RemoteMCPServer and, owned by it, one Opaque Secret per entry of <paramref name="secrets"/> (kagent's
@@ -581,9 +580,24 @@ public class KAgentApiClient
     }
 
     /// <summary>kagent's agent list entries as they come (<c>{agent, model, modelProvider, modelConfigRef, deploymentReady}</c>).</summary>
-    public async Task<JsonArray> GetAgentListAsync(CancellationToken ct) =>
-        await ControlAsync(HttpMethod.Get, "/api/agents", null, ct) as JsonArray
-        ?? throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
+    public Task<JsonArray> GetAgentListAsync(CancellationToken ct) => ControlListAsync("/api/agents", ct);
+
+    /// <summary>
+    /// A list call: kagent 0.10.2 leaves <c>data</c> out of the envelope when the list is empty (a fresh install has no
+    /// agents, ModelConfigs or tool servers), which <see cref="ControlAsync"/> hands back as an empty object.
+    /// </summary>
+    private async Task<JsonArray> ControlListAsync(string endpoint, CancellationToken ct) =>
+        await ControlAsync(HttpMethod.Get, endpoint, null, ct) switch
+        {
+            JsonArray list => list,
+            JsonObject { Count: 0 } => [],
+            _ => throw UnexpectedShape()
+        };
+
+    /// <summary><c>{"error": false, "message": …}</c> without <c>data</c>: kagent's answer for an empty list.</summary>
+    private static bool IsEmptyList(JsonElement root) =>
+        root.ValueKind == JsonValueKind.Object && !root.TryGetProperty("data", out _)
+        && root.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.False;
 
     /// <summary><paramref name="userId"/>'s sessions, as kagent lists them for that person (theirs only).</summary>
     public async Task<List<KAgentSession>> ListSessionsAsync(string userId, CancellationToken ct) =>
