@@ -404,17 +404,17 @@ public sealed class AgentSecretTests(PostgresFixture postgres) : MemoryTestBase(
         await App.SupervisorClient().PostAsJsonAsync("/api/memory/agents/other/secret", new { actsForUsers = true }, cancellationToken: TestContext.Current.CancellationToken);
         await App.SupervisorClient().PostAsync(Path, null, TestContext.Current.CancellationToken);
         await App.SupervisorClient().DeleteAsync(Path, TestContext.Current.CancellationToken);
-        await App.Client("olga", SkanyxxRoles.Employee).PostAsync(Path, null, TestContext.Current.CancellationToken);
-        await App.Client("olga", SkanyxxRoles.Employee).DeleteAsync(Path, TestContext.Current.CancellationToken);
+        // D392: below supervisor the route's roles refuse first; the Host's route-refusal audit records those, not this one.
+        var issue = await App.Client("olga", SkanyxxRoles.Employee).PostAsync(Path, null, TestContext.Current.CancellationToken);
+        var revoke = await App.Client("olga", SkanyxxRoles.Employee).DeleteAsync(Path, TestContext.Current.CancellationToken);
 
         var refusals = App.Logs.Split('\n').Where(l => l.StartsWith("Warning Agent memory secret") && l.Contains(" refused ")).ToList();
 
-        Assert.Equal(5, refusals.Count);
+        Assert.Equal((HttpStatusCode.Forbidden, HttpStatusCode.Forbidden), (issue.StatusCode, revoke.StatusCode));
+        Assert.Equal(3, refusals.Count);
         Assert.Contains($"issue refused for other by {MemoryApp.Supervisor} from 127.0.0.1; acts for users requested: True; reason: Only the owner may let an agent act for users.", refusals[0]);
         Assert.Contains($"issue refused for seed by {MemoryApp.Supervisor} from 127.0.0.1; acts for users requested: False; reason: Only the owner may rotate", refusals[1]);
         Assert.Contains($"revoke refused for seed by {MemoryApp.Supervisor} from 127.0.0.1; reason: Only the owner may revoke", refusals[2]);
-        Assert.Contains("issue refused for seed by olga from 127.0.0.1; acts for users requested: False; reason: Only a supervisor", refusals[3]);
-        Assert.Contains("revoke refused for seed by olga from 127.0.0.1; reason: Only a supervisor", refusals[4]);
         Assert.All(refusals, r => Assert.DoesNotContain("skx_mem_", r));
         Assert.DoesNotContain(owners, App.Logs);
     }

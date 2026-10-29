@@ -23,8 +23,6 @@ internal sealed class SetSandboxSuspendedHandler(AxGateway ax, KeyedLock locks, 
             var sandbox = await ax.FindSandboxAsync(command.Name, ct);
             if (sandbox is null)
                 return Outcome<Sandbox>.NotFound($"No sandbox '{command.Name}'.");
-            if (!Ownership.CanManage(command.IsSupervisor, command.UserId!, SandboxEnv.Read(sandbox, SandboxEnv.Owner)))
-                return Outcome<Sandbox>.Forbidden("Only the person who started the sandbox, or a supervisor, may suspend or resume it.");
             if (!SandboxPhases.CanSetSuspended(sandbox.Status?.Phase ?? "", command.Suspend))
                 return Outcome<Sandbox>.Conflict(default, command.Suspend
                     ? "Only a pending or running sandbox can be suspended."

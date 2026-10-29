@@ -88,9 +88,13 @@ public sealed class SandboxesApp : IAsyncDisposable
         return new SandboxesApp(app, logs);
     }
 
-    /// <summary>Signed in as <paramref name="userId"/>; <see cref="Supervisor"/> holds the supervisor role. Null: anonymous.</summary>
+    /// <summary>
+    /// Signed in as <paramref name="userId"/>, holding the supervisor role: the sandboxes API is supervisors' and the
+    /// owner's (D392), so every named test user is one and ownership is what tells them apart. Null: anonymous. Any other
+    /// roles: <see cref="ClientAs"/>.
+    /// </summary>
     public HttpClient Client(string? userId = User) =>
-        ClientAs(userId, userId == Supervisor ? [SkanyxxRoles.Supervisor] : []);
+        ClientAs(userId, userId is null ? [] : [SkanyxxRoles.Supervisor]);
 
     public HttpClient ClientAs(string? userId, params string[] roles)
     {

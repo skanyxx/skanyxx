@@ -13,6 +13,8 @@ internal sealed class RevokeAgentSecretEndpoint(IMediator mediator, ILogger<Revo
     public override void Configure()
     {
         Delete("agents/{agentId}/secret");
+        // D392: supervisors' and the owner's; the handler still decides what only the owner may do.
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<MemoryGroup>();
     }
 

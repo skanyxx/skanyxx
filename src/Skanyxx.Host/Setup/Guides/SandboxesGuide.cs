@@ -7,8 +7,10 @@ public static class SandboxesGuide
         Id: "sandboxes",
         Title: "Sandboxes (Google AX, experimental)",
         Readme: "Sandboxes on Google AX (Experimental)",
-        What: "Supervisors run containers in Google AX sandboxes (Agent Substrate), watch them start, suspend, resume and stop them. " +
-              "Off unless enabled; AX is pre-1.0 and has no authentication, so the network fence is part of the setup, not an extra.",
+        What: "Only supervisors and the owner run sandboxes: the page and the whole api/sandboxes API refuse employees and builders (D392), " +
+              "because a sandbox runs a container image on cluster compute. They run containers in Google AX sandboxes (Agent Substrate), " +
+              "watch them start, suspend, resume and stop them; a person who loses supervisor has their running sandboxes stopped. " +
+              "Off unless enabled (the settings below turn it on); AX is pre-1.0 and has no authentication, so the network fence is part of the setup, not an extra.",
         Prerequisites:
         [
             "Agent Substrate running on the cluster, with a WorkerPool and AX's base ActorTemplate (ax-system/default-template) selecting it; without them every sandbox fails with \"no free workers available\".",
@@ -51,6 +53,7 @@ public static class SandboxesGuide
         Verify:
         [
             new("Open /Sandboxes as the owner or a supervisor: the run form is shown (not \"Sandboxes are off\")."),
+            new("As an employee or a builder, /Sandboxes is refused and PUT api/sandboxes/<name> answers 403: give the person the supervisor role to let them run sandboxes."),
             new("Run a sandbox with an allowed image: it goes Pending → Running in the live view; stop it afterwards."),
         ],
         Errors:
@@ -59,5 +62,7 @@ public static class SandboxesGuide
             new("\"AX unreachable.\" (502)", "The port-forward or ax-server is down, or Sandboxes:Address is wrong."),
             new("Sandbox fails with \"no free workers available\"", "Create the WorkerPool and the base ActorTemplate (kubectl-ate create actor-template)."),
             new("A resumed sandbox ends Failed", "Resume is unreliable on AX v0.3.1: stop the sandbox and run it again."),
+            new("403 on api/sandboxes", "Only supervisors and the owner may use sandboxes (D392); an employee or a builder is refused by design."),
+            new("Saving someone's roles answers 500 \"Its sandboxes could not be stopped\"", "Removing supervisor stops their sandboxes through AX; AX was unreachable. Fix AX and save the same roles again."),
         ]);
 }

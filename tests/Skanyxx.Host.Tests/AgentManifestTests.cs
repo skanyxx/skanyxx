@@ -1,6 +1,7 @@
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
+using Skanyxx.Module.Agents.Studio.Reconcile;
 
 namespace Skanyxx.Host.Tests;
 
@@ -227,5 +228,19 @@ public sealed class AgentManifestTests
         Assert.Contains(problems, p => p.Contains("no personal scope"));
         Assert.Contains(problems, p => p.Contains("give search, upsert or both"));
         Assert.Contains(problems, p => p.Contains("TTL"));
+    }
+
+    /// <summary>D392: a preview is an unreviewed agent, so it runs without MCP tools and skills; memory search stays.</summary>
+    [Fact]
+    public void APreview_HasNoMcpToolsAndNoSkills()
+    {
+        var draft = Draft();
+
+        var preview = KAgentObjects.Preview(draft, 7);
+
+        Assert.NotEmpty(draft.McpTools);
+        Assert.Empty(preview.McpTools);
+        Assert.Empty(preview.Skills);
+        Assert.DoesNotContain("jira", AgentManifest.Agent(preview, "kagent").ToJsonString());
     }
 }

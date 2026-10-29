@@ -60,7 +60,8 @@ public sealed class WorkspaceTests : SandboxesTestBase
     [Fact]
     public async Task OnlySupervisors_WriteWorkspaces()
     {
-        var response = await SaveAsync("repo-ws", new { git = Array.Empty<object>() }, SandboxesApp.User);
+        var response = await App.ClientAs(SandboxesApp.User, Skanyxx.Core.Platform.SkanyxxRoles.Builder).PutAsJsonAsync("/api/sandboxes/workspaces/repo-ws",
+            new { git = Array.Empty<object>() }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Empty(Ax.WorkspaceUpdates);

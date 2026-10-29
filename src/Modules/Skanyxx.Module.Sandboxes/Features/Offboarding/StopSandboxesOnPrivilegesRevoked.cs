@@ -15,11 +15,11 @@ namespace Skanyxx.Module.Sandboxes.Features.Offboarding;
 /// (<see cref="PrivilegesRevoked.AccessRemoved"/>). Every active sandbox (Pending, Running, Suspended) whose recorded owner
 /// is that person is deleted through AX — the module's "stop" — each under its sandbox lock and re-read there, so a sandbox
 /// replaced or already stopped meanwhile is left alone, and one deleted between the read and the delete (another
-/// replica, the person) counts as stopped (D163). Losing supervisor alone stops nothing: what supervisors manage is
-/// decided per request (<see cref="Ownership"/>), and the person's own sandboxes stay theirs. Workspaces are storage, not
-/// running code, and stay. AX unreachable, or a sandbox that would not stop for any reason: the remaining sandboxes are still
+/// replica, the person) counts as stopped (D163). Since D392 losing supervisor stops them too: only supervisors and the
+/// owner may run sandboxes, and a demoted person could no longer even stop the ones still running on their earlier
+/// authority. Workspaces are storage, not running code, and stay. AX unreachable, or a sandbox that would not stop for any reason: the remaining sandboxes are still
 /// tried, then this throws a <see cref="RevocationFailedException"/> saying so — identity answers <c>500</c> and
-/// disabling the account again retries (every disable publishes). Runs after the local revocations (D160). With
+/// the same disable or role save again retries (each publishes). Runs after the local revocations (D160). With
 /// sandboxes off it does nothing (and never builds the AX client).
 /// </summary>
 [NotificationOrder(NotificationOrderAttribute.External)]
@@ -33,7 +33,7 @@ internal sealed class StopSandboxesOnPrivilegesRevoked(
 
     public async Task Handle(PrivilegesRevoked notification, CancellationToken ct)
     {
-        if (!(notification.AccountDisabled || notification.AccessRemoved) || !SandboxesOptions.IsEnabled(configuration))
+        if (!SandboxesOptions.IsEnabled(configuration))
             return;
 
         var ax = services.GetRequiredService<AxGateway>();

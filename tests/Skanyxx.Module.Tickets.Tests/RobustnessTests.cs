@@ -56,7 +56,7 @@ public sealed class RobustnessTests(PostgresFixture postgres) : TicketsTestBase(
         KAgent.Script("ticket-planner", Enumerable.Repeat<AgentReply>(new AgentReply.Blocked(release, "plan"), 30).ToArray());
 
         var answers = await Task.WhenAll(Enumerable.Range(0, 30).Select(_ =>
-            App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" })));
+            App.Starter().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" })));
         release.SetResult();
 
         Assert.Equal(5, answers.Count(a => a.StatusCode == HttpStatusCode.Accepted));
@@ -165,8 +165,8 @@ public sealed class RobustnessTests(PostgresFixture postgres) : TicketsTestBase(
 
         for (var i = 0; i < 5; i++)
             await App.StartRunAsync();
-        var sixth = await App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
-        var otherUser = await App.Client("bob").PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
+        var sixth = await App.Starter().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
+        var otherUser = await App.Starter("bob").PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
         release.SetResult();
 
         Assert.Equal(HttpStatusCode.TooManyRequests, sixth.StatusCode);

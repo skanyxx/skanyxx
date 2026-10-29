@@ -51,6 +51,8 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
             s["Studio:SkillRegistries:0"] = "ghcr.io/acme/skills/";
             s["Studio:ReconcileSeconds"] = "3600";
             s["Studio:LockWaitSeconds"] = "2";
+            // Demoting the supervisor stops their sandboxes (D392); the default test AX is unreachable.
+            HostApp.WithoutSandboxes(s);
         });
         _owner = await _host.OwnerAsync();
         // Setup only wakes the reconciler (m13); its first pass creates and records the repo, then keeps the factory.

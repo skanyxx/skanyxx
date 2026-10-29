@@ -19,8 +19,6 @@ internal sealed class StopSandboxHandler(AxGateway ax, KeyedLock locks, MemoryAc
             var sandbox = await ax.FindSandboxAsync(command.Name, ct);
             if (sandbox is null)
                 return Outcome<Sandbox>.NotFound($"No sandbox '{command.Name}'.");
-            if (!Ownership.CanManage(command.IsSupervisor, command.UserId!, SandboxEnv.Read(sandbox, SandboxEnv.Owner)))
-                return Outcome<Sandbox>.Forbidden("Only the person who started the sandbox, or a supervisor, may stop it.");
 
             if (await memory.RevokeAsync(SandboxEnv.Read(sandbox, SandboxEnv.AgentId), ct) is { } refused)
                 return new Outcome<Sandbox>(refused.Status, Message: refused.Message);

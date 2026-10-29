@@ -10,6 +10,8 @@ internal sealed class GetAgentGrantsEndpoint(IMediator mediator) : Endpoint<Agen
     public override void Configure()
     {
         Get("grants/{agentId}");
+        // D392: supervisors' and the owner's; the handler still decides what only the owner may do.
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<MemoryGroup>();
     }
 

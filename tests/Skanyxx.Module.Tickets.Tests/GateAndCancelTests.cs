@@ -1,5 +1,10 @@
 using System.Net;
 using System.Net.Http.Json;
+using MediatR;
+using Microsoft.Extensions.DependencyInjection;
+using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Module.Tickets.Contracts;
 using Skanyxx.Module.Tickets.Domain;
 using Skanyxx.Module.Tickets.Tests.Infrastructure;
 using static Skanyxx.Module.Tickets.Tests.Infrastructure.Stages;
@@ -8,8 +13,9 @@ namespace Skanyxx.Module.Tickets.Tests;
 
 public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBase(postgres)
 {
+    /// <summary>D392: someone else's run is the 404 of no run; a supervisor cancels any.</summary>
     [Fact]
-    public async Task OnlyTheCreatorOrASupervisor_Cancels()
+    public async Task OnlyTheCreatorOrASupervisor_Cancels_AnyoneElseSeesNoRun()
     {
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
@@ -17,27 +23,54 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         var byOther = await App.Client("bob").PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
         var bySupervisor = await App.Client(TicketsApp.Supervisor).PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Forbidden, byOther.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, byOther.StatusCode);
         Assert.Equal(HttpStatusCode.OK, bySupervisor.StatusCode);
     }
 
+    /// <summary>
+    /// D392: deciding resumes agent calls, so it is a supervisor's — any supervisor's. The starter without the role (a
+    /// demoted supervisor) cannot, nor can anyone else below it.
+    /// </summary>
     [Theory]
-    [InlineData("bob", HttpStatusCode.Forbidden)]
-    [InlineData(TicketsApp.User, HttpStatusCode.OK)]
-    [InlineData(TicketsApp.Supervisor, HttpStatusCode.OK)]
-    public async Task OnlyTheCreatorOrASupervisor_DecidesAGate(string userId, HttpStatusCode expected)
+    [InlineData(TicketsApp.User, SkanyxxRoles.Employee, HttpStatusCode.Forbidden)]
+    [InlineData("bob", SkanyxxRoles.Builder, HttpStatusCode.Forbidden)]
+    [InlineData("bob", SkanyxxRoles.Supervisor, HttpStatusCode.OK)]
+    [InlineData("olga", SkanyxxRoles.Owner, HttpStatusCode.OK)]
+    [InlineData(TicketsApp.User, SkanyxxRoles.Supervisor, HttpStatusCode.OK)]
+    public async Task OnlyASupervisorOrTheOwner_DecidesAGate(string userId, string role, HttpStatusCode expected)
     {
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
-        var response = await App.DecideAsync(run.Id, "approve", userId: userId);
+        var response = await App.ClientAs(userId, role).PostAsJsonAsync($"/api/tickets/runs/{run.Id}/decision", new { decision = "approve" },
+            cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, response.StatusCode);
         if (expected == HttpStatusCode.Forbidden)
-        {
-            Assert.Contains("Only the person who started the run, or a supervisor, may decide its gate.", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
             Assert.Equal(RunState.AwaitingHuman, (await App.GetRunAsync(run.Id)).State);
-        }
+    }
+
+    /// <summary>D392: losing supervisor (or being disabled) cancels the person's unfinished runs, a waiting gate included.</summary>
+    [Fact]
+    public async Task LosingSupervisor_CancelsThePersonsUnfinishedRuns_OnlyTheirs()
+    {
+        var mine = await App.StartRunAsync();
+        await App.WaitForAsync(mine.Id, RunState.AwaitingHuman);
+        var response = await App.Starter("carol").PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" },
+            cancellationToken: TestContext.Current.CancellationToken);
+        var theirs = (await response.Content.ReadFromJsonAsync<RunDto>(TicketsApp.Json, TestContext.Current.CancellationToken))!;
+        await App.WaitForAsync(theirs.Id, RunState.AwaitingHuman);
+
+        await using (var scope = App.Services.CreateAsyncScope())
+            await scope.ServiceProvider.GetRequiredService<IMediator>().Publish(new PrivilegesRevoked(TicketsApp.User, "roles saved without supervisor"),
+                TestContext.Current.CancellationToken);
+        var cancelled = await App.GetRunAsync(mine.Id);
+
+        Assert.Equal(RunState.Cancelled, cancelled.State);
+        Assert.Equal(StageState.Skipped, cancelled.StageRuns[^1].State);
+        Assert.Contains("lost the right to run it (roles saved without supervisor)", cancelled.Error);
+        Assert.Equal(RunState.AwaitingHuman, (await App.GetRunAsync(theirs.Id)).State);
+        Assert.Equal(HttpStatusCode.Conflict, (await App.DecideAsync(mine.Id, "approve", userId: TicketsApp.Supervisor)).StatusCode);
     }
 
     [Fact]
@@ -127,7 +160,7 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         for (var i = 0; i < 5; i++)
             await App.WaitForAsync((await App.StartRunAsync(pipelineId: "parked")).Id, RunState.AwaitingHuman);
 
-        var sixth = await App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "parked" }, cancellationToken: TestContext.Current.CancellationToken);
+        var sixth = await App.Starter().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "parked" }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, sixth.StatusCode);
     }

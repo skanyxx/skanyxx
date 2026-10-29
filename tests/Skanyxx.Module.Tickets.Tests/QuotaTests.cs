@@ -58,7 +58,7 @@ public sealed class QuotaTests(PostgresFixture postgres) : TicketsTestBase(postg
         await WithRecordingQuotaAsync();
         RecordingQuota.Refuse = true;
 
-        var response = await App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, TestContext.Current.CancellationToken);
+        var response = await App.Starter().PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.TooManyRequests, response.StatusCode);
         Assert.Contains("Request more", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));

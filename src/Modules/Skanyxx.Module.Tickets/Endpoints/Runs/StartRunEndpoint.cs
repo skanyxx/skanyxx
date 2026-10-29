@@ -11,6 +11,8 @@ internal sealed class StartRunEndpoint(IMediator mediator) : Endpoint<StartRunRe
     public override void Configure()
     {
         Post("runs");
+        // D392: a run calls kagent agents (model spend, shared systems) on its starter's authority: supervisors and the owner only.
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<TicketsGroup>();
     }
 

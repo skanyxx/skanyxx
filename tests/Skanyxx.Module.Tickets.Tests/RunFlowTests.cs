@@ -56,7 +56,7 @@ public sealed class RunFlowTests(PostgresFixture postgres) : TicketsTestBase(pos
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
-        var response = await App.Client().PostAsJsonAsync($"/api/tickets/runs/{run.Id}/decision", new { }, cancellationToken: TestContext.Current.CancellationToken);
+        var response = await App.Starter().PostAsJsonAsync($"/api/tickets/runs/{run.Id}/decision", new { }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
         Assert.Equal(RunState.AwaitingHuman, (await App.GetRunAsync(run.Id)).State);
@@ -376,7 +376,7 @@ public sealed class RunFlowTests(PostgresFixture postgres) : TicketsTestBase(pos
     [InlineData("not a key", "ticket-fix", HttpStatusCode.BadRequest)]
     public async Task StartRun_RejectsUnknownTicketsAndPipelines(string ticketKey, string pipelineId, HttpStatusCode expected)
     {
-        var response = await App.Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey, pipelineId }, cancellationToken: TestContext.Current.CancellationToken);
+        var response = await App.Starter().PostAsJsonAsync("/api/tickets/runs", new { ticketKey, pipelineId }, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, response.StatusCode);
         await using var db = Postgres.CreateDbContext();

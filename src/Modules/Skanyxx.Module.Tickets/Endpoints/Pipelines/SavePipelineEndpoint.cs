@@ -10,6 +10,7 @@ internal sealed class SavePipelineEndpoint(IMediator mediator) : Endpoint<SavePi
     public override void Configure()
     {
         Put("pipelines/{id}");
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<TicketsGroup>();
     }
 

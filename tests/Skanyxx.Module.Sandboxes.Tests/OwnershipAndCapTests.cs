@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Skanyxx.Core.Platform;
 using System.Net;
 using System.Net.Http.Json;
 using Skanyxx.Module.Sandboxes.Domain;
@@ -8,15 +9,16 @@ namespace Skanyxx.Module.Sandboxes.Tests;
 
 public sealed class OwnershipAndCapTests : SandboxesTestBase
 {
+    /// <summary>D392: the API is supervisors' and the owner's; an employee or builder reaches none of it, even their own.</summary>
     [Theory]
-    [InlineData("stop")]
-    [InlineData("suspend")]
-    [InlineData("resume")]
-    public async Task AnotherUser_CannotManageTheSandbox(string action)
+    [InlineData("stop", SkanyxxRoles.Employee)]
+    [InlineData("suspend", SkanyxxRoles.Employee)]
+    [InlineData("resume", SkanyxxRoles.Builder)]
+    public async Task ANonSupervisor_CannotManageTheSandbox(string action, string role)
     {
         await RunAsync("fix-42");
 
-        var response = await App.Client(SandboxesApp.Other).PostAsync($"/api/sandboxes/fix-42/{action}", null, TestContext.Current.CancellationToken);
+        var response = await App.ClientAs(SandboxesApp.User, role).PostAsync($"/api/sandboxes/fix-42/{action}", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         Assert.Equal(0, Ax.DeleteCalls);
@@ -27,6 +29,7 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     [Theory]
     [InlineData(SandboxesApp.User, "stop")]
     [InlineData(SandboxesApp.User, "suspend")]
+    [InlineData(SandboxesApp.Other, "stop")]
     [InlineData(SandboxesApp.Supervisor, "stop")]
     [InlineData(SandboxesApp.Supervisor, "suspend")]
     [InlineData(SandboxesApp.Supervisor, "resume")]
@@ -58,7 +61,7 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     {
         Ax.Seed("cli-made", owner: null);
 
-        var user = await App.Client().PostAsync("/api/sandboxes/cli-made/stop", null, TestContext.Current.CancellationToken);
+        var user = await App.ClientAs(SandboxesApp.User, SkanyxxRoles.Employee).PostAsync("/api/sandboxes/cli-made/stop", null, TestContext.Current.CancellationToken);
         var supervisor = await App.Client(SandboxesApp.Supervisor).PostAsync("/api/sandboxes/cli-made/stop", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Forbidden, user.StatusCode);
@@ -144,7 +147,8 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
     {
         Ax.Seed("cli-made", owner: null);
 
-        var user = await RunAsync("cli-made");
+        var user = await App.ClientAs(SandboxesApp.User, SkanyxxRoles.Employee).PutAsJsonAsync("/api/sandboxes/cli-made", RunBody(),
+            cancellationToken: TestContext.Current.CancellationToken);
         var supervisor = await RunAsync("cli-made", SandboxesApp.Supervisor);
 
         Assert.Equal(HttpStatusCode.Forbidden, user.StatusCode);

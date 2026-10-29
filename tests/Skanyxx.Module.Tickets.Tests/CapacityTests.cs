@@ -11,7 +11,7 @@ namespace Skanyxx.Module.Tickets.Tests;
 public sealed class CapacityTests(PostgresFixture postgres) : TicketsTestBase(postgres)
 {
     private Task<HttpResponseMessage> StartAsAsync(TicketsApp app, string user) =>
-        app.Client(user).PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" });
+        app.Starter(user).PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" });
 
     // CR M1: the per-user cap alone does not bound many users (or accounts), so a global cap must still hold.
     [Fact]

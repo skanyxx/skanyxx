@@ -677,9 +677,10 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   is already saved, the call answers `500` and an Error is logged naming the person and the actor: **save the same
   roles (or disable) again** — that re-runs the revocation, and it is harmless when there is nothing left to revoke.
   By hand: `GET /api/memory/agents/{agentId}/secret` shows `createdBy`, and `DELETE` on the same path revokes. Enabling
-  someone again does not restore anything. **Disabling also stops the person's active sandboxes** (D154; with
-  sandboxes on): their Pending, Running and Suspended sandboxes are deleted in AX, each logged at Warning; workspaces stay, and
-  losing `supervisor` alone stops nothing. If AX cannot be reached or a sandbox will not stop, the disable is saved, the
+  someone again does not restore anything. **Disabling, or losing `supervisor`, also stops the person's active sandboxes**
+  (D154, D392; with sandboxes on): their Pending, Running and Suspended sandboxes are deleted in AX, each logged at
+  Warning; workspaces stay. It also **cancels the ticket runs they started** that have not finished (a waiting gate is
+  skipped, D392). If AX cannot be reached or a sandbox will not stop, the disable is saved, the
   call answers `500` with `detail` "Account disabled. Its sandboxes could not be stopped (AX unavailable) — disable
   again to retry." (the People page shows the same line, D162; Error log) and disabling again retries. A sandbox someone
   else deleted meanwhile counts as stopped (D163). Every handler of the announcement runs even when another fails
@@ -1148,7 +1149,8 @@ in the agent repo `skanyxx-agents` carries them; only a supervisor's merge makes
   pass at a time across replicas (a Postgres advisory lock in memory's database, D120); a pass that fails is logged
   and the loop goes on.
 - **Preview (D030, D032).** "Start preview" deploys `preview-<pr>-<name>`: not labelled merged (never in Chat), memory
-  **search on `company` only, never upsert**, no TTL memory, no skills, never acting for users. Builders and supervisors chat with
+  **search on `company` only, never upsert**, no TTL memory, no skills, **no MCP tools** (D392: an unreviewed agent acts
+  on nothing; it answers from its instructions and company search), never acting for users. Builders and supervisors chat with
   it on the proposal; it is removed when the PR merges or closes.
 - **API:** `GET api/studio`, `GET api/studio/options`, `GET api/studio/agents/{name}/draft`, `POST api/studio/proposals`,
   `GET api/studio/proposals/{n}`, `POST api/studio/proposals/{n}/merge|close|preview|chat`, `POST api/studio/factory`
@@ -1357,6 +1359,10 @@ kubectl apply -k deploy/kagent/ticket-flow/        # the five stage agents
 dotnet test tests/Skanyxx.Module.Tickets.Tests     # needs Docker; kagent is faked
 ```
 
+- **Who (D392):** starting a run, deciding a gate, the Jira reads (`api/tickets/issues*`) and writing pipelines are
+  supervisors' and the owner's; anyone else gets `403`. Every signed-in person still lists runs and pipelines; the
+  starter or a supervisor cancels a run, and to anyone else someone else's run is the `404` of no run. A person who
+  loses supervisor (or is disabled) has their unfinished runs cancelled.
 - `GET /api/tickets/issues?assignee=` (`unassigned` for none) · `GET /api/tickets/issues/{key}` · `GET /api/tickets/issues/assignees`.
 - `GET /api/tickets/runs?ticketKey=` lists runs (optionally for one ticket).
 - `POST /api/tickets/runs {ticketKey, pipelineId}` → `202`; the run snapshots the ticket and the pipeline, so editing
@@ -1526,6 +1532,9 @@ restarted, it worked 3 of 3 times for sandboxes that name their own image (throu
 on 2026-10-11 it failed again (1 of 1, a supervisor resuming an employee's sandbox). The cause is not established. If a
 resume ends `Failed`, stop the sandbox and run it again.
 
+**Who (D392):** the page **and the whole `/api/sandboxes` API** are the owner's and supervisors'; an employee or a builder
+gets `403` on every route. To let someone run sandboxes, give them the supervisor role.
+
 **Page:** `/Sandboxes` (owner and supervisor; in their nav, labelled Experimental) — run a sandbox (name, an allowed image,
 command), watch it start (live, the same SSE stream), list, suspend / resume / stop. The page holds no rule: its script
 calls `/api/sandboxes` with the person's cookie, so the module's checks are the only ones, and an API refusal is shown as
@@ -1552,9 +1561,9 @@ listener's (D193, "Sandboxes and memory" at the end of this section).
   the literal routes beside `/api/sandboxes/{name}`, so such a sandbox could never be read back (D179). There is
   **no local run table** — AX is the source of truth.
 - Owner: AX v0.3.1 has no labels, so the creator is stored in the sandbox's env as `SKANYXX_OWNER`. Every `SKANYXX_*`
-  env name is reserved (`400` if a caller sets one). Only the creator may run/replace a sandbox; stop/suspend/resume
-  is for the creator or a supervisor (role `owner` or `supervisor`; `403` otherwise). Supervisors cannot replace another
-  user's sandbox. Sandboxes created outside Skanyxx (AX tasks made directly) are supervisors' only.
+  env name is reserved (`400` if a caller sets one). Only the creator may replace a sandbox; any supervisor (or the owner)
+  may stop, suspend or resume any. Nobody replaces another user's sandbox; one created outside Skanyxx (AX tasks made
+  directly) may be replaced, and is then the replacer's.
 - What may run: `image` must match an `AllowedImages` prefix (empty list = every run is `400`). A prefix matches
   only at a boundary: `/`, `@`, or a `:` that starts a tag (no `/` after it), so `ghcr.io` does not admit the
   registry port `ghcr.io:5000/…`. End prefixes in `/` (`ghcr.io/acme/`). `RequireDigest` also demands `@sha256:`. `requests`/`limits` above `MaxCpu`/`MaxMemory` (default `4` / `8Gi`) are `400`; missing
