@@ -544,14 +544,15 @@ public class KAgentApiClient
         .OfType<string>().ToList();
 
     /// <summary>
-    /// A control call as this process (no person): the envelope's <c>data</c> (an empty object when there is none), or
+    /// A control call as this process (no person): the envelope's <c>data</c> (an empty object when there is none; an
+    /// empty array for a <paramref name="list"/> kagent answered without <c>data</c>, D540), or
     /// null for a 404 when <paramref name="notFoundIsNull"/>. The request is never logged; kagent's refusal is, up to 1 000
     /// characters, unless the request <paramref name="carriesSecret"/> (a tool server's companion Secret values, a
     /// ModelConfig write with an inline API key, any Agent write): kagent's answer could echo them, so then only the method, path, status
     /// and a fixed text are logged. The exception never carries kagent's text.
     /// </summary>
     private async Task<JsonNode?> ControlAsync(HttpMethod method, string endpoint, JsonObject? body, CancellationToken ct,
-        bool notFoundIsNull = false, bool carriesSecret = false)
+        bool notFoundIsNull = false, bool carriesSecret = false, bool list = false)
     {
         using var request = new HttpRequestMessage(method, WithUser(endpoint, null));
         if (body is not null)
@@ -570,7 +571,10 @@ public class KAgentApiClient
         }
         try
         {
-            return JsonNode.Parse(content) is JsonObject envelope ? envelope["data"]?.DeepClone() ?? new JsonObject() : new JsonObject();
+            var envelope = JsonNode.Parse(content) as JsonObject;
+            if (list && envelope is not null && !envelope.ContainsKey("data") && envelope["error"]?.GetValueKind() == JsonValueKind.False)
+                return new JsonArray();
+            return envelope?["data"]?.DeepClone() ?? new JsonObject();
         }
         catch (JsonException ex)
         {
@@ -584,15 +588,10 @@ public class KAgentApiClient
 
     /// <summary>
     /// A list call: kagent 0.10.2 leaves <c>data</c> out of the envelope when the list is empty (a fresh install has no
-    /// agents, ModelConfigs or tool servers), which <see cref="ControlAsync"/> hands back as an empty object.
+    /// agents, ModelConfigs or tool servers).
     /// </summary>
     private async Task<JsonArray> ControlListAsync(string endpoint, CancellationToken ct) =>
-        await ControlAsync(HttpMethod.Get, endpoint, null, ct) switch
-        {
-            JsonArray list => list,
-            JsonObject { Count: 0 } => [],
-            _ => throw UnexpectedShape()
-        };
+        await ControlAsync(HttpMethod.Get, endpoint, null, ct, list: true) as JsonArray ?? throw UnexpectedShape();
 
     /// <summary><c>{"error": false, "message": …}</c> without <c>data</c>: kagent's answer for an empty list.</summary>
     private static bool IsEmptyList(JsonElement root) =>

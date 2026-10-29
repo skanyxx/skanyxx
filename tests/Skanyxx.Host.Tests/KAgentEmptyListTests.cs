@@ -30,6 +30,9 @@ public sealed class KAgentEmptyListTests
     [Theory]
     [InlineData("""{"error":false,"data":{"name":"x"}}""")]
     [InlineData("""{"error":false,"data":"x"}""")]
+    [InlineData("""{"error":false,"data":null}""")]
+    [InlineData("""{"error":true,"message":"no"}""")]
+    [InlineData("""{}""")]
     public async Task AnotherShape_IsStillABadGateway(string body)
     {
         var client = Client(body);
