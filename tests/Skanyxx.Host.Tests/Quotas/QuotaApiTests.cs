@@ -371,7 +371,7 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, panel.StatusCode);
         var html = await panel.Content.ReadAsStringAsync(Ct);
         Assert.Contains(QuotaCostDisclaimer.Title, html);
-        Assert.Contains("id=\"setup-quotas\"", html);
+        Assert.DoesNotContain("id=\"setup-quotas\"", html); // set up: the panel shows no guide
         Assert.Contains("href=\"/Quotas\"", html);
 
         var ann = new Browser(_host);

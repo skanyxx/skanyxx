@@ -96,7 +96,7 @@ public sealed class OrgDeleteTests(PostgresFixture fixture) : IAsyncLifetime
 
         Assert.Contains("data-confirm-title=\"Delete Billing?\"", page);
         Assert.Contains("name=\"to\"", page);
-        Assert.Contains("id=\"setup-org\"", page);
+        Assert.DoesNotContain("id=\"setup-org\"", page); // set up: the panel shows no guide
         Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
         Assert.Contains("1 member(s)", await refused.Content.ReadAsStringAsync(Ct));
         Assert.Contains("Team deleted.", await deleted.Content.ReadAsStringAsync(Ct));

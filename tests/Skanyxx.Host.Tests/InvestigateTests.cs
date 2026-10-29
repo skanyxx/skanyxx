@@ -107,7 +107,7 @@ public sealed class InvestigateTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("/AccessDenied", new Uri(_host.BaseAddress, employeePage.Headers.Location!).AbsolutePath);
         Assert.DoesNotContain("href=\"/Investigate\"", employeeLibrary);
         Assert.Equal(HttpStatusCode.Forbidden, (await employeeApi.GetAsync("/api/investigate/workflows", Ct)).StatusCode);
-        Assert.Contains("id=\"setup-investigate\"", await (await (await SignInAsync(HostApp.OwnerEmail, HostApp.OwnerPassword)).GetAsync("/Investigate")).Content.ReadAsStringAsync(Ct));
+        Assert.DoesNotContain("id=\"setup-investigate\"", await (await (await SignInAsync(HostApp.OwnerEmail, HostApp.OwnerPassword)).GetAsync("/Investigate")).Content.ReadAsStringAsync(Ct));
     }
 
     private async Task<Browser> SignInAsync(string email, string password = ToolServersApiTests.Password)

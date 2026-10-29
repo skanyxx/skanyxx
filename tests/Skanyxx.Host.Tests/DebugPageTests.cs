@@ -53,7 +53,7 @@ public sealed class DebugPageTests(PostgresFixture fixture)
         Assert.Contains("[redacted]", html);
         Assert.Contains("CommandLineConfigurationProvider", html);
         Assert.Contains("InstallationSettingsProvider", html);
-        Assert.Contains("id=\"setup-debug\"", html);
+        Assert.DoesNotContain("id=\"setup-debug\"", html); // set up: the panel shows no guide
         // Nothing that is not debugging: no quick commands, runners or tools.
         Assert.DoesNotContain("Quick command", html, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("kubectl exec", html);
