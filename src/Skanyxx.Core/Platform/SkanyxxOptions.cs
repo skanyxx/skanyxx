@@ -28,4 +28,12 @@ public sealed class SkanyxxOptions
     /// cannot spend the one sign-in depends on.
     /// </summary>
     public ApiRateLimitOptions InviteRateLimit { get; set; } = new() { PermitLimit = 10, WindowSeconds = 60 };
+
+    /// <summary>
+    /// The proxies whose <c>X-Forwarded-For</c> names the client (D390), as CIDRs: the ingress controller's own pod IPs
+    /// only (<c>10.42.3.17/32</c>), never the whole pod network, or any pod in the cluster could name itself any client.
+    /// The rate limits, logs and audit then key on the client, not on the ingress every request arrives from. Empty
+    /// (the default): the connection's own address, as before.
+    /// </summary>
+    public string[] TrustedProxies { get; set; } = [];
 }

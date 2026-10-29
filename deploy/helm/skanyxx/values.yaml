@@ -65,8 +65,15 @@ skanyxx:
   modules: {}
 
   # Extra env (list of EnvVar) and envFrom (list of EnvFromSource), for settings this chart does not name.
+  # Not Skanyxx__TrustedProxies__*: the chart sets those from trustedProxies below and refuses an extraEnv entry naming one.
   extraEnv: []
   extraEnvFrom: []
+
+  # Skanyxx:TrustedProxies (D390): CIDRs whose X-Forwarded-For names the client, so the sign-in, invite and API rate
+  # limits, the request log and the audit key on the person, not on the ingress pod every request comes from (empty:
+  # one shared window per ingress pod). Set it to the ingress controller pod IPs only (a /32 per pod, or a node pool
+  # range that holds nothing else), never the pod network: any pod inside the range could then forge the header.
+  trustedProxies: []
 
   service:
     port: 8080
@@ -156,6 +163,7 @@ ingress:
     - /Dashboard
     - /Analytics
     - /Investigate
+    - /Quotas
     - /Settings
     - /ResetPassword
     - /ForgotPassword

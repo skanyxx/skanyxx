@@ -1,3 +1,5 @@
+using System.Net.Http.Json;
+
 namespace Skanyxx.Host.Tests;
 
 /// <summary>SEC M5: one per-IP fixed window over the new-module APIs, chat, the model step and /mcp; other routes are not counted.</summary>
@@ -55,5 +57,50 @@ public sealed class RateLimitTests(PostgresFixture fixture)
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
         Assert.Equal(HttpStatusCode.OK, second.StatusCode);
         Assert.Equal(HttpStatusCode.TooManyRequests, third.StatusCode);
+    }
+
+    /// <summary>
+    /// D390: behind a trusted proxy each client (its X-Forwarded-For) has its own sign-in window; without one the header
+    /// is ignored, and everyone behind the same address shares it.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task SignInWindows_AreTheForwardedClients_OnlyBehindATrustedProxy(bool trusted)
+    {
+        await using var host = await HostApp.StartAsync(fixture.ConnectionString, s =>
+        {
+            s["Skanyxx:SignInRateLimit:PermitLimit"] = "1";
+            s["Skanyxx:SignInRateLimit:WindowSeconds"] = "600";
+            if (trusted)
+                s["Skanyxx:TrustedProxies:0"] = "127.0.0.0/8";
+        });
+
+        async Task<HttpStatusCode> SignInAsync(string client)
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, "/api/identity/sign-in")
+            {
+                Content = JsonContent.Create(new { email = "nobody@skanyxx.example", password = "wrong password here" })
+            };
+            request.Headers.Add("X-Forwarded-For", client);
+            return (await host.Client().SendAsync(request, TestContext.Current.CancellationToken)).StatusCode;
+        }
+
+        var first = await SignInAsync("203.0.113.1");
+        var again = await SignInAsync("203.0.113.1");
+        var other = await SignInAsync("203.0.113.2");
+
+        Assert.NotEqual(HttpStatusCode.TooManyRequests, first);
+        Assert.Equal(HttpStatusCode.TooManyRequests, again);
+        Assert.Equal(trusted, other != HttpStatusCode.TooManyRequests);
+    }
+
+    [Fact]
+    public async Task ATrustedProxyThatIsNotACidr_StopsStartup()
+    {
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() =>
+            HostApp.StartAsync(fixture.ConnectionString, s => s["Skanyxx:TrustedProxies:0"] = "ingress-nginx"));
+
+        Assert.Contains("Skanyxx:TrustedProxies must be CIDRs", ex.ToString(), StringComparison.Ordinal);
     }
 }

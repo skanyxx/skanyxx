@@ -619,7 +619,10 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   sign-in spends one permit, at its callback; sign-out and refresh do not count against it, so a client can always sign out. Invite
   and password-reset lookup and accept, and the `/Invite` and `/ResetPassword` pages (GET too), have another
   (`Skanyxx:InviteRateLimit`), so crawlers opening emailed links cannot spend the sign-in window. All windows are per client address, with IPv6 grouped per /64 (one
-  host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window.
+  host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window, unless
+  `Skanyxx:TrustedProxies` (Helm `skanyxx.trustedProxies`) lists the proxy as CIDRs: then the client is the last
+  `X-Forwarded-For` hop that proxy added (one hop, D390). List the ingress controller pod IPs only, never the pod network:
+  any pod inside the range could name itself any client. A value that is not a CIDR stops startup.
 - Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. A signed-in person
   on a page their role lacks is redirected to `/AccessDenied`, a `403` page (D236). Anonymous:
   `/health`, static files, `/Login` (the Microsoft sign-in too), `/signin-oidc`, `/Setup`, `/Invite`, `/ForgotPassword`, `/ResetPassword`, `/Privacy`, `/Error`, `/Offline`, `/AccessDenied`, `GET /api/identity/status`, the

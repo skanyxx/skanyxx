@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Skanyxx.Core.Platform.Identity;
 
 namespace Skanyxx.Host.Tests;
@@ -28,6 +30,29 @@ public sealed class DirectLoopbackTests
         var context = Context("127.0.0.1", "localhost");
         context.Request.Headers["X-Forwarded-For"] = "203.0.113.9";
 
+        Assert.False(DirectLoopback.Is(context));
+    }
+
+    /// <summary>
+    /// D390: a trusted proxy that relays a client's own <c>X-Forwarded-For: 127.0.0.1</c> makes the peer loopback after
+    /// the forwarded-headers middleware, which removes the header; the request still does not count.
+    /// </summary>
+    [Fact]
+    public async Task APeerSetFromAForwardedHeader_DoesNotCount()
+    {
+        var context = Context("10.42.0.7", "localhost");
+        context.Request.Headers["X-Forwarded-For"] = "127.0.0.1";
+        var options = new ForwardedHeadersOptions { ForwardedHeaders = ForwardedHeaders.XForwardedFor, ForwardLimit = 1 };
+        options.KnownIPNetworks.Clear();
+        options.KnownProxies.Clear();
+        options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse("10.42.0.0/16"));
+        var middleware = new ForwardedHeadersMiddleware(_ => Task.CompletedTask, Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance,
+            Microsoft.Extensions.Options.Options.Create(options));
+
+        await middleware.Invoke(context);
+
+        Assert.True(IPAddress.IsLoopback(context.Connection.RemoteIpAddress!));
+        Assert.False(context.Request.Headers.ContainsKey("X-Forwarded-For"));
         Assert.False(DirectLoopback.Is(context));
     }
 

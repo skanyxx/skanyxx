@@ -10,11 +10,15 @@ public static class DirectLoopback
     /// A loopback peer that carries forwarding headers is a local reverse proxy relaying someone else, so it does
     /// not count. Nor does one addressed by any name but a loopback one: that is a DNS-rebound page running in the
     /// developer's own browser (SEC2-N3), which host filtering stops only when <c>AllowedHosts</c> is not <c>*</c>.
+    /// Nor does a request whose <c>X-Forwarded-For</c> a trusted proxy's hop already replaced the peer with (D390): the
+    /// forwarded-headers middleware moves the consumed header to <c>X-Original-For</c>, and the peer it leaves is
+    /// whatever that header said, which a proxy passing a client's own header through lets the client choose.
     /// </summary>
     public static bool Is(HttpContext context) =>
         context.Connection.RemoteIpAddress is { } ip && IPAddress.IsLoopback(ip)
         && IsLoopbackHost(context.Request.Host.Host)
         && !context.Request.Headers.ContainsKey("X-Forwarded-For")
+        && !context.Request.Headers.ContainsKey("X-Original-For")
         && !context.Request.Headers.ContainsKey("Forwarded");
 
     private static bool IsLoopbackHost(string host) =>

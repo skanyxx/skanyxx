@@ -171,6 +171,11 @@ spec:
             - name: Skanyxx__AllowedOrigins__{{ $i }}
               value: {{ $origin | quote }}
             {{- end }}
+            {{- /* D390: the ingress controller's addresses, whose X-Forwarded-For names the client. */}}
+            {{- range $i, $cidr := $v.trustedProxies }}
+            - name: Skanyxx__TrustedProxies__{{ $i }}
+              value: {{ $cidr | quote }}
+            {{- end }}
             - name: Identity__BootstrapToken
               valueFrom:
                 secretKeyRef:
