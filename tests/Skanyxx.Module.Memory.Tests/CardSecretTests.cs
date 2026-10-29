@@ -38,7 +38,8 @@ public sealed class CardSecretTests(PostgresFixture postgres) : MemoryTestBase(p
         Assert.Contains(SecretText.Mask, read);
         foreach (var text in new[] { read, history, lifted, search, prompt })
             Assert.DoesNotContain(Marker, text);
-        Assert.NotEmpty(prompt);
+        // D500: a chat's own card never reaches a new chat's prompt at all (the redacted prompt line is RelatedMemoryTests').
+        Assert.Empty(prompt);
     }
 
     [Fact]

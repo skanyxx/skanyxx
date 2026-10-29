@@ -70,6 +70,29 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         Assert.DoesNotContain("Billing closes", searched);
     }
 
+    /// <summary>D506: the page offers the API's ticket, agent and origin filters, and keeps them across its links.</summary>
+    [Fact]
+    public async Task TicketAgentAndOriginFilters_NarrowTheShelf()
+    {
+        Created(await _miaApi.PutAsJsonAsync($"/api/memory/cards/personal:{_miaId}/sdb-note",
+            new { version = 0, type = "fact", what = "SDB-58 needs a refund form", why = "Seen twice", tickets = new[] { "SDB-58" } }, TestContext.Current.CancellationToken));
+
+        var ticket = await (await _mia.GetAsync("/Library?ticket=sdb-58")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var chats = await (await _mia.GetAsync("/Library?origin=chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var agent = await (await _mia.GetAsync("/Library?agent=seed")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var bad = await _mia.GetAsync("/Library?origin=nowhere");
+
+        Assert.Contains("SDB-58 needs a refund form", ticket);
+        Assert.DoesNotContain("Mia invoices on Fridays", ticket);
+        Assert.Contains("id=\"lib-ticket\" name=\"ticket\" value=\"sdb-58\"", ticket);
+        Assert.Contains("ticket=sdb-58", ticket); // the type chips keep the filter
+        Assert.DoesNotContain("Mia invoices on Fridays", chats);
+        Assert.Contains("<option value=\"chat\" selected=\"selected\">", chats);
+        Assert.DoesNotContain("Mia invoices on Fridays", agent);
+        Assert.Contains("id=\"lib-agent\" name=\"agent\" value=\"seed\"", agent);
+        Assert.Contains("Origin must be one of", await bad.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task LiftButtons_AreExactlyTheTargetsThePersonMayWrite()
     {
@@ -90,6 +113,57 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         Assert.DoesNotContain("data-rename", company);
         Assert.DoesNotContain("data-rename", ownerOnTeam); // reads every team, writes none it is not in
         Assert.Contains("data-rename", ownerOnCompany);
+    }
+
+    /// <summary>D507: the Delete button is on one's own personal cards, and on every card for the owner; deleting goes back to the list.</summary>
+    [Fact]
+    public async Task Delete_IsOfferedOnOnesOwnCards_AndTheOwnersEverywhere_AndRemovesTheCard()
+    {
+        var personal = await HtmlAsync(_mia, $"/Library?scope=personal:{_miaId}&key=mia-note");
+        var team = await HtmlAsync(_mia, "/Library?scope=team:billing&key=billing-close");
+        var owner = await SignInAsync(HostApp.OwnerEmail, HostApp.OwnerPassword);
+        var ownerOnCompany = await HtmlAsync(owner, "/Library?scope=company&key=refund-window");
+
+        var refused = await _mia.SubmitAsync("/Library?handler=Delete&scope=team:billing&key=billing-close", new() { ["version"] = "1" }, tokenFrom: "/Library");
+        var deleted = await _mia.SubmitAsync($"/Library?handler=Delete&scope=personal:{_miaId}&key=mia-note", new() { ["version"] = "1" }, tokenFrom: "/Library");
+        var after = await HtmlAsync(_mia, "/Library");
+
+        Assert.Contains("data-delete=\"mia-note\"", personal);
+        Assert.DoesNotContain("data-delete", team);
+        Assert.Contains("data-delete=\"refund-window\"", ownerOnCompany);
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, deleted.StatusCode);
+        Assert.Equal("/Library", new Uri(_host.BaseAddress, deleted.Headers.Location!).AbsolutePath);
+        Assert.Contains("and its history", after);
+        Assert.DoesNotContain("Mia invoices on Fridays", after);
+        Assert.Contains("Billing closes on the 25th", after);
+    }
+
+    /// <summary>
+    /// The forms as rendered carry their card: <c>asp-all-route-data</c> had replaced <c>asp-route-scope/key</c>, so in a
+    /// browser Lift, Rename and Delete posted without the card (400). Each action is posted at the URL the page rendered.
+    /// </summary>
+    [Fact]
+    public async Task TheRenderedCardForms_PostToTheirCard()
+    {
+        var html = await HtmlAsync(_mia, $"/Library?scope=personal:{_miaId}&key=mia-note&q=invoices");
+        var actions = FormAction().Matches(html).Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value)).ToList();
+        string Action(string handler) => actions.First(a => a.Contains($"handler={handler}"));
+
+        foreach (var handler in new[] { "Lift", "Rename", "Delete" })
+            Assert.All(actions.Where(a => a.Contains($"handler={handler}")).DefaultIfEmpty(""), action =>
+            {
+                Assert.Contains($"scope=personal%3A{_miaId}", action);
+                Assert.Contains("key=mia-note", action);
+                Assert.Contains("q=invoices", action); // the list comes back as it was
+            });
+        var renamed = await _mia.SubmitAsync(Action("Rename"), new() { ["newKey"] = "mia-invoices", ["version"] = "1" }, tokenFrom: "/Library");
+        Assert.Equal(HttpStatusCode.Redirect, renamed.StatusCode);
+        var deleteAction = FormAction().Matches(await HtmlAsync(_mia, $"/Library?scope=personal:{_miaId}&key=mia-invoices"))
+            .Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value)).Single(a => a.Contains("handler=Delete"));
+        var deleted = await _mia.SubmitAsync(deleteAction, new() { ["version"] = "2" }, tokenFrom: "/Library");
+        Assert.Equal(HttpStatusCode.Redirect, deleted.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _miaApi.GetAsync($"/api/memory/cards/personal:{_miaId}/mia-invoices", TestContext.Current.CancellationToken)).StatusCode);
     }
 
     [Fact]
@@ -295,6 +369,9 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         var body = await accepted.Content.ReadFromJsonAsync<JsonElement>();
         return (_host.Client(body.GetProperty("tokens").GetProperty("accessToken").GetString()!), body.GetProperty("user").GetProperty("id").GetString()!);
     }
+
+    [GeneratedRegex("<form method=\"post\"[^>]*action=\"([^\"]+)\"")]
+    private static partial Regex FormAction();
 
     [GeneratedRegex("data-lift=\"([^\"]+)\"")]
     private static partial Regex LiftButton();

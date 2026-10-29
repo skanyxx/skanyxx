@@ -15,7 +15,7 @@ namespace Skanyxx.Module.Memory.Sessions;
 /// personal scope, company, the teams and departments they are in) intersected with what the agent may search for them
 /// (its grants, or the default: company + their personal). The block lands in that agent's prompt, so it may hold only
 /// what both could have found on their own: a supervisor's view of every team never reaches a prompt, and an agent's team
-/// grant never shows a person a team they are not in. Published cards only, top-k, and whole cards up to the token budget;
+/// grant never shows a person a team they are not in. Published cards only, none extracted from a chat (D500), top-k, and whole cards up to the token budget;
 /// card text is redacted once more on its way into the prompt (a card written before the write check existed).
 /// </summary>
 internal sealed partial class RelatedMemory(
@@ -40,7 +40,9 @@ internal sealed partial class RelatedMemory(
             var scopes = new SearchScopes([.. person.Exact.Intersect(agent.Exact)], AllTeamsAndDepartments: false);
             var tickets = (query.TicketKeys ?? []).Where(CardTickets.IsValid).ToList();
             var text = query.Text.Length > CardFormat.MaxQueryLength ? query.Text[^CardFormat.MaxQueryLength..] : query.Text;
-            return Fit(await search.SearchAsync(text, scopes, _options.TopK, ct, tickets), _options.MaxTokens);
+            // D500: a card extracted from a chat restates that chat; prior chats reach a new one only through the chat
+            // index (D270), with its own relevance floor, never a second time as a card.
+            return Fit(await search.SearchAsync(text, scopes, _options.TopK, ct, tickets, withChats: false), _options.MaxTokens);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

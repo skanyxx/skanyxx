@@ -125,6 +125,26 @@ public sealed class RelatedMemoryTests(PostgresFixture postgres) : MemoryTestBas
         Assert.DoesNotContain("sk-test-0123456789abcdef", card.What);
     }
 
+    /// <summary>
+    /// D500 (answer drift): a card extracted from a chat restates that chat. Injected, "three plus three" and its answer
+    /// steered a new "two plus two" chat. Prior chats reach a new one only through the chat index; the card is still
+    /// the person's to search.
+    /// </summary>
+    [Fact]
+    public async Task ACardExtractedFromAChat_IsNotInjected_ButStaysSearchable()
+    {
+        await App.ChatTurnAsync(new("ana", "seed", "kagent/seed", "s-plus", "what is three plus three", "Three plus three is six.", true));
+
+        var related = await App.RelatedAsync("ana", "seed", "what is two plus two");
+
+        Assert.Empty(related.Cards);
+        Assert.DoesNotContain("six", related.Block);
+        Assert.Contains(await App.Client("ana").SearchAsync("plus"), h => h.Key == "chat-s-plus");
+        // A card the person wrote on the same words still is.
+        await App.Client("ana").PutCardAsync("personal:ana", "plus-rule", what: "Plus means addition in our reports");
+        Assert.Equal(["personal:ana/plus-rule"], Keys(await App.RelatedAsync("ana", "seed", "what is two plus two")));
+    }
+
     [Fact]
     public async Task Injection_CanBeTurnedOff()
     {

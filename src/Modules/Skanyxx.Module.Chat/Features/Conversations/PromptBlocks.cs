@@ -4,7 +4,7 @@ namespace Skanyxx.Module.Chat.Features.Conversations;
 
 /// <summary>
 /// What Skanyxx puts in front of a person's message: the chat index's related-work block and memory's related cards
-/// (first turn, D270), then the files sent with it. kagent's history keeps them; <see cref="Split"/> takes them off
+/// (first turn, D270), the new-message marker after them (D503), then the files sent with it. kagent's history keeps them; <see cref="Split"/> takes them off
 /// again, so a reopened message reads as the person wrote it, with its files as attachments.
 /// </summary>
 internal static partial class PromptBlocks
@@ -17,17 +17,33 @@ internal static partial class PromptBlocks
 
     public const string FileEnd = "[End of attached file]";
 
+    /// <summary>
+    /// D503: after related work or cards, the person's own message is announced, so a small model answers it and not the
+    /// last question it read in the blocks above.
+    /// </summary>
+    public const string NewMessage = "[The person's new message. Answer this one:]\n";
+
+    /// <summary>The context blocks, then the marker when there were any, then the files and the message.</summary>
+    public static string Prompt(string context, string files, string message) =>
+        context.Length > 0 ? context + NewMessage + files + message : files + message;
+
     public static string File(string name, string id, string body) =>
         $"[Attached file \"{name}\" ({id})]\n{body.Replace(FileEnd, "(End of attached file)")}\n{FileEnd}\n\n";
 
     public static (string Text, IReadOnlyList<ChatAttachment> Files) Split(string text)
     {
+        var blocks = false;
         foreach (var (start, end) in Context)
         {
             var at = text.StartsWith(start, StringComparison.Ordinal) ? text.IndexOf(end, StringComparison.Ordinal) : -1;
-            if (at >= 0)
-                text = text[(at + end.Length)..].TrimStart();
+            if (at < 0)
+                continue;
+            text = text[(at + end.Length)..].TrimStart();
+            blocks = true;
         }
+        // Only after a block: a person's own message may start with the marker's words.
+        if (blocks && text.StartsWith(NewMessage, StringComparison.Ordinal))
+            text = text[NewMessage.Length..];
         var files = new List<ChatAttachment>();
         while (FileStart().Match(text) is { Success: true } m && text.IndexOf(FileEnd, m.Length, StringComparison.Ordinal) is var end and >= 0)
         {

@@ -14,6 +14,13 @@ internal sealed class SessionSearch(ChatContextDbContext db)
 {
     public const int MaxTerms = 24;
 
+    /// <summary>
+    /// D501: words (distinct stems: "refund" and "refunds" are one) a session must share with a new message to count as
+    /// related without a ticket. One shared word is a
+    /// coincidence ("two plus two" and "three plus three" share "plus"), and its answer steers the model off the question.
+    /// </summary>
+    public const int MinSharedWords = 2;
+
     private const string Columns = """
         s.session_id AS SessionId, s.title AS Title, s.agent_ref AS AgentRef, s.scope AS Scope, s.keywords AS Keywords,
         s.categories AS Categories, s.ticket_keys AS TicketKeys, s.outcome AS Outcome, s.turns AS Turns,
@@ -72,18 +79,22 @@ internal sealed class SessionSearch(ChatContextDbContext db)
 
     /// <summary>
     /// Prior work for a new chat (D262): sessions with an outcome that share a ticket, a linked ticket (one on the same
-    /// readable session as a given ticket) or a word with the message. A shared ticket outranks a linked one, which
-    /// outranks any amount of shared words; a shared category nudges the word rank.
+    /// readable session as a given ticket) or at least <see cref="MinSharedWords"/> words with the message (D501). A shared
+    /// ticket outranks a linked one, which outranks any amount of shared words; a shared category nudges the word rank.
     /// </summary>
     public async Task<IReadOnlyList<SessionSummary>> RelatedAsync(
         Readable readable, string message, IReadOnlyList<string> tickets, IReadOnlyList<string> categories, int limit, CancellationToken ct)
     {
         var terms = Terms(message);
+        if (terms.Length < MinSharedWords)
+            terms = [];
         if (terms.Length == 0 && tickets.Count == 0)
             return [];
 
         var parameters = Parameters(readable, limit);
         parameters.Add("Tickets", tickets.ToArray());
+        parameters.Add("Terms", terms);
+        parameters.Add("MinShared", MinSharedWords);
         parameters.Add("Categories", categories.ToArray());
         var linked = $"""
             linked AS (SELECT coalesce(array_agg(DISTINCT k), ARRAY[]::text[]) AS keys
@@ -92,7 +103,10 @@ internal sealed class SessionSearch(ChatContextDbContext db)
         var (with, from, match, rank) = terms.Length == 0
             ? ($"WITH {linked}", "chat_sessions s, linked", "s.ticket_keys && linked.keys", "0")
             : ($"WITH {linked}, q AS (SELECT {TsQuery(terms, parameters)} AS query)", "chat_sessions s, linked, q",
-                "(s.ticket_keys && linked.keys OR s.search @@ q.query)", "ts_rank(s.search, q.query)");
+                "(s.ticket_keys && linked.keys OR (s.search @@ q.query AND " +
+                "(SELECT count(DISTINCT plainto_tsquery('english', t.w)::text) FROM unnest(@Terms) AS t(w) " +
+                "WHERE s.search @@ plainto_tsquery('english', t.w)) >= @MinShared))",
+                "ts_rank(s.search, q.query)");
         var sql = $"""
             {with}
             SELECT {Columns} FROM {from}

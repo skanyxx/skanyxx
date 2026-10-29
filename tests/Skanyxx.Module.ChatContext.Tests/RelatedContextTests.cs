@@ -81,6 +81,44 @@ public sealed class RelatedContextTests(PostgresFixture postgres) : ChatContextT
         Assert.EndsWith(RelatedBlock.Footer, prepared.Context);
     }
 
+    /// <summary>D501 (answer drift): one shared word is a coincidence, not related work; two make it related.</summary>
+    [Fact]
+    public async Task OneSharedWord_IsNotRelatedWork_TwoAre()
+    {
+        await App.TurnAsync(Ana, "plus", "what is three plus three", "Three plus three is six.");
+        await App.TurnAsync(Ana, "refunds", "EU refund delays", "The bank batch runs on Fridays.");
+
+        var arithmetic = await App.PrepareAsync(Ana, "what is two plus two");
+        var refunds = await App.PrepareAsync(Ana, "why are refund payments delayed");
+
+        Assert.Equal("", arithmetic.Context);
+        Assert.Empty(arithmetic.Sessions);
+        Assert.Equal(["refunds"], refunds.Sessions.Select(s => s.SessionId));
+    }
+
+    /// <summary>D501: two forms of one word are one shared word ("refund", "refunds"), not two.</summary>
+    [Fact]
+    public async Task TwoFormsOfOneWord_AreOneSharedWord()
+    {
+        await App.TurnAsync(Ana, "s1", "refund", "Refunds take fourteen days.");
+
+        var prepared = await App.PrepareAsync(Ana, "refunds: is a refund possible");
+
+        Assert.Empty(prepared.Sessions);
+    }
+
+    [Fact]
+    public async Task TheHeader_SaysEarlierChatsWereOtherQuestions()
+    {
+        await App.TurnAsync(Ana, "s58", "Refund on SDB-58", "Done.", ["SDB-58"]);
+
+        var prepared = await App.PrepareAsync(Ana, "Continue", ["SDB-58"]);
+
+        Assert.StartsWith("[Related prior work, found by Skanyxx", prepared.Context);
+        Assert.Contains("never answer one of them instead of it", prepared.Context);
+        Assert.EndsWith("[End of related prior work]\n\n", prepared.Context);
+    }
+
     [Fact]
     public async Task NothingRelated_InjectsNothing()
     {

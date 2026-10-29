@@ -53,6 +53,24 @@ public sealed class EntraSwitchTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal((await anonymous.GetAsync("/NoSuchPage")).StatusCode, (await anonymous.GetAsync("/Entra")).StatusCode);
     }
 
+    /// <summary>D505: the OpenID Connect callback is no route either, for a post or a get, with or without a state.</summary>
+    [Fact]
+    public async Task SwitchOff_TheCallbackPathIsNotFound()
+    {
+        await _host.OwnerAsync();
+        var client = _host.Client();
+
+        var posted = await client.PostAsync("/signin-oidc", new FormUrlEncodedContent(new Dictionary<string, string> { ["state"] = "x", ["code"] = "y" }), Ct);
+        var got = await client.GetAsync("/signin-oidc?state=x&code=y", Ct);
+        var bare = await client.GetAsync("/signin-oidc", Ct);
+        var json = await client.PostAsJsonAsync("/signin-oidc", new { state = "x" }, Ct);
+
+        Assert.Equal(HttpStatusCode.NotFound, posted.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, got.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, bare.StatusCode); // refused before MessageReceived: RemoteFailure
+        Assert.Equal(HttpStatusCode.NotFound, json.StatusCode);
+    }
+
     [Fact]
     public async Task SwitchOff_TheLoginPageHasNoMicrosoftButton()
     {

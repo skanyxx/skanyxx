@@ -371,6 +371,9 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, panel.StatusCode);
         var html = await panel.Content.ReadAsStringAsync(Ct);
         Assert.Contains(QuotaCostDisclaimer.Title, html);
+        // D504: the People table's cost column has the disclaimer right above it, not only the prices section.
+        var people = html.IndexOf("id=\"peopleTable\"", StringComparison.Ordinal);
+        Assert.InRange(html.LastIndexOf(QuotaCostDisclaimer.Title, people, StringComparison.Ordinal), html.IndexOf("id=\"people-title\"", StringComparison.Ordinal), people);
         Assert.Contains("id=\"setup-quotas\"", html);
         Assert.Contains("href=\"/Quotas\"", html);
 
