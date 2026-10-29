@@ -76,8 +76,12 @@ if (ARGO === 'on') {
     apiVersion: 'kagent.dev/v1alpha2', kind: 'Agent', metadata: { name: 'e2e-test-policy', namespace: NAMESPACE },
     spec: { type: 'Declarative', description: 'd', declarative: { modelConfig: 'default-model-config', systemMessage: 's' } },
   });
-  const verdicts = [asArgo(['create', '-f', '-'], shape), asArgo(['annotate', 'agent', 'skanyxx-factory', 'e2e-test=1']),
-    asArgo(['delete', 'agent', 'skanyxx-factory', '--wait=false'])];
+  const kubectl = (args, input) => execFileSync('kubectl', ['--context', process.env.SKX_CONTEXT, '-n', NAMESPACE, ...args], { input, stdio: ['pipe', 'pipe', 'pipe'] });
+  const created = asArgo(['create', '-f', '-'], shape);
+  // An Agent to update and delete: made by this run's own (admin) context, removed again below.
+  kubectl(['apply', '-f', '-'], shape);
+  const verdicts = [created, asArgo(['annotate', 'agent', 'e2e-test-policy', 'e2e-test=1']), asArgo(['delete', 'agent', 'e2e-test-policy', '--wait=false'])];
+  kubectl(['delete', 'agent', 'e2e-test-policy', '--ignore-not-found']);
   check('Argo CD: may not write Agents (create, update, delete refused as its controller)', verdicts.join(',') === 'denied,denied,denied', verdicts.join(', '));
   const env = kubectlJson('-n', NAMESPACE, 'get', 'deploy', process.env.SKX_RELEASE || 'skanyxx')?.spec?.template?.spec?.containers?.[0]?.env ?? [];
   check('Argo CD: Skanyxx is configured with Studio:Argo:BaseUrl (status reads, D363)', env.some(e => e.name === 'Studio__Argo__BaseUrl'), env.find(e => e.name === 'Studio__Argo__BaseUrl')?.value ?? 'unset');
