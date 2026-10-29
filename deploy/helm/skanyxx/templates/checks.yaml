@@ -9,6 +9,23 @@
 {{- fail "kagent.controller.watchNamespaces must include the release namespace (or stay unset: it follows kagent.rbac.namespaces)" }}
 {{- end }}
 {{- end }}
+{{- /* D520: the agents find "the controller" by this name; without it they would call kagent-controller directly, past the
+     gate, and (with the gate on) be refused there by the NetworkPolicy. */ -}}
+{{- $named := false }}
+{{- range (dig "controller" "env" list .Values.kagent) }}
+{{- if and (eq (.name | default "") "KAGENT_CONTROLLER_NAME") (eq (.value | default "") "skanyxx-kagent-gate") }}{{ $named = true }}{{ end }}
+{{- end }}
+{{- if not $named }}
+{{- fail "kagent.controller.env must keep {name: KAGENT_CONTROLLER_NAME, value: skanyxx-kagent-gate}: kagent points its agents at that Service (the kagent gate, D520). Add your own entries next to it." }}
+{{- end }}
+{{- /* D523: one entry per caller; two would render the same policy names and one would silently replace the other. */ -}}
+{{- $callers := list }}
+{{- range .Values.networkPolicy.a2aPeers }}
+{{- if has .from $callers }}
+{{- fail (printf "networkPolicy.a2aPeers names %s twice: list all its callees in one entry" .from) }}
+{{- end }}
+{{- $callers = append $callers .from }}
+{{- end }}
 {{- /* D142 (verifier G4): with providers set, kagent's chart renders default-model-config and Helm would own the owner's model. */ -}}
 {{- if .Values.kagent.providers }}
 {{- fail "kagent.providers must stay false: the chart would then own default-model-config and every upgrade would overwrite the model the owner saved in /Model (D099, D131). Set the model in Skanyxx's /Model." }}
@@ -40,7 +57,15 @@
 {{- fail "ax.sandboxes.namespace must be the Substrate WorkerPool's namespace, never the release namespace: sandboxes there would be admitted by every policy that trusts this namespace (Skanyxx's UI/API port, kagent's controller)" }}
 {{- end }}
 {{- end }}
-{{- /* D390: the trusted proxies come from skanyxx.trustedProxies only, which the schema holds to CIDRs (D397: no broader than /16 or /48). */ -}}
+{{- /* D390: the trusted proxies come from skanyxx.trustedProxies only, which the schema holds to CIDRs no broader than
+     /24 or /112 (D525). An IPv4-mapped range is an IPv4 one: ::ffff:10.42.0.0/112 is a /16 (Kestrel sees IPv4 peers so). */ -}}
+{{- range .Values.skanyxx.trustedProxies }}
+{{- $parts := splitList "/" (lower .) }}
+{{- /* Best effort (zero groups, then ffff): startup (ApiGuardExtensions.TooBroad) decides on the parsed address. */}}
+{{- if and (regexMatch "^[0:]*:ffff:" (first $parts)) (lt (int (last $parts)) 120) }}
+{{- fail (printf "skanyxx.trustedProxies %s is an IPv4-mapped range broader than an IPv4 /24 (/120 here): list the ingress controller pods" .) }}
+{{- end }}
+{{- end }}
 {{- range .Values.skanyxx.extraEnv }}
 {{- if hasPrefix "skanyxx__trustedproxies" (lower (replace ":" "__" (.name | default ""))) }}
 {{- fail (printf "skanyxx.extraEnv may not set %s: use skanyxx.trustedProxies (CIDRs of the ingress controller pods)" .name) }}

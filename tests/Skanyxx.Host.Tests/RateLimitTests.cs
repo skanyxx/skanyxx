@@ -107,25 +107,32 @@ public sealed class RateLimitTests(PostgresFixture fixture)
 
     /// <summary>D397: a range as wide as a pod network would let any pod in it name itself any client.</summary>
     [Fact]
-    public async Task ATrustedProxyRangeBroaderThanASlash16_StopsStartup()
+    public async Task ATrustedProxyRangeBroaderThanASlash24_StopsStartup()
     {
         var ex = await Assert.ThrowsAnyAsync<Exception>(() =>
             HostApp.StartAsync(fixture.ConnectionString, s => s["Skanyxx:TrustedProxies:0"] = "0.0.0.0/0"));
 
-        Assert.Contains("Skanyxx:TrustedProxies may not be broader than /16 (IPv4) or /48 (IPv6)", ex.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Skanyxx:TrustedProxies may not be broader than /24 (IPv4) or /112 (IPv6)", ex.ToString(), StringComparison.Ordinal);
     }
 
     [Theory]
     [InlineData("0.0.0.0/0", true)]
     [InlineData("10.0.0.0/8", true)]
-    [InlineData("10.42.0.0/15", true)]
-    [InlineData("10.42.0.0/16", false)]
+    [InlineData("10.42.0.0/16", true)] // k3s's whole pod network (D525)
+    [InlineData("10.42.3.0/23", true)]
+    [InlineData("10.42.3.0/24", false)]
     [InlineData("10.42.3.17/32", false)]
     [InlineData("::/0", true)]
-    [InlineData("fd00::/47", true)]
-    [InlineData("fd00:7::/48", false)]
+    [InlineData("fd00:7::/48", true)]
+    [InlineData("fd00:7::/111", true)]
+    [InlineData("fd00:7::/112", false)]
     [InlineData("::ffff:10.0.0.0/104", true)]
-    [InlineData("::ffff:10.42.0.0/112", false)]
+    [InlineData("::ffff:10.42.0.0/112", true)] // an IPv4 /16
+    [InlineData("::ffff:10.42.3.0/120", false)]
+    // Plain IPv6 ranges that contain ::ffff:0:0/96 trust every IPv4 peer (review Minor 2b).
+    [InlineData("::/80", true)]
+    [InlineData("::/64", true)]
+    [InlineData("::fffe:0:0/95", true)]
     public void TrustedProxyBreadth(string cidr, bool tooBroad) =>
         Assert.Equal(tooBroad, ApiGuardExtensions.TooBroad(System.Net.IPNetwork.Parse(cidr)));
 }

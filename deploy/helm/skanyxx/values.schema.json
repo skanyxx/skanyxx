@@ -106,7 +106,7 @@
         "tickets": {"type": "object", "additionalProperties": false, "properties": {"source": {"enum": ["jira", "local"]}}},
         "modules": {"type": "object", "additionalProperties": {"type": "boolean"}},
         "extraEnv": {"type": "array"},
-        "trustedProxies": {"type": "array", "items": {"type": "string", "pattern": "^([0-9]{1,3}(\\.[0-9]{1,3}){3}/(1[6-9]|2[0-9]|3[0-2])|[0-9a-fA-F:.]*:[0-9a-fA-F:.]*/(4[89]|[5-9][0-9]|1[01][0-9]|12[0-8]))$"}},
+        "trustedProxies": {"type": "array", "items": {"type": "string", "pattern": "^([0-9]{1,3}(\\.[0-9]{1,3}){3}/(2[4-9]|3[0-2])|[0-9a-fA-F:.]*:[0-9a-fA-F:.]*/(11[2-9]|12[0-8]))$"}},
         "extraEnvFrom": {"type": "array"},
         "service": {
           "type": "object", "additionalProperties": false,
@@ -181,7 +181,41 @@
             "a2aPorts": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1, "maximum": 65535}},
             "extra": {"type": "array"}
           }
+        },
+        "a2aPeers": {
+          "$comment": "D523: agent-to-agent A2A, caller -> callees, by Agent name (a DNS label).",
+          "type": "array",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["from", "to"],
+            "properties": {
+              "from": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"},
+              "to": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$"}}
+            }
+          }
         }
+      }
+    },
+    "agentGuard": {
+      "$comment": "D528: the admission policy on kagent Agents.",
+      "type": "object", "additionalProperties": false, "required": ["enabled"],
+      "properties": {"enabled": {"type": "boolean"}}
+    },
+    "kagentGate": {
+      "$comment": "D520-D523: Envoy in front of the bundled kagent controller; docs/design/a2a-security.md.",
+      "type": "object", "additionalProperties": false, "required": ["enabled"],
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "replicas": {"type": "integer", "minimum": 1},
+        "image": {"$ref": "#/definitions/image"},
+        "imagePullSecrets": {"type": "array"},
+        "tokenSeconds": {"type": "integer", "minimum": 10, "maximum": 300},
+        "existingSecret": {"type": "string"},
+        "agentPaths": {
+          "$comment": "Deny by default: only the paths kagent's ADK calls. Never /api/agents, /api/modelconfigs, /api/toolservers or /api/a2a (agent CRUD, models, tools, any agent as anyone).",
+          "type": "array", "uniqueItems": true,
+          "items": {"enum": ["/api/sessions", "/api/tasks", "/api/memories", "/api/langgraph", "/api/crewai", "/api/a2a-sandboxes"]}
+        },
+        "resources": {"type": "object"}
       }
     },
     "ax": {
@@ -303,7 +337,8 @@
               "$comment": "cluster-security.md: trusted-proxy takes a user call's identity from a Bearer JWT it never verifies and ignores the X-User-Id Skanyxx sends (every Chat user would be one person, or 401). kagent 0.10.2 has no stronger mode; its API is fenced by NetworkPolicy.",
               "type": "object", "properties": {"mode": {"const": "unsecure"}}
             },
-            "agentDeployment": {"type": "object", "properties": {"serviceAccountName": {"type": "string"}}}
+            "agentDeployment": {"type": "object", "properties": {"serviceAccountName": {"type": "string"}}},
+            "env": {"type": "array", "items": {"type": "object"}}
           }
         },
         "rbac": {

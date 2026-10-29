@@ -200,17 +200,27 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   access logs). Anyone who can read those logs holds a live invite or reset link until it is used or expires (7 days /
   60 min). Either drop the query from the access-log format for `/Invite` and `/ResetPassword` (ingress-nginx:
   `log-format-upstream` with `$uri` instead of `$request`), or treat the access logs as secret as the database.
+- **The kagent gate (`kagentGate`, on by default, D520-D523; [`a2a-security.md`](docs/design/a2a-security.md)):** kagent
+  authenticates nobody, so an Envoy (`skanyxx-kagent-gate`) stands in front of its controller and only the gate may reach it.
+  Skanyxx signs every call with a short-lived HS256 token (`KAgent:Auth:Mode=signed`, key in the Secret `skanyxx-kagent-gate`)
+  and the gate names the user from it, refusing a call without one (401) and any `?user_id=`; kagent's agent pods are
+  pointed at the gate (`kagent.controller.env` `KAGENT_CONTROLLER_NAME=skanyxx-kagent-gate`, required) and may call only
+  `kagentGate.agentPaths` (sessions, tasks). Agent-to-agent A2A is refused unless listed in `networkPolicy.a2aPeers`.
+  An admission policy (`agentGuard`, D528, Kubernetes 1.30+) refuses Agents named like the release's objects, wearing
+  its pod labels, running as another ServiceAccount or reading its Secrets.
+  A local Host keeps `KAgent:Auth:Mode=none` (the default) against an unsecured kagent on localhost:8083.
+  `scripts/helm/gate-test.sh` (Docker) and `scripts/helm/gate-kind-test.sh` (a throwaway kind cluster) check it live.
 - **Network:** the namespace is **default-deny** (`networkPolicy.enabled`, D137): a pod no policy names gets nothing in
   and only DNS out. Skanyxx's UI/API port answers its namespace and, with the ingress on,
   `networkPolicy.ingressNamespaces` (`ingress-nginx`); its mcp port only kagent's controller and agent pods (plus
-  `networkPolicy.mcpFrom`); kagent's controller its namespace; agent pods only the controller (A2A); Postgres, MinIO, Gitea and Dragonfly only Skanyxx
+  `networkPolicy.mcpFrom`); kagent's controller the gate (Skanyxx and the agents with `kagentGate.enabled=false`); agent pods only the controller (A2A) and their `a2aPeers`; Postgres, MinIO, Gitea and Dragonfly only Skanyxx
   (+ kagent → Postgres, + Dragonfly → AX: the chart's `ax-server`/`ax-controller` with `ax.install`, else `ax.namespace`). Egress: Skanyxx anywhere
   (Jira, Entra); kagent's controller anywhere (the Kubernetes API) unless **`networkPolicy.controllerEgress.enabled`**
   (off by default, D229): then DNS, `controllerEgress.kubeApiCidrs` on `kubeApiPorts` (443, 6443; required, the chart
   refuses it without: `kubectl get endpoints kubernetes -n default`), the bundled Postgres, Skanyxx's mcp port, the
   agent pods on `a2aPorts` (8080), the internet on 443 minus `clusterCidrs` (public plugin servers) and
   `controllerEgress.extra` (a BYO database, an in-cluster `Studio:McpServers` server); turn it on wherever plugins come
-  from anyone but you, since the controller connects to every plugin server with its header values. Agent pods only kagent's controller, Skanyxx's mcp port (never its UI/API) and
+  from anyone but you, since the controller connects to every plugin server with its header values. Agent pods only the gate's agent port (kagent's controller with the gate off), Skanyxx's mcp port (never its UI/API) and
   `networkPolicy.modelEgress` (the internet on 443 minus `networkPolicy.clusterCidrs`; a local model such as Ollama or
   a tool server you add needs a rule in `modelEgress.extra`) (D148); the stores DNS only. `clusterCidrs` defaults to
   the private ranges (RFC 1918, CGNAT, link-local incl. cloud metadata, loopback, IPv6 ULA/link-local): on **IPv6 or
@@ -622,8 +632,8 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window, unless
   `Skanyxx:TrustedProxies` (Helm `skanyxx.trustedProxies`) lists the proxy as CIDRs: then the client is the last
   `X-Forwarded-For` hop that proxy added (one hop, D390). List the ingress controller pod IPs only, never the pod network:
-  any pod inside the range could name itself any client. A value that is not a CIDR, or a range broader than /16
-  (IPv4) or /48 (IPv6), stops startup (D397; the Helm schema refuses the same, and `skanyxx.extraEnvFrom` may not use a
+  any pod inside the range could name itself any client. A value that is not a CIDR, or a range broader than /24
+  (IPv4) or /112 (IPv6), an IPv4-mapped one or one holding `::ffff:0:0/96` judged as IPv4, stops startup (D397, D525; the Helm schema refuses the same, and `skanyxx.extraEnvFrom` may not use a
   prefix that sets it). Keep ingress-nginx's `use-forwarded-headers` at `false` (its default): with it on, the
   controller passes on the client's own `X-Forwarded-For`, and the hop Skanyxx reads becomes the client's choice.
 - Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. A signed-in person

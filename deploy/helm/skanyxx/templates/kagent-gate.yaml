@@ -1,0 +1,219 @@
+{{/* D520-D522: the gate's Envoy configuration (a template of its own so the Deployment can carry its checksum). */}}
+{{- define "skanyxx.kagentGateEnvoy" -}}
+static_resources:
+  listeners:
+    - name: skanyxx
+      address: {socket_address: {address: 0.0.0.0, port_value: 8084}}
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: skanyxx
+                normalize_path: true
+                merge_slashes: true
+                path_with_escaped_slashes_action: REJECT_REQUEST
+                # X_User_Id is not X-User-Id to Go, but no caller needs a header name with an underscore.
+                common_http_protocol_options: {headers_with_underscores_action: REJECT_REQUEST}
+                # Chat streams for minutes: Skanyxx keeps its own deadlines (KAgent:ChatTimeoutSeconds).
+                stream_idle_timeout: 0s
+                route_config:
+                  virtual_hosts:
+                    - name: kagent
+                      domains: ["*"]
+                      routes:
+                        # kagent reads ?user_id= before X-User-Id, and Go decodes the key (user%5Fid, %75ser_id):
+                        # refuse that key in any case, and any query key holding an escape (Skanyxx sends neither).
+                        - match:
+                            prefix: /
+                            headers:
+                              - name: ":path"
+                                string_match: {safe_regex: {regex: '(?i)[^?]*\?(.*&)?(user_id|[^=&]*%[^=&]*)(=|&|$).*'}}
+                          direct_response: {status: 400, body: {inline_string: "user_id comes from the signed token\n"}}
+                        - match: {prefix: /}
+                          route: {cluster: kagent-controller, timeout: 0s}
+                http_filters:
+                  - name: envoy.filters.http.header_mutation
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.header_mutation.v3.HeaderMutation
+                      mutations:
+                        request_mutations:
+                          {{- range list "x-user-id" "x-agent-name" }}
+                          - remove: {{ . }}
+                          {{- end }}
+                  - name: envoy.filters.http.jwt_authn
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.jwt_authn.v3.JwtAuthentication
+                      providers:
+                        skanyxx:
+                          issuer: skanyxx
+                          audiences: [kagent-gate]
+                          require_expiration: true
+                          max_lifetime: 300s
+                          clock_skew_seconds: 30
+                          forward: false
+                          # Not ?access_token= (jwt_authn's other default place, which `forward` would not strip).
+                          from_headers: [{name: Authorization, value_prefix: "Bearer "}]
+                          local_jwks: {filename: /etc/skanyxx-kagent-gate/jwks.json}
+                          claim_to_headers: [{header_name: x-user-id, claim_name: sub}]
+                      rules:
+                        - match: {path: /health}
+                        - match: {prefix: /}
+                          requires: {provider_name: skanyxx}
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+    - name: agents
+      address: {socket_address: {address: 0.0.0.0, port_value: 8083}}
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: agents
+                normalize_path: true
+                merge_slashes: true
+                path_with_escaped_slashes_action: REJECT_REQUEST
+                # X_User_Id is not X-User-Id to Go, but no caller needs a header name with an underscore.
+                common_http_protocol_options: {headers_with_underscores_action: REJECT_REQUEST}
+                route_config:
+                  virtual_hosts:
+                    - name: kagent
+                      domains: ["*"]
+                      routes:
+                        - match: {path: /health}
+                          route: {cluster: kagent-controller, timeout: 60s}
+                        {{- range .Values.kagentGate.agentPaths }}
+                        - match: {path_separated_prefix: {{ . }}}
+                          route: {cluster: kagent-controller, timeout: 60s}
+                        {{- end }}
+                        - match: {prefix: /}
+                          direct_response: {status: 403, body: {inline_string: "not an agent path (kagentGate.agentPaths)\n"}}
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: kagent-controller
+      type: STRICT_DNS
+      connect_timeout: 5s
+      load_assignment:
+        cluster_name: kagent-controller
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address: {address: kagent-controller.{{ .Release.Namespace }}.svc, port_value: 8083}
+{{- end -}}
+{{- if .Values.kagent.enabled }}
+{{- $g := .Values.kagentGate }}
+{{- $selector := ternary (dict "app.kubernetes.io/name" "skanyxx-kagent-gate" "app.kubernetes.io/instance" .Release.Name) (dict "app.kubernetes.io/name" "kagent" "app.kubernetes.io/component" "controller") $g.enabled }}
+# D520: kagent's agent pods call http://<KAGENT_CONTROLLER_NAME>.<ns>:8083 (sessions, tasks); the umbrella sets that name
+# to this Service (kagent.controller.env). With the gate on it is the gate's agent listener, which forwards only
+# kagentGate.agentPaths; off, it is the controller itself, as before.
+apiVersion: v1
+kind: Service
+metadata:
+  name: skanyxx-kagent-gate
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  selector:
+    {{- toYaml $selector | nindent 4 }}
+  ports:
+    - name: agents
+      port: 8083
+      targetPort: 8083
+    {{- if $g.enabled }}
+    - name: skanyxx
+      port: 8084
+      targetPort: 8084
+    {{- end }}
+{{- if $g.enabled }}
+{{- $secret := include "skanyxx.kagentGateSecret" . }}
+---
+# D520-D522: Envoy in front of kagent's controller (which authenticates nobody, D101).
+#  - 8084, Skanyxx's listener: every request but /health needs an HS256 token Skanyxx signed (issuer skanyxx, audience
+#    skanyxx-kagent-gate, expiring, at most 300 s long). The caller's own X-User-Id is dropped and the token's `sub` put there
+#    instead; `?user_id=` (which kagent reads first) is refused; the token itself is not passed on.
+#  - 8083, the agents' listener: only kagentGate.agentPaths (session and task storage) and /health; agent CRUD,
+#    ModelConfigs, tool servers and A2A to other agents are 403.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skanyxx-kagent-gate
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+data:
+  envoy.yaml: |
+    {{- include "skanyxx.kagentGateEnvoy" . | nindent 4 }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: skanyxx-kagent-gate
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+    {{- toYaml $selector | nindent 4 }}
+spec:
+  replicas: {{ $g.replicas }}
+  selector:
+    matchLabels:
+      {{- toYaml $selector | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- toYaml $selector | nindent 8 }}
+      annotations:
+        checksum/config: {{ include "skanyxx.kagentGateEnvoy" . | sha256sum | trunc 16 }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with $g.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: envoy
+          image: {{ include "skanyxx.axImage" (dict "image" $g.image "what" "kagentGate.image") | quote }}
+          imagePullPolicy: {{ $g.image.pullPolicy }}
+          args: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn"]
+          ports:
+            - {name: agents, containerPort: 8083}
+            - {name: skanyxx, containerPort: 8084}
+          readinessProbe:
+            tcpSocket: {port: skanyxx}
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket: {port: skanyxx}
+            periodSeconds: 20
+          resources:
+            {{- toYaml $g.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - {name: config, mountPath: /etc/envoy, readOnly: true}
+            - {name: jwks, mountPath: /etc/skanyxx-kagent-gate, readOnly: true}
+            - {name: tmp, mountPath: /tmp}
+      volumes:
+        - name: config
+          configMap:
+            name: skanyxx-kagent-gate
+        - name: jwks
+          secret:
+            secretName: {{ $secret }}
+            items:
+              - {key: jwks.json, path: jwks.json}
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi
+{{- end }}
+{{- end }}

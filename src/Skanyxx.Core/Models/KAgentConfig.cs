@@ -7,6 +7,9 @@ public class KAgentConfig
     public string Protocol { get; set; } = "http";
     public string? Token { get; set; }
 
+    /// <summary><c>KAgent:Auth</c>: signed tokens for the kagent gate (D521), or none for a local kagent.</summary>
+    public KAgentAuthConfig Auth { get; set; } = new();
+
     /// <summary>Bound on every control call (agents, sessions, ModelConfig) — the owner's landing page waits on one.</summary>
     public int ControlTimeoutSeconds { get; set; } = 10;
 

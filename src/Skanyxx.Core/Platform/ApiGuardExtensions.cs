@@ -10,16 +10,24 @@ namespace Skanyxx.Core.Platform;
 /// <summary>Origin allow-list (guarded routes, and unsafe methods everywhere) and per-client rate limits on the guarded routes, credential posts and invite links.</summary>
 public static class ApiGuardExtensions
 {
-    /// <summary>The broadest Skanyxx:TrustedProxies range startup accepts (D397); the Helm schema holds the same line.</summary>
-    public const int MinIPv4Prefix = 16;
+    /// <summary>
+    /// The broadest Skanyxx:TrustedProxies range startup accepts (D397, D525): a /16 is a whole k3s pod network, so the
+    /// floor is a node-pool-sized /24 (IPv6 /112). The Helm schema and checks.yaml hold the same line.
+    /// </summary>
+    public const int MinIPv4Prefix = 24;
 
     /// <inheritdoc cref="MinIPv4Prefix"/>
-    public const int MinIPv6Prefix = 48;
+    public const int MinIPv6Prefix = 112;
 
-    /// <summary>An IPv4-mapped range (<c>::ffff:a.b.c.d/n</c>) is an IPv4 one: its first 96 bits are fixed.</summary>
+    /// <summary>
+    /// A range that overlaps the IPv4-mapped space (<c>::ffff:0:0/96</c>) is judged as IPv4: Kestrel binds dual-mode, so
+    /// every IPv4 peer arrives as <c>::ffff:a.b.c.d</c>, and <c>::/80</c> would trust them all. Every IPv6 range of /96 or
+    /// broader is under the floor anyway, and a narrower one overlaps the mapped space only when its base is mapped.
+    /// </summary>
     public static bool TooBroad(System.Net.IPNetwork network) =>
-        network.PrefixLength < (network.BaseAddress.IsIPv4MappedToIPv6 ? 96 + MinIPv4Prefix
-            : network.BaseAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? MinIPv6Prefix : MinIPv4Prefix);
+        network.BaseAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? network.PrefixLength < MinIPv4Prefix
+        : network.BaseAddress.IsIPv4MappedToIPv6 ? network.PrefixLength < 96 + MinIPv4Prefix
+        : network.PrefixLength < MinIPv6Prefix;
 
     public static IServiceCollection AddSkanyxxApiGuards(this IServiceCollection services, IConfiguration configuration)
     {
