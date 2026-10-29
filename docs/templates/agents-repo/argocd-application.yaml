@@ -10,16 +10,36 @@
 # - no selfHeal: the owner's emergency stop (D121) takes a suspended agent out of kagent and a self-heal would put it
 #   straight back. A later commit to main re-creates it; Skanyxx adopts what this Application created (D541) and
 #   keeps a suspended agent out again.
+# - its own AppProject: Argo applies main's files with its own (cluster-wide) rights, so the project lets it create
+#   only kagent Agents, only in NAMESPACE, only from this repo. Whoever can write main can then do no more through Argo
+#   than add or change an Agent — which the reconciler re-applies in the studio's strict shape anyway.
 # Also needed (scripts/day1/day1.sh does all of it): a repository Secret with a read-only git token, a read-only Argo
-# account for Skanyxx (`p, skanyxx, applications, get, default/skanyxx-agents, allow`) and a health check for
+# account for Skanyxx (`p, skanyxx, applications, get, skanyxx-agents/skanyxx-agents, allow`) and a health check for
 # kagent.dev/Agent in argocd-cm (argocd-agent-health.lua next to this file), without which Argo never says Healthy.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: skanyxx-agents
+  namespace: argocd
+spec:
+  description: The Skanyxx agent repo (kagent Agents only)
+  sourceRepos:
+    - REPO_URL
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: NAMESPACE
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: kagent.dev
+      kind: Agent
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: skanyxx-agents
   namespace: argocd
 spec:
-  project: default
+  project: skanyxx-agents
   source:
     repoURL: REPO_URL
     targetRevision: main
