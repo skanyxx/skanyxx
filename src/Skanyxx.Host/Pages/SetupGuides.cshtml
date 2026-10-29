@@ -7,5 +7,5 @@
 <p class="field-hint mb-2">"Copy instructions for agent" copies a ready prompt for an AI coding agent: setting names and steps only, never a secret value.</p>
 @foreach (var guide in Model.Guides)
 {
-    @await Component.InvokeAsync("SetupGuide", new { id = guide.Id })
+    @await Component.InvokeAsync("SetupGuide", new { id = guide.Id, whenReady = true })
 }

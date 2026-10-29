@@ -120,7 +120,9 @@ public sealed class SetupGuidesTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains("id=\"setup-prompt-studio\"", setupPage);
         Assert.Contains("href=\"/SetupGuides\"", setupPage);
         Assert.Contains("id=\"setup-studio\"", shown[^9]);
-        Assert.Contains("id=\"setup-dragonfly\" data-setup=\"ready\"", shown[^7]);
+        // A feature that is set up shows no guide on its panel; the Setup guides page still lists it.
+        Assert.Contains("id=\"setup-dragonfly\" data-setup=\"ready\"", setupPage);
+        Assert.DoesNotContain("id=\"setup-dragonfly\"", shown[^7]);
 
         // Every configured secret, the bootstrap token and the database's connection string are absent.
         string[] values = [.. Secrets, _database, HostApp.BootstrapToken];
