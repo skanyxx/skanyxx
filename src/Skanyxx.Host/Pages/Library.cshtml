@@ -247,8 +247,8 @@ else
                     <div class="form-actions">
                         @foreach (var target in opened.LiftTargets)
                         {
-                            <form method="post" asp-page-handler="Lift" asp-route-scope="@card.Scope" asp-route-key="@card.Key"
-                                  asp-all-route-data="@Model.ListState()"
+                            <form method="post" asp-page-handler="Lift"
+                                  asp-all-route-data="@Model.CardAction(card)"
                                   data-confirm="Everyone who reads @Model.ScopeLabel(target) will see the copy. The original stays where it is."
                                   data-confirm-title="Lift a copy to @Model.ScopeLabel(target)?" data-confirm-action="Lift">
                                 <input type="hidden" name="target" value="@target" />
@@ -262,8 +262,8 @@ else
             {
                 <section>
                     <h3 class="section-title mb-1">Rename the key</h3>
-                    <form method="post" asp-page-handler="Rename" asp-route-scope="@card.Scope" asp-route-key="@card.Key"
-                          asp-all-route-data="@Model.ListState()" class="inline-form">
+                    <form method="post" asp-page-handler="Rename"
+                          asp-all-route-data="@Model.CardAction(card)" class="inline-form">
                         <input type="hidden" name="version" value="@card.Version" />
                         <input name="newKey" value="@card.Key" required maxlength="@CardFormat.MaxKeyLength" pattern="@CardFormat.KeyPattern" aria-label="New key" autocomplete="off" />
                         <button type="submit" class="btn btn-secondary" data-rename="@card.Key">Rename key</button>
@@ -275,8 +275,8 @@ else
                 <section>
                     <h3 class="section-title mb-1">Delete</h3>
                     <p class="section-description mb-1">The card and every earlier version go for good. Copies lifted from it stay.</p>
-                    <form method="post" asp-page-handler="Delete" asp-route-scope="@card.Scope" asp-route-key="@card.Key"
-                          asp-all-route-data="@Model.ListState()"
+                    <form method="post" asp-page-handler="Delete"
+                          asp-all-route-data="@Model.CardAction(card)"
                           data-confirm="@card.Scope/@card.Key and its history are deleted for good." data-confirm-title="Delete this card?"
                           data-confirm-action="Delete" data-danger>
                         <input type="hidden" name="version" value="@card.Version" />

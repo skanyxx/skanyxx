@@ -107,6 +107,18 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
         return state.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value!);
     }
 
+    /// <summary>
+    /// A card action's route: the card and the list's state. One dictionary, because <c>asp-all-route-data</c> replaces
+    /// the <c>asp-route-*</c> values given next to it (the forms posted without their card, 400).
+    /// </summary>
+    public Dictionary<string, string> CardAction(CardDto card)
+    {
+        var route = ListState();
+        route["scope"] = card.Scope;
+        route["key"] = card.Key;
+        return route;
+    }
+
     public async Task OnGetAsync(string? scope, string? key, CancellationToken ct)
     {
         if (!string.IsNullOrEmpty(scope) && !string.IsNullOrEmpty(key))

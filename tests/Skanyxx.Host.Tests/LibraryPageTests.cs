@@ -139,6 +139,33 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         Assert.Contains("Billing closes on the 25th", after);
     }
 
+    /// <summary>
+    /// The forms as rendered carry their card: <c>asp-all-route-data</c> had replaced <c>asp-route-scope/key</c>, so in a
+    /// browser Lift, Rename and Delete posted without the card (400). Each action is posted at the URL the page rendered.
+    /// </summary>
+    [Fact]
+    public async Task TheRenderedCardForms_PostToTheirCard()
+    {
+        var html = await HtmlAsync(_mia, $"/Library?scope=personal:{_miaId}&key=mia-note&q=invoices");
+        var actions = FormAction().Matches(html).Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value)).ToList();
+        string Action(string handler) => actions.First(a => a.Contains($"handler={handler}"));
+
+        foreach (var handler in new[] { "Lift", "Rename", "Delete" })
+            Assert.All(actions.Where(a => a.Contains($"handler={handler}")).DefaultIfEmpty(""), action =>
+            {
+                Assert.Contains($"scope=personal%3A{_miaId}", action);
+                Assert.Contains("key=mia-note", action);
+                Assert.Contains("q=invoices", action); // the list comes back as it was
+            });
+        var renamed = await _mia.SubmitAsync(Action("Rename"), new() { ["newKey"] = "mia-invoices", ["version"] = "1" }, tokenFrom: "/Library");
+        Assert.Equal(HttpStatusCode.Redirect, renamed.StatusCode);
+        var deleteAction = FormAction().Matches(await HtmlAsync(_mia, $"/Library?scope=personal:{_miaId}&key=mia-invoices"))
+            .Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value)).Single(a => a.Contains("handler=Delete"));
+        var deleted = await _mia.SubmitAsync(deleteAction, new() { ["version"] = "2" }, tokenFrom: "/Library");
+        Assert.Equal(HttpStatusCode.Redirect, deleted.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await _miaApi.GetAsync($"/api/memory/cards/personal:{_miaId}/mia-invoices", TestContext.Current.CancellationToken)).StatusCode);
+    }
+
     [Fact]
     public async Task LiftAndRename_ThroughThePage()
     {
@@ -342,6 +369,9 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         var body = await accepted.Content.ReadFromJsonAsync<JsonElement>();
         return (_host.Client(body.GetProperty("tokens").GetProperty("accessToken").GetString()!), body.GetProperty("user").GetProperty("id").GetString()!);
     }
+
+    [GeneratedRegex("<form method=\"post\"[^>]*action=\"([^\"]+)\"")]
+    private static partial Regex FormAction();
 
     [GeneratedRegex("data-lift=\"([^\"]+)\"")]
     private static partial Regex LiftButton();
