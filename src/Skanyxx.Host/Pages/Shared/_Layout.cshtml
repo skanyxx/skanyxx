@@ -46,7 +46,7 @@
     <link rel="stylesheet" href="~/css/tokens.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
     <link rel="stylesheet" href="~/css/components.css" asp-append-version="true" />
-    <script src="~/js/ui.js" asp-append-version="true" defer></script>
+    <script src="~/js/ui.js" asp-append-version="true"></script>
     <script src="~/js/setup-guide.js" asp-append-version="true"></script>
     @await RenderSectionAsync("Styles", required: false)
 </head>
@@ -170,10 +170,10 @@
         </div>
     </div>
 
-    <dialog class="dialog" id="skx-confirm" aria-labelledby="skx-confirm-title">
+    <dialog class="dialog" id="skx-confirm" aria-labelledby="skx-confirm-title" aria-describedby="skx-confirm-body">
         <form method="dialog">
             <div class="dialog-header"><h2 class="dialog-title" id="skx-confirm-title" data-confirm-title></h2></div>
-            <div class="dialog-body"><p data-confirm-body></p></div>
+            <div class="dialog-body"><p id="skx-confirm-body" data-confirm-body></p></div>
             <div class="dialog-footer">
                 <button type="submit" class="btn btn-secondary" value="cancel" data-confirm-cancel>Cancel</button>
                 <button type="submit" class="btn btn-primary" value="ok" data-confirm-ok>Confirm</button>

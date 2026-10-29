@@ -30,6 +30,7 @@ public sealed class ErrorStateTagHelper(HtmlEncoder encoder) : TagHelper
         var request = ViewContext.HttpContext.Request;
         var retry = RetryHref ?? request.PathBase + request.Path + request.QueryString;
         output.TagName = "div";
+        output.TagMode = TagMode.StartTagAndEndTag; // written self-closing, it still renders its content
         output.Attributes.SetAttribute("class", Compact ? "error-state compact" : "error-state");
         output.Attributes.SetAttribute("role", "alert");
         output.Content.SetHtmlContent(

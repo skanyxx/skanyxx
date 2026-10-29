@@ -426,7 +426,7 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
         var health = await (await _host.Client().GetAsync("/health", TestContext.Current.CancellationToken)).Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken);
 
         Assert.Contains("<td>kagent</td>", page);
-        Assert.Contains("<td>Healthy</td>", page);
+        Assert.Contains("<td><span class=\"badge badge-success\"><span class=\"badge-dot\" aria-hidden=\"true\"></span>Healthy</span></td>", page);
         Assert.Contains("<code>memory</code>", page);
         Assert.Contains("<code>runtime</code>", page);
         Assert.Contains(_kagent.Calls, c => c.Method == "GET" && c.Path == "/health");

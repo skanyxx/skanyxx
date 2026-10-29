@@ -136,6 +136,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger: oklch(0.5 0.19 27);
   --danger-tint: oklch(0.5 0.19 27 / 0.12);
   --danger-solid: oklch(0.5 0.19 27);
+  --text-on-danger: oklch(1 0 0);
   --info: oklch(0.48 0.12 250);
   --info-tint: oklch(0.48 0.12 250 / 0.12);
   /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -183,6 +184,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger: oklch(0.75 0.15 25);
   --danger-tint: oklch(0.75 0.15 25 / 0.18);
   --danger-solid: oklch(0.52 0.19 27);
+  --text-on-danger: oklch(1 0 0);
   --info: oklch(0.8 0.1 250);
   --info-tint: oklch(0.8 0.1 250 / 0.18);
   /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -230,6 +232,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
     --danger: oklch(0.75 0.15 25);
     --danger-tint: oklch(0.75 0.15 25 / 0.18);
     --danger-solid: oklch(0.52 0.19 27);
+    --text-on-danger: oklch(1 0 0);
     --info: oklch(0.8 0.1 250);
     --info-tint: oklch(0.8 0.1 250 / 0.18);
     /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -278,6 +281,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger: oklch(0.75 0.15 25);
   --danger-tint: oklch(0.75 0.15 25 / 0.18);
   --danger-solid: oklch(0.52 0.19 27);
+  --text-on-danger: oklch(1 0 0);
   --info: oklch(0.8 0.1 250);
   --info-tint: oklch(0.8 0.1 250 / 0.18);
   /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -325,6 +329,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger: oklch(0.5 0.19 27);
   --danger-tint: oklch(0.5 0.19 27 / 0.12);
   --danger-solid: oklch(0.5 0.19 27);
+  --text-on-danger: oklch(1 0 0);
   --info: oklch(0.48 0.12 250);
   --info-tint: oklch(0.48 0.12 250 / 0.12);
   /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -372,6 +377,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger: oklch(0.75 0.15 25);
   --danger-tint: oklch(0.75 0.15 25 / 0.18);
   --danger-solid: oklch(0.52 0.19 27);
+  --text-on-danger: oklch(1 0 0);
   --info: oklch(0.8 0.1 250);
   --info-tint: oklch(0.8 0.1 250 / 0.18);
   /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -419,6 +425,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger: oklch(0.75 0.15 25);
   --danger-tint: oklch(0.75 0.15 25 / 0.18);
   --danger-solid: oklch(0.52 0.19 27);
+  --text-on-danger: oklch(1 0 0);
   --info: oklch(0.8 0.1 250);
   --info-tint: oklch(0.8 0.1 250 / 0.18);
   /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -466,6 +473,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger: oklch(0.5 0.19 27);
   --danger-tint: oklch(0.5 0.19 27 / 0.12);
   --danger-solid: oklch(0.5 0.19 27);
+  --text-on-danger: oklch(1 0 0);
   --info: oklch(0.48 0.12 250);
   --info-tint: oklch(0.48 0.12 250 / 0.12);
   /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -513,6 +521,7 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
   --danger: oklch(0.5 0.19 27);
   --danger-tint: oklch(0.5 0.19 27 / 0.12);
   --danger-solid: oklch(0.5 0.19 27);
+  --text-on-danger: oklch(1 0 0);
   --info: oklch(0.48 0.12 250);
   --info-tint: oklch(0.48 0.12 250 / 0.12);
   /* Charts (Dashboard, Analytics, Audit: read at render time) and service states */
@@ -538,20 +547,3 @@ html[data-motion="reduce"] { --dur-fast: 0ms; --dur: 0ms; --dur-slow: 0ms; }
 [data-accent="orange"] { --accent-h: 50; --accent-c: 0.11; --accent-c-hi: 0.12; }
 [data-accent="rose"] { --accent-h: 10; --accent-c: 0.17; --accent-c-hi: 0.11; }
 [data-accent="purple"] { --accent-h: 305; --accent-c: 0.2; --accent-c-hi: 0.12; }
-
-/* ---------- Names the pages used before the design system (kept until every page is migrated) ---------- */
-:root, [data-theme], [data-accent] {
-  --bg-primary: var(--surface-0);
-  --bg-secondary: var(--surface-1);
-  --bg-tertiary: var(--surface-2);
-  --border-color: var(--border);
-  --text-primary: var(--text);
-  --text-secondary: var(--text-2);
-  --text-muted: var(--text-3);
-  --accent-color: var(--accent-solid);
-  --accent-hover: var(--accent-solid-hover);
-  --success-color: var(--success);
-  --warning-color: var(--warning);
-  --error-color: var(--danger);
-  --info-color: var(--info);
-}

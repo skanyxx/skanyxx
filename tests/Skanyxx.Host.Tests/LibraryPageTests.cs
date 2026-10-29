@@ -125,7 +125,7 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         Assert.Equal(JsonValueKind.Null, original.GetProperty("liftedFromId").ValueKind);
         Assert.True(copy.GetProperty("liftedFromId").GetInt64() > 0);
         Assert.Equal(HttpStatusCode.NotFound, companyCopy.StatusCode);
-        Assert.Contains($"Lifted from <code>personal:{_miaId}/mia-note</code>", await HtmlAsync(_mia, "/Library?scope=team:billing&key=invoice-day"));
+        Assert.Contains($"<dt>Lifted from</dt><dd><code>personal:{_miaId}/mia-note</code>", await HtmlAsync(_mia, "/Library?scope=team:billing&key=invoice-day"));
     }
 
     /// <summary>CR L3: a success redirects to its card and says what it did once; a refresh re-sends nothing.</summary>

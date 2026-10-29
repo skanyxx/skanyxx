@@ -1,7 +1,7 @@
 /*
  * Skanyxx UI helpers, loaded once by the layout. No dependencies, no inline handlers needed.
  *
- *   skx.api(method, url, body)        fetch JSON; throws Error(problem text) on a non-2xx answer
+ *   skx.api(method, url, body)        fetch JSON (or send FormData); throws Error(problem text) with .status and .data
  *   skx.toast(text, { tone, timeout }) short confirmation (tone: success | error | info)
  *   skx.confirm({ title, body, confirm, danger }) -> Promise<boolean>, a native <dialog>
  *   skx.state.loading(el, { rows })   skeleton rows in el
@@ -12,10 +12,18 @@
  *   skx.busy(button, promise)         spinner + disabled until the promise settles
  *   skx.prefs.update(partial)         merge into the signed-in person's saved preferences
  *   skx.prefs.pageSize                the person's table page size
+ *   skx.time(iso)                     "5 minutes ago" (the UTC time belongs in a title)
+ *   skx.ask(dialog)                   showModal a <dialog> holding a method="dialog" form -> Promise of the submit
+ *                                     button's value, or '' for Cancel, Escape or the close button
+ *   skx.announce(text)                say it to screen readers (a polite live region), without a toast
  *
  * Declarative: <form data-confirm="…" data-confirm-title="…" data-confirm-action="Disable" data-danger>,
- * <form data-once> (one submit), <button data-copy="…"> / data-copy-target="#id", <table class="table-stack">.
+ * <form data-once> (one submit), <button data-copy="…"> / data-copy-target="#id", <table class="table-stack">,
+ * <button data-dialog-open="id" [data-dialog-set="field id" data-dialog-value="…"]> / <button data-dialog-close>, <dialog data-autoshow> (opened on load),
+ * <time data-relative datetime="…"> (relative text, UTC in its title).
  * Every value from an API is set with textContent, never innerHTML.
+ *
+ * Loaded in <head> without defer, so pages can call skx from their inline scripts; the shell wiring waits for the DOM.
  */
 (() => {
     'use strict';
@@ -48,7 +56,8 @@
     // Content-Type only with a body: the API reads a JSON body whenever one is announced.
     async function api(method, url, body) {
         const init = { method, headers: { Accept: 'application/json' } };
-        if (body !== undefined) {
+        if (body instanceof FormData) init.body = body;
+        else if (body !== undefined) {
             init.headers['Content-Type'] = 'application/json';
             init.body = JSON.stringify(body);
         }
@@ -62,6 +71,7 @@
         if (!response.ok) {
             const error = new Error(problemText(data, response.status));
             error.status = response.status;
+            error.data = data;
             throw error;
         }
         return data;
@@ -97,19 +107,39 @@
         ok.textContent = confirm;
         ok.className = danger ? 'btn btn-danger' : 'btn btn-primary';
         dialog.querySelector('[data-confirm-cancel]').textContent = cancel;
+        // A destructive confirm opens on Cancel, so a stray Enter does not delete.
+        return ask(dialog, danger ? dialog.querySelector('[data-confirm-cancel]') : ok).then(value => value === 'ok');
+    }
+
+    // returnValue survives between openings and a close without a value (Escape, close()) keeps it, so it is cleared first.
+    function ask(dialog, focus) {
         dialog.returnValue = '';
         dialog.showModal();
-        ok.focus();
-        return new Promise(resolve =>
-            dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok'), { once: true }));
+        focus?.focus();
+        return new Promise(resolve => dialog.addEventListener('close', () => resolve(dialog.returnValue), { once: true }));
+    }
+
+    // ---------- Screen-reader announcements ----------
+    function announce(text) {
+        let region = document.getElementById('skx-announce');
+        if (!region) {
+            region = el('div', 'visually-hidden');
+            region.id = 'skx-announce';
+            region.setAttribute('aria-live', 'polite');
+            document.body.append(region);
+        }
+        region.textContent = '';
+        // A new text node after a tick, so the same words twice are still read.
+        setTimeout(() => { region.textContent = text; }, 50);
     }
 
     // ---------- States ----------
     const state = {
         loading(target, { rows = 4 } = {}) {
             const box = el('div', 'skeleton-rows');
+            box.setAttribute('role', 'status');
             box.setAttribute('aria-busy', 'true');
-            box.setAttribute('aria-label', 'Loading');
+            box.append(el('span', 'visually-hidden', 'Loading…'));
             for (let i = 0; i < rows; i++)
                 box.append(el('span', `skeleton skeleton-line${i % 3 === 2 ? ' medium' : ''}`));
             target.replaceChildren(box);
@@ -192,6 +222,22 @@
             [...row.children].forEach((cell, i) => { if (!cell.hasAttribute('data-label')) cell.setAttribute('data-label', heads[i] ?? ''); });
     }
 
+    // ---------- Time ----------
+    const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+    const steps = [['year', 31536e6], ['month', 2592e6], ['week', 6048e5], ['day', 864e5], ['hour', 36e5], ['minute', 6e4]];
+    function time(value) {
+        const at = new Date(value);
+        if (Number.isNaN(at.getTime())) return '';
+        const diff = at.getTime() - Date.now();
+        for (const [unit, ms] of steps)
+            if (Math.abs(diff) >= ms) return relative.format(Math.round(diff / ms), unit);
+        return relative.format(0, 'minute');
+    }
+    const utc = value => {
+        const at = new Date(value);
+        return Number.isNaN(at.getTime()) ? '' : at.toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+    };
+
     // ---------- Preferences ----------
     const prefs = {
         get pageSize() { return Number(root.dataset.pageSize) || 25; },
@@ -201,7 +247,7 @@
         },
     };
 
-    window.skx = { api, toast, confirm: confirmDialog, state, badge, fieldError, busy, prefs, icon, table: { label: labelTable } };
+    window.skx = { api, toast, confirm: confirmDialog, state, badge, fieldError, busy, prefs, icon, time, utc, ask, announce, table: { label: labelTable } };
 
     // ---------- Shell behaviour ----------
     function initNav() {
@@ -246,6 +292,9 @@
         document.addEventListener('submit', async e => {
             const form = e.target;
             if (!(form instanceof HTMLFormElement)) return;
+            // A form that already went (data-once, or a confirmed one) does not go twice: a second click on
+            // "Merge" while the first request is under way must not merge again.
+            if (form.dataset.sent === 'true') { e.preventDefault(); return; }
             if (form.dataset.confirm && form.dataset.confirmed !== 'true') {
                 e.preventDefault();
                 const submitter = e.submitter;
@@ -260,11 +309,19 @@
                 form.requestSubmit(submitter);
                 return;
             }
-            if (form.hasAttribute('data-once')) {
-                const button = e.submitter || form.querySelector('[type=submit]');
-                if (form.dataset.sent === 'true') { e.preventDefault(); return; }
+            if (form.hasAttribute('data-once') || form.dataset.confirmed === 'true') {
+                delete form.dataset.confirmed;
                 form.dataset.sent = 'true';
-                if (button) { button.setAttribute('aria-busy', 'true'); }
+                (e.submitter || form.querySelector('[type=submit]'))?.setAttribute('aria-busy', 'true');
+            }
+        });
+        // A page restored from the back/forward cache comes back with its forms as they were left: sent and busy.
+        window.addEventListener('pageshow', e => {
+            if (!e.persisted) return;
+            for (const form of document.querySelectorAll('form[data-sent], form[data-confirmed]')) {
+                delete form.dataset.sent;
+                delete form.dataset.confirmed;
+                form.querySelectorAll('[aria-busy="true"]').forEach(b => b.removeAttribute('aria-busy'));
             }
         });
     }
@@ -283,10 +340,15 @@
                 return;
             }
             const label = button.querySelector('[data-copy-label]');
-            const before = label?.textContent;
+            if (label && !label.dataset.copyLabelDefault) label.dataset.copyLabelDefault = label.textContent;
+            clearTimeout(Number(button.dataset.copyTimer));
             button.dataset.copied = 'true';
             if (label) label.textContent = 'Copied';
-            setTimeout(() => { button.dataset.copied = 'false'; if (label) label.textContent = before; }, 2000);
+            announce('Copied');
+            button.dataset.copyTimer = String(setTimeout(() => {
+                button.dataset.copied = 'false';
+                if (label) label.textContent = label.dataset.copyLabelDefault;
+            }, 2000));
         });
     }
 
@@ -324,7 +386,33 @@
             window.addEventListener('appinstalled', () => { button.hidden = true; });
         }
         // An earlier build registered a service worker that cached stale pages; it stays unregistered.
-        navigator.serviceWorker?.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
+        navigator.serviceWorker?.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => { /* not a secure origin: nothing registered */ });
+    }
+
+    function initDialogs() {
+        document.addEventListener('click', e => {
+            const opener = e.target.closest('[data-dialog-open]');
+            if (opener) {
+                // data-dialog-set="id" data-dialog-value="v": open the dialog with that field preset (New team from a department).
+                const field = opener.dataset.dialogSet && document.getElementById(opener.dataset.dialogSet);
+                if (field) field.value = opener.dataset.dialogValue ?? '';
+                document.getElementById(opener.dataset.dialogOpen)?.showModal();
+                return;
+            }
+            const closer = e.target.closest('[data-dialog-close]');
+            if (closer) closer.closest('dialog')?.close();
+        });
+        document.querySelectorAll('dialog[data-autoshow]').forEach(d => { if (!d.open) d.showModal(); });
+    }
+
+    function initTimes() {
+        for (const t of document.querySelectorAll('time[data-relative]')) {
+            const at = t.getAttribute('datetime');
+            const text = time(at);
+            if (!text) continue; // a date that does not parse keeps the server's text
+            if (!t.title) t.title = utc(at);
+            t.textContent = text;
+        }
     }
 
     // ---------- Appearance settings (Account page) ----------
@@ -379,13 +467,19 @@
         syncOrder();
     }
 
-    document.querySelectorAll('[data-field]').forEach(wireField);
-    initNav();
-    initMenus();
-    initForms();
-    initCopy();
-    initGuides();
-    initTables();
-    initInstall();
-    initAppearance();
+    function initShell() {
+        document.querySelectorAll('[data-field]').forEach(wireField);
+        initNav();
+        initMenus();
+        initForms();
+        initCopy();
+        initGuides();
+        initTables();
+        initDialogs();
+        initTimes();
+        initInstall();
+        initAppearance();
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initShell); else initShell();
 })();

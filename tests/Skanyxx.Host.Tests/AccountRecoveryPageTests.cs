@@ -49,7 +49,7 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
 
         Assert.Contains("href=\"/ForgotPassword\"", login);
         Assert.Equal(HttpStatusCode.OK, forgot.StatusCode);
-        var answer = Regex.Match(await forgot.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), "role=\"status\">([^<]+)<").Groups[1].Value;
+        var answer = Regex.Match(await forgot.Content.ReadAsStringAsync(TestContext.Current.CancellationToken), "role=\"status\">.*?<div class=\"alert-body\">([^<]+)<", RegexOptions.Singleline).Groups[1].Value;
         Assert.Contains("a link is on its way", answer);
         Assert.Contains(answer, await forgotUnknown.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)); // the same answer for an unknown email
         Assert.Equal(HttpStatusCode.OK, page.StatusCode);

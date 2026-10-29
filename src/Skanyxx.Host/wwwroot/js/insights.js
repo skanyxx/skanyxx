@@ -7,8 +7,8 @@ window.Insights = (() => {
 
     const theme = () => ({
         palette: [1, 2, 3, 4, 5, 6, 7, 8].map(i => css(`--chart-${i}`)).filter(Boolean),
-        text: css('--text-secondary'),
-        grid: css('--border-color'),
+        text: css('--text-2'),
+        grid: css('--border'),
         ok: css('--status-ok'),
         warn: css('--status-warn'),
         down: css('--status-down')
@@ -151,8 +151,8 @@ window.Insights = (() => {
 
     /** A table from rows: columns are {title, value(row) → text or Node, num?}. */
     function table(columns, rows, empty) {
-        if (rows.length === 0) return el('p', { class: 'text-muted' }, empty);
-        return el('table', null,
+        if (rows.length === 0) return el('p', { class: 'chart-empty' }, empty);
+        return el('table', { class: 'table' },
             el('thead', null, el('tr', null, columns.map(c => el('th', { class: c.num ? 'num' : null, scope: 'col' }, c.title)))),
             el('tbody', null, rows.map(r => el('tr', null, columns.map(c => el('td', { class: c.num ? 'num' : null }, c.value(r)))))));
     }

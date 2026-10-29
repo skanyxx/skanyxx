@@ -19,6 +19,7 @@ public sealed class AlertTagHelper(HtmlEncoder encoder) : TagHelper
         var body = (await output.GetChildContentAsync()).GetContent();
         var tone = Tone is "error" or "warning" or "success" ? Tone : "info";
         output.TagName = "div";
+        output.TagMode = TagMode.StartTagAndEndTag; // written self-closing, it still renders its content
         output.Attributes.SetAttribute("class", $"alert alert-{tone}");
         output.Attributes.SetAttribute("role", tone is "error" or "warning" ? "alert" : "status");
         var icon = tone switch { "error" => "i-alert-circle", "warning" => "i-alert-triangle", "success" => "i-check-circle", _ => "i-info" };

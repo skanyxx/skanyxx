@@ -3,36 +3,30 @@
 @{
     ViewData["Title"] = "Models";
 }
+<page-header description="Choose which AI models agents run on. API keys go straight to the cluster and are never shown again.">
+    <button type="button" class="btn btn-secondary" id="refresh"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>Refresh</button>
+    @if (Model.CanWrite)
+    {
+        <button type="button" class="btn btn-primary" id="new-model"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New model</button>
+    }
+</page-header>
 @await Component.InvokeAsync("SetupGuide", new { id = "model" })
 
 <section id="models" data-can-write="@(Model.CanWrite ? "true" : "false")">
-    <div class="card mb-3">
-        <div class="card-header flex items-center gap-2">
-            <h3 class="card-title">Models</h3>
-            <button type="button" class="btn btn-ghost" id="refresh"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>Refresh</button>
-            @if (Model.CanWrite)
-            {
-                <button type="button" class="btn btn-primary" id="new-model"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New model</button>
-            }
-        </div>
-        <p class="text-muted">
-            The models in kagent (its ModelConfigs); an agent names the one it runs on. An API key goes straight into the
-            Kubernetes Secret kagent keeps for that model: Skanyxx does not store it and never shows it again. The
-            <strong>default</strong> model (<code>KAgent:ModelConfig</code>) is the one the seed agents and Chat use.
-            @if (!Model.CanWrite)
-            {
-                <span>Only the owner adds, changes or deletes models.</span>
-            }
-        </p>
-        <div id="default-note" class="alert alert-info" role="status" hidden></div>
-        <div id="models-error" class="alert alert-error" role="alert" hidden></div>
-        <div id="models-status" class="alert alert-success" role="status" hidden></div>
-        <div class="table-container">
-            <table>
+    <div id="default-note" class="alert alert-info" role="status" hidden></div>
+    @if (!Model.CanWrite)
+    {
+        <alert tone="info">Only the owner adds, changes or deletes models.</alert>
+    }
+
+    <div class="card card-flush">
+        <div class="table-container" id="models-table" hidden>
+            <table class="table table-stack">
                 <thead><tr><th scope="col">Name</th><th scope="col">Namespace</th><th scope="col">Provider</th><th scope="col">Model</th><th scope="col">API key</th><th scope="col">Status</th><th scope="col" aria-label="Actions"></th></tr></thead>
                 <tbody id="model-rows"></tbody>
             </table>
         </div>
+        <div id="models-state"></div>
         <div id="models-empty" hidden>
             <empty-state icon="i-cpu" title="No models in kagent yet">
                 An agent runs on a model. @(Model.CanWrite ? "Add one with New model: a provider, a model id and its API key." : "The owner adds them.")
@@ -40,92 +34,107 @@
         </div>
     </div>
 
-    <div class="card mb-3" id="detail-card" hidden>
-        <div class="card-header flex items-center gap-2">
-            <h3 class="card-title">Model <code id="detail-name"></code></h3>
-            <button type="button" class="btn btn-ghost" id="detail-close">Close</button>
+    <details class="details-admin mt-3">
+        <summary>Details for administrators</summary>
+        <p>
+            Each model is a kagent ModelConfig; an agent names the one it runs on. An API key goes into the Kubernetes Secret
+            kagent keeps for that model: Skanyxx does not store it. The <strong>default</strong> model (<code>KAgent:ModelConfig</code>)
+            is the one the seed agents and Chat use.
+        </p>
+    </details>
+
+    <dialog class="dialog dialog-side" id="detail-dialog" aria-labelledby="detail-title">
+        <div class="dialog-header">
+            <div>
+                <h2 class="dialog-title" id="detail-title">Model</h2>
+                <p class="dialog-subtitle"><code id="detail-name"></code></p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-icon" id="detail-close" data-dialog-close aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
         </div>
-        <dl id="detail-fields" class="kv"></dl>
-    </div>
+        <div class="dialog-body"><dl id="detail-fields" class="kv"></dl></div>
+    </dialog>
 
     @if (Model.CanWrite)
     {
-        <div class="card mb-3" id="form-card" hidden>
-            <div class="card-header"><h3 class="card-title" id="form-title">New model</h3></div>
-            <form id="model-form" class="flex flex-col gap-2">
-                <label for="f-namespace">Namespace (agents use models of their own namespace)</label>
-                @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
-                <input id="f-namespace" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
-                <label for="f-name">Name (lowercase letters, digits and <code>-</code>)</label>
-                <input id="f-name" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
-                <label for="f-provider">Provider</label>
-                <select id="f-provider" required></select>
-                <label for="f-model">Model (pick one kagent knows, or type any model id)</label>
-                <input id="f-model" list="f-models" required maxlength="200" autocomplete="off" spellcheck="false" />
-                <datalist id="f-models"></datalist>
-                <fieldset>
-                    <legend>Provider settings (* required; empty = the provider's default)</legend>
-                    <div id="f-params"></div>
-                </fieldset>
-                <p id="f-kept" class="text-muted" hidden></p>
-                <div id="f-key">
-                    <label for="f-apikey">API key</label>
-                    @* Never rendered back: the value is always empty; leaving it empty keeps the stored key (same provider). *@
-                    @* new-password: browsers and password managers must not fill the owner's sign-in password in here. *@
-                    <input name="ApiKey" id="f-apikey" type="password" value="" maxlength="4096" autocomplete="new-password" spellcheck="false"
-                           data-1p-ignore data-lpignore="true" data-form-type="other" />
-                    <label><input type="checkbox" id="f-nokey" /> No API key (a gateway in front of the provider adds it)</label>
+        <dialog class="dialog dialog-side" id="form-card" aria-labelledby="form-title">
+            <form id="model-form" class="dialog-form" novalidate>
+                <div class="dialog-header">
+                    <h2 class="dialog-title" id="form-title">New model</h2>
+                    <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
                 </div>
-                <p id="f-nokey-needed" class="text-muted" hidden>This provider takes no API key.</p>
-                <div class="flex gap-2">
+                <div class="dialog-body">
+                    <div class="alert alert-error" role="alert" id="f-error" hidden></div>
+                    <div class="form-row">
+                        <div class="field">
+                            <label for="f-namespace">Namespace</label>
+                            @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
+                            <input id="f-namespace" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" aria-describedby="f-namespace-hint" />
+                            <p class="field-hint" id="f-namespace-hint">Agents use the models of their own namespace.</p>
+                        </div>
+                        <div class="field">
+                            <label for="f-name">Name</label>
+                            <input id="f-name" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" aria-describedby="f-name-hint" />
+                            <p class="field-hint" id="f-name-hint">Lowercase letters, digits and <code>-</code>.</p>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="f-provider">Provider</label>
+                        <select id="f-provider" required></select>
+                    </div>
+                    <div class="field">
+                        <label for="f-model">Model</label>
+                        <input id="f-model" list="f-models" required maxlength="200" autocomplete="off" spellcheck="false" aria-describedby="f-model-hint" />
+                        <datalist id="f-models"></datalist>
+                        <p class="field-hint" id="f-model-hint">Pick one kagent knows, or type any model id.</p>
+                    </div>
+                    <fieldset class="form-section">
+                        <legend>Provider settings</legend>
+                        <p class="form-section-hint">* required; leave the others empty for the provider's default.</p>
+                        <div id="f-params" class="field-grid"></div>
+                    </fieldset>
+                    <p id="f-kept" class="field-hint" hidden></p>
+                    <div id="f-key" class="field">
+                        <label for="f-apikey">API key</label>
+                        @* Never rendered back: the value is always empty; leaving it empty keeps the stored key (same provider). *@
+                        @* new-password: browsers and password managers must not fill the owner's sign-in password in here. *@
+                        <input name="ApiKey" id="f-apikey" type="password" value="" maxlength="4096" autocomplete="new-password" spellcheck="false"
+                               data-1p-ignore data-lpignore="true" data-form-type="other" />
+                        <label class="check"><input type="checkbox" id="f-nokey" /> No API key (a gateway in front of the provider adds it)</label>
+                    </div>
+                    <p id="f-nokey-needed" class="field-hint" hidden>This provider takes no API key.</p>
+                </div>
+                <div class="dialog-footer">
+                    <button type="button" class="btn btn-secondary" id="f-cancel">Cancel</button>
                     <button type="submit" class="btn btn-primary" id="f-save">Save</button>
-                    <button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>
                 </div>
             </form>
-        </div>
+        </dialog>
     }
 </section>
-
-<style>
-    #f-params { display: grid; grid-template-columns: max-content 1fr; gap: var(--space-2) var(--space-3); align-items: center; }
-    #models .badge { margin-inline-start: var(--space-2); }
-</style>
 
 <script>
 (() => {
     const root = document.getElementById('models');
     const canWrite = root.dataset.canWrite === 'true';
     const base = '/api/models';
-    const errorBox = document.getElementById('models-error');
-    const statusBox = document.getElementById('models-status');
+    const table = document.getElementById('models-table');
+    const listState = document.getElementById('models-state');
+    let loaded = false;
     let defaultRef = null;
     let options = null;
     let editing = null;
 
     // Values from the API are only ever set with textContent.
     const say = (box, text) => { box.textContent = text; box.hidden = !text; };
-    const fail = text => { say(statusBox, ''); say(errorBox, text); };
-    const done = text => { say(errorBox, ''); say(statusBox, text); };
-    const problemText = (problem, status) =>
-        (problem.errors ? Object.values(problem.errors).flat().join(' ') : '')
-        || problem.detail || problem.message || problem.title || `HTTP ${status}`;
+    const fail = text => skx.toast(text, { tone: 'error' });
+    const done = text => skx.toast(text);
     const path = (ns, name) => `${base}/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`;
     const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
 
-    // Content-Type only with a body: the API reads a JSON body whenever one is announced.
-    async function call(method, url, body) {
-        const init = { method };
-        if (body !== undefined) {
-            init.headers = { 'Content-Type': 'application/json' };
-            init.body = JSON.stringify(body);
-        }
-        const response = await fetch(url, init);
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw Object.assign(new Error(problemText(data, response.status)), { status: response.status, data });
-        return data;
-    }
+    // The shared client (js/ui.js): the error carries the status and the problem body.
+    const call = (method, url, body) => skx.api(method, url, body);
 
-    function button(label, name, action, cls = 'btn btn-ghost') {
+    function button(label, name, action, cls = 'btn btn-ghost btn-sm') {
         const b = el('button', label, cls);
         b.type = 'button';
         b.setAttribute('aria-label', `${label} ${name}`);
@@ -137,14 +146,7 @@
 
     const keyText = m => m.provider === 'Ollama' ? 'not needed' : (m.hasApiKey ? 'key set' : 'no key');
     const statusText = m => m.accepted ? 'Ready' : `Not accepted${m.statusMessage ? ` (${m.statusMessage})` : ''}`;
-    // The design system's status badge (StatusBadgeTagHelper's markup), filled with textContent only.
-    function statusBadge(m) {
-        const badge = el('span', undefined, `badge badge-${m.accepted ? 'success' : 'warning'}`);
-        const dot = el('span', undefined, 'badge-dot');
-        dot.setAttribute('aria-hidden', 'true');
-        badge.append(dot, statusText(m));
-        return badge;
-    }
+    const statusBadge = m => skx.badge(m.accepted ? 'ready' : 'pending', statusText(m));
 
     function defaultNote(models) {
         const note = document.getElementById('default-note');
@@ -169,31 +171,43 @@
     }
 
     async function load() {
+        if (!loaded) skx.state.loading(listState, { rows: 3 });
         try {
             const list = await call('GET', base);
+            loaded = true;
+            listState.replaceChildren();
             defaultRef = list.defaultRef;
             const body = document.getElementById('model-rows');
             body.replaceChildren();
             for (const m of list.models) {
                 const row = document.createElement('tr');
                 row.dataset.model = m.ref;
-                const name = cell(row, m.name);
-                if (m.isDefault) name.appendChild(el('span', 'default', 'badge badge-accent'));
+                const name = cell(row, '');
+                const names = el('span', undefined, 'badges');
+                names.append(m.name);
+                if (m.isDefault) names.appendChild(el('span', 'default', 'badge badge-accent'));
+                name.appendChild(names);
                 cell(row, m.namespace);
                 cell(row, m.provider);
                 cell(row, m.model);
                 cell(row, keyText(m));
                 cell(row, '').appendChild(statusBadge(m));
-                const actions = cell(row, '');
+                const actions = el('div', undefined, 'row-actions');
+                cell(row, '').appendChild(actions);
                 actions.appendChild(button('Details', m.ref, () => details(m)));
                 if (canWrite) actions.appendChild(button('Edit', m.ref, () => edit(m.namespace, m.name)));
-                if (canWrite && !m.isDefault) actions.appendChild(button('Delete', m.ref, () => remove(m)));
+                if (canWrite && !m.isDefault) actions.appendChild(button('Delete', m.ref, () => remove(m), 'btn btn-danger-ghost btn-sm'));
                 body.appendChild(row);
             }
             document.getElementById('models-empty').hidden = list.models.length > 0;
+            table.hidden = list.models.length === 0;
             defaultNote(list.models);
         } catch (e) {
-            fail(e.message);
+            // A failed refresh keeps the list it had; only a first load that fails says so in its place.
+            if (loaded) return fail(`The models could not be refreshed: ${e.message}`);
+            table.hidden = true;
+            document.getElementById('models-empty').hidden = true;
+            skx.state.error(listState, { title: 'The models could not be loaded', detail: e.message, retry: load });
         }
     }
 
@@ -209,21 +223,22 @@
         add('Status', statusText(m));
         for (const [key, value] of Object.entries(m.params)) add(key, value);
         add('Also set (kept as it is)', m.kept.join(', '));
-        document.getElementById('detail-card').hidden = false;
+        document.getElementById('detail-dialog').showModal();
     }
 
     async function remove(m) {
-        if (!confirm(`Delete the model ${m.ref}? kagent removes it and its API key; this cannot be undone.`)) return;
+        if (!await skx.confirm({ title: `Delete ${m.ref}?`, body: 'kagent removes it and its API key; this cannot be undone.', confirm: 'Delete', danger: true })) return;
         try {
             try {
                 await call('DELETE', path(m.namespace, m.name));
             } catch (e) {
                 // Agents still use it: the answer lists them, and the owner decides again.
-                if (e.status !== 409 || e.data?.reason !== 'in_use' || !confirm(e.message)) throw e;
+                if (e.status !== 409 || e.data?.reason !== 'in_use'
+                    || !await skx.confirm({ title: `${m.ref} is in use`, body: e.message, confirm: 'Delete anyway', danger: true })) throw e;
                 await call('DELETE', `${path(m.namespace, m.name)}?confirm=true`);
             }
             done(`${m.ref} deleted.`);
-            document.getElementById('detail-card').hidden = true;
+            document.getElementById('detail-dialog').close();
             await load();
         } catch (e) {
             fail(e.message);
@@ -231,7 +246,6 @@
     }
 
     document.getElementById('refresh').addEventListener('click', load);
-    document.getElementById('detail-close').addEventListener('click', () => { document.getElementById('detail-card').hidden = true; });
 
     if (!canWrite) {
         load();
@@ -261,7 +275,7 @@
         params.replaceChildren();
         for (const field of provider.fields) {
             const id = `f-param-${field.key}`;
-            const label = el('label', `${field.key}${field.required ? ' *' : ''}`);
+            const label = el('label', `${field.key}${field.required ? ' *' : ''}`, 'field-label');
             label.htmlFor = id;
             let input;
             if (field.kind === 'boolean') {
@@ -287,6 +301,9 @@
         form.noKey.checked = !!editing && editing.provider === provider.type && !editing.hasApiKey;
     }
 
+    const formDialog = document.getElementById('form-card');
+    const formError = text => say(document.getElementById('f-error'), text);
+
     async function openForm(model, preset) {
         const o = await loadOptions();
         if (model && !providerOf(model.provider)) {
@@ -304,8 +321,9 @@
         form.apiKey.value = '';
         showProvider(model?.params ?? {});
         say(document.getElementById('f-kept'), model?.kept.length ? `Also set and kept as it is: ${model.kept.join(', ')}.` : '');
-        document.getElementById('form-card').hidden = false;
-        document.getElementById('form-card').scrollIntoView();
+        formError('');
+        formDialog.showModal();
+        (form.namespace.readOnly ? form.model : form.namespace).focus();
     }
 
     async function edit(ns, name) {
@@ -319,7 +337,9 @@
     form.provider.addEventListener('change', () => showProvider(editing?.provider === form.provider.value ? editing.params : {}));
     form.noKey.addEventListener('change', () => { if (form.noKey.checked) form.apiKey.value = ''; });
     document.getElementById('new-model').addEventListener('click', () => openForm(null).catch(e => fail(e.message)));
-    document.getElementById('f-cancel').addEventListener('click', () => { form.apiKey.value = ''; document.getElementById('form-card').hidden = true; });
+    // However the dialog closes (Cancel, Escape, the close button), a typed key leaves with it.
+    formDialog.addEventListener('close', () => { form.apiKey.value = ''; });
+    document.getElementById('f-cancel').addEventListener('click', () => formDialog.close());
     document.getElementById('model-form').addEventListener('submit', async event => {
         event.preventDefault();
         const takesKey = providerOf(form.provider.value).takesKey;
@@ -332,18 +352,22 @@
             apiKey: takesKey && !form.noKey.checked ? form.apiKey.value.trim() || null : null,
             noApiKey: takesKey && form.noKey.checked
         };
+        const model = document.getElementById('model-form');
+        if (!model.reportValidity()) return;
         const save = document.getElementById('f-save');
+        save.setAttribute('aria-busy', 'true');
         save.disabled = true;
         try {
             if (editing) await call('PUT', path(editing.namespace, editing.name), body);
             else await call('POST', base, body);
             form.apiKey.value = '';
             done(`${body.namespace}/${body.name} ${editing ? 'saved' : 'created'}.`);
-            document.getElementById('form-card').hidden = true;
+            formDialog.close();
             await load();
         } catch (e) {
-            fail(e.message);
+            formError(e.message);
         } finally {
+            save.removeAttribute('aria-busy');
             save.disabled = false;
         }
     });

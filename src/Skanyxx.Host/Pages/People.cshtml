@@ -3,129 +3,225 @@
 @using Skanyxx.Core.Platform
 @{
     ViewData["Title"] = "People";
+    var roleMeaning = new Dictionary<string, string>
+    {
+        [SkanyxxRoles.Supervisor] = "merges agent proposals and runs the agents, models and tool servers",
+        [SkanyxxRoles.Builder] = "proposes agents in Studio and adds plugins; cannot make them live",
+        [SkanyxxRoles.Employee] = "chats with agents and reads the library"
+    };
 }
-@await Component.InvokeAsync("SetupGuide", new { id = "email" })
-@await Component.InvokeAsync("SetupGuide", new { id = "entra" })
+<page-header description="Who can sign in, and what each person may do.">
+    <button type="button" class="btn btn-primary" data-dialog-open="invite-dialog"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Invite someone</button>
+</page-header>
 @if (Model.Error is not null)
 {
-    <p class="text-error" role="alert">@Model.Error</p>
+    <alert tone="error">@Model.Error</alert>
 }
-@if (Model.Message is not null)
+@if (Model.Message is not null && Model.InviteLinkOnce is null && Model.ResetLinkOnce is null)
 {
-    <p class="text-success" role="status">@Model.Message</p>
+    <alert tone="success">@Model.Message</alert>
 }
 @if (Model.InviteLinkOnce is not null)
 {
-    <div class="card mb-3">
-        <label for="inviteLink">Invite link (single use; send it to the person yourself)</label>
-        <input id="inviteLink" readonly value="@Model.InviteLinkOnce" onclick="this.select()" style="width: 100%" />
-        <p class="text-muted">The link points at <strong>@(new Uri(Model.InviteLinkOnce).Authority)</strong>: the person must be able to reach that address (Identity:PublicBaseUrl).</p>
-    </div>
+    <alert tone="success" title="Invite link (single use)">
+        <p>@Model.Message Send it to the person yourself.</p>
+        <div class="copy-field mt-1">
+            <input id="inviteLink" readonly value="@Model.InviteLinkOnce" aria-label="Invite link" />
+            <copy-button target="#inviteLink" />
+        </div>
+        <p class="field-hint mt-1">The link points at <strong>@(new Uri(Model.InviteLinkOnce).Authority)</strong>: the person must be able to reach that address (Identity:PublicBaseUrl).</p>
+    </alert>
 }
 @if (Model.ResetLinkOnce is not null)
 {
-    <div class="card mb-3">
-        <label for="resetLink">Password-reset link (single use, short-lived; give it to the person yourself)</label>
-        <input id="resetLink" readonly value="@Model.ResetLinkOnce" onclick="this.select()" style="width: 100%" />
-    </div>
+    <alert tone="success" title="Password-reset link (single use, short-lived)">
+        <p>@Model.Message</p>
+        <div class="copy-field mt-1">
+            <input id="resetLink" readonly value="@Model.ResetLinkOnce" aria-label="Password-reset link" />
+            <copy-button target="#resetLink" />
+        </div>
+    </alert>
 }
 
-<div class="card mb-3">
-    <div class="card-header"><h3 class="card-title">Invite someone</h3></div>
-    <form method="post" asp-page-handler="Invite" class="flex gap-2 items-center">
-        <input name="email" type="email" placeholder="email@company.example" required maxlength="256" autocomplete="off" />
-        @foreach (var role in SkanyxxRoles.Grantable)
+@await Component.InvokeAsync("SetupGuide", new { id = "email" })
+@await Component.InvokeAsync("SetupGuide", new { id = "entra" })
+
+<section class="section" aria-labelledby="people-title">
+    <div class="section-header"><h2 class="section-title" id="people-title">People</h2></div>
+    <div class="card card-flush">
+        @if (Model.People.Count == 0)
         {
-            <label><input type="checkbox" name="roles" value="@role" /> @role</label>
+            <empty-state icon="i-users" title="Nobody here yet" compact="true">
+                <p>Invite the first person: they choose their own password from the link.</p>
+            </empty-state>
         }
-        <button type="submit" class="btn btn-primary">Create invite link</button>
+        else
+        {
+            <div class="table-container">
+                <table class="table table-stack">
+                    <thead>
+                        <tr><th scope="col">Person</th><th scope="col">Roles</th><th scope="col">Teams</th><th scope="col">Status</th><th scope="col" aria-label="Actions"></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var person in Model.People)
+                        {
+                            var isOwner = person.Roles.Contains(SkanyxxRoles.Owner);
+                            var name = person.DisplayName ?? person.Email;
+                            <tr>
+                                <td>
+                                    @name<span class="table-cell-sub">@person.Email</span>
+                                    @if (person.EntraManaged)
+                                    {
+                                        <span class="badge badge-info mt-1" title="Roles and teams are rewritten from the Entra group mapping at each Microsoft sign-in">managed by Entra</span>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badges">
+                                        @foreach (var role in person.Roles.Order())
+                                        {
+                                            <span class="badge @(role == SkanyxxRoles.Owner ? "badge-accent" : "badge-neutral")">@role</span>
+                                        }
+                                    </span>
+                                </td>
+                                <td>@string.Join(", ", Model.TeamsOf(person.Id).Select(t => t.Name))</td>
+                                <td><status-badge status="@(person.Disabled ? "disabled" : "active")" tone="@(person.Disabled ? "warning" : null)" label="@(person.Disabled ? "Disabled" : "Active")" /></td>
+                                <td>
+                                    <div class="row-actions">
+                                        @if (!isOwner)
+                                        {
+                                            <button type="button" class="btn btn-secondary btn-sm" data-dialog-open="roles-@person.Id" aria-label="Edit roles of @name">Edit roles</button>
+                                            @if (!person.Disabled)
+                                            {
+                                                <form method="post" asp-page-handler="Reset" asp-route-id="@person.Id">
+                                                    <button type="submit" class="btn btn-ghost btn-sm" title="A single-use link to choose a new password: emailed when SMTP is set, otherwise shown here once">Password reset link</button>
+                                                </form>
+                                            }
+                                            <form method="post" asp-page-handler="@(person.Disabled ? "Enable" : "Disable")" asp-route-id="@person.Id"
+                                                  data-confirm="@(person.Disabled ? $"{name} can sign in again, with the roles and teams they had." : $"{name} cannot sign in until you enable them again. Their teams and roles stay as they are.")"
+                                                  data-confirm-title="@(person.Disabled ? $"Enable {name}?" : $"Disable {name}?")"
+                                                  data-confirm-action="@(person.Disabled ? "Enable" : "Disable")" data-danger="@(person.Disabled ? null : "true")">
+                                                <button type="submit" class="btn @(person.Disabled ? "btn-secondary" : "btn-danger-ghost") btn-sm">@(person.Disabled ? "Enable" : "Disable")</button>
+                                            </form>
+                                        }
+                                        @* D16: without a password, Microsoft is the account's only sign-in; Disable is the reversible way to stop it. *@
+                                        @if (person.EntraManaged && person.HasPassword)
+                                        {
+                                            <form method="post" asp-page-handler="RemoveMicrosoft" asp-route-id="@person.Id"
+                                                  data-confirm="The account then signs in with its password only, every session ends, and its roles and teams stay as they are: review them."
+                                                  data-confirm-title="Remove the Microsoft login of @name?" data-confirm-action="Remove" data-danger>
+                                                <button type="submit" class="btn btn-danger-ghost btn-sm" title="The account becomes local-only and every session ends">Remove Microsoft login</button>
+                                            </form>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="section" aria-labelledby="invites-title">
+    <div class="section-header"><h2 class="section-title" id="invites-title">Pending invites</h2></div>
+    <div class="card card-flush">
+        @if (Model.Invites.Count == 0)
+        {
+            <empty-state icon="i-inbox" title="No pending invites" compact="true">
+                <p>An invite waits here until the person accepts it or it expires.</p>
+            </empty-state>
+        }
+        else
+        {
+            <div class="table-container">
+                <table class="table table-stack">
+                    <thead>
+                        <tr><th scope="col">Email</th><th scope="col">Roles</th><th scope="col">Expires</th><th scope="col" aria-label="Actions"></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var invite in Model.Invites)
+                        {
+                            <tr>
+                                <td>@invite.Email</td>
+                                <td>@string.Join(", ", invite.Roles)</td>
+                                <td class="nowrap"><time data-relative datetime="@invite.ExpiresAt.UtcDateTime.ToString("O")" title="@invite.ExpiresAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC">@invite.ExpiresAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm") UTC</time></td>
+                                <td>
+                                    <div class="row-actions">
+                                        <form method="post" asp-page-handler="Revoke" asp-route-id="@invite.Id"
+                                              data-confirm="The link stops working. You can invite @invite.Email again later."
+                                              data-confirm-title="Revoke this invite?" data-confirm-action="Revoke" data-danger>
+                                            <button type="submit" class="btn btn-danger-ghost btn-sm">Revoke</button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</section>
+
+<dialog class="dialog" id="invite-dialog" aria-labelledby="invite-title">
+    <form method="post" asp-page-handler="Invite" class="dialog-form" data-once>
+        <div class="dialog-header">
+            <h2 class="dialog-title" id="invite-title">Invite someone</h2>
+            <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="dialog-body form">
+            <div class="field">
+                <label for="invite-email">Email</label>
+                <input id="invite-email" name="email" type="email" placeholder="name@company.example" required maxlength="256" autocomplete="off" />
+            </div>
+            <fieldset class="field">
+                <legend class="field-label">Roles</legend>
+                <div class="check-list">
+                    @foreach (var role in SkanyxxRoles.Grantable)
+                    {
+                        <label class="check"><input type="checkbox" name="roles" value="@role" /> <span><strong>@role</strong>: @roleMeaning[role]</span></label>
+                    }
+                </div>
+                <p class="field-hint">Single use. Emailed when email is set up; otherwise the link is shown here once for you to send.</p>
+            </fieldset>
+        </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Create invite link</button>
+        </div>
     </form>
-</div>
+</dialog>
 
-<div class="table-container card mb-3">
-    <table>
-        <thead>
-            <tr><th>Person</th><th>Roles</th><th>Teams</th><th>Status</th><th></th></tr>
-        </thead>
-        <tbody>
-            @foreach (var person in Model.People)
-            {
-                var isOwner = person.Roles.Contains(SkanyxxRoles.Owner);
-                <tr>
-                    <td>
-                        @(person.DisplayName ?? person.Email)<br /><span class="text-muted">@person.Email</span>
-                        @if (person.EntraManaged)
-                        {
-                            <br /><span class="badge badge-info" title="Roles and teams are rewritten from the Entra group mapping at each Microsoft sign-in">managed by Entra</span>
-                            @* D16: without a password, Microsoft is the account's only sign-in; Disable is the reversible way to stop it. *@
-                            @if (person.HasPassword)
-                            {
-                                <form method="post" asp-page-handler="RemoveMicrosoft" asp-route-id="@person.Id"
-                                      onsubmit="return confirm('Remove the Microsoft login? The account then signs in with its password only, every session ends, and its roles and teams stay as they are: review them.')">
-                                    <button type="submit" class="btn btn-ghost" title="The account becomes local-only and every session ends">Remove Microsoft login</button>
-                                </form>
-                            }
-                        }
-                    </td>
-                    <td>
-                        @if (isOwner)
-                        {
-                            @* The owner's roles are fixed: the owner already has every permission a role grants. *@
-                            <span class="badge badge-info">owner</span>
-                        }
-                        else
-                        {
-                            <form method="post" asp-page-handler="Roles" asp-route-id="@person.Id" class="flex gap-2 items-center">
-                                @foreach (var role in SkanyxxRoles.Grantable)
-                                {
-                                    <label><input type="checkbox" name="roles" value="@role" checked="@person.Roles.Contains(role)" /> @role</label>
-                                }
-                                <button type="submit" class="btn btn-secondary">Save roles</button>
-                            </form>
-                        }
-                    </td>
-                    <td>@string.Join(", ", Model.TeamsOf(person.Id).Select(t => t.Name))</td>
-                    <td>@(person.Disabled ? "Disabled" : "Active")</td>
-                    <td>
-                        @if (!isOwner)
-                        {
-                            <form method="post" asp-page-handler="@(person.Disabled ? "Enable" : "Disable")" asp-route-id="@person.Id">
-                                <button type="submit" class="btn btn-ghost">@(person.Disabled ? "Enable" : "Disable")</button>
-                            </form>
-                            @if (!person.Disabled)
-                            {
-                                <form method="post" asp-page-handler="Reset" asp-route-id="@person.Id">
-                                    <button type="submit" class="btn btn-ghost" title="A single-use link to choose a new password: emailed when SMTP is set, otherwise shown here once">Password reset link</button>
-                                </form>
-                            }
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
-
-<div class="table-container card">
-    <div class="card-header"><h3 class="card-title">Pending invites</h3></div>
-    <table>
-        <thead>
-            <tr><th>Email</th><th>Roles</th><th>Expires (UTC)</th><th></th></tr>
-        </thead>
-        <tbody>
-            @foreach (var invite in Model.Invites)
-            {
-                <tr>
-                    <td>@invite.Email</td>
-                    <td>@string.Join(", ", invite.Roles)</td>
-                    <td>@invite.ExpiresAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm")</td>
-                    <td>
-                        <form method="post" asp-page-handler="Revoke" asp-route-id="@invite.Id">
-                            <button type="submit" class="btn btn-ghost">Revoke</button>
-                        </form>
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
+@foreach (var person in Model.People.Where(p => !p.Roles.Contains(SkanyxxRoles.Owner)))
+{
+    var name = person.DisplayName ?? person.Email;
+    <dialog class="dialog dialog-side" id="roles-@person.Id" aria-labelledby="roles-title-@person.Id">
+        <form method="post" asp-page-handler="Roles" asp-route-id="@person.Id" class="dialog-form" data-once>
+            <div class="dialog-header">
+                <div>
+                    <h2 class="dialog-title" id="roles-title-@person.Id">Roles of @name</h2>
+                    <p class="dialog-subtitle">@person.Email</p>
+                </div>
+                <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="dialog-body">
+                @if (person.EntraManaged)
+                {
+                    <alert tone="info">Managed by Entra: the next Microsoft sign-in rewrites these roles from the group mapping.</alert>
+                }
+                <div class="check-list">
+                    @foreach (var role in SkanyxxRoles.Grantable)
+                    {
+                        <label class="check"><input type="checkbox" name="roles" value="@role" checked="@person.Roles.Contains(role)" /> <span><strong>@role</strong>: @roleMeaning[role]</span></label>
+                    }
+                </div>
+                <p class="field-hint">Teams are set on Org.</p>
+            </div>
+            <div class="dialog-footer">
+                <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+                <button type="submit" class="btn btn-primary">Save roles</button>
+            </div>
+        </form>
+    </dialog>
+}

@@ -3,7 +3,8 @@
 @{
     ViewData["Title"] = "Audit";
 }
-<div class="card mb-2 audit-querybar">
+<page-header description="Who did what, and when: sign-ins, people, org and settings changes. Search, filter, zoom in and export the record." />
+<div class="card audit-querybar">
     <form id="auditQuery" class="audit-row" autocomplete="off">
         <input id="q" type="search" placeholder="Search actions, people, targets, IPs and details" maxlength="200" aria-label="Search" />
         <select id="range" aria-label="Time range">
@@ -18,7 +19,7 @@
             <input id="from" type="datetime-local" step="1" aria-label="From (UTC)" />
             <input id="to" type="datetime-local" step="1" aria-label="To (UTC)" />
         </span>
-        <button type="submit" class="btn btn-primary">Refresh</button>
+        <button type="submit" class="btn btn-primary"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>Refresh</button>
     </form>
     <div class="audit-row mt-1">
         <select id="chipField" aria-label="Filter field">
@@ -36,94 +37,83 @@
         </select>
         <input id="chipValue" list="chipSuggestions" placeholder="value, or (none)" maxlength="450" aria-label="Filter value" />
         <datalist id="chipSuggestions"></datalist>
-        <button type="button" id="addChip" class="btn btn-secondary">+ Add filter</button>
-        <span class="audit-spacer"></span>
+        <button type="button" id="addChip" class="btn btn-secondary"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Add filter</button>
+        <span class="spacer"></span>
         <select id="views" aria-label="Saved views"><option value="">Saved views</option></select>
         <button type="button" id="saveView" class="btn btn-ghost">Save view</button>
         <button type="button" id="deleteView" class="btn btn-ghost">Delete view</button>
     </div>
     <div id="chips" class="audit-chips" aria-live="polite"></div>
-    <p id="error" class="text-error" role="alert" hidden></p>
+    <div id="error" class="alert alert-error mt-2" role="alert" hidden></div>
 </div>
 
-<div class="card mb-2">
+<div class="card">
     <div class="audit-row">
         <strong id="hits">…</strong>
-        <span class="text-muted" id="rangeLabel"></span>
-        <span class="audit-spacer"></span>
-        <span class="text-muted">Drag across the chart, or click a bar, to zoom in.</span>
+        <span class="text-muted text-sm" id="rangeLabel"></span>
+        <span class="spacer"></span>
+        <span class="text-muted text-sm">Drag across the chart, or click a bar, to zoom in.</span>
     </div>
     <div class="audit-histogram"><canvas id="histogram" aria-label="Events over time by outcome" role="img"></canvas><div id="brush" class="audit-brush" hidden></div></div>
 </div>
 
 <div class="audit-layout">
     <aside class="card audit-fields" aria-label="Fields">
-        <h3 class="card-title mb-1">Fields</h3>
-        <div id="fields" class="text-muted">Loading…</div>
+        <h2 class="card-title mb-1">Fields</h2>
+        <div id="fields"></div>
     </aside>
     <section>
         <div class="audit-cards">
-            <div class="card audit-chart"><h4>Top actors</h4><canvas id="topActors"></canvas></div>
-            <div class="card audit-chart"><h4>Top actions</h4><canvas id="topActions"></canvas></div>
-            <div class="card audit-chart"><h4>Refusals and failures</h4><canvas id="refusals"></canvas></div>
-            <div class="card audit-chart"><h4>Sign-ins</h4><canvas id="signIns"></canvas></div>
-            <div class="card audit-chart"><h4>Admin changes</h4><canvas id="adminChanges"></canvas></div>
+            <div class="card audit-chart"><h3>Top actors</h3><canvas id="topActors" role="img" aria-label="Top actors"></canvas></div>
+            <div class="card audit-chart"><h3>Top actions</h3><canvas id="topActions" role="img" aria-label="Top actions"></canvas></div>
+            <div class="card audit-chart"><h3>Refusals and failures</h3><canvas id="refusals" role="img" aria-label="Refused and failed events over time"></canvas></div>
+            <div class="card audit-chart"><h3>Sign-ins</h3><canvas id="signIns" role="img" aria-label="Sign-ins over time, succeeded and failed"></canvas></div>
+            <div class="card audit-chart"><h3>Admin changes</h3><canvas id="adminChanges" role="img" aria-label="Admin changes by area"></canvas></div>
         </div>
         <div class="card">
             <div class="audit-row mb-1">
-                <h3 class="card-title">Events</h3>
-                <span class="audit-spacer"></span>
-                <a id="exportCsv" class="btn btn-secondary" href="#" download>Export CSV</a>
-                <a id="exportJson" class="btn btn-secondary" href="#" download>Export JSON</a>
+                <h2 class="card-title">Events</h2>
+                <span class="spacer"></span>
+                <a id="exportCsv" class="btn btn-secondary" href="#" download><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Export CSV</a>
+                <a id="exportJson" class="btn btn-secondary" href="#" download><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-download"/></svg>Export JSON</a>
             </div>
-            <p class="text-muted mb-1">Exports hold the current query (at most 10,000 rows), redacted; each export is itself audited. The client address is the connection's: behind a proxy it is the proxy.</p>
+            <p class="field-hint mb-1">Exports hold the current query (at most 10,000 rows), redacted; each export is itself audited. The client address is the connection's: behind a proxy it is the proxy.</p>
             <div class="table-container">
-                <table class="audit-table">
+                <table class="table audit-table">
                     <thead><tr><th><button type="button" id="sort" class="audit-sort" title="Sort by time">Time (UTC) ▼</button></th><th>Action</th><th>Actor</th><th>Target</th><th>Outcome</th></tr></thead>
                     <tbody id="rows"></tbody>
                 </table>
             </div>
+            <div id="rowsState"></div>
             <button type="button" id="more" class="btn btn-ghost audit-more" hidden>Load more</button>
         </div>
     </section>
 </div>
 
+<dialog class="dialog" id="viewDialog" aria-labelledby="viewDialogTitle">
+    <form method="dialog" id="viewForm" class="dialog-form">
+        <div class="dialog-header"><h2 class="dialog-title" id="viewDialogTitle">Save this view</h2></div>
+        <div class="dialog-body">
+            <div class="field">
+                <label for="viewName">Name</label>
+                <input id="viewName" required maxlength="80" autocomplete="off" aria-describedby="viewNameHint" />
+                <p class="field-hint" id="viewNameHint">Saved in this browser only. A view with the same name is replaced.</p>
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+            <button type="submit" class="btn btn-primary" value="save">Save view</button>
+        </div>
+    </form>
+</dialog>
+
 <script type="application/json" id="auditPeople">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.People))</script>
 <script type="application/json" id="auditUser">@Html.Raw(System.Text.Json.JsonSerializer.Serialize(Model.UserId))</script>
 
-<style>
-    .audit-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .audit-row input, .audit-row select { padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
-    #q { flex: 1 1 320px; }
-    .mt-1 { margin-top: 8px; }
-    .audit-spacer { flex: 1; }
-    .audit-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-    .audit-chip { display: inline-flex; gap: 6px; align-items: center; padding: 3px 4px 3px 10px; border-radius: 12px; background: var(--bg-tertiary); border: 1px solid var(--border-color); font-size: 12px; }
-    .audit-chip.exclude { border-color: var(--error-color); }
-    .audit-chip button, .audit-value button { background: none; border: 0; color: var(--text-secondary); cursor: pointer; padding: 0 6px; font-size: 14px; }
-    .audit-histogram { position: relative; height: 180px; margin-top: 8px; }
-    .audit-brush { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent-color) 25%, transparent); pointer-events: none; }
-    .audit-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 16px; align-items: start; }
-    .audit-fields h5 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; color: var(--text-muted); }
-    .audit-value { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; font-size: 12px; gap: 2px; }
-    .audit-value span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .audit-bar { grid-column: 1 / -1; height: 3px; background: var(--accent-color); border-radius: 2px; margin-bottom: 4px; }
-    .audit-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
-    .audit-chart { height: 220px; display: flex; flex-direction: column; padding: 12px; }
-    .audit-chart h4 { font-size: 13px; margin-bottom: 6px; }
-    .audit-chart canvas { flex: 1; min-height: 0; }
-    .audit-table td, .audit-table th { padding: 8px 12px; }
-    .audit-table tbody tr.audit-hit { cursor: pointer; }
-    .audit-detail td { background: var(--bg-primary); }
-    .audit-detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr) auto; gap: 4px 12px; font-size: 12px; margin-bottom: 8px; }
-    .audit-detail dt { color: var(--text-muted); }
-    .audit-detail dd { overflow-wrap: anywhere; }
-    .audit-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; background: var(--bg-tertiary); padding: 8px; border-radius: 6px; }
-    .audit-sort { background: none; border: 0; color: inherit; font: inherit; text-transform: inherit; letter-spacing: inherit; cursor: pointer; }
-    .audit-more { width: 100%; margin-top: 8px; }
-    @@media (max-width: 900px) { .audit-layout { grid-template-columns: 1fr; } }
-</style>
 
+@section Styles {
+    <link rel="stylesheet" href="~/css/insights.css" asp-append-version="true" />
+}
 @section Scripts {
 <script src="~/lib/chartjs/chart.umd.min.js" asp-append-version="true"></script>
 <script>
@@ -247,7 +237,18 @@
 
     function showError(err) {
         $('error').hidden = !err;
-        $('error').textContent = err ? err.message : '';
+        $('error').textContent = err ? 'The audit could not be read: ' + err.message : '';
+        if (err && !$('rows').children.length) {
+            skx.state.error($('rowsState'), { title: 'The events could not be loaded', detail: err.message, retry: run });
+        }
+        if (err && $('fields').querySelector('.skeleton-rows')) skx.state.error($('fields'), { title: 'The fields could not be read', retry: run });
+    }
+
+    function clearFilters() {
+        state.q = '';
+        state.f = [];
+        state.nf = [];
+        run();
     }
 
     function run() {
@@ -259,12 +260,14 @@
         $('exportCsv').href = API + 'export?' + params({ format: 'csv', sort: state.sort }).toString();
         $('exportJson').href = API + 'export?' + params({ format: 'json', sort: state.sort }).toString();
         $('rows').innerHTML = '';
+        skx.state.loading($('rowsState'), { rows: 4 });
+        if (!$('fields').children.length) skx.state.loading($('fields'), { rows: 6 });
         page.next = null;
         page.loading = false;
         var gen = ++generation;
         var current = function (draw) { return function (data) { if (gen === generation) draw(data); }; };
         Promise.all([loadRows(true), getJson('histogram').then(current(drawHistogram)), getJson('fields').then(current(drawFields)),
-            getJson('analytics').then(current(drawAnalytics))]).catch(showError);
+            getJson('analytics').then(current(drawAnalytics))]).catch(function (err) { if (gen === generation) showError(err); });
     }
 
     // ---- results ----
@@ -278,7 +281,15 @@
         return getJson('search', extra).then(function (data) {
             if (gen !== generation) return;
             $('hits').textContent = data.total.toLocaleString() + (data.total === 1 ? ' hit' : ' hits');
-            if (first && data.entries.length === 0) $('rows').innerHTML = '<tr><td colspan="5" class="text-muted">No events match this query.</td></tr>';
+            if (first) $('rowsState').replaceChildren();
+            if (first && data.entries.length === 0) {
+                var filtered = state.q || state.f.length || state.nf.length;
+                skx.state.empty($('rowsState'), {
+                    icon: 'i-audit', title: 'No events match' + (filtered ? ' these filters' : ' this time range'),
+                    body: filtered ? 'Clear the search and filters, or widen the time range.' : 'Widen the time range to look further back.',
+                    action: filtered ? { label: 'Clear filters', onClick: clearFilters } : undefined
+                });
+            }
             data.entries.forEach(appendRow);
             page.next = data.next;
             $('more').hidden = !data.next;
@@ -286,18 +297,20 @@
     }
 
     function badge(outcome) {
-        var kind = outcome === 'success' ? 'badge-success' : outcome === 'refused' ? 'badge-warning' : 'badge-error';
-        return '<span class="badge ' + kind + '">' + esc(outcome) + '</span>';
+        var kind = outcome === 'success' ? 'badge-success' : outcome === 'refused' ? 'badge-warning' : 'badge-danger';
+        return '<span class="badge ' + kind + '"><span class="badge-dot" aria-hidden="true"></span>' + esc(outcome) + '</span>';
     }
 
     function appendRow(e) {
         var tr = document.createElement('tr');
         tr.className = 'audit-hit';
         tr.tabIndex = 0;
+        tr.setAttribute('aria-expanded', 'false');
         tr.innerHTML = '<td>' + esc(utc(new Date(e.at))) + '</td><td><code>' + esc(e.action) + '</code></td><td>' + esc(name(e.actorId)) +
             '</td><td>' + esc(name(e.targetId)) + '</td><td>' + badge(e.outcome) + '</td>';
         var open = null;
         function toggle() {
+            tr.setAttribute('aria-expanded', String(!open));
             if (open) { open.remove(); open = null; return; }
             open = document.createElement('tr');
             open.className = 'audit-detail';
@@ -311,8 +324,8 @@
 
     function filterButtons(field, value) {
         var v = value == null ? '(none)' : value;
-        return '<span><button type="button" class="btn btn-ghost" data-add="' + esc(field) + '" data-value="' + esc(v) + '" title="Filter for this value">+</button>' +
-            '<button type="button" class="btn btn-ghost" data-exclude="' + esc(field) + '" data-value="' + esc(v) + '" title="Filter out this value">−</button></span>';
+        return '<span><button type="button" class="btn btn-ghost btn-sm" data-add="' + esc(field) + '" data-value="' + esc(v) + '" title="Filter for this value" aria-label="Filter for this value">+</button>' +
+            '<button type="button" class="btn btn-ghost btn-sm" data-exclude="' + esc(field) + '" data-value="' + esc(v) + '" title="Filter out this value" aria-label="Filter out this value">−</button></span>';
     }
 
     function flatten(prefix, value, out) {
@@ -373,7 +386,7 @@
     // flags: stacked, horizontal, legend ('top', 'right' or false), onClick(index).
     function chart(id, type, labels, datasets, flags) {
         if (!window.Chart) {
-            if ($(id)) $(id).replaceWith(Object.assign(document.createElement('p'), { className: 'text-muted', textContent: 'Charts could not load.' }));
+            if ($(id)) $(id).replaceWith(Object.assign(document.createElement('p'), { className: 'chart-empty', textContent: 'Charts could not load.' }));
             return;
         }
         if (charts[id]) charts[id].destroy();
@@ -533,19 +546,27 @@
     new IntersectionObserver(function (entries) {
         if (entries[0].isIntersecting && !$('more').hidden) loadRows(false).catch(showError);
     }).observe($('more'));
+    // skx.ask answers 'save' only for the Save button: Cancel, Escape and a second opening never save.
     $('saveView').addEventListener('click', function () {
-        var label = prompt('Name this view');
-        if (!label) return;
-        var views = loadViews().filter(function (v) { return v.name !== label; });
-        views.push({ name: label.slice(0, 80), hash: location.hash });
-        storeViews(views);
+        $('viewName').value = '';
+        skx.ask($('viewDialog'), $('viewName')).then(function (answer) {
+            var label = $('viewName').value.trim();
+            if (answer !== 'save' || !label) return;
+            var views = loadViews().filter(function (v) { return v.name !== label; });
+            views.push({ name: label.slice(0, 80), hash: location.hash });
+            storeViews(views);
+            skx.toast('View "' + label.slice(0, 80) + '" saved.');
+        });
     });
     $('deleteView').addEventListener('click', function () {
         var i = $('views').value;
-        if (i === '') return;
+        if (i === '') { skx.toast('Pick a saved view to delete first.', { tone: 'info' }); return; }
         var views = loadViews();
-        views.splice(Number(i), 1);
-        storeViews(views);
+        skx.confirm({ title: 'Delete the view "' + views[Number(i)].name + '"?', body: 'Only the saved view goes; the events stay.', confirm: 'Delete', danger: true }).then(function (ok) {
+            if (!ok) return;
+            views.splice(Number(i), 1);
+            storeViews(views);
+        });
     });
     $('views').addEventListener('change', function () {
         var v = loadViews()[Number($('views').value)];

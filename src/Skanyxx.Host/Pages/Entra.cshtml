@@ -4,76 +4,115 @@
 @using Skanyxx.Core.Platform.Identity
 @{
     ViewData["Title"] = "Microsoft sign-in";
+    var redirectUri = Model.Settings.RedirectUri ?? "<this site's address>/signin-oidc";
 }
-@await Component.InvokeAsync("SetupGuide", new { id = "entra" })
+<page-header description="Optional: people sign in with their Microsoft Entra ID work account, and their groups set their roles and teams.">
+    <status-badge status="@(Model.Settings.Active ? "enabled" : "off")" label="@(Model.Settings.Active ? "On" : "Off")" />
+</page-header>
 @if (Model.Error is not null)
 {
-    <p class="text-error" role="alert">@Model.Error</p>
+    <alert tone="error">@Model.Error</alert>
 }
 @if (Model.Message is not null)
 {
-    <p class="text-success" role="status">@Model.Message</p>
+    <alert tone="success">@Model.Message</alert>
 }
 @if (Model.Settings.SecretKeysUnencrypted)
 {
-    <p class="text-warning" role="alert">@EntraSettingsDto.SecretKeysWarning</p>
+    <alert tone="warning">@EntraSettingsDto.SecretKeysWarning</alert>
 }
-<p class="text-muted">
-    Optional: people sign in with their Microsoft Entra ID work account. Only members of a mapped group get in, with the
-    roles and teams their groups map to, rewritten at each Microsoft sign-in (their People and Org entries show
-    <em>managed by Entra</em>). Mapping never makes anyone an owner. An existing password account is never matched by
-    email: its person links Microsoft from their Account page (with their password), and from then on signs in with
-    Microsoft only while this is on. The owner always signs in with a password. Map only security groups (ideally
-    role-assignable ones) whose membership you control: never Microsoft 365 groups people can join themselves, nor dynamic
-    groups built on attributes users can edit. Add the optional ID-token claim <code>acct</code>: without it nobody gets in.
-</p>
-<p>
-    Status: <strong>@(Model.Settings.Active ? "on" : "off")</strong>.
-    Redirect URI to register (Web platform): <code>@(Model.Settings.RedirectUri ?? "<this site's address>/signin-oidc")</code>
-</p>
 
-<form method="post" class="card mb-3">
-    <div class="card-header"><h3 class="card-title">App registration</h3></div>
-    <label><input type="checkbox" asp-for="Enabled" /> Offer "Sign in with Microsoft"</label>
-    <label asp-for="TenantId">Directory (tenant) ID</label>
-    <input asp-for="TenantId" placeholder="00000000-0000-0000-0000-000000000000" maxlength="36" autocomplete="off" />
-    <label asp-for="ClientId">Application (client) ID</label>
-    <input asp-for="ClientId" placeholder="00000000-0000-0000-0000-000000000000" maxlength="36" autocomplete="off" />
-    <label asp-for="ClientSecret">Client secret</label>
-    @* Never rendered back: value is always empty; leaving it empty keeps the stored secret. *@
-    <input name="ClientSecret" id="ClientSecret" type="password" value="" maxlength="1024" autocomplete="new-password"
-           placeholder="@(Model.Settings.ClientSecretSet ? "set — leave empty to keep it" : "not set")" />
+@await Component.InvokeAsync("SetupGuide", new { id = "entra" })
 
-    <h3 class="card-title">Groups</h3>
-    <p class="text-muted">The group's object ID (a GUID) from Entra; the label is only for you. Clear a group ID to remove that row.</p>
-    <table>
-        <thead>
-            <tr><th>Group object ID</th><th>Label</th><th>Roles</th><th>Teams</th></tr>
-        </thead>
-        <tbody>
+<alert tone="warning" title="Before you turn it on">
+    <ul class="mt-1">
+        <li>Only members of a mapped group get in; their roles and teams are rewritten at each Microsoft sign-in, and mapping never makes anyone an owner.</li>
+        <li>Map only security groups whose membership you control: never Microsoft 365 groups people can join themselves, nor dynamic groups built on attributes users can edit.</li>
+        <li>Add the optional ID-token claim <code>acct</code>: without it nobody gets in.</li>
+        <li>An existing password account is never matched by email: its person links Microsoft from their Account page. The owner always signs in with a password.</li>
+    </ul>
+</alert>
+
+<form method="post" class="form" data-once>
+    <section class="card">
+        <div class="card-header"><h2 class="card-title">App registration</h2></div>
+        <div class="card-body">
+            <div class="field">
+                <span class="field-label" id="redirect-label">Redirect URI to register (Web platform)</span>
+                <div class="copy-field">
+                    <input id="redirectUri" readonly value="@redirectUri" aria-labelledby="redirect-label" />
+                    <copy-button target="#redirectUri" />
+                </div>
+            </div>
+            <label class="check"><input type="checkbox" asp-for="Enabled" /> Offer "Sign in with Microsoft"</label>
+            <div class="form-row">
+                <div class="field">
+                    <label asp-for="TenantId">Directory (tenant) ID</label>
+                    <input asp-for="TenantId" placeholder="00000000-0000-0000-0000-000000000000" maxlength="36" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label asp-for="ClientId">Application (client) ID</label>
+                    <input asp-for="ClientId" placeholder="00000000-0000-0000-0000-000000000000" maxlength="36" autocomplete="off" />
+                </div>
+            </div>
+            <div class="field">
+                <label asp-for="ClientSecret">Client secret</label>
+                @* Never rendered back: value is always empty; leaving it empty keeps the stored secret. *@
+                <input name="ClientSecret" id="ClientSecret" type="password" value="" maxlength="1024" autocomplete="new-password"
+                       placeholder="@(Model.Settings.ClientSecretSet ? "set — leave empty to keep it" : "not set")" aria-describedby="ClientSecret-hint" />
+                <p class="field-hint" id="ClientSecret-hint">@(Model.Settings.ClientSecretSet ? "Set. Leave empty to keep it." : "Not set yet.") It is never shown again.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="card-header">
+            <div>
+                <h2 class="card-title">Groups</h2>
+                <p class="card-subtitle">The group's object ID (a GUID) from Entra; the label is only for you. Clear a group ID to remove that group.</p>
+            </div>
+        </div>
+        <div class="card-body">
             @for (var i = 0; i < Model.Groups.Count; i++)
             {
                 var row = Model.Groups[i];
-                <tr>
-                    <td><input name="Groups[@i].GroupId" value="@row.GroupId" maxlength="36" aria-label="Group object ID" autocomplete="off" /></td>
-                    <td><input name="Groups[@i].Label" value="@row.Label" maxlength="100" aria-label="Label" autocomplete="off" /></td>
-                    <td>
-                        @foreach (var role in SkanyxxRoles.Grantable)
-                        {
-                            <label><input type="checkbox" name="Groups[@i].Roles" value="@role" checked="@row.Roles.Contains(role)" /> @role</label>
-                        }
-                    </td>
-                    <td>
-                        <select name="Groups[@i].Teams" multiple aria-label="Teams">
-                            @foreach (var team in Model.Teams)
-                            {
-                                <option value="@team.Slug" selected="@row.Teams.Contains(team.Slug)">@team.Name (@team.Slug)</option>
-                            }
-                        </select>
-                    </td>
-                </tr>
+                <fieldset class="subcard">
+                    <legend class="field-label">@(string.IsNullOrEmpty(row.GroupId) ? "New group" : row.Label ?? row.GroupId)</legend>
+                    <div class="form-row">
+                        <div class="field">
+                            <label for="group-@i-id">Group object ID</label>
+                            <input id="group-@i-id" name="Groups[@i].GroupId" value="@row.GroupId" maxlength="36" autocomplete="off" />
+                        </div>
+                        <div class="field">
+                            <label for="group-@i-label">Label <span class="field-optional">(optional)</span></label>
+                            <input id="group-@i-label" name="Groups[@i].Label" value="@row.Label" maxlength="100" autocomplete="off" />
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <fieldset class="field">
+                            <legend class="field-label">Roles</legend>
+                            <div class="checks">
+                                @foreach (var role in SkanyxxRoles.Grantable)
+                                {
+                                    <label class="check"><input type="checkbox" name="Groups[@i].Roles" value="@role" checked="@row.Roles.Contains(role)" /> @role</label>
+                                }
+                            </div>
+                        </fieldset>
+                        <div class="field">
+                            <label for="group-@i-teams">Teams</label>
+                            <select id="group-@i-teams" name="Groups[@i].Teams" multiple aria-describedby="group-@i-teams-hint">
+                                @foreach (var team in Model.Teams)
+                                {
+                                    <option value="@team.Slug" selected="@row.Teams.Contains(team.Slug)">@team.Name (@team.Slug)</option>
+                                }
+                            </select>
+                            <p class="field-hint" id="group-@i-teams-hint">@(Model.Teams.Count == 0 ? "No teams yet: create them on Org." : "Ctrl or Cmd + click picks several.")</p>
+                        </div>
+                    </div>
+                </fieldset>
             }
-        </tbody>
-    </table>
-    <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+    </section>
+
+    <div class="form-actions"><button type="submit" class="btn btn-primary">Save</button></div>
 </form>
