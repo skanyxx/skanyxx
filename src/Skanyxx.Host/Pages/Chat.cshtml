@@ -5,6 +5,7 @@
 }
 @section Styles {
     <link rel="stylesheet" href="~/css/chat.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/quotas.css" asp-append-version="true" />
 }
 @await Component.InvokeAsync("SetupGuide", new { id = "chat" })
 
@@ -42,6 +43,7 @@
                 <h2 id="chatTitle">New chat</h2>
                 <span class="chat-subtitle" id="chatSubtitle"></span>
             </div>
+            <div class="quota-meter" data-quota-meter="compact" hidden></div>
             <button type="button" class="usage-chip" id="usageChip" aria-expanded="false" aria-controls="usagePanel" title="Tokens in this chat">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
                 <span id="usageChipText">0 tokens</span>
@@ -51,7 +53,7 @@
             </button>
         </header>
 
-        <!-- Tokens: per message on each answer, per chat here. The quota hook (IChatQuota) refuses a turn with a 429 the page shows as is. -->
+        <!-- Tokens: per message on each answer, per chat here. The quota (IChatQuota) refuses a turn with a 429 the page shows as is; the meter above is the month's. -->
         <div class="usage-panel" id="usagePanel" hidden>
             <div class="stat-card"><span class="stat-label">Chat total</span><span class="stat-value" id="totalTokens">0</span></div>
             <div class="stat-card"><span class="stat-label">Input</span><span class="stat-value" id="promptTokens">0</span></div>
@@ -129,6 +131,8 @@
     </aside>
 </div>
 
+<partial name="_QuotaRequestDialog" />
+
 <dialog class="agent-picker" id="agentPicker" aria-labelledby="pickerTitle">
     <div class="picker-head">
         <h3 id="pickerTitle">Choose an agent</h3>
@@ -143,4 +147,5 @@
 @section Scripts {
     <script src="~/js/chat-markdown.js" asp-append-version="true"></script>
     <script src="~/js/chat.js" asp-append-version="true"></script>
+    <script src="~/js/quota-mine.js" asp-append-version="true"></script>
 }

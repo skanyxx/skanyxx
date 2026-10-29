@@ -44,6 +44,7 @@ public static class NavCatalog
         new("setupguides", "/SetupGuides", "Setup guides", "i-guide", Admin, Supervisors),
         new("settings", "/Settings", "Settings", "i-settings", Admin, OwnerOnly),
         new("debug", "/Debug", "Debug", "i-terminal", Admin, OwnerOnly),
+        new("quotas", "/Quotas", "Quotas", "i-gauge", Admin, Supervisors),
     ];
 
     public static bool Allows(NavItem item, ClaimsPrincipal user, IConfiguration configuration) =>

@@ -13,6 +13,8 @@
     <ProjectReference Include="..\..\src\Modules\Skanyxx.Module.Agents\Skanyxx.Module.Agents.csproj" />
     <!-- Unit tests of the rollup, scopes and health board (internals); the host under test loads the module from modules/. -->
     <ProjectReference Include="..\..\src\Modules\Skanyxx.Module.Analytics\Skanyxx.Module.Analytics.csproj" />
+    <!-- Unit tests of quota resolution and the atomic usage counter (internals); the host under test loads the module from modules/. -->
+    <ProjectReference Include="..\..\src\Modules\Skanyxx.Module.Quotas\Skanyxx.Module.Quotas.csproj" />
     <!-- Unit tests of the per-person file lock (internals); the host under test loads the module from modules/. -->
     <ProjectReference Include="..\..\src\Modules\Skanyxx.Module.Chat\Skanyxx.Module.Chat.csproj" />
   </ItemGroup>

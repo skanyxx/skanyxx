@@ -45,6 +45,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Skanyxx.Module.ChatContext.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Skanyxx.Module.Analytics", "src\Modules\Skanyxx.Module.Analytics\Skanyxx.Module.Analytics.csproj", "{A4E79C49-C0DA-4AAA-8456-FA77E45B540A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Skanyxx.Module.Quotas", "src\Modules\Skanyxx.Module.Quotas\Skanyxx.Module.Quotas.csproj", "{490EAEEF-CA1D-4D48-B201-A78751C182BC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -271,6 +273,18 @@ Global
 		{A4E79C49-C0DA-4AAA-8456-FA77E45B540A}.Release|x64.Build.0 = Release|Any CPU
 		{A4E79C49-C0DA-4AAA-8456-FA77E45B540A}.Release|x86.ActiveCfg = Release|Any CPU
 		{A4E79C49-C0DA-4AAA-8456-FA77E45B540A}.Release|x86.Build.0 = Release|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Debug|x64.Build.0 = Debug|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Debug|x86.Build.0 = Debug|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Release|x64.ActiveCfg = Release|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Release|x64.Build.0 = Release|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Release|x86.ActiveCfg = Release|Any CPU
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -295,5 +309,6 @@ Global
 		{FC438992-AF20-4113-8C4F-5F68A496D511} = {EC447DCF-ABFA-6E24-52A5-D7FD48A5C558}
 		{043B1136-D383-4F4F-B186-B31F9528ECA0} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{A4E79C49-C0DA-4AAA-8456-FA77E45B540A} = {EC447DCF-ABFA-6E24-52A5-D7FD48A5C558}
+		{490EAEEF-CA1D-4D48-B201-A78751C182BC} = {EC447DCF-ABFA-6E24-52A5-D7FD48A5C558}
 	EndGlobalSection
 EndGlobal

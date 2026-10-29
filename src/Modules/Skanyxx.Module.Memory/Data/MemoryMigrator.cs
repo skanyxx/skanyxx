@@ -24,6 +24,7 @@ internal sealed class MemoryMigrator(IServiceScopeFactory scopes) : IHostedServi
     //   0x43485402                     chatcontext migrator                  pg_advisory_lock(bigint)
     //   0x54535201                     toolservers migrator                  pg_advisory_lock(bigint)
     //   0x414E4C02                     analytics migrator                    pg_advisory_lock(bigint)
+    //   0x51544102                     quotas migrator                       pg_advisory_lock(bigint)
     //   (0x544B5401, 0)                tickets run start (active-run caps)   pg_advisory_xact_lock(int, int)
     //   0x49444E02                     identity migrator                     pg_advisory_lock(bigint)
     //   0x49444E01                     identity owner bootstrap              pg_advisory_xact_lock(bigint)

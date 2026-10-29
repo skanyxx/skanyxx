@@ -1,0 +1,37 @@
+/* Token quotas: the usage bar (Chat, Account, /Quotas) and the cost disclaimer. Colours from tokens.css only. */
+.quota-bar {
+  position: relative;
+  height: 0.6rem;
+  min-width: 6rem;
+  border-radius: var(--radius-pill);
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.quota-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-solid);
+  transition: width var(--dur) var(--ease-out);
+}
+.quota-bar[data-tone="warning"] > span { background: var(--warning); }
+.quota-bar[data-tone="danger"] > span { background: var(--danger); }
+
+.quota-line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-1) var(--space-3); font-size: var(--text-sm); }
+.quota-line strong { font-variant-numeric: tabular-nums; }
+.quota-notes { display: flex; flex-direction: column; gap: var(--space-1); margin-top: var(--space-2); font-size: var(--text-sm); color: var(--text-2); }
+.quota-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+.quota-subtitle { font-size: var(--text-sm); font-weight: var(--weight-semibold); margin: var(--space-4) 0 var(--space-2); }
+.quota-cell { display: flex; flex-direction: column; gap: var(--space-1); min-width: 9rem; }
+
+/* Chat's header: a compact bar that never pushes the title off a phone screen. */
+.quota-meter[data-quota-meter="compact"] { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-xs); color: var(--text-2); min-width: 0; }
+.quota-meter[data-quota-meter="compact"] .quota-bar { width: 5rem; min-width: 3rem; }
+@media (max-width: 640px) {
+  .quota-meter[data-quota-meter="compact"] .quota-bar { width: 3rem; }
+}
+
+/* D336: the estimate warning is big on purpose. */
+.quota-disclaimer { border: 2px solid var(--warning); }
+.quota-disclaimer .alert-title { font-size: var(--text-lg); }
+.quota-disclaimer p { margin: var(--space-1) 0 0; font-size: var(--text-md); color: var(--text); }

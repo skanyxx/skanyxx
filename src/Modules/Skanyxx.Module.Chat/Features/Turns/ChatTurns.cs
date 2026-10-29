@@ -95,7 +95,7 @@ internal sealed class ChatTurns(
                 CancellationToken.None);
         await extractor.ChatTurnAsync(new ChatTurnDigest(
             command.UserId, start.Agent.Name, start.AgentRef, start.SessionId, command.Message, answer, start.IsNew), CancellationToken.None);
-        await RecordUsageAsync(command, start, usage);
+        await RecordUsageAsync(command, start, reported is { Reported: true } r ? new ChatUsage(r.InputTokens, r.OutputTokens, r.InputTokens + r.OutputTokens) : usage, answer);
         await RollupAsync(command, start.Agent, reported ?? Tokens(usage), start.IsNew, cached: false, saved: 0, failed: false);
     }
 
@@ -117,9 +117,22 @@ internal sealed class ChatTurns(
         await files.DetachConversationAsync(command.UserId, start.SessionId, CancellationToken.None);
     }
 
-    /// <summary>What a turn used, also when it failed or was stopped: the tokens were spent.</summary>
-    public Task RecordUsageAsync(SendChatMessageCommand command, TurnStart start, ChatUsage usage) =>
-        quota.RecordAsync(command.UserId, start.AgentRef, start.SessionId, usage, CancellationToken.None);
+    /// <summary>
+    /// What a turn used, also when it failed or was stopped: the tokens were spent. When kagent reported none, the quota
+    /// gets Chat's own estimate (prompt and answer, <see cref="CharsPerToken"/> characters a token) marked as one; a turn
+    /// with neither reported tokens nor any answer is known to have spent nothing it could count, so it is not recorded.
+    /// </summary>
+    public Task RecordUsageAsync(SendChatMessageCommand command, TurnStart start, ChatUsage usage, string answer)
+    {
+        if (usage.Total == 0 && answer.Length == 0)
+            return Task.CompletedTask;
+        var estimated = usage.Total == 0;
+        var counted = estimated
+            ? new ChatUsage(start.Prompt.Length / CharsPerToken, answer.Length / CharsPerToken, (start.Prompt.Length + answer.Length) / CharsPerToken)
+            : usage;
+        return quota.RecordAsync(new ChatQuotaUsage(command.UserId, start.AgentRef, ModelRef(start.Agent), start.SessionId, counted, estimated),
+            CancellationToken.None);
+    }
 
     // The answer cache's own estimate (AnswerCache.RecordHitAsync): question plus answer, 4 characters a token.
     private const int CharsPerToken = 4;
@@ -131,8 +144,10 @@ internal sealed class ChatTurns(
     private Task RollupAsync(SendChatMessageCommand command, Agent agent, TokenUsage usage, bool newChat, bool cached, long saved, bool failed) =>
         publisher.Publish(new ChatTurnUsage(
             clock.GetUtcNow(), command.UserId, $"{agent.Namespace}/{agent.Name}",
-            agent.ModelConfig switch { null or "" => "unknown", var m when m.Contains('/') => m, var m => $"{agent.Namespace}/{m}" },
-            usage, newChat, cached, saved, failed), CancellationToken.None);
+            ModelRef(agent), usage, newChat, cached, saved, failed), CancellationToken.None);
+
+    private static string ModelRef(Agent agent) =>
+        agent.ModelConfig switch { null or "" => "unknown", var m when m.Contains('/') => m, var m => $"{agent.Namespace}/{m}" };
 
     private async Task DeleteSessionAsync(string userId, string sessionId)
     {

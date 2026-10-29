@@ -683,6 +683,6 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
 
         public Task<string?> RefusalAsync(string userId, string agentRef, CancellationToken ct) => Task.FromResult(Refuse ? Refusal : null);
 
-        public Task RecordAsync(string userId, string agentRef, string conversationId, ChatUsage usage, CancellationToken ct) => Task.CompletedTask;
+        public Task RecordAsync(ChatQuotaUsage usage, CancellationToken ct) => Task.CompletedTask;
     }
 }

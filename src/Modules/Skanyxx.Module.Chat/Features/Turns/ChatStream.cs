@@ -48,7 +48,7 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
             if (failure is not null)
             {
                 await turns.AbandonAsync(command, start);
-                await turns.RecordUsageAsync(command, start, turn.Usage);
+                await turns.RecordUsageAsync(command, start, turn.Usage, turn.Answer);
                 await turns.FailedAsync(command, start);
                 yield return ChatStreamEvent.Error(failure, start.IsNew);
                 yield break;
@@ -66,7 +66,7 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
                 if (turn.TaskId is { } task)
                     await CancelTaskAsync(task);
                 await turns.AbandonAsync(command, start);
-                await turns.RecordUsageAsync(command, start, turn.Usage);
+                await turns.RecordUsageAsync(command, start, turn.Usage, turn.Answer);
             }
         }
     }

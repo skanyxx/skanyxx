@@ -1,0 +1,22 @@
+@* "Request more" (quota-mine.js): how many tokens and why. The reason goes to the approver, never into the audit. *@
+<dialog class="dialog" id="quotaRequestDialog" aria-labelledby="quotaRequestTitle">
+    <form method="dialog" class="dialog-form">
+        <div class="dialog-header"><h2 class="dialog-title" id="quotaRequestTitle">Request more tokens</h2></div>
+        <div class="dialog-body">
+            <div class="field">
+                <label for="quotaRequestAmount">Extra tokens this month</label>
+                <input id="quotaRequestAmount" name="amount" type="number" min="1" max="1000000000000" step="1" inputmode="numeric" required />
+                <p class="field-hint">Approved tokens are added to your limit until the month ends.</p>
+            </div>
+            <div class="field">
+                <label for="quotaRequestReason">Why you need them</label>
+                <textarea id="quotaRequestReason" name="reason" rows="3" maxlength="500" required></textarea>
+                <p class="field-hint">Your owner or supervisor reads this. Do not paste chat contents or secrets.</p>
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+            <button type="submit" class="btn btn-primary" value="send">Send request</button>
+        </div>
+    </form>
+</dialog>

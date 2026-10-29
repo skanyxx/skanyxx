@@ -6,14 +6,14 @@ namespace Skanyxx.Core.Platform;
 /// Routes that are origin-guarded for every method and rate limited: the new-module APIs (cookie or bearer), identity,
 /// chat (each turn costs a model run), models (kagent credentials), tool servers and agents (kagent writes), analytics
 /// and the dashboard (each read scans the rollup or probes kagent), the person's own settings, the setup guides, the
-/// studio (git writes, preview turns), plugins (git downloads, git writes), and <c>/mcp</c> (per-agent secrets, D080). Unsafe methods are origin-checked everywhere
+/// studio (git writes, preview turns), plugins (git downloads, git writes), quotas (limits, approvals), and <c>/mcp</c> (per-agent secrets, D080). Unsafe methods are origin-checked everywhere
 /// (<see cref="OriginGuardMiddleware"/>).
 /// </summary>
 public static class GuardedPaths
 {
     private static readonly PathString[] Prefixes = [
         "/api/memory", "/api/tickets", "/api/sandboxes", "/api/identity", "/api/chat", "/api/models", "/api/toolservers", "/api/agents",
-        "/api/analytics", "/api/dashboard", "/api/me", "/api/setup/guides", "/api/studio", "/api/plugins", "/mcp"
+        "/api/analytics", "/api/dashboard", "/api/me", "/api/setup/guides", "/api/studio", "/api/plugins", "/api/quotas", "/mcp"
     ];
 
     /// <summary>

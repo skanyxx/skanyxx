@@ -416,6 +416,7 @@ does a dependency whose DLL is missing or fails to load: disable the dependents 
 | `agents` | `memory`, `identity` (the studio writes grants and secrets through memory; the form lists teams) |
 | `memory` | `identity` (team membership through `IOrgMembership`) |
 | `toolservers` | `memory` (the studio's plugin servers, and memory's database for its records; the audit is identity's, which memory needs) |
+| `quotas` | `identity`, `memory` (the org tree for team and department limits; memory's database for usage, limits and requests) |
 
 Nothing depends on `agents`, `chat`, `runtime`, `tickets`, `toolservers` or `sandboxes`, so each of those can be
 disabled on its own.
@@ -1281,6 +1282,28 @@ the servers and agents into kagent through the studio's pull-request gate; it is
   Claude Code skills/commands/hooks, plugin sources other than git/zip/catalog. A new version is installed the same way:
   one PR with what changed and what it dropped (literal values Skanyxx already holds for the same address are kept; the
   owner replaces them).
+
+## Token quotas
+
+Monthly token budgets (D331–D339). The owner sets a limit on a person, a team or a department on **/Quotas**
+(`PUT api/quotas/limits/{user|team|department}/{id}`); each limit is what every member may use in a UTC month, and the
+**tightest** limit that applies to a person binds (the page and `GET api/quotas/me` name which one). Chat counts the
+prompt and completion tokens kagent reports for every turn, also failed and stopped ones; when kagent reports none, Chat
+records its own estimate (characters / 4) and marks it **estimated** wherever usage is shown. At the limit Chat refuses the
+next turn (429) with a **Request more** action. Everyone sees their own percentage on Chat and on their account page.
+
+- **Requests** (`POST api/quotas/requests`, amount + reason): the owner approves or denies any; a supervisor only their own
+  teams' members (never themselves, the owner or another supervisor) and only while the person stays within their
+  team and department limits, approved extras included. An approved
+  amount adds to the person's limit for the month it was approved.
+- **Supervisors** see their teams' members and set their personal limits, never above the team or department limit; team
+  and department limits and prices are the owner's. Every rule is enforced by the API, not the page.
+- **Cost** is optional: the owner's USD price per 1,000 tokens per ModelConfig (`PUT api/quotas/prices/{ns}/{name}`). It is
+  an estimate, never a bill, and is always shown with that disclaimer.
+- **Audit**: `quota.limit.set`, `quota.price.set`, `quota.requested`, `quota.request.approved|denied`, with names and
+  numbers only (never a reason or chat text).
+- Storage: memory's database, tables `quota_*`, own history `__quotas_migrations`. Disable with `Modules:Enabled:quotas=false`
+  (Chat then has no limits).
 
 ## Ticket pipelines
 

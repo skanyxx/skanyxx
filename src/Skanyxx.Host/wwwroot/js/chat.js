@@ -613,8 +613,10 @@
                 })
             });
             if (!response.ok) {
-                // A 429 is the quota hook's refusal (IChatQuota): its words are shown as they are.
+                // A 429 is the quota hook's refusal (IChatQuota): its words are shown as they are, and the quota meter
+                // (quota-mine.js) reloads to offer "Request more".
                 fail(problemText(await response.json().catch(() => ({})), response.status));
+                if (response.status === 429) document.dispatchEvent(new CustomEvent('skx:quota-changed'));
                 return;
             }
             clearAttachments(fileIds);
@@ -642,6 +644,7 @@
                 }
             });
             if (done) await finish(turn, done, text);
+            document.dispatchEvent(new CustomEvent('skx:quota-changed'));
         } catch (e) {
             if (e.name === 'AbortError') stopped(turn, wasNew, text);
             else fail('The connection to Skanyxx was lost before the answer finished. Try again.');
