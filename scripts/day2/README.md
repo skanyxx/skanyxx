@@ -19,8 +19,8 @@ scripts/e2e/run-all.sh --down                                                  #
    `$SKILL_REF` (`ghcr.io/agentregistry-dev/skills/brand-guidelines`, digest-pinned) and a company search grant, checks
    the YAML preview, saves it as a pull request; the PR holds exactly the two agent files; the builder cannot merge; a
    merge before CI is refused (`Studio:RequireChecks`); the workflow passes on the runner; the supervisor merges.
-4. Deploy: kagent's Agent is Ready (its skill pulled), labelled merged; Argo CD tracks it Synced + Healthy; the
-   Studio timeline says Deployed, from Argo CD.
+4. Deploy: the reconciler applies on merge; kagent's Agent is Ready (its skill pulled), labelled merged; Argo CD
+   reports it Synced + Healthy against main without ever syncing (D546); the Studio timeline says Deployed, from Argo CD.
 5. Chat: the employee sees the agent, asks what only the cards say (37 days, code word `PELICAN-42`), asks again in the
    same conversation, finds it in their history and reopens it; another person cannot read it.
 6. UI: `/Studio` shows the change deployed; the employee's Chat shows the agent with its skill and memory access, and

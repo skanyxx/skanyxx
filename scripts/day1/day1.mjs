@@ -63,30 +63,22 @@ if (ARGO === 'on') {
   const last = app ?? kubectlJson('-n', 'argocd', 'get', 'application', 'skanyxx-agents');
   check('Argo CD: Application skanyxx-agents is Synced and Healthy on the agent repo', !!app,
     `sync ${last?.status?.sync?.status}, health ${last?.status?.health?.status}, revision ${last?.status?.sync?.revision?.slice(0, 8) ?? '-'}${last?.status?.conditions ? ', ' + last.status.conditions.map(c => c.type).join(',') : ''}`);
-  // D544: as Argo's controller, the studio's shape is admitted and a deployment override is refused (server dry runs).
-  const asArgo = agent => {
+  // D546: Argo only reports. As Argo's controller, a create, an update and a delete of an Agent are all refused (real
+  // requests: a dry run is allowed, it persists nothing).
+  const asArgo = (args, input) => {
     try {
-      execFileSync('kubectl', ['--context', process.env.SKX_CONTEXT, 'create', '--dry-run=server', '-f', '-',
-        '--as=system:serviceaccount:argocd:argocd-application-controller'], { input: JSON.stringify(agent), stdio: ['pipe', 'pipe', 'pipe'] });
+      execFileSync('kubectl', ['--context', process.env.SKX_CONTEXT, '-n', NAMESPACE, ...args,
+        '--as=system:serviceaccount:argocd:argocd-application-controller'], { input, stdio: ['pipe', 'pipe', 'pipe'] });
       return 'admitted';
     } catch (e) { return /denied request/.test(e.stderr?.toString() ?? '') ? 'denied' : 'error'; }
   };
-  const shape = {
+  const shape = JSON.stringify({
     apiVersion: 'kagent.dev/v1alpha2', kind: 'Agent', metadata: { name: 'e2e-test-policy', namespace: NAMESPACE },
-    spec: { type: 'Declarative', description: 'd', declarative: { modelConfig: 'default-model-config', systemMessage: 's',
-      tools: [{ type: 'McpServer', mcpServer: { name: 'skanyxx-memory-e2e-test-policy', kind: 'RemoteMCPServer', apiGroup: 'kagent.dev', toolNames: ['memory_search'] } }] } },
-  };
-  const override = structuredClone(shape);
-  override.spec.declarative.deployment = { replicas: 1, serviceAccountName: 'default' };
-  const headers = structuredClone(shape);
-  headers.spec.declarative.tools[0].headersFrom = [{ name: 'Authorization', valueFrom: { type: 'Secret', name: 'any', key: 'token' } }];
-  const victim = structuredClone(shape);
-  victim.spec.declarative.tools[0].mcpServer.name = 'skanyxx-memory-another-agent';
-  const skill = structuredClone(shape);
-  skill.spec.skills = { refs: ['docker.io/someone/skill@sha256:' + '0'.repeat(64)] };
-  const verdicts = [asArgo(shape), asArgo(override), asArgo(headers), asArgo(victim), asArgo(skill)];
-  check('Argo CD: from git only what the studio form could make is admitted (deployment, secret headers, another agent\'s memory server, an unlisted skill registry refused)',
-    verdicts.join(',') === 'admitted,denied,denied,denied,denied', verdicts.join(', '));
+    spec: { type: 'Declarative', description: 'd', declarative: { modelConfig: 'default-model-config', systemMessage: 's' } },
+  });
+  const verdicts = [asArgo(['create', '-f', '-'], shape), asArgo(['annotate', 'agent', 'skanyxx-factory', 'e2e-test=1']),
+    asArgo(['delete', 'agent', 'skanyxx-factory', '--wait=false'])];
+  check('Argo CD: may not write Agents (create, update, delete refused as its controller)', verdicts.join(',') === 'denied,denied,denied', verdicts.join(', '));
   const env = kubectlJson('-n', NAMESPACE, 'get', 'deploy', process.env.SKX_RELEASE || 'skanyxx')?.spec?.template?.spec?.containers?.[0]?.env ?? [];
   check('Argo CD: Skanyxx is configured with Studio:Argo:BaseUrl (status reads, D363)', env.some(e => e.name === 'Studio__Argo__BaseUrl'), env.find(e => e.name === 'Studio__Argo__BaseUrl')?.value ?? 'unset');
 }

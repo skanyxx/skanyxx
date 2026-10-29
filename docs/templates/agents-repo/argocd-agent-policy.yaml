@@ -1,10 +1,8 @@
-# What Argo CD may apply from the agent repo (D544): only Agents the studio's form could have made. Argo applies main's
-# files with its own rights and without the studio's checks (AgentManifest + DraftRules), so without this a write to
-# main (a leaked git token, a repo admin) could run an Agent with its own deployment, secret headers, another agent's
-# memory server or a skill from anywhere. Requests from Argo's controller and API server only; Skanyxx's reconciler
-# (through kagent's API) is not matched. Needs Kubernetes 1.30+ (ValidatingAdmissionPolicy v1).
-# Replace: NAMESPACE (kagent's), MCP_SERVERS_LIST (Studio:McpServers as a CEL list, e.g. ['jira']; plugin servers too
-# if Argo should sync plugin agents) and SKILL_REGISTRIES_LIST (Studio:SkillRegistries, e.g. ['ghcr.io/acme/skills/']).
+# Argo CD only reports on studio agents (D546): Skanyxx's reconciler applies them on merge, under the studio's checks,
+# and Argo compares main's files with what runs. This policy refuses every write by Argo to an Agent in kagent's
+# namespace — an automated or manual sync, a resource action — so a write to main reaches kagent only through the
+# studio. Argo's server-side diff (a dry run) persists nothing and stays allowed. Replace NAMESPACE (kagent's).
+# Needs Kubernetes 1.30+ (ValidatingAdmissionPolicy v1).
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -15,54 +13,18 @@ spec:
     resourceRules:
       - apiGroups: [kagent.dev]
         apiVersions: ["*"]
-        operations: [CREATE, UPDATE]
+        operations: [CREATE, UPDATE, DELETE]
         resources: [agents]
   matchConditions:
     - name: argo
       expression: >-
         request.userInfo.username in ['system:serviceaccount:argocd:argocd-application-controller',
         'system:serviceaccount:argocd:argocd-server']
-  variables:
-    - name: memoryServer
-      expression: "'skanyxx-memory-' + object.metadata.name"
-    - name: labels
-      expression: "has(object.metadata.labels) ? object.metadata.labels : {}"
-    - name: oldLabels
-      expression: "oldObject != null && has(oldObject.metadata.labels) ? oldObject.metadata.labels : {}"
-  # An allow-list of the keys AgentManifest renders, and of the values DraftRules accepts.
+    - name: not-a-dry-run
+      expression: "!request.dryRun"
   validations:
-    - expression: object.spec.type == 'Declarative' && has(object.spec.declarative) && object.spec.all(k, k in ['type', 'description', 'declarative', 'skills'])
-      message: Only a Declarative agent with the studio's fields (type, description, declarative, skills).
-    # runtime: kagent's CRD defaults it to go.
-    - expression: >-
-        object.spec.declarative.all(k, k in ['modelConfig', 'systemMessage', 'tools', 'memory', 'runtime'])
-        && (!has(object.spec.declarative.runtime) || object.spec.declarative.runtime == 'go')
-      message: The agent may set only its model, instructions, tools and kagent memory.
-    - expression: >-
-        !has(object.spec.declarative.memory) || (object.spec.declarative.memory.all(k, k in ['modelConfig', 'ttlDays'])
-        && object.spec.declarative.memory.modelConfig == object.spec.declarative.modelConfig)
-      message: kagent memory uses the agent's own model and a TTL only.
-    - expression: >-
-        !has(object.spec.declarative.tools) || object.spec.declarative.tools.all(t, t.all(k, k in ['type', 'mcpServer'])
-        && t.type == 'McpServer' && t.mcpServer.all(k, k in ['name', 'kind', 'apiGroup', 'toolNames'])
-        && t.mcpServer.kind == 'RemoteMCPServer' && t.mcpServer.apiGroup == 'kagent.dev' && has(t.mcpServer.toolNames)
-        && (t.mcpServer.name == variables.memoryServer
-            ? t.mcpServer.toolNames.all(n, n in ['memory_search', 'memory_upsert'])
-            : t.mcpServer.name in MCP_SERVERS_LIST))
-      message: Tools are the agent's own memory server (memory_search, memory_upsert) or an allow-listed server, by tool name.
-    - expression: >-
-        !has(object.spec.skills) || (object.spec.skills.all(k, k == 'refs') && object.spec.skills.refs.all(r,
-        r.contains('@sha256:') && SKILL_REGISTRIES_LIST.exists(p, r.startsWith(p))))
-      message: Skills are digest-pinned OCI references from an allow-listed registry only.
-    # Skanyxx's labels are the reconciler's (merged, managed-by): git may not set or change them, nor add finalizers
-    # that would keep an agent running past the owner's stop (D121) or a removal (D119).
-    - expression: >-
-        variables.labels.all(k, !k.startsWith('skanyxx.dev/') || (k in variables.oldLabels && variables.oldLabels[k] == variables.labels[k]))
-      message: skanyxx.dev labels are set by Skanyxx, not by git.
-    - expression: >-
-        !has(object.metadata.finalizers) || object.metadata.finalizers.all(f,
-        oldObject != null && has(oldObject.metadata.finalizers) && f in oldObject.metadata.finalizers)
-      message: No finalizers from git.
+    - expression: "false"
+      message: Argo CD only reports on studio agents; Skanyxx's reconciler applies them when a supervisor merges.
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding

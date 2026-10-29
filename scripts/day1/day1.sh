@@ -141,10 +141,8 @@ argo() {
     --from-literal=username=skanyxx-bot --from-file=password="$STATE/gitea-read-token" --dry-run=client -o yaml \
     | "${KUBECTL[@]}" label --local -f - argocd.argoproj.io/secret-type=repository -o yaml \
     | "${KUBECTL[@]}" apply --server-side --force-conflicts --field-manager=skanyxx-day1 -f - >/dev/null
-  # What Argo may apply (D544) before the Application that applies it.
-  # The lists are Skanyxx's Studio:McpServers (none here) and Studio:SkillRegistries (the one in day1-values.yaml).
-  sed -e "s#NAMESPACE#$NAMESPACE#" -e "s#MCP_SERVERS_LIST#[]#" -e "s#SKILL_REGISTRIES_LIST#['$SKILL_REGISTRY']#" \
-    "$ROOT/docs/templates/agents-repo/argocd-agent-policy.yaml" | "${KUBECTL[@]}" apply -f - >/dev/null
+  # Argo may not write Agents (D546), before the Application that reports on them.
+  sed -e "s#NAMESPACE#$NAMESPACE#" "$ROOT/docs/templates/agents-repo/argocd-agent-policy.yaml" | "${KUBECTL[@]}" apply -f - >/dev/null
   sed -e "s#REPO_URL#$repo#" -e "s#NAMESPACE#$NAMESPACE#" "$ROOT/docs/templates/agents-repo/argocd-application.yaml" \
     | "${KUBECTL[@]}" apply -f - >/dev/null
   # Skanyxx's read-only Argo token, minted with the initial admin password; both stay in memory and the Secret.

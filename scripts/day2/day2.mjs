@@ -150,7 +150,8 @@ if (STAGES.includes('studio')) {
     }, 300000, 5000);
     const app = res?.app ?? await argoApp();
     const r = res?.r ?? app?.status?.resources?.find(x => x.kind === 'Agent' && x.name === AGENT);
-    check(`deploy: Argo CD Application tracks Agent ${AGENT} Synced + Healthy`, !!res, `resource ${r?.status}/${r?.health?.status}, app ${app?.status?.sync?.status}/${app?.status?.health?.status}`);
+    check(`deploy: Argo CD reports Agent ${AGENT} Synced + Healthy against main, without ever syncing (D546)`, !!res && !app?.status?.history?.length,
+      `resource ${r?.status}/${r?.health?.status}, app ${app?.status?.sync?.status}/${app?.status?.health?.status}, Argo syncs ${app?.status?.history?.length ?? 0}`);
   }
   const change = await until(async () => {
     const c = (await call('GET', '/api/studio/changes', { token: builder })).json;

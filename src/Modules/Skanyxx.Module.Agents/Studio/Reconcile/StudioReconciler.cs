@@ -121,26 +121,6 @@ internal sealed class StudioReconciler(
             }
         }
 
-        // D545: an invalid folder keeps the agent the studio last applied, but one only Argo applied (never adopted) is
-        // whatever the file said: out of kagent until the folder is valid again.
-        if (_options.Argo.Configured)
-            foreach (var name in folders.Where(f => !desired.ContainsKey(f)))
-            {
-                try
-                {
-                    if (await kagent.GetAgentObjectAsync(Ns, name, ct) is { } applied && ArgoCreated(applied, name))
-                    {
-                        logger.LogError("Studio removes {Agent}: Argo CD applied its folder, which the studio refuses", name);
-                        await RemoveFromKagentAsync(name, ct);
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
-                {
-                    failures++;
-                    logger.LogWarning(ex, "Studio could not remove the Argo-applied agent {Agent}; retrying on the next pass", name);
-                }
-            }
-
         var pulls = await repo.OpenPullsAsync(ct);
         var open = pulls.Select(p => p.Number).ToHashSet();
         var managed = (await kagent.GetAgentsAsync(ct))
@@ -501,7 +481,7 @@ internal sealed class StudioReconciler(
     public async Task EnsureNotForeignAsync(string name, CancellationToken ct)
     {
         if (await kagent.GetAgentObjectAsync(Ns, name, ct) is { } existing
-            && KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy && !ArgoCreated(existing, name))
+            && KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy)
             throw new StudioApplyException($"kagent already runs an agent named '{name}' that the studio does not manage; choose another name.");
     }
 
@@ -527,8 +507,15 @@ internal sealed class StudioReconciler(
             return false;
         }
         await ApplyMemoryAsync(draft.Name, draft.Grants, actor, principal, servers, ct);
-        await PutAgentAsync(KAgentObjects.WithLabels(AgentManifest.Agent(draft, Ns),
-            (StudioNames.MergedLabel, "true"), (StudioNames.ManagedByLabel, StudioNames.ManagedBy)), ct);
+        var agent = KAgentObjects.WithLabels(AgentManifest.Agent(draft, Ns),
+            (StudioNames.MergedLabel, "true"), (StudioNames.ManagedByLabel, StudioNames.ManagedBy));
+        // D546: Argo CD finds the merged agent under its tracking id and compares it with main; it never applies it.
+        if (_options.Argo.Configured)
+            agent["metadata"]!["annotations"] = new JsonObject
+            {
+                [KAgentObjects.ArgoTrackingAnnotation] = KAgentObjects.ArgoTrackingId(_options.Argo.Application, Ns, draft.Name)
+            };
+        await PutAgentAsync(agent, ct);
         return true;
     }
 
@@ -542,19 +529,16 @@ internal sealed class StudioReconciler(
             await kagent.CreateAgentAsync(agent, ct);
             logger.LogWarning("Studio created the kagent agent {Namespace}/{Agent}", Ns, name);
         }
-        else if (ArgoCreated(existing, name))
-        {
-            // kagent sets labels only at creation: adopt by re-creating it labelled, keeping Argo's tracking id.
-            agent["metadata"]!["annotations"] = new JsonObject
-            {
-                [KAgentObjects.ArgoTrackingAnnotation] = existing["metadata"]!["annotations"]![KAgentObjects.ArgoTrackingAnnotation]!.DeepClone()
-            };
-            await kagent.DeleteAgentAsync(Ns, name, ct);
-            await kagent.CreateAgentAsync(agent, ct);
-            logger.LogWarning("Studio adopted the kagent agent {Namespace}/{Agent} that Argo CD created from main", Ns, name);
-        }
         else if (KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy)
             throw new StudioApplyException($"kagent already runs an agent named '{name}' that the studio does not manage.");
+        else if (KAgentObjects.Annotation(agent, KAgentObjects.ArgoTrackingAnnotation) is { } tracking
+                 && KAgentObjects.Annotation(existing, KAgentObjects.ArgoTrackingAnnotation) != tracking)
+        {
+            // kagent keeps metadata from creation only: an agent merged before Argo was configured is re-created once.
+            await kagent.DeleteAgentAsync(Ns, name, ct);
+            await kagent.CreateAgentAsync(agent, ct);
+            logger.LogWarning("Studio re-created the kagent agent {Namespace}/{Agent} with its Argo CD tracking id", Ns, name);
+        }
         else if (!KAgentObjects.SpecMatches(existing, agent))
         {
             await kagent.UpdateAgentAsync(agent, ct);
@@ -614,17 +598,13 @@ internal sealed class StudioReconciler(
     {
         if (await kagent.GetAgentObjectAsync(Ns, agentId, ct) is { } existing)
         {
-            if (KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy && !ArgoCreated(existing, agentId))
+            if (KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy)
                 return;
             await kagent.DeleteAgentAsync(Ns, agentId, ct);
             logger.LogWarning("Studio removed the kagent agent {Namespace}/{Agent}", Ns, agentId);
         }
         await kagent.DeleteRemoteMcpServerAsync(Ns, StudioNames.MemoryServer(agentId), ct);
     }
-
-    /// <summary>Created by the studio's own Argo CD Application from main (D541); never when Argo is not configured.</summary>
-    private bool ArgoCreated(JsonObject agent, string name) =>
-        _options.Argo.Configured && KAgentObjects.CreatedByArgo(agent, _options.Argo.Application, Ns, name);
 
     /// <summary>A plugin's server, never an allow-listed one of the owner's (a stray file by that name changes nothing for it).</summary>
     private bool IsPluginServer(string server, IReadOnlyDictionary<string, string> pluginServers) =>

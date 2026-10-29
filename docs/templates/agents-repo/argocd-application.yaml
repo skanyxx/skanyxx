@@ -1,19 +1,13 @@
-# Argo CD for the Skanyxx agent repo (D363, D541): Argo syncs each merged agents/<name>/agent.yaml into kagent's
-# namespace and Skanyxx reads this Application's status for "Deployed" on /Studio.
-# Replace the three placeholders: REPO_URL (the agent repo as Argo reaches it), NAMESPACE (kagent's namespace, the
-# chart's release namespace) and, if you renamed it, the Application name (Studio:Argo:Application).
+# Argo CD for the Skanyxx agent repo (D363, D546): Argo is the deploy record. It compares each merged
+# agents/<name>/agent.yaml with the Agent Skanyxx's reconciler applied (found by the tracking id the reconciler sets)
+# and reports Synced/OutOfSync, Missing and health; Skanyxx reads that for "Deployed" on /Studio. Argo never applies:
+# no automated sync here, and argocd-agent-policy.yaml (apply it first) refuses any Argo write to an Agent.
+# Replace REPO_URL (the agent repo as Argo reaches it) and NAMESPACE (kagent's namespace, the chart's release namespace);
+# the Application's name is Studio:Argo:Application.
 #
-# Why this shape:
 # - only agent.yaml: grants.yaml is Skanyxx's (memory), plugins/ are applied by Skanyxx with their secrets;
-# - ignoreDifferences on labels: Skanyxx's reconciler sets skanyxx.dev/* labels (merged, managed-by) Argo must keep;
-# - no prune: an agent leaving main is removed by Skanyxx under its removal brake (D119), never by a sync;
-# - no selfHeal: the owner's emergency stop (D121) takes a suspended agent out of kagent and a self-heal would put it
-#   straight back. A later commit to main re-creates it; Skanyxx adopts what this Application created (D541) and
-#   keeps a suspended agent out again.
-# - its own AppProject: Argo applies main's files with its own (cluster-wide) rights, so the project lets it create
-#   only kagent Agents, only in NAMESPACE, only from this repo; argocd-agent-policy.yaml (an admission policy, apply it
-#   first) admits from Argo only Agents of the studio's shape. Together, a write to main can do no more through Argo
-#   than the studio's form could.
+# - ignoreDifferences on labels: the reconciler's skanyxx.dev/* labels are not in the files;
+# - its own AppProject: only kagent Agents, only in NAMESPACE, only from this repo.
 # Also needed (scripts/day1/day1.sh does all of it): a repository Secret with a read-only git token, a read-only Argo
 # account for Skanyxx (`p, skanyxx, applications, get, skanyxx-agents/skanyxx-agents, allow`) and a health check for
 # kagent.dev/Agent in argocd-cm (argocd-agent-health.lua next to this file), without which Argo never says Healthy.
@@ -23,7 +17,7 @@ metadata:
   name: skanyxx-agents
   namespace: argocd
 spec:
-  description: The Skanyxx agent repo (kagent Agents only)
+  description: The Skanyxx agent repo (kagent Agents only, reported on, never applied)
   sourceRepos:
     - REPO_URL
   destinations:
@@ -52,12 +46,6 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: NAMESPACE
-  syncPolicy:
-    automated:
-      prune: false
-      selfHeal: false
-    syncOptions:
-      - CreateNamespace=false
   ignoreDifferences:
     - group: kagent.dev
       kind: Agent
