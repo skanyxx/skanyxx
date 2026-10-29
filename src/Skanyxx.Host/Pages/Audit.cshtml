@@ -267,7 +267,7 @@
         var gen = ++generation;
         var current = function (draw) { return function (data) { if (gen === generation) draw(data); }; };
         Promise.all([loadRows(true), getJson('histogram').then(current(drawHistogram)), getJson('fields').then(current(drawFields)),
-            getJson('analytics').then(current(drawAnalytics))]).catch(showError);
+            getJson('analytics').then(current(drawAnalytics))]).catch(function (err) { if (gen === generation) showError(err); });
     }
 
     // ---- results ----
@@ -546,17 +546,17 @@
     new IntersectionObserver(function (entries) {
         if (entries[0].isIntersecting && !$('more').hidden) loadRows(false).catch(showError);
     }).observe($('more'));
+    // skx.ask answers 'save' only for the Save button: Cancel, Escape and a second opening never save.
     $('saveView').addEventListener('click', function () {
         $('viewName').value = '';
-        $('viewDialog').showModal();
-    });
-    $('viewDialog').addEventListener('close', function () {
-        var label = $('viewName').value.trim();
-        if ($('viewDialog').returnValue !== 'save' || !label) return;
-        var views = loadViews().filter(function (v) { return v.name !== label; });
-        views.push({ name: label.slice(0, 80), hash: location.hash });
-        storeViews(views);
-        skx.toast('View "' + label.slice(0, 80) + '" saved.');
+        skx.ask($('viewDialog'), $('viewName')).then(function (answer) {
+            var label = $('viewName').value.trim();
+            if (answer !== 'save' || !label) return;
+            var views = loadViews().filter(function (v) { return v.name !== label; });
+            views.push({ name: label.slice(0, 80), hash: location.hash });
+            storeViews(views);
+            skx.toast('View "' + label.slice(0, 80) + '" saved.');
+        });
     });
     $('deleteView').addEventListener('click', function () {
         var i = $('views').value;

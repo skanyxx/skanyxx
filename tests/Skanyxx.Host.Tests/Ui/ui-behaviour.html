@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<!-- UiBehaviourTests loads this in headless Chrome with the real ui.js and reads window.uiBehaviour. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>ui.js behaviour</title>
+    <script src="{{UI_JS}}"></script>
+</head>
+<body>
+    <form id="confirmed" action="about:blank" data-confirm="It goes for good." data-confirm-title="Delete it?" data-confirm-action="Delete" data-danger>
+        <button type="submit">Delete</button>
+    </form>
+    <form id="once" action="about:blank" data-once><button type="submit">Send</button></form>
+
+    <dialog id="ask">
+        <form method="dialog">
+            <input id="askName" />
+            <button type="button" data-dialog-close>Cancel</button>
+            <button type="submit" value="save" id="askSave">Save</button>
+        </form>
+    </dialog>
+
+    <dialog class="dialog" id="skx-confirm" aria-labelledby="skx-confirm-title" aria-describedby="skx-confirm-body">
+        <form method="dialog">
+            <h2 id="skx-confirm-title" data-confirm-title></h2>
+            <p id="skx-confirm-body" data-confirm-body></p>
+            <button type="submit" value="cancel" data-confirm-cancel>Cancel</button>
+            <button type="submit" value="ok" data-confirm-ok>Confirm</button>
+        </form>
+    </dialog>
+    <div id="skx-toasts"></div>
+
+    <script>
+        // A submit that ui.js lets through reaches window un-prevented: count it, and stop the navigation here.
+        const sent = { confirmed: 0, once: 0 };
+        window.addEventListener('submit', e => {
+            if (e.defaultPrevented || e.target.method === 'dialog') return;
+            e.preventDefault();
+            sent[e.target.id]++;
+        });
+        // A dialog's close event comes a task later, so each step waits for what it expects (or long enough).
+        const wait = ms => new Promise(r => setTimeout(r, ms));
+        const until = async (condition, ms = 3000) => { for (let t = 0; t < ms && !condition(); t += 50) await wait(50); return condition(); };
+        const confirmDialog = document.getElementById('skx-confirm');
+        const cancel = () => confirmDialog.querySelector('[data-confirm-cancel]');
+
+        async function run() {
+            const r = {};
+            const danger = document.getElementById('confirmed');
+
+            danger.requestSubmit();
+            r.confirmOpens = await until(() => confirmDialog.open);
+            r.dangerFocusesCancel = document.activeElement === cancel();
+            cancel().click();
+            await until(() => !confirmDialog.open);
+            await wait(1000);
+            r.cancelSendsNothing = sent.confirmed === 0;
+
+            danger.requestSubmit();
+            await until(() => confirmDialog.open);
+            confirmDialog.close(); // what Escape does: close without a value
+            await wait(1000);
+            r.escapeSendsNothing = sent.confirmed === 0;
+
+            danger.requestSubmit();
+            await until(() => confirmDialog.open);
+            confirmDialog.querySelector('[data-confirm-ok]').click();
+            r.okSendsOnce = await until(() => sent.confirmed === 1);
+            danger.requestSubmit();
+            await wait(1000);
+            r.confirmedDoesNotSendTwice = sent.confirmed === 1 && !confirmDialog.open;
+
+            const once = document.getElementById('once');
+            once.requestSubmit();
+            once.requestSubmit();
+            await wait(200);
+            r.dataOnceSendsOnce = sent.once === 1;
+            window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));
+            once.requestSubmit();
+            r.restoredPageCanSendAgain = await until(() => sent.once === 2);
+
+            const ask = document.getElementById('ask');
+            let answer = skx.ask(ask);
+            document.getElementById('askSave').click();
+            r.askSave = await answer === 'save';
+            answer = skx.ask(ask);
+            ask.querySelector('[data-dialog-close]').click();
+            r.askCancelAfterASave = await answer === '';
+            answer = skx.ask(ask);
+            ask.close();
+            r.askEscapeAfterASave = await answer === '';
+
+            return r;
+        }
+        // UiBehaviourTests evaluates this promise over the DevTools protocol.
+        window.uiBehaviour = new Promise(resolve => document.addEventListener('DOMContentLoaded', resolve))
+            .then(run)
+            .then(r => JSON.stringify(r), e => JSON.stringify({ error: String(e) }));
+    </script>
+</body>
+</html>

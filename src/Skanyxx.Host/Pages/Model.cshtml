@@ -203,10 +203,11 @@
             table.hidden = list.models.length === 0;
             defaultNote(list.models);
         } catch (e) {
+            // A failed refresh keeps the list it had; only a first load that fails says so in its place.
+            if (loaded) return fail(`The models could not be refreshed: ${e.message}`);
             table.hidden = true;
             document.getElementById('models-empty').hidden = true;
-            if (loaded) fail(`The models could not be refreshed: ${e.message}`);
-            else skx.state.error(listState, { title: 'The models could not be loaded', detail: e.message, retry: load });
+            skx.state.error(listState, { title: 'The models could not be loaded', detail: e.message, retry: load });
         }
     }
 

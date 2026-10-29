@@ -118,6 +118,22 @@ public sealed partial class DesignSystemPagesTests
     }
 
     [Theory]
+    [InlineData("if (!confirm('x')) return;", true)]
+    [InlineData("window.confirm('x')", true)]
+    [InlineData("self.prompt('name')", true)]
+    [InlineData("await skx.confirm({ title })", false)]
+    [InlineData("callout('warning', text)", false)]
+    public void TheDialogCheck_FindsTheBrowsersOwn(string code, bool found) => Assert.Equal(found, NativeDialog().IsMatch(code));
+
+    [Theory]
+    [InlineData("<button onclick=\"go()\">", true)]
+    [InlineData("<button onclick='go()'>", true)]
+    [InlineData("<form onsubmit=go()>", true)]
+    [InlineData("<form method=\"post\" data-once>", false)]
+    [InlineData("const once = true;", false)]
+    public void TheHandlerCheck_FindsAnyQuoting(string markup, bool found) => Assert.Equal(found, InlineHandler().IsMatch(markup));
+
+    [Theory]
     [InlineData(".x { color: #fff; }", true)]
     [InlineData(".x { background: rgba(0, 0, 0, 0.6); }", true)]
     [InlineData(".x { color: white; }", true)]
@@ -133,10 +149,12 @@ public sealed partial class DesignSystemPagesTests
     [GeneratedRegex(@"var\((--[a-z0-9-]+)|['""](--[a-z0-9]+(?:-[a-z0-9]+)*)['""]")]
     private static partial Regex Use();
 
-    [GeneratedRegex(@"\son[a-z]+\s*=\s*""", RegexOptions.IgnoreCase)]
+    // on…= with any quoting or none, in markup: onclick="…", onclick='…', onclick=go().
+    [GeneratedRegex(@"<[a-z][^>]*\son[a-z]+\s*=", RegexOptions.IgnoreCase)]
     private static partial Regex InlineHandler();
 
-    [GeneratedRegex(@"(?<![\w.$])(confirm|prompt|alert)\(")]
+    // A bare call or one through the global object (window.confirm, self.prompt); skx.confirm is the styled one.
+    [GeneratedRegex(@"(?<![\w$.])(?:(?:window|self|globalThis)\.)?(confirm|prompt|alert)\(")]
     private static partial Regex NativeDialog();
 
     [GeneratedRegex(@"function\s+(confirm|prompt|alert)\s*\(")]

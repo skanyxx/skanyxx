@@ -6,6 +6,8 @@
     const root = document.getElementById('dashboard');
     const healthAlerts = [];
     let usageAlerts = null;
+    // A source that could not be read is never "nothing needs attention": it says so in the list.
+    const failed = { health: false, usage: false };
 
     // The shared setup block's prompt and copy button (js/setup-guide.js): the tile's fixed texts, no values.
     function guide(tile) {
@@ -31,7 +33,10 @@
 
     function renderAlerts() {
         const list = document.getElementById('alerts');
-        const items = [...healthAlerts, ...(usageAlerts ?? [])];
+        const items = [
+            ...(failed.health ? [{ severity: 'down', text: 'Health could not be read, so this list may be incomplete.' }] : []),
+            ...(failed.usage ? [{ severity: 'down', text: 'Usage could not be read, so this list may be incomplete.' }] : []),
+            ...healthAlerts, ...(usageAlerts ?? [])];
         if (items.length === 0) {
             list.replaceChildren(el('li', { class: 'is-empty text-muted' }, usageAlerts === null ? 'Checking…' : 'Nothing needs attention.'));
             return;
@@ -46,10 +51,13 @@
         try {
             const tiles = await json('/api/dashboard/health');
             grid.replaceChildren(...tiles.map(tileNode));
+            failed.health = false;
             healthAlerts.splice(0, healthAlerts.length, ...tiles.filter(t => t.status === 'down')
                 .map(t => ({ severity: 'down', text: `${t.title}: ${t.reason ?? t.summary}`, url: t.fixUrl })));
         } catch (e) {
             skx.state.error(grid, { title: 'Health could not be read', detail: e.message, retry: loadHealth });
+            healthAlerts.length = 0;
+            failed.health = true;
         }
         renderAlerts();
     }
@@ -123,9 +131,11 @@
             renderCharts(s);
             renderTops(s);
             usageAlerts = s.alerts;
+            failed.usage = false;
         } catch (e) {
             skx.state.error(document.getElementById('glance'), { title: 'Usage could not be read', detail: e.message, retry: loadSummary });
             usageAlerts = [];
+            failed.usage = true;
         }
         renderAlerts();
     }

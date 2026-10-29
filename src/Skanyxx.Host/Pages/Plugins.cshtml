@@ -310,7 +310,8 @@
         } catch (e) {
             if (loaded) return fail(`The plugins could not be refreshed: ${e.message}`);
             skx.state.error(installed, { title: 'The plugins could not be loaded', detail: e.message, retry: load });
-            openState.replaceChildren();
+            document.getElementById('open-table').hidden = true;
+            skx.state.error(openState, { title: 'The open proposals could not be loaded', retry: load });
         }
     }
 

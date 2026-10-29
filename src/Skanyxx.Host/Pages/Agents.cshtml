@@ -260,14 +260,16 @@
 
     // ---------- List ----------
     function card(a) {
-        const c = el('div', undefined, 'card tile');
+        // The name is the link (keyboard, screen readers); the buttons sit beside it, never inside a link.
+        const c = el('article', undefined, 'card tile');
         c.dataset.agent = `${a.namespace}/${a.name}`;
-        c.tabIndex = 0;
-        c.setAttribute('role', 'link');
-        c.setAttribute('aria-label', `Open ${a.namespace}/${a.name}`);
+        c.setAttribute('aria-label', `${a.namespace}/${a.name}`);
         const head = el('div', undefined, 'tile-head');
         const title = el('div');
-        title.append(el('div', a.name, 'tile-title'), el('div', a.namespace, 'tile-sub'));
+        const link = el('a', a.name, 'tile-title');
+        link.href = `#agent/${encodeURIComponent(a.namespace)}/${encodeURIComponent(a.name)}`;
+        link.setAttribute('aria-label', `Open ${a.namespace}/${a.name}`);
+        title.append(link, el('div', a.namespace, 'tile-sub'));
         const badges = el('div', undefined, 'badges');
         badges.append(badge(a.type), stateBadge(a));
         head.append(title, badges);
@@ -279,9 +281,8 @@
         if (canProposeChanges && a.source === 'studio') actions.appendChild(button('Propose change', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }));
         if (canWrite && a.canDelete) actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name), 'btn btn-danger-ghost btn-sm'));
         c.append(head, el('p', a.description || 'No description.', 'text-secondary clamp'), meta, actions);
-        const open = () => { location.hash = `agent/${a.namespace}/${a.name}`; };
-        c.addEventListener('click', open);
-        c.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+        // A click anywhere else on the card opens it too, as a mouse convenience.
+        c.addEventListener('click', e => { if (!e.target.closest('a, button')) link.click(); });
         return c;
     }
 

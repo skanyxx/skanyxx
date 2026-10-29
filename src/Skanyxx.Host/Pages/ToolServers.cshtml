@@ -280,12 +280,12 @@
     }
 
     function refresh(ref, btn) {
-        btn.disabled = true;
-        send('POST', api + '/' + ref.split('/').map(encodeURIComponent).join('/') + '/refresh').then(function (r) {
-            btn.disabled = false;
+        skx.busy(btn, send('POST', api + '/' + ref.split('/').map(encodeURIComponent).join('/') + '/refresh')).then(function (r) {
             if (!r.ok) { skx.toast(ref + ': the tools could not be refreshed. ' + problemText(r.body, r.status).join(' '), { tone: 'error' }); return; }
             overview.servers = overview.servers.map(function (s) { return s.ref === ref ? r.body : s; });
             render();
+        }).catch(function (err) {
+            skx.toast(ref + ': the tools could not be refreshed. Skanyxx could not be reached: ' + err.message, { tone: 'error' });
         });
     }
 
@@ -446,11 +446,15 @@
     function confirmDelete() {
         var s = deleting;
         var confirmInUse = !(s.usedBy && s.usedBy.length === 0);
-        send('DELETE', api + '/' + encodeURIComponent(s.namespace) + '/' + encodeURIComponent(s.name) + (confirmInUse ? '?confirmInUse=true' : '')).then(function (r) {
+        // Busy until kagent answers, so a double click sends one DELETE.
+        skx.busy(document.getElementById('tsDeleteConfirm'),
+            send('DELETE', api + '/' + encodeURIComponent(s.namespace) + '/' + encodeURIComponent(s.name) + (confirmInUse ? '?confirmInUse=true' : ''))).then(function (r) {
             if (!r.ok) { showErrors('tsDeleteErrors', problemText(r.body, r.status)); return; }
             closeModal('tsDeleteModal');
             skx.toast('Deleted ' + s.ref + '.');
             load();
+        }).catch(function (err) {
+            showErrors('tsDeleteErrors', ['Skanyxx could not be reached: ' + err.message]);
         });
     }
 
