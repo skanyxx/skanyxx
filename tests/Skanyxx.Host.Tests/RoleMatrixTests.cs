@@ -126,7 +126,7 @@ public sealed partial class RoleMatrixTests(PostgresFixture fixture)
     {
         var routes = WriteRoutes(fixture.Host).Select(r => r.Key).ToHashSet();
 
-        Assert.Empty(BelowSupervisor.Keys.Concat(RolesFromIntegrate).Where(k => !routes.Contains(k)));
+        Assert.All(BelowSupervisor.Keys.Concat(RolesFromIntegrate), k => Assert.Contains(k, routes));
     }
 
     private sealed record Route(string Method, string Pattern, bool Multipart)
