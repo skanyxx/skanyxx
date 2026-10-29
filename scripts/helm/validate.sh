@@ -284,6 +284,11 @@ if grep -q 'skanyxx-ax-redis' "$WORK/ax-ext.yaml"; then die "external.redis set,
 [[ $(grep -c -- '--redis-addr=redis.example.com:6380' "$WORK/ax-ext.yaml") == 2 && $(grep -c 'name: ax-redis-auth' "$WORK/ax-ext.yaml") == 2 ]] \
   || die "ax-ext: AX does not use external.redis with its password"
 netpol skanyxx-ax-controller "$WORK/ax-ext.yaml" | grep -A3 -- '- ports:' | grep -q 'port: 6380' || die "ax-controller egress misses the external Redis port"
+# D390: skanyxx.trustedProxies becomes Skanyxx__TrustedProxies__<i>, and nothing sets it by default.
+helm template skanyxx "$CHART" --namespace skanyxx --set 'skanyxx.trustedProxies={10.244.7.17/32,fd00:7::5/128}' >"$WORK/tp.yaml"
+grep -A1 'name: Skanyxx__TrustedProxies__0$' "$WORK/tp.yaml" | grep -q 'value: "10.244.7.17/32"' && grep -A1 'name: Skanyxx__TrustedProxies__1$' "$WORK/tp.yaml" | grep -q 'value: "fd00:7::5/128"' \
+  || die "skanyxx.trustedProxies is not rendered as Skanyxx__TrustedProxies__<i> (D390)"
+if grep -q 'Skanyxx__TrustedProxies' "$WORK/default.yaml"; then die "default: Skanyxx__TrustedProxies is set (must stay empty unless configured)"; fi
 # Each of these must be refused by the chart (template fail or values.schema.json), FOR the expected reason: the
 # second argument is a substring of the error (a schema path or the fail text), so a case refused by something
 # unrelated (a typo in the ci values, another check) fails the script instead of counting.
@@ -296,6 +301,8 @@ refuse() {
   echo "refused: $why ($expect)"
 }
 ING=(--set ingress.enabled=true --set 'ingress.hosts[0]=x.example.com')
+refuse "extraEnv setting TrustedProxies (D390)" "skanyxx.extraEnv may not set Skanyxx__TrustedProxies__0" --set-json 'skanyxx.extraEnv=[{"name":"Skanyxx__TrustedProxies__0","value":"0.0.0.0/0"}]'
+refuse "a trustedProxies entry that is not a CIDR (D390)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=ingress-nginx'
 refuse "an /MCP ingress path" "ingress path /MCP would publish" "${ING[@]}" --set 'ingress.prefixPaths[0]=/MCP'
 refuse "/ as an ingress prefix (routes everything, /mcp included)" 'ingress prefix path "/":' "${ING[@]}" --set 'ingress.prefixPaths[0]=/'
 refuse "a regex ingress path" 'ingress prefix path "/.*"' "${ING[@]}" --set 'ingress.prefixPaths[0]=/.*'

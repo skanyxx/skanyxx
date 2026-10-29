@@ -10,6 +10,8 @@ internal sealed class ListAssigneesEndpoint(IMediator mediator) : EndpointWithou
     public override void Configure()
     {
         Get("issues/assignees");
+        // D392: Jira is read with Skanyxx's own token, so it is not everyone's to browse.
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<TicketsGroup>();
     }
 

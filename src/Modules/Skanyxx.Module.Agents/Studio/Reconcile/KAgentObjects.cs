@@ -58,12 +58,15 @@ internal static class KAgentObjects
     /// <summary>
     /// A proposal as its preview runs it (D030, D032): its own name, never merged, memory search on <c>company</c> only
     /// (a team or department scope is the owner's to open, and a preview is a builder's), never upsert, no kagent TTL
-    /// memory, and no skills (D122: a skill runs code nobody has reviewed yet). Allow-listed MCP tools stay (D113).
+    /// memory, no skills (D122: a skill runs code nobody has reviewed yet) and no MCP tools (D392, replacing D113's
+    /// allow-listed tools: an unreviewed agent must not act on shared systems; it answers from its instructions and
+    /// company memory search only).
     /// </summary>
     public static AgentDraft Preview(AgentDraft draft, int number) => draft with
     {
         Name = StudioNames.PreviewAgent(number, draft.Name),
         Skills = [],
+        McpTools = [],
         Grants = draft.Grants.Any(g => g.Scope == "company" && g.Search) ? [new StudioGrant("company", true, false)] : [],
         MemoryTtlDays = null
     };

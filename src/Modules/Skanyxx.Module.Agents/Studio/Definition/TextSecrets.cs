@@ -1,3 +1,4 @@
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Studio;
 
 namespace Skanyxx.Module.Agents.Studio.Definition;

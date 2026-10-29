@@ -93,6 +93,12 @@ public sealed class TicketsApp : IAsyncDisposable
     public HttpClient Client(string? userId = User) =>
         ClientAs(userId, userId == Supervisor ? [SkanyxxRoles.Supervisor] : []);
 
+    /// <summary>
+    /// <paramref name="userId"/> holding the supervisor role: only supervisors and the owner start runs, decide gates and
+    /// read Jira (D392). The run stays readable and cancellable by its starter through <see cref="Client"/>, without it.
+    /// </summary>
+    public HttpClient Starter(string userId = User) => ClientAs(userId, SkanyxxRoles.Supervisor);
+
     public HttpClient ClientAs(string? userId, params string[] roles)
     {
         var client = new HttpClient { BaseAddress = BaseAddress };
@@ -105,7 +111,7 @@ public sealed class TicketsApp : IAsyncDisposable
 
     public async Task<RunDto> StartRunAsync(string ticketKey = "SDB-1", string pipelineId = "ticket-fix")
     {
-        var response = await Client().PostAsJsonAsync("/api/tickets/runs", new { ticketKey, pipelineId });
+        var response = await Starter().PostAsJsonAsync("/api/tickets/runs", new { ticketKey, pipelineId });
         Assert.Equal(System.Net.HttpStatusCode.Accepted, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<RunDto>(Json))!;
     }
@@ -129,8 +135,9 @@ public sealed class TicketsApp : IAsyncDisposable
         throw new TimeoutException($"run {id} is {run.State} at cursor {run.Cursor}, expected {string.Join("|", states)}");
     }
 
+    /// <summary>A supervisor named <paramref name="userId"/> decides (D392: deciding is a supervisor's).</summary>
     public Task<HttpResponseMessage> DecideAsync(Guid id, string decision, string? note = null, string userId = User) =>
-        Client(userId).PostAsJsonAsync($"/api/tickets/runs/{id}/decision", new { decision, note });
+        Starter(userId).PostAsJsonAsync($"/api/tickets/runs/{id}/decision", new { decision, note });
 
     public Task<HttpResponseMessage> SavePipelineAsync(string id, object pipeline, string userId = Supervisor) =>
         Client(userId).PutAsJsonAsync($"/api/tickets/pipelines/{id}", pipeline);

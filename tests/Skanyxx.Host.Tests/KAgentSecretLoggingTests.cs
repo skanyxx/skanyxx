@@ -3,6 +3,7 @@ using System.Net;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Services;
 
 namespace Skanyxx.Host.Tests;
@@ -115,15 +116,40 @@ public sealed class KAgentSecretLoggingTests
         Assert.Contains(KAgentApiClient.SecretCallRefused, line);
     }
 
+    /// <summary>
+    /// D391: a call that carried no secret still logs kagent's text, but with every credential in it blanked — an error
+    /// that echoes a spec can carry a header value, an API key or a token.
+    /// </summary>
+    [Fact]
+    public async Task ALoggedRefusal_HasItsCredentialsBlanked()
+    {
+        const string key = "sk-" + "ant-api03-abcdefghijklmnopqrstuvwxyz0123456789";
+        const string header = "abcd1234-secret-header-value";
+        // As kagent (Go) writes it: quotes inside the message escaped as \", not \u0022.
+        const string echo =
+            $$"""{"error":true,"message":"invalid spec: headers [X-Api-Key: {{header}}] apiKey={{key}} \"token\": \"{{header}}\" Authorization: Bearer abcdefghijklmnopqrstuvwxyz0123"}""";
+        var (client, logs) = Client(new Fixed(echo));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.CreateRemoteMcpServerAsync(new JsonObject { ["metadata"] = new JsonObject() }, [], Ct));
+
+        var line = Assert.Single(logs);
+        Assert.Contains("invalid spec", line);
+        Assert.DoesNotContain(key, line);
+        Assert.DoesNotContain(header, line);
+        Assert.DoesNotContain("abcdefghijklmnopqrstuvwxyz0123", line);
+        Assert.Contains(SecretScan.Redacted, line);
+    }
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private static (KAgentApiClient Client, ConcurrentQueue<string> Logs) Client()
+    private static (KAgentApiClient Client, ConcurrentQueue<string> Logs) Client(HttpMessageHandler? kagent = null)
     {
         var logs = new ConcurrentQueue<string>();
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["KAgent:IngressUrl"] = "http://kagent.test" })
             .Build();
-        var client = new KAgentApiClient(new HttpClient(new EchoRefusal()), configuration, new ListLogger(logs));
+        var client = new KAgentApiClient(new HttpClient(kagent ?? new EchoRefusal()), configuration, new ListLogger(logs));
         return (client, logs);
     }
 
@@ -140,6 +166,16 @@ public sealed class KAgentSecretLoggingTests
                 Content = new StringContent(body.ToJsonString(), System.Text.Encoding.UTF8, "application/json")
             };
         }
+    }
+
+    private sealed class Fixed(string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                RequestMessage = request,
+                Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+            });
     }
 
     private sealed class ListLogger(ConcurrentQueue<string> lines) : ILogger<KAgentApiClient>

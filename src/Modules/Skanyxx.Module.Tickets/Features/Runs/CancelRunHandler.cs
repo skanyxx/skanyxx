@@ -8,7 +8,7 @@ namespace Skanyxx.Module.Tickets.Features.Runs;
 
 /// <summary>
 /// Cancel wins over an in-flight stage: the worker's save then fails its version check and is dropped (the agent
-/// call itself runs to its end). Only the run's creator or a supervisor may cancel.
+/// call itself runs to its end). Only the run's creator or a supervisor may cancel; to anyone else the run does not exist.
 /// </summary>
 internal sealed class CancelRunHandler(TicketsDbContext db, TimeProvider clock)
     : IRequestHandler<CancelRunCommand, Outcome<Run>>
@@ -16,10 +16,9 @@ internal sealed class CancelRunHandler(TicketsDbContext db, TimeProvider clock)
     public async Task<Outcome<Run>> Handle(CancelRunCommand command, CancellationToken ct)
     {
         var run = await db.Runs.Include(r => r.StageRuns).SingleOrDefaultAsync(r => r.Id == command.Id, ct);
-        if (run is null)
+        // Someone else's run is the 404 of no run (D392): a refusal would confirm the id to a person who may not act on it.
+        if (run is null || (run.CreatedBy != command.UserId && !command.IsSupervisor))
             return Outcome<Run>.NotFound($"No run '{command.Id}'.");
-        if (run.CreatedBy != command.UserId && !command.IsSupervisor)
-            return Outcome<Run>.Forbidden("Only the person who started the run, or a supervisor, may cancel it.");
         if (run.IsTerminal)
             return Outcome<Run>.Conflict(run, $"The run already ended ({run.State}).");
 

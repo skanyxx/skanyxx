@@ -35,16 +35,17 @@ public sealed class OffboardingTests : SandboxesTestBase
         Assert.Equal(3, App.Logs.Warnings.Count(w => w.Contains("stopped: account disabled")));
     }
 
-    /// <summary>Losing supervisor is not a disable: the person's own sandboxes stay theirs (Ownership decides per request).</summary>
+    /// <summary>D392: only supervisors and the owner run sandboxes, so losing supervisor stops the person's, and only theirs.</summary>
     [Fact]
-    public async Task ASupervisorDemotion_StopsNothing()
+    public async Task ASupervisorDemotion_StopsThePersonsSandboxes()
     {
         Ax.Seed("ana-running", SandboxesApp.User, phase: "Running");
+        Ax.Seed("dan-running", SandboxesApp.Other, phase: "Running");
 
         await PublishAsync(new PrivilegesRevoked(SandboxesApp.User, "roles saved without supervisor"));
 
-        Assert.Equal(0, Ax.DeleteCalls);
-        Assert.Empty(Ax.Atespaces);
+        Assert.Equal("Terminating", Ax.Stored("ana-running")!.Status.Phase);
+        Assert.Equal("Running", Ax.Stored("dan-running")!.Status.Phase);
     }
 
     [Fact]

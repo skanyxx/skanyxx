@@ -15,7 +15,7 @@ internal sealed class RunSandboxEndpoint(IMediator mediator) : Endpoint<RunSandb
 
     public override async Task HandleAsync(RunSandboxRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new RunSandboxCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Name, req.Image,
+        var outcome = await mediator.Send(new RunSandboxCommand(Caller.UserId(User), req.Name, req.Image,
             req.Command ?? [], req.Env ?? [], req.Workspaces ?? [], req.Resources), ct);
         await Send.ResultAsync(outcome.ToHttp(sandbox => sandbox));
     }

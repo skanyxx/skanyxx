@@ -15,7 +15,7 @@ internal sealed class ResumeSandboxEndpoint(IMediator mediator) : Endpoint<Sandb
 
     public override async Task HandleAsync(SandboxRouteRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new SetSandboxSuspendedCommand(Caller.UserId(User), Caller.IsSupervisor(User), req.Name, Suspend: false), ct);
+        var outcome = await mediator.Send(new SetSandboxSuspendedCommand(Caller.UserId(User), req.Name, Suspend: false), ct);
         await Send.ResultAsync(outcome.ToHttp(sandbox => sandbox));
     }
 }

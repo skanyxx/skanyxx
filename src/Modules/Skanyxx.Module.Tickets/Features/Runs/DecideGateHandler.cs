@@ -11,8 +11,9 @@ namespace Skanyxx.Module.Tickets.Features.Runs;
 /// <summary>
 /// A person answers the gate. Approve moves on; reject follows the stage's <c>on_fail</c>, exactly as a failed
 /// verdict would. The decision and note are recorded on the attempt; its verdict stays what the agent said.
-/// Only the run's creator or a supervisor may decide, as with cancel. A decision that sends the run on to more stages
-/// is admitted against its starter's token quota first, as the start was (D387): over it, the run stays at its gate.
+/// Only supervisors and the owner reach it (the endpoint's roles, D392), and any of them may decide any run's gate. A decision
+/// that sends the run on to more stages is admitted against its starter's token quota first, as the start was (D387): over it,
+/// the run stays at its gate.
 /// </summary>
 internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, IChatQuota quota, TimeProvider clock, IPublisher publisher)
     : IRequestHandler<DecideGateCommand, Outcome<Run>>
@@ -22,8 +23,6 @@ internal sealed class DecideGateHandler(TicketsDbContext db, RunSignal signal, I
         var run = await db.Runs.Include(r => r.StageRuns).SingleOrDefaultAsync(r => r.Id == command.Id, ct);
         if (run is null)
             return Outcome<Run>.NotFound($"No run '{command.Id}'.");
-        if (run.CreatedBy != command.UserId && !command.IsSupervisor)
-            return Outcome<Run>.Forbidden("Only the person who started the run, or a supervisor, may decide its gate.");
         if (run.State != RunState.AwaitingHuman)
             return Outcome<Run>.Conflict(run, $"The run is {run.State}, not waiting for a decision.");
 

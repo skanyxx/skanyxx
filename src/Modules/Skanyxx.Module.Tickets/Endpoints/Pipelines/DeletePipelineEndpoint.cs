@@ -10,6 +10,7 @@ internal sealed class DeletePipelineEndpoint(IMediator mediator) : Endpoint<Pipe
     public override void Configure()
     {
         Delete("pipelines/{id}");
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<TicketsGroup>();
     }
 

@@ -30,7 +30,7 @@ internal sealed class RunSandboxHandler(
         var user = command.UserId!;
         var existing = await ax.FindSandboxAsync(command.Name, ct);
         var owner = existing is null ? null : SandboxEnv.Read(existing, SandboxEnv.Owner);
-        if (existing is not null && !Ownership.CanReplace(command.IsSupervisor, user, owner))
+        if (existing is not null && !Ownership.CanReplace(user, owner))
             return Outcome<Sandbox>.Forbidden(
                 "Only the person who started the sandbox may replace it; a supervisor may stop, suspend or resume it.");
 

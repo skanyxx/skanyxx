@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Skanyxx.Core.Models;
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Analytics;
 
 namespace Skanyxx.Core.Services;
@@ -422,7 +423,12 @@ public class KAgentApiClient
                     && !(p["metadata"] is JsonObject m && (m["adk_thought"]?.GetValue<bool>() == true || m["kagent_thought"]?.GetValue<bool>() == true)))
                 .Select(p => p!["text"]?.GetValue<string>() ?? ""));
 
-    private static string Cut(string text) => text.Length <= 1_000 ? text : text[..1_000];
+    /// <summary>
+    /// kagent's text for a log line, with anything that looks like a credential blanked (D391): an error that echoes a
+    /// spec or a turn could carry a header value or a key. Redacted first, so a credential the cut would halve is still
+    /// blanked whole.
+    /// </summary>
+    private static string Cut(string text) => SecretScan.Redact(text) is var redacted && redacted.Length > 1_000 ? redacted[..1_000] : redacted;
 
     public const string SecretCallRefused = "its answer is not logged: the request carried a secret value";
 

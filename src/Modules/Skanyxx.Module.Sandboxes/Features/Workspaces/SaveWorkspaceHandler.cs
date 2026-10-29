@@ -13,9 +13,6 @@ internal sealed class SaveWorkspaceHandler(AxGateway ax, IOptions<SandboxesOptio
     public Task<Outcome<SandboxWorkspace>> Handle(SaveWorkspaceCommand command, CancellationToken ct) =>
         AxErrors.Guard(logger, ct, async () =>
         {
-            if (!command.IsSupervisor)
-                return Outcome<SandboxWorkspace>.Forbidden("Only a supervisor may write workspaces; they are shared by every sandbox that binds them.");
-
             var workspace = AxMapper.ToAxWorkspace(command.Name, command.Git, command.McpServers,
                 command.AttachMemory ? options.Value.MemoryMcpUrl : null);
             return Outcome<SandboxWorkspace>.Ok(AxMapper.ToSandboxWorkspace(await ax.UpdateWorkspaceAsync(workspace, ct)));

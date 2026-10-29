@@ -1,3 +1,4 @@
+using System.Collections.Frozen;
 using System.Reflection;
 using System.Runtime.Loader;
 using Skanyxx.Core;
@@ -6,6 +7,11 @@ namespace Skanyxx.Host;
 
 public class ModuleLoader
 {
+    /// <summary>The modules this build ships (D390). A <c>Skanyxx.Module.*.dll</c> an older build left in the folder
+    /// (CopyToModules never deletes) is not loaded: it would bring back routes this version removed.</summary>
+    public static readonly FrozenSet<string> KnownModules = FrozenSet.ToFrozenSet(
+        ["Agents", "Analytics", "Chat", "ChatContext", "Identity", "Investigate", "Memory", "Quotas", "Runtime", "Sandboxes", "Tickets", "ToolServers"]);
+
     private readonly IConfiguration _configuration;
     private readonly ILogger<ModuleLoader> _logger;
     private readonly List<IModule> _modules = new();
@@ -36,6 +42,12 @@ public class ModuleLoader
 
         foreach (var dll in dlls)
         {
+            if (!KnownModules.Contains(Path.GetFileNameWithoutExtension(dll)["Skanyxx.Module.".Length..]))
+            {
+                _logger.LogError("Not loading {Dll}: this build has no such module (an older build left it). Delete it.", Path.GetFileName(dll));
+                continue;
+            }
+
             try
             {
                 var loadContext = new PluginLoadContext(dll);

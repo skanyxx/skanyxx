@@ -50,7 +50,7 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
     [Fact]
     public async Task CreatedByAndDecidedBy_ComeFromTheSignedInUser_NotTheHeader()
     {
-        var ana = App.Client();
+        var ana = App.Starter();
         ana.DefaultRequestHeaders.Add("X-User-Id", "bob");
 
         var started = await ana.PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
@@ -73,7 +73,7 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
 
         var response = await bob.PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Theory]
@@ -91,7 +91,32 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
         var cancel = await olga.PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, save.StatusCode);
-        Assert.Equal(expected == HttpStatusCode.Created ? HttpStatusCode.OK : HttpStatusCode.Forbidden, cancel.StatusCode);
+        // Someone else's run is the 404 of no run to anyone below supervisor (D392).
+        Assert.Equal(expected == HttpStatusCode.Created ? HttpStatusCode.OK : HttpStatusCode.NotFound, cancel.StatusCode);
+    }
+
+    /// <summary>
+    /// D392: a run calls kagent agents on its starter's authority and Jira is read with Skanyxx's token, so starting,
+    /// deciding and the Jira reads are supervisors' and the owner's; an employee or builder is refused before anything runs.
+    /// </summary>
+    [Theory]
+    [InlineData(SkanyxxRoles.Employee)]
+    [InlineData(SkanyxxRoles.Builder)]
+    public async Task BelowSupervisor_StartsNoRun_DecidesNoGate_AndReadsNoJira(string role)
+    {
+        var run = await App.StartRunAsync();
+        await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
+        var olga = App.ClientAs(TicketsApp.User, role);
+
+        var start = await olga.PostAsJsonAsync("/api/tickets/runs", new { ticketKey = "SDB-1", pipelineId = "ticket-fix" }, cancellationToken: TestContext.Current.CancellationToken);
+        var decide = await olga.PostAsJsonAsync($"/api/tickets/runs/{run.Id}/decision", new { decision = "approve" }, cancellationToken: TestContext.Current.CancellationToken);
+        var issues = await olga.GetAsync("/api/tickets/issues", TestContext.Current.CancellationToken);
+        var issue = await olga.GetAsync("/api/tickets/issues/SDB-1", TestContext.Current.CancellationToken);
+        var assignees = await olga.GetAsync("/api/tickets/issues/assignees", TestContext.Current.CancellationToken);
+
+        Assert.All([start, decide, issues, issue, assignees], r => Assert.Equal(HttpStatusCode.Forbidden, r.StatusCode));
+        Assert.Single((await App.Client(TicketsApp.Supervisor).GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken))!);
+        Assert.Equal(RunState.AwaitingHuman, (await App.GetRunAsync(run.Id)).State);
     }
 
     [Fact]

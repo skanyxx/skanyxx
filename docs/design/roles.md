@@ -43,3 +43,24 @@ The API decides (`api/dashboard/*`, `api/analytics/*`); the nav only hides what 
 | CSV export (`GET api/analytics/export`, audited `analytics.exported`) | yes | 403 | 403 | 403 |
 
 A scope a caller may not open is 403 whether it exists or not (only the owner gets 404 for an unknown slug or id).
+
+## Sandboxes, ticket runs, studio previews (D392, requirements.md §2)
+
+"Nobody who is not a supervisor can do harm." The API decides; `RoleMatrixTests` calls every write route as an employee
+and a builder and lists, line by line, the few they may still reach (their own chat, preferences, quota requests and
+memory cards; proposals; the builders' Studio, Plugins and Investigate routes).
+
+| Action | Owner | Supervisor | Builder | Employee |
+|---|---|---|---|---|
+| Sandboxes page and every `api/sandboxes` route | yes | yes | 403 | 403 |
+| Start a ticket run (`POST api/tickets/runs`) | yes | yes | 403 | 403 |
+| Decide a gate (`POST …/runs/{id}/decision`) | any run | any run | 403 | 403 |
+| Cancel a run | any run | any run | own run; others 404 | own run; others 404 |
+| Jira reads (`GET api/tickets/issues*`) | yes | yes | 403 | 403 |
+| Write or delete a pipeline | yes | yes | 403 | 403 |
+| Agent memory secrets and grants (`api/memory/agents/{id}/secret`, `api/memory/grants/{id}`) | yes | yes¹ | 403 | 403 |
+| Studio preview | no MCP tools | no MCP tools | no MCP tools | — |
+
+¹ The handler keeps the owner-only cases (acting for users, team or department grants).
+
+Losing supervisor, or being disabled, stops the person's active sandboxes and cancels their unfinished ticket runs.

@@ -26,7 +26,7 @@ public sealed class AuthenticationTests : SandboxesTestBase
     public async Task AnotherUser_ClaimingTheOwnerInTheHeader_CannotStop()
     {
         await RunAsync("fix-42");
-        var dan = App.Client(SandboxesApp.Other);
+        var dan = App.ClientAs(SandboxesApp.Other, SkanyxxRoles.Employee);
         dan.DefaultRequestHeaders.Add("X-User-Id", SandboxesApp.User);
 
         var response = await dan.PostAsync("/api/sandboxes/fix-42/stop", null, TestContext.Current.CancellationToken);

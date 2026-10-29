@@ -21,15 +21,15 @@ internal sealed class UpsertCardValidator : AbstractValidator<UpsertCardCommand>
             .WithMessage("Key must be a lowercase slug (a-z, 0-9, '-'), at most 80 characters.");
         RuleFor(c => c.Version).GreaterThanOrEqualTo(0);
         RuleFor(c => c.Type).Must(Types.Contains).WithMessage($"Type must be one of: {string.Join(", ", Types)}.");
-        RuleFor(c => c.What).NotEmpty().MaximumLength(CardLimits.What).NoNulCharacters().WellFormedUtf16();
-        RuleFor(c => c.Why).NotEmpty().MaximumLength(CardLimits.Why).NoNulCharacters().WellFormedUtf16();
+        RuleFor(c => c.What).NotEmpty().MaximumLength(CardLimits.What).NoNulCharacters().WellFormedUtf16().NoHiddenText().NoSecrets();
+        RuleFor(c => c.Why).NotEmpty().MaximumLength(CardLimits.Why).NoNulCharacters().WellFormedUtf16().NoHiddenText().NoSecrets();
         // With an object store a large body leaves Postgres (D180), so the cap is the store's, in UTF-8 bytes.
         if (store.Enabled)
             RuleFor(c => c.Body).Must(b => b is null || Encoding.UTF8.GetByteCount(b) <= store.MaxBodyBytes)
-                .WithMessage($"Body must be at most {store.MaxBodyBytes} bytes (UTF-8).").NoNulCharacters().WellFormedUtf16();
+                .WithMessage($"Body must be at most {store.MaxBodyBytes} bytes (UTF-8).").NoNulCharacters().WellFormedUtf16().NoHiddenText().NoSecrets();
         else
-            RuleFor(c => c.Body).MaximumLength(CardLimits.Body).NoNulCharacters().WellFormedUtf16();
-        RuleFor(c => c.Source).MaximumLength(CardLimits.Source).NoNulCharacters().WellFormedUtf16();
+            RuleFor(c => c.Body).MaximumLength(CardLimits.Body).NoNulCharacters().WellFormedUtf16().NoHiddenText().NoSecrets();
+        RuleFor(c => c.Source).MaximumLength(CardLimits.Source).NoNulCharacters().WellFormedUtf16().NoHiddenText().NoSecrets();
         RuleFor(c => c.Tickets).Must(t => t is null || (t.Count <= CardLimits.Tickets && t.All(CardTickets.IsValid) && t.Distinct().Count() == t.Count))
             .WithMessage($"Tickets must be at most {CardLimits.Tickets} distinct ticket keys like 'SDB-58'.");
         RuleFor(c => c.Links).Must(l => l is null || (l.Count <= CardLimits.Links && l.All(CardLinks.IsValid) && l.Distinct().Count() == l.Count))
@@ -38,8 +38,11 @@ internal sealed class UpsertCardValidator : AbstractValidator<UpsertCardCommand>
         RuleFor(c => c.Keywords).Must(k => k is null || (k.Count <= CardLimits.Keywords && k.All(CardLinks.IsKeyword) && k.Distinct().Count() == k.Count))
             .WithMessage($"Keywords must be at most {CardLimits.Keywords} distinct lowercase words (a-z, 0-9, '-'), " +
                          $"at most {CardLimits.KeywordLength} characters each.");
-        // requirements.md §1.4: a card is read back by people and agents, so it must not carry a credential.
-        RuleFor(c => c).Must(c => !new[] { c.What, c.Why, c.Body, c.Source }.Concat(c.Links ?? []).Any(SecretText.HasCredential))
+        // requirements.md §1.4: a card is read back by people and agents, so it must not carry a credential. The fields
+        // above name what SecretScan finds (D391); this catches the links, and the shorter token shapes SecretText knows
+        // in a field SecretScan passed, without reporting one credential twice.
+        RuleFor(c => c).Must(c => !new[] { c.What, c.Why, c.Body, c.Source }.Where(t => t is null || SecretScan.Find(t) is null)
+                .Concat(c.Links ?? []).Any(SecretText.HasCredential))
             .OverridePropertyName("card")
             .WithMessage("The card looks like it contains a credential (a key, token or password); remove it and save again.");
         RuleFor(c => c.ViaAgent).Must(Domain.Scope.IsValidId).When(c => c.ViaAgent is not null).WithMessage("Invalid agent id.");

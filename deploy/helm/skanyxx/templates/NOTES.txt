@@ -35,6 +35,17 @@ your kagent is not admitted by itself. Name it in networkPolicy.mcpFrom (e.g. a 
 or memory is unavailable to every agent.
 {{- end }}
 
+{{- if and .Values.ingress.enabled (not .Values.skanyxx.trustedProxies) }}
+
+Rate limits key on the connection's address, which behind the ingress is the ingress controller: every client shares
+one window per ingress pod. Set skanyxx.trustedProxies to the ingress controller pod IPs (CIDRs, e.g. 10.42.3.17/32),
+never the pod network: any pod inside the range could name itself any client.
+{{- else if .Values.skanyxx.trustedProxies }}
+
+X-Forwarded-For is trusted from {{ join ", " .Values.skanyxx.trustedProxies }}. These must be the ingress controller pod IPs,
+never the pod network: any pod inside the range could name itself any client.
+{{- end }}
+
 /mcp is never on the ingress: /mcp/memory is served on port {{ .Values.skanyxx.service.mcpPort }} only (which serves nothing else), for kagent in-cluster.
 Generated Secrets are kept on `helm uninstall` (helm.sh/resource-policy: keep), so a reinstall finds the same
 credentials as the kept volumes; delete them yourself with the PVCs to start over.

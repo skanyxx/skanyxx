@@ -7,7 +7,6 @@ namespace Skanyxx.Module.Sandboxes.Features.Sandboxes;
 /// <summary>Create-or-update (AX <c>UpdateTask</c>). A new sandbox is 202: AX starts it asynchronously.</summary>
 public sealed record RunSandboxCommand(
     string? UserId,
-    bool IsSupervisor,
     string Name,
     string Image,
     IReadOnlyList<string> Command,

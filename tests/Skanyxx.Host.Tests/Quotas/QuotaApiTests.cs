@@ -41,7 +41,12 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
             ["spec"] = new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject { ["modelConfig"] = "default-model-config" } }
         };
         _database = await fixture.NewDatabaseAsync();
-        _host = await HostApp.StartAsync(_database, s => s["KAgent:Port"] = _kagent.Port.ToString());
+        // Without sandboxes: demoting a supervisor stops their sandboxes (D392), and the default test AX is unreachable.
+        _host = await HostApp.StartAsync(_database, s =>
+        {
+            s["KAgent:Port"] = _kagent.Port.ToString();
+            HostApp.WithoutSandboxes(s);
+        });
         _owner = await _host.OwnerAsync();
         _sue = await PersonAsync("sue@skanyxx.example", "supervisor");
         _ann = await PersonAsync("ann@skanyxx.example", "employee");

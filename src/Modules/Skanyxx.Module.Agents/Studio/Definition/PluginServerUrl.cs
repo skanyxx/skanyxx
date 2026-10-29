@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using Skanyxx.Core.Platform;
 using Skanyxx.Module.Agents.Plugins.Sources;
 
 namespace Skanyxx.Module.Agents.Studio.Definition;

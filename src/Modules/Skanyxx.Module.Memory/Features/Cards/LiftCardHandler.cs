@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using Npgsql;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Memory.Access;
+using Skanyxx.Module.Memory.Bodies;
 using Skanyxx.Module.Memory.Contracts;
 using Skanyxx.Module.Memory.Coordination;
 using Skanyxx.Module.Memory.Data;
@@ -12,9 +13,14 @@ using Skanyxx.Module.Memory.Domain;
 
 namespace Skanyxx.Module.Memory.Features.Cards;
 
+/// <summary>
+/// Copies a published card into a wider scope. The copy is a new write into a shared scope, so it is held to D391 like
+/// one: a card written before the credential check (or a body in the object store) that holds a credential or hidden
+/// text is refused here rather than published further.
+/// </summary>
 internal sealed class LiftCardHandler(
     MemoryDbContext db, AccessPolicy access, UpsertRateLimiter limiter, SearchCache cache, ScopeCapacity capacity,
-    ClientAddress client, ILogger<LiftCardHandler> logger)
+    CardBodies bodies, ClientAddress client, ILogger<LiftCardHandler> logger)
     : IRequestHandler<LiftCardCommand, Outcome<CardDto>>
 {
     public async Task<Outcome<CardDto>> Handle(LiftCardCommand command, CancellationToken ct) =>
@@ -40,6 +46,25 @@ internal sealed class LiftCardHandler(
             return Outcome<Card>.NotFound($"No card '{from}/{command.Key}'.");
         if (source.Status != CardStatus.Published)
             return Outcome<Card>.Conflict(null, "Only published cards can be lifted.");
+        if (BodyPointer.IsPointer(source.Source) && !bodies.Enabled)
+            return Outcome<Card>.Unavailable("This card's body is in an object store that is not configured (Memory:ObjectStore), so it could not be checked for credentials.");
+        string? body;
+        try
+        {
+            body = await BodyTextAsync(source, ct);
+        }
+        catch (ObjectStoreUnavailableException)
+        {
+            return Outcome<Card>.Unavailable("The object store for card bodies did not answer, so the body could not be checked for credentials.");
+        }
+        var texts = new[] { source.What, source.Why, source.Source, body }.OfType<string>().ToList();
+        if (texts.Any(SecretScan.HasHiddenText))
+            return Outcome<Card>.Conflict(null, "The card holds Unicode tag characters (U+E0000–U+E007F) or stray variation selectors, hidden text a model would read. Edit it first.");
+        if (texts.Select(SecretScan.Find).OfType<string>().FirstOrDefault() is { } secret)
+        {
+            logger.LogWarning("Lift of {Scope}/{Key} by {ActorUserId} refused: the card seems to hold {Secret}", command.FromScope, command.Key, caller.UserId, secret);
+            return Outcome<Card>.Conflict(null, $"The card seems to hold {secret}: memory never publishes credentials further. Edit it first.");
+        }
 
         var copy = new Card
         {
@@ -89,6 +114,18 @@ internal sealed class LiftCardHandler(
             db.ChangeTracker.Clear();
             return await ExistsAsync(caller, to, copy.Key, ct);
         }
+    }
+
+    /// <summary>The body as text, from Postgres or the object store; null when it has none.</summary>
+    private async Task<string?> BodyTextAsync(Card card, CancellationToken ct)
+    {
+        if (!BodyPointer.IsPointer(card.Source))
+            return card.Body;
+        if (await bodies.OpenAsync(card.Source, ct) is not { } stored)
+            return null;
+        await using var content = stored.Content;
+        using var reader = new StreamReader(content);
+        return await reader.ReadToEndAsync(ct);
     }
 
     private async Task<Outcome<Card>> ExistsAsync(MemoryCaller caller, Scope to, string key, CancellationToken ct)

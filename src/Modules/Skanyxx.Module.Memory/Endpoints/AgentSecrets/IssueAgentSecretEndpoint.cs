@@ -13,6 +13,8 @@ internal sealed class IssueAgentSecretEndpoint(IMediator mediator, ILogger<Issue
     public override void Configure()
     {
         Post("agents/{agentId}/secret");
+        // D392: supervisors' and the owner's; the handler still decides what only the owner may do.
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<MemoryGroup>();
     }
 

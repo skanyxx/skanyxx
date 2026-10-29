@@ -143,7 +143,9 @@ public sealed partial class AccountRecoveryPageTests(PostgresFixture fixture) : 
         var signIn = await host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = MemberEmail, password = MemberPassword }, cancellationToken: TestContext.Current.CancellationToken);
         var people = await owner.GetFromJsonAsync<JsonElement>("/api/identity/people", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.OK, roles.StatusCode);
+        // D392: losing supervisor stops the person's sandboxes too, so the demotion meets the unreachable AX first.
+        Assert.Equal(HttpStatusCode.InternalServerError, roles.StatusCode);
+        Assert.StartsWith("Roles saved. Its sandboxes could not be stopped", (await roles.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("detail").GetString());
         Assert.Equal(HttpStatusCode.InternalServerError, disable.StatusCode);
         Assert.Equal(DisableRetry, (await disable.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: TestContext.Current.CancellationToken)).GetProperty("detail").GetString());
         Assert.Equal(HttpStatusCode.Unauthorized, signIn.StatusCode);
