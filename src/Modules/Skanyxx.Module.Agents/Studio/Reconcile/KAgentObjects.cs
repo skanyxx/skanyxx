@@ -103,6 +103,18 @@ internal static class KAgentObjects
     public static string? Label(JsonObject agent, string key) =>
         agent["metadata"]?["labels"]?[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
+    /// <summary>Argo CD's resource tracking (annotation, its default since 3.0).</summary>
+    public const string ArgoTrackingAnnotation = "argocd.argoproj.io/tracking-id";
+
+    /// <summary>
+    /// D546: the id under which the studio's Argo CD Application (<paramref name="application"/>) finds a merged agent it
+    /// compares with main's file and only reports on.
+    /// </summary>
+    public static string ArgoTrackingId(string application, string ns, string name) => $"{application}:kagent.dev/Agent:{ns}/{name}";
+
+    public static string? Annotation(JsonObject agent, string key) =>
+        agent["metadata"]?["annotations"]?[key] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
+
     private static void Copy(JsonObject from, JsonObject to, params string[] keys)
     {
         foreach (var key in keys)

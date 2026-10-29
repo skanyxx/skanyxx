@@ -1,0 +1,39 @@
+# Argo CD only reports on studio agents (D546): Skanyxx's reconciler applies them on merge, under the studio's checks,
+# and Argo compares main's files with what runs. This policy refuses every write by Argo to an Agent in kagent's
+# namespace — an automated or manual sync, a resource action — so a write to main reaches kagent only through the
+# studio. Argo's server-side diff (a dry run) persists nothing and stays allowed. Replace NAMESPACE (kagent's).
+# Needs Kubernetes 1.30+ (ValidatingAdmissionPolicy v1).
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: skanyxx-agents-from-argo
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [kagent.dev]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE, DELETE]
+        resources: [agents]
+  matchConditions:
+    - name: argo
+      expression: >-
+        request.userInfo.username in ['system:serviceaccount:argocd:argocd-application-controller',
+        'system:serviceaccount:argocd:argocd-server']
+    - name: not-a-dry-run
+      expression: "!request.dryRun"
+  validations:
+    - expression: "false"
+      message: Argo CD only reports on studio agents; Skanyxx's reconciler applies them when a supervisor merges.
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: skanyxx-agents-from-argo
+spec:
+  policyName: skanyxx-agents-from-argo
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: NAMESPACE

@@ -5,7 +5,9 @@ namespace Skanyxx.Module.Agents.Studio.Deploy;
 
 /// <summary>
 /// One agent's deploy status from an Argo CD Application (D363): its <c>Agent</c> resource in <c>status.resources</c>
-/// (sync and health), and the Application's last sync operation. Argo's own status words are shown, never its messages.
+/// (sync and health). Not the Application's last sync operation: Argo never syncs studio agents (D546), so a failed
+/// operation is only a refused manual Sync, which says nothing about any agent (D547). Argo's own status words are
+/// shown, never its messages.
 /// </summary>
 internal static class ArgoStatusMap
 {
@@ -18,17 +20,13 @@ internal static class ArgoStatusMap
             return new DeployStatus(DeployState.Unknown, Source, "Argo CD answered without a status.");
         var resource = (status["resources"] as JsonArray ?? [])
             .FirstOrDefault(r => Text(r?["kind"]) == "Agent" && Text(r?["name"]) == agent && (Text(r?["namespace"]) ?? ns) == ns);
-        var phase = Text(status["operationState"]?["phase"]);
         if (resource is null)
-            return phase is "Failed" or "Error"
-                ? new DeployStatus(DeployState.Failed, Source, $"Argo CD's last sync ended '{phase}' before it reached this agent.")
-                : new DeployStatus(DeployState.Waiting, Source, "Argo CD has not synced this agent yet.");
+            return new DeployStatus(DeployState.Waiting, Source, "Argo CD does not see this agent in main yet.");
         var sync = Text(resource["status"]) ?? "Unknown";
         var health = Text(resource["health"]?["status"]) ?? "Unknown";
         return (sync, health) switch
         {
             (_, "Degraded") => new DeployStatus(DeployState.Failed, Source, $"Argo CD: {sync}, Degraded."),
-            _ when phase is "Failed" or "Error" && sync != "Synced" => new DeployStatus(DeployState.Failed, Source, $"Argo CD: sync {phase!.ToLowerInvariant()}, {sync}."),
             (_, "Missing") => new DeployStatus(DeployState.Waiting, Source, "Argo CD: not in the cluster yet."),
             ("Synced", "Healthy") => new DeployStatus(DeployState.Healthy, Source, "Argo CD: Synced, Healthy."),
             ("Synced", "Suspended") => new DeployStatus(DeployState.Suspended, Source, "Argo CD: Synced, Suspended."),
