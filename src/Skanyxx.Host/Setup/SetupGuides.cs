@@ -8,7 +8,7 @@ public static class SetupGuides
     public static IReadOnlyList<SetupGuide> All { get; } =
     [
         ModelGuide.Guide, ChatGuide.Guide, MemoryGuide.Guide, LibraryGuide.Guide, StudioGuide.Guide, PluginsGuide.Guide,
-        ToolServersGuide.Guide, InvestigateGuide.Guide, SandboxesGuide.Guide, EmailGuide.Guide, EntraGuide.Guide, DragonflyGuide.Guide,
+        ToolServersGuide.Guide, InvestigateGuide.Guide, SandboxesGuide.Guide, EmailGuide.Guide, EntraGuide.Guide, DragonflyGuide.Guide, QuotasGuide.Guide,
         SettingsGuide.Guide, OrgGuide.Guide, DebugGuide.Guide,
     ];
 

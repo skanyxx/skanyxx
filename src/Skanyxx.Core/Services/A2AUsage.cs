@@ -39,8 +39,8 @@ public static class A2AUsage
         {
             var prompt = Count(usage, "promptTokenCount", "prompt_token_count") + Count(usage, "toolUsePromptTokenCount", "tool_use_prompt_token_count");
             var candidates = Count(usage, "candidatesTokenCount", "candidates_token_count") + Count(usage, "thoughtsTokenCount", "thoughts_token_count");
-            if (candidates == 0)
-                candidates = Math.Max(0, Count(usage, "totalTokenCount", "total_token_count") - prompt);
+            // As a streamed turn's count (D338 (3)): whatever the total holds beyond the prompt is output.
+            candidates = Math.Max(candidates, Count(usage, "totalTokenCount", "total_token_count") - prompt);
             input += prompt;
             output += candidates;
         }

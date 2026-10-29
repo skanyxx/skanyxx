@@ -51,6 +51,8 @@
     </div>
 </section>
 
+<partial name="_MyQuota" />
+
 <section class="section" aria-labelledby="microsoft-title">
     <div class="section-header"><h2 class="section-title" id="microsoft-title">Microsoft account</h2></div>
     <div class="card mb-0">
@@ -222,3 +224,10 @@
     </form>
     <p class="text-muted text-sm mt-1">Organization default theme: @themeLabels[org.Theme]. Reset to defaults follows it from then on.</p>
 </section>
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/quotas.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/quota-mine.js" asp-append-version="true"></script>
+}

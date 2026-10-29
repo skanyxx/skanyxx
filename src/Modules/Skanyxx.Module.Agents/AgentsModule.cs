@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Analytics;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Agents.Plugins;
 using Skanyxx.Module.Agents.Plugins.Features;
@@ -77,7 +78,8 @@ public class AgentsModule : IModule
                 client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {argo.Token}");
         });
         services.AddSingleton<DeployStatusReader>();
-        services.AddSingleton<StudioChat>();
+        services.AddScoped<StudioChat>();
+        services.TryAddScoped<IChatQuota, UnlimitedChatQuota>();
 
         services.AddOptions<PluginsOptions>().Bind(configuration.GetSection(PluginsOptions.Section));
         services.AddHttpClient(GitArchiveSource.HttpClientName, client => client.Timeout = GitArchiveSource.Timeout)

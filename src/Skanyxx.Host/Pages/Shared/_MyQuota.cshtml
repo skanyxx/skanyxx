@@ -1,0 +1,13 @@
+@* The signed-in person's own token usage this month (quota-mine.js fills it from api/quotas/me; hidden without the quotas module). *@
+<section class="section" data-quota-meter="full" aria-labelledby="my-quota-title" hidden>
+    <div class="section-header"><h2 class="section-title" id="my-quota-title">Token usage this month</h2></div>
+    <div class="card mb-0">
+        <div data-quota-body aria-live="polite"></div>
+        <div data-quota-cost hidden>
+            <partial name="_QuotaCostDisclaimer" />
+        </div>
+        <h3 class="quota-subtitle">Your requests for more</h3>
+        <div data-quota-requests></div>
+    </div>
+</section>
+<partial name="_QuotaRequestDialog" />

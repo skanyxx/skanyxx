@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Core.Services;
 using Skanyxx.Module.Agents.Studio.Definition;
@@ -32,7 +33,8 @@ internal sealed class PreviewChatHandler(
                 && !a.Labels.ContainsKey(StudioNames.MergedLabel));
             if (preview is null)
                 return Outcome<ChatResponse>.NotFound("This proposal has no preview yet: start one first.");
-            return await chat.SendAsync(ns, preview.Name, command.User.UserId!, command.Message, command.ConversationId, ct);
+            return await chat.SendAsync(ns, preview.Name, ChatQuotaUsage.ModelRef(ns, preview.ModelConfig), command.User.UserId!, command.Message,
+                command.ConversationId, ct);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {

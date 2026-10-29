@@ -1,0 +1,102 @@
+@page
+@model QuotasModel
+@{
+    ViewData["Title"] = "Quotas";
+}
+<page-header description="Monthly token limits for people, teams and departments: the tightest one binds. Decide requests for more and, as the owner, set model prices." />
+@await Component.InvokeAsync("SetupGuide", new { id = "quotas" })
+
+<div id="quotas" data-owner="@(Model.IsOwner ? "true" : "false")">
+    <div id="quotasError"></div>
+
+    <section class="section" aria-labelledby="people-title">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title" id="people-title">People</h2>
+                <p class="text-muted text-sm" id="monthLine"></p>
+            </div>
+        </div>
+        <div class="card card-flush">
+            <div class="table-container"><table class="table table-stack" id="peopleTable" aria-labelledby="people-title"></table></div>
+        </div>
+    </section>
+
+    <section class="section" aria-labelledby="requests-title">
+        <div class="section-header"><h2 class="section-title" id="requests-title">Requests for more</h2></div>
+        <div class="card card-flush">
+            <div class="table-container"><table class="table table-stack" id="requestsTable" aria-labelledby="requests-title"></table></div>
+        </div>
+    </section>
+
+    <section class="section" aria-labelledby="scopes-title">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title" id="scopes-title">Team and department limits</h2>
+                <p class="text-muted text-sm">Each limit is what every member may use in a month. @(Model.IsOwner ? "" : "Only the owner changes these; your members' personal limits stay within them.")</p>
+            </div>
+        </div>
+        <div class="card card-flush">
+            <div class="table-container"><table class="table table-stack" id="scopesTable" aria-labelledby="scopes-title"></table></div>
+        </div>
+    </section>
+
+    <section class="section" aria-labelledby="prices-title">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title" id="prices-title">Model prices</h2>
+                <p class="text-muted text-sm">USD per 1,000 tokens, prompt and completion alike. Only used for the cost estimates on this page and on each person's own usage.</p>
+            </div>
+        </div>
+        <partial name="_QuotaCostDisclaimer" />
+        <div class="card card-flush">
+            <div class="table-container"><table class="table table-stack" id="pricesTable" aria-labelledby="prices-title"></table></div>
+        </div>
+    </section>
+</div>
+
+<dialog class="dialog" id="limitDialog" aria-labelledby="limitTitle">
+    <form method="dialog" class="dialog-form">
+        <div class="dialog-header"><h2 class="dialog-title" id="limitTitle">Set limit</h2></div>
+        <div class="dialog-body">
+            <div class="field">
+                <label for="limitTokens">Tokens per month</label>
+                <input id="limitTokens" name="tokens" type="number" min="0" max="1000000000000" step="1" inputmode="numeric" />
+                <p class="field-hint" id="limitHint"></p>
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+            <button type="submit" class="btn btn-ghost" value="clear" formnovalidate>Remove limit</button>
+            <button type="submit" class="btn btn-primary" value="save">Save</button>
+        </div>
+    </form>
+</dialog>
+
+<dialog class="dialog" id="priceDialog" aria-labelledby="priceTitle">
+    <form method="dialog" class="dialog-form">
+        <div class="dialog-header"><h2 class="dialog-title" id="priceTitle">Set price</h2></div>
+        <div class="dialog-body">
+            <div class="field">
+                <label for="priceModel">Model (ModelConfig, namespace/name)</label>
+                <input id="priceModel" name="model" maxlength="320" pattern="[a-z0-9][\-a-z0-9.]*/[a-z0-9][\-a-z0-9.]*" />
+            </div>
+            <div class="field">
+                <label for="priceValue">USD per 1,000 tokens</label>
+                <input id="priceValue" name="price" type="number" min="0" max="1000000" step="0.000001" inputmode="decimal" />
+                <p class="field-hint">An estimate only: your provider's pricing may differ.</p>
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+            <button type="submit" class="btn btn-ghost" value="clear" formnovalidate>Remove price</button>
+            <button type="submit" class="btn btn-primary" value="save">Save</button>
+        </div>
+    </form>
+</dialog>
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/quotas.css" asp-append-version="true" />
+}
+@section Scripts {
+    <script src="~/js/quotas.js" asp-append-version="true"></script>
+}

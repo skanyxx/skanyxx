@@ -8,12 +8,14 @@ namespace Skanyxx.Module.Chat.Features.Turns;
 /// <summary>
 /// Reads one turn's A2A stream from kagent (task, status updates, artifact updates) into <see cref="ChatStreamEvent"/>s.
 /// Partial chunks grow the draft; a whole intermediate message replaces it; a tool call turns the draft into a step;
-/// the final status message or the artifact is the answer. Reasoning parts are skipped; tool payloads are redacted.
+/// the final status message or the artifact is the answer. Reasoning parts are skipped; tool payloads are redacted. A
+/// message's usage counts once per message id.
 /// </summary>
 internal sealed class A2ATurn
 {
     private string _draft = "";
     private string _answer = "";
+    private readonly HashSet<string> _counted = [];
 
     public string? TaskId { get; private set; }
 
@@ -58,7 +60,9 @@ internal sealed class A2ATurn
         if (message is null || EventFields.Text(message, "role") == "user")
             yield break;
         var partial = IsPartial(EventFields.Get(message, "metadata"));
-        if (!partial && UsageOf(EventFields.Get(message, "metadata")) is { Total: > 0 } usage)
+        // A message kagent sends twice (in a status and again in the final task) counts once, by its id (D380).
+        if (!partial && UsageOf(EventFields.Get(message, "metadata")) is { Total: > 0 } usage
+            && (EventFields.Text(message, "messageId") is not { } id || _counted.Add(id)))
         {
             Usage = Usage.Add(usage);
             yield return ChatStreamEvent.Usage(Usage);

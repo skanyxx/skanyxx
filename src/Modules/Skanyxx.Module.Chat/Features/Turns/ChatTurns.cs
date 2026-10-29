@@ -30,14 +30,35 @@ internal sealed class ChatTurns(
 {
     public const int MaxTitle = 80;
 
-    /// <summary>kagent failing throws (<see cref="HttpRequestException"/>, <see cref="TimeoutException"/>).</summary>
+    /// <summary>
+    /// kagent failing throws (<see cref="HttpRequestException"/>, <see cref="TimeoutException"/>). A started turn holds
+    /// the quota's admission (<see cref="TurnStart.Admission"/>), which the caller disposes when the turn is over.
+    /// </summary>
     public async Task<Outcome<TurnStart>> StartAsync(SendChatMessageCommand command, CancellationToken ct)
     {
         if (await MergedAgents.FindAsync(kagent, command.AgentNamespace, command.AgentName, ct) is not { } agent)
             return Outcome<TurnStart>.NotFound("No such agent to chat with.");
         var agentRef = $"{agent.Namespace}/{agent.Name}";
-        if (await quota.RefusalAsync(command.UserId, agentRef, ct) is { } refusal)
+        var admission = await quota.AdmitAsync(command.UserId, agentRef, ct);
+        if (admission.Refusal is { } refusal)
             return Outcome<TurnStart>.RateLimited(refusal);
+        try
+        {
+            var started = await StartAdmittedAsync(command, agent, agentRef, admission, ct);
+            if (started.Value is null)
+                admission.Dispose();
+            return started;
+        }
+        catch
+        {
+            admission.Dispose();
+            throw;
+        }
+    }
+
+    private async Task<Outcome<TurnStart>> StartAdmittedAsync(
+        SendChatMessageCommand command, Agent agent, string agentRef, ChatQuotaAdmission admission, CancellationToken ct)
+    {
         var attached = await FilesAsync(command.UserId, command.FileIds ?? [], agent, ct);
         if (attached.Value is not { } turnFiles)
             return attached.Map<TurnStart>(_ => null!);
@@ -51,7 +72,7 @@ internal sealed class ChatTurns(
             : ChatPreparation.None;
         if (prepared.Cached is { } cached)
             return Outcome<TurnStart>.Ok(new TurnStart(agent, agentRef, cached.ConversationId, false, Title(command, turnFiles), prepared,
-                MemoryContext.None, command.Message, []));
+                MemoryContext.None, command.Message, [], admission));
 
         // An agent's memory id is its kagent name (the studio grants by it).
         var memory = isNew
@@ -82,27 +103,30 @@ internal sealed class ChatTurns(
             throw;
         }
         return Outcome<TurnStart>.Ok(new TurnStart(agent, agentRef, sessionId, isNew, title, prepared, memory,
-            prepared.Context + memory.Block + turnFiles.Block + command.Message, turnFiles.Images));
+            prepared.Context + memory.Block + turnFiles.Block + command.Message, turnFiles.Images, admission));
     }
 
-    /// <summary>Not the request's token: the answer exists, so the index, the card, the quota and the usage rollup record it even if the caller left.</summary>
+    /// <summary>
+    /// Not the request's token: the answer exists, so the quota, the index, the card and the usage rollup record it even
+    /// if the caller left. The quota first: what follows may fail, the tokens were spent.
+    /// </summary>
     /// <param name="reported">The blocking answer's own token count (<see cref="A2AUsage"/>); a streamed turn's comes from <paramref name="usage"/>.</param>
     public async Task CompleteAsync(SendChatMessageCommand command, TurnStart start, string answer, ChatUsage usage, TokenUsage? reported = null)
     {
+        await RecordUsageAsync(command, start, reported is { } r ? ChatUsage.Of(r) : usage, answer);
         if (command.Reader is { } who)
             await context.CompletedAsync(new ChatTurnDone(
                 who, start.SessionId, start.AgentRef, command.Message, answer, start.IsNew, command.TicketKeys ?? [], start.Prepared.CacheKey),
                 CancellationToken.None);
         await extractor.ChatTurnAsync(new ChatTurnDigest(
             command.UserId, start.Agent.Name, start.AgentRef, start.SessionId, command.Message, answer, start.IsNew), CancellationToken.None);
-        await RecordUsageAsync(command, start, usage);
         await RollupAsync(command, start.Agent, reported ?? Tokens(usage), start.IsNew, cached: false, saved: 0, failed: false);
     }
 
     /// <summary>An answer from the cache, for the usage rollup: no tokens spent, the cache's own estimate saved.</summary>
     public Task CachedAsync(SendChatMessageCommand command, TurnStart start, ChatResponse cached) =>
         RollupAsync(command, start.Agent, TokenUsage.None, newChat: false, cached: true,
-            saved: (command.Message.Length + cached.Message.Content.Length) / CharsPerToken, failed: false);
+            saved: (command.Message.Length + cached.Message.Content.Length) / ChatQuotaUsage.CharsPerToken, failed: false);
 
     /// <summary>A turn kagent failed, for the usage rollup (the quota records its tokens through <see cref="RecordUsageAsync"/>).</summary>
     public Task FailedAsync(SendChatMessageCommand command, TurnStart start) =>
@@ -117,12 +141,43 @@ internal sealed class ChatTurns(
         await files.DetachConversationAsync(command.UserId, start.SessionId, CancellationToken.None);
     }
 
-    /// <summary>What a turn used, also when it failed or was stopped: the tokens were spent.</summary>
-    public Task RecordUsageAsync(SendChatMessageCommand command, TurnStart start, ChatUsage usage) =>
-        quota.RecordAsync(command.UserId, start.AgentRef, start.SessionId, usage, CancellationToken.None);
+    /// <summary>
+    /// What a turn used, also when it failed or was stopped: the tokens were spent. When kagent reported none, the quota
+    /// gets the estimate of <see cref="ChatQuotaUsage.Measure"/> (at least the prompt). Once per turn, whichever path
+    /// gets here first (D380); the turn's in-flight place is given back once it is counted.
+    /// </summary>
+    public async Task RecordUsageAsync(SendChatMessageCommand command, TurnStart start, ChatUsage usage, string answer)
+    {
+        if (!start.FirstRecord())
+            return;
+        try
+        {
+            await quota.RecordAsync(ChatQuotaUsage.Measure(command.UserId, start.AgentRef, ModelRef(start.Agent), start.SessionId, usage, start.Prompt, answer),
+                CancellationToken.None);
+        }
+        finally
+        {
+            start.Admission.Dispose();
+        }
+    }
 
-    // The answer cache's own estimate (AnswerCache.RecordHitAsync): question plus answer, 4 characters a token.
-    private const int CharsPerToken = 4;
+    /// <summary>
+    /// The caller left or the turn ran out of time: kagent should stop working for nobody. A streamed turn knows its task;
+    /// a blocking one asks kagent which of the session's tasks still run (D381). Not the request's token (it is cancelled).
+    /// </summary>
+    public async Task CancelKAgentAsync(SendChatMessageCommand command, TurnStart start, string? taskId)
+    {
+        try
+        {
+            IReadOnlyList<string> tasks = taskId is not null ? [taskId] : await kagent.RunningTaskIdsAsync(start.SessionId, command.UserId, CancellationToken.None);
+            foreach (var task in tasks)
+                await kagent.CancelTaskAsync(start.Agent.Namespace, start.Agent.Name, task, command.UserId, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
+        {
+            logger.LogInformation(ex, "kagent did not cancel the turn in {SessionId} (it may have finished)", start.SessionId);
+        }
+    }
 
     private static TokenUsage Tokens(ChatUsage usage) =>
         usage.Total > 0 ? new TokenUsage(usage.Prompt, usage.Completion, true) : TokenUsage.None;
@@ -131,8 +186,9 @@ internal sealed class ChatTurns(
     private Task RollupAsync(SendChatMessageCommand command, Agent agent, TokenUsage usage, bool newChat, bool cached, long saved, bool failed) =>
         publisher.Publish(new ChatTurnUsage(
             clock.GetUtcNow(), command.UserId, $"{agent.Namespace}/{agent.Name}",
-            agent.ModelConfig switch { null or "" => "unknown", var m when m.Contains('/') => m, var m => $"{agent.Namespace}/{m}" },
-            usage, newChat, cached, saved, failed), CancellationToken.None);
+            ModelRef(agent), usage, newChat, cached, saved, failed), CancellationToken.None);
+
+    private static string ModelRef(Agent agent) => ChatQuotaUsage.ModelRef(agent.Namespace, agent.ModelConfig);
 
     private async Task DeleteSessionAsync(string userId, string sessionId)
     {

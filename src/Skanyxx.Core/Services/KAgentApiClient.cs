@@ -671,6 +671,19 @@ public class KAgentApiClient
         using var response = await SendAsync(request, _controlTimeout, ct);
     }
 
+    /// <summary>
+    /// The ids of <paramref name="userId"/>'s tasks in <paramref name="sessionId"/> that have not ended (kagent's
+    /// <c>GET /api/sessions/{id}/tasks</c>, A2A tasks with <c>status.state</c>): what a blocking turn the caller left is
+    /// still running, so it can be cancelled (D381). Any other shape is no tasks.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> RunningTaskIdsAsync(string sessionId, string userId, CancellationToken ct) =>
+        [.. (await AsUserAsync(HttpMethod.Get, $"/api/sessions/{Uri.EscapeDataString(sessionId)}/tasks", null, userId, ct) as JsonArray ?? [])
+            .OfType<JsonObject>()
+            .Where(t => t["status"]?["state"] is JsonValue state && state.TryGetValue<string>(out var s)
+                && s is not ("completed" or "failed" or "rejected" or "canceled"))
+            .Select(t => t["id"] is JsonValue id && id.TryGetValue<string>(out var v) ? v : null)
+            .OfType<string>()];
+
     // A2A message parts: the text, then each file inline (base64), as kagent hands them to the model.
     private static JsonArray MessageParts(string message, IReadOnlyList<A2AFilePart> files) =>
     [

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Module.Tickets.Domain;
 using Skanyxx.Module.Tickets.Engine;
 
@@ -51,7 +52,20 @@ public sealed class KAgentStageClientTests
     {
         var (client, _) = Create(_ => Result(result));
 
-        Assert.Equal(expected, await client.AskAsync(Agent, "p", CancellationToken.None));
+        Assert.Equal(expected, (await client.AskAsync(Agent, "p", CancellationToken.None)).Text);
+    }
+
+    [Fact]
+    public async Task ReportsKAgentsTokens_TheRemainderOfTheTotalAsOutput()
+    {
+        var (client, _) = Create(_ => Result("""
+            {"kind":"task","status":{"state":"completed"},"metadata":{"kagent_usage_metadata":{"promptTokenCount":100,"candidatesTokenCount":20,"totalTokenCount":150}},
+             "artifacts":[{"parts":[{"kind":"text","text":"done"}]}]}
+            """));
+        var (none, _) = Create(_ => Result("""{"kind":"message","role":"agent","parts":[{"kind":"text","text":"direct"}]}"""));
+
+        Assert.Equal(new ChatUsage(100, 50, 150), (await client.AskAsync(Agent, "p", CancellationToken.None)).Usage);
+        Assert.Equal(ChatUsage.None, (await none.AskAsync(Agent, "p", CancellationToken.None)).Usage);
     }
 
     [Theory]
@@ -108,7 +122,7 @@ public sealed class KAgentStageClientTests
               {"kind":"text","text":"VERDICT: FAIL\n\n## Findings\n1. blocker"}]}]}
             """));
 
-        var answer = await client.AskAsync(Agent, "p", CancellationToken.None);
+        var answer = (await client.AskAsync(Agent, "p", CancellationToken.None)).Text;
 
         Assert.StartsWith("VERDICT: FAIL", answer);
         Assert.Equal(Skanyxx.Module.Tickets.Domain.Verdict.Fail, VerdictReader.Read(Skanyxx.Module.Tickets.Domain.StageKind.Qa, answer));
@@ -119,7 +133,7 @@ public sealed class KAgentStageClientTests
     {
         var (client, _) = Create(_ => Result("""{"kind":"task","status":{"state":"completed"},"artifacts":[{"parts":[{"kind":"text","text":"a\u0000b"}]}]}"""));
 
-        Assert.Equal("ab", await client.AskAsync(Agent, "p", CancellationToken.None));
+        Assert.Equal("ab", (await client.AskAsync(Agent, "p", CancellationToken.None)).Text);
     }
 
     [Fact]

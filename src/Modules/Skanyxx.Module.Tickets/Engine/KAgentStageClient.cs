@@ -4,6 +4,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform.Chat;
+using Skanyxx.Core.Services;
 using Skanyxx.Module.Tickets.Domain;
 
 namespace Skanyxx.Module.Tickets.Engine;
@@ -11,13 +13,13 @@ namespace Skanyxx.Module.Tickets.Engine;
 /// <summary>
 /// One blocking A2A 0.3 <c>message/send</c> to <c>{kagent}/api/a2a/{ns}/{agent}/</c> (kagent 0.10.x). Each call
 /// omits <c>contextId</c>, so every stage attempt is a fresh kagent session. The answer is the text of the
-/// completed task's last artifact. Anything else — an error, a failed task, or a body of an unexpected shape —
+/// completed task's last artifact, with the tokens kagent reported (<see cref="A2AUsage"/>). Anything else — an error, a failed task, or a body of an unexpected shape —
 /// is a <see cref="StageAgentException"/> with a fixed category; kagent's own error text goes to the log only.
 /// </summary>
 public sealed partial class KAgentStageClient(HttpClient http, IOptions<TicketsOptions> options, ILogger<KAgentStageClient> logger)
     : IStageAgentClient
 {
-    public async Task<string> AskAsync(StageAgent agent, string prompt, CancellationToken ct)
+    public async Task<StageAnswer> AskAsync(StageAgent agent, string prompt, CancellationToken ct)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post,
             $"api/a2a/{Uri.EscapeDataString(agent.Namespace)}/{Uri.EscapeDataString(agent.Name)}/")
@@ -66,7 +68,7 @@ public sealed partial class KAgentStageClient(HttpClient http, IOptions<TicketsO
 
         try
         {
-            return Answer(body!);
+            return new StageAnswer(Answer(body!), ChatUsage.Of(A2AUsage.From(body!["result"])));
         }
         catch (Exception ex) when (ex is InvalidOperationException or NullReferenceException or FormatException or ArgumentException)
         {

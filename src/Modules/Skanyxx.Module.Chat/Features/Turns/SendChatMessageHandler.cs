@@ -8,7 +8,11 @@ using Skanyxx.Core.Services;
 
 namespace Skanyxx.Module.Chat.Features.Turns;
 
-/// <summary>One blocking turn (<c>POST api/chat</c>); the rules are <see cref="ChatTurns"/>'.</summary>
+/// <summary>
+/// One blocking turn (<c>POST api/chat</c>); the rules are <see cref="ChatTurns"/>'. A turn that fails, runs out of time
+/// or that the caller leaves still counts (at least its prompt), and in the last two cases kagent is asked to stop it,
+/// as a stopped stream is (D380, D381).
+/// </summary>
 internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ChatTurns turns, ILogger<SendChatMessageHandler> logger)
     : IRequestHandler<SendChatMessageCommand, Outcome<ChatResponse>>
 {
@@ -38,16 +42,27 @@ internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ChatTurns t
             logger.LogWarning(ex, "Chat with {Namespace}/{Agent} failed for {UserId}", command.AgentNamespace, command.AgentName, command.UserId);
             if (start is not null)
             {
+                await turns.RecordUsageAsync(command, start, ChatUsage.None, "");
+                // Our deadline passed, not kagent's: it may still be working.
+                if (ex is TimeoutException)
+                    await turns.CancelKAgentAsync(command, start, null);
                 await turns.AbandonAsync(command, start);
                 await turns.FailedAsync(command, start);
             }
             return Outcome<ChatResponse>.Unavailable(ChatFailure.Message(ex));
         }
-        catch (OperationCanceledException) when (start is { IsNew: true } && ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (start is not null && ct.IsCancellationRequested)
         {
-            // The caller left (a closed tab) mid first turn: nobody will continue this conversation.
+            // The caller left (a closed tab): the prompt was spent, kagent stops working for nobody, and nobody will
+            // continue a first turn's conversation.
+            await turns.RecordUsageAsync(command, start, ChatUsage.None, "");
+            await turns.CancelKAgentAsync(command, start, null);
             await turns.AbandonAsync(command, start);
             throw;
+        }
+        finally
+        {
+            start?.Admission.Dispose();
         }
     }
 }
