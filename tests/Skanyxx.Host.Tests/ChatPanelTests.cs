@@ -423,6 +423,87 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ParallelUploads_AllSucceed_UpToTheCap_AndNeverPastIt()
+    {
+        var owner = await _host.OwnerAsync();
+
+        var within = await Task.WhenAll(Enumerable.Range(0, MaxFilesPerPerson).Select(i => UploadAsync(owner, $"n{i}.txt", "note"u8.ToArray())));
+        Assert.All(within, r => Assert.Equal(HttpStatusCode.Created, r.StatusCode));
+
+        var employee = await EmployeeAsync();
+        var burst = await Task.WhenAll(Enumerable.Range(0, MaxFilesPerPerson * 2).Select(i => UploadAsync(employee, $"b{i}.txt", "note"u8.ToArray())));
+        Assert.Equal(MaxFilesPerPerson, burst.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.All(burst, r => Assert.Contains(r.StatusCode, new[] { HttpStatusCode.Created, HttpStatusCode.TooManyRequests }));
+        Assert.Equal(MaxFilesPerPerson * 2, StoredFiles("*.bin").Length);
+        Assert.Equal(MaxFilesPerPerson * 2, StoredFiles("*.json").Length);
+        Assert.Empty(StoredFiles("*.tmp"));
+    }
+
+    [Fact]
+    public async Task ATornRecord_BreaksNeitherUploadNorSendNorDelete_AndADeletedConversationTakesItsFiles()
+    {
+        var owner = await _host.OwnerAsync();
+        var id = await FileIdAsync(await UploadAsync(owner, "notes.txt", "Deploy notes"u8.ToArray()));
+        var folder = Path.GetDirectoryName(Assert.Single(StoredFiles("*.bin")))!;
+        var torn = Path.Combine(folder, new string('a', 32) + ".json");
+        await File.WriteAllTextAsync(torn, "{\"id\":\"aaaa", Ct);
+        await File.WriteAllTextAsync(Path.Combine(folder, new string('b', 32) + ".json"), "", Ct);
+
+        var second = await UploadAsync(owner, "more.txt", "More notes"u8.ToArray());
+        var (events, _) = await StreamAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "Summarise", fileIds = new[] { id } });
+        var conversation = events[0].Data.GetProperty("conversationId").GetString();
+        var removed = await owner.DeleteAsync($"/api/chat/files/{await FileIdAsync(second)}", Ct);
+        var deleted = await owner.DeleteAsync($"/api/chat/conversations/{conversation}", Ct);
+
+        Assert.Equal(HttpStatusCode.Created, second.StatusCode);
+        Assert.Equal("done", events.Last().Type);
+        Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, deleted.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/chat/files/{id}", Ct)).StatusCode);
+        Assert.Empty(StoredFiles("*.bin"));
+        Assert.Equal([torn, Path.Combine(folder, new string('b', 32) + ".json")], StoredFiles("*.json").Order(StringComparer.Ordinal));
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/chat/conversations/{conversation}", Ct)).StatusCode);
+    }
+
+    [Fact]
+    public async Task AFileWhoseBytesAreGone_Is404_NotABrokenDownload()
+    {
+        var owner = await _host.OwnerAsync();
+        var id = await FileIdAsync(await UploadAsync(owner, "notes.txt", "Deploy notes"u8.ToArray()));
+        File.Delete(Assert.Single(StoredFiles("*.bin")));
+
+        var download = await owner.GetAsync($"/api/chat/files/{id}", Ct);
+
+        Assert.Equal(HttpStatusCode.NotFound, download.StatusCode);
+        Assert.Equal("application/problem+json", download.Content.Headers.ContentType?.MediaType);
+        Assert.Null(download.Content.Headers.ContentDisposition);
+    }
+
+    [Fact]
+    public async Task AnUploadOverTheLargestKindsLimit_IsRefusedByTheBodyCap_AndOneOverItsOwnKindsLimit_IsA400()
+    {
+        var owner = await _host.OwnerAsync();
+        const int imageLimit = 4 * 1024 * 1024; // the default; text is 4 KB here, so the cap is the image limit, not the 20 MB ceiling
+
+        HttpStatusCode? overCap;
+        try
+        {
+            overCap = (await UploadAsync(owner, "huge.txt", new byte[imageLimit + 128 * 1024])).StatusCode;
+        }
+        catch (HttpRequestException)
+        {
+            overCap = null; // Kestrel answered 413 on the declared length and closed the connection before the body was sent
+        }
+        var overText = await UploadAsync(owner, "big.txt", Encoding.UTF8.GetBytes(new string('a', 64 * 1024)));
+
+        Assert.True(overCap is null or HttpStatusCode.RequestEntityTooLarge, $"over the cap: {overCap}");
+        Assert.Equal(HttpStatusCode.BadRequest, overText.StatusCode);
+        Assert.Contains("Text files may be up to 4 KB", await overText.Content.ReadAsStringAsync(Ct));
+        Assert.DoesNotContain("UTF-8", await overText.Content.ReadAsStringAsync(Ct)); // refused on its size, never read for its content
+        Assert.Empty(StoredFiles("*.bin"));
+    }
+
+    [Fact]
     public async Task TooManyFiles_AreRefused()
     {
         var owner = await _host.OwnerAsync();
@@ -496,6 +577,15 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("conversationId").GetString()!;
     }
+
+    private string[] StoredFiles(string pattern)
+    {
+        var root = Path.Combine(_host.ContentRoot, "data", "chat-files");
+        return Directory.Exists(root) ? Directory.GetFiles(root, pattern, SearchOption.AllDirectories) : [];
+    }
+
+    private static async Task<string> FileIdAsync(HttpResponseMessage upload) =>
+        (await upload.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetString()!;
 
     private static async Task<HttpResponseMessage> UploadAsync(HttpClient client, string name, byte[] bytes)
     {

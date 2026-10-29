@@ -28,13 +28,19 @@ internal sealed class ChatFileEndpoint(IMediator mediator, ChatFiles files) : En
             await Send.ResultAsync(outcome.ToHttp(_ => ""));
             return;
         }
+        // Opened before any header is set: bytes deleted since the lookup are a 404, not a response cut after its headers.
+        await using var content = files.OpenRead(owner, file);
+        if (content is null)
+        {
+            await Send.ResultAsync(Outcome<StoredChatFile>.NotFound("No such file.").ToHttp(_ => ""));
+            return;
+        }
         var response = HttpContext.Response;
         response.ContentType = "application/octet-stream";
-        response.ContentLength = file.Size;
+        response.ContentLength = content.Length;
         response.Headers.XContentTypeOptions = "nosniff";
         response.Headers.ContentSecurityPolicy = "default-src 'none'; sandbox";
         response.Headers.ContentDisposition = new ContentDispositionHeaderValue("attachment") { FileNameStar = file.Name }.ToString();
-        await using var content = files.OpenRead(owner, file);
         await content.CopyToAsync(response.Body, ct);
     }
 }

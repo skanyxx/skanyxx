@@ -37,4 +37,23 @@ public sealed class RateLimitTests(PostgresFixture fixture)
         Assert.Equal(HttpStatusCode.TooManyRequests, studioForm.StatusCode);
         Assert.NotEqual(HttpStatusCode.TooManyRequests, studioPage.StatusCode);
     }
+
+    [Fact]
+    public async Task TheDashboard_IsInTheSameWindow()
+    {
+        await using var host = await HostApp.StartAsync(fixture.ConnectionString, s =>
+        {
+            s["Skanyxx:RateLimit:PermitLimit"] = "2";
+            s["Skanyxx:RateLimit:WindowSeconds"] = "600";
+        });
+        var client = host.Client((await fixture.Host.OwnerAsync()).DefaultRequestHeaders.Authorization!.Parameter);
+
+        var first = await client.GetAsync("/api/dashboard/summary", TestContext.Current.CancellationToken);
+        var second = await client.GetAsync("/api/dashboard/summary", TestContext.Current.CancellationToken);
+        var third = await client.GetAsync("/api/dashboard/summary", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, third.StatusCode);
+    }
 }

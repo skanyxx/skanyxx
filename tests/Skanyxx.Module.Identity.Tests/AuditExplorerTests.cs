@@ -156,6 +156,10 @@ public sealed class AuditExplorerTests(PostgresFixture postgres) : IdentityTestB
     [Fact]
     public async Task Analytics_CountSignInsWithTheSampledOnes_AndAdminChangesByKind()
     {
+        // A model write leaves an intent row and an outcome row (D325); only the outcome is a change.
+        await InsertAsync(_t.AddMinutes(40), "model.update_requested", _ownerId, "kagent/gpt", null, """{"keyChanged": true}""");
+        await InsertAsync(_t.AddMinutes(41), "model.updated", _ownerId, "kagent/gpt", null, """{"keyChanged": true}""");
+        await InsertAsync(_t.AddMinutes(42), "model.write_failed", _ownerId, "kagent/gpt", null);
         var analytics = await GetAsync("analytics");
         var signIns = analytics.GetProperty("signIns").EnumerateArray().ToList();
         var changes = analytics.GetProperty("adminChanges").EnumerateArray()
@@ -166,7 +170,7 @@ public sealed class AuditExplorerTests(PostgresFixture postgres) : IdentityTestB
         Assert.Equal(1, changes["roles"]);
         Assert.Equal(2, changes["people"]);
         Assert.Equal(1, changes["agents"]); // the failed write is not a change
-        Assert.Equal(0, changes["models"]);
+        Assert.Equal(1, changes["models"]);
     }
 
     [Theory]

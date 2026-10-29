@@ -69,6 +69,10 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         return _host.Client((await accepted.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("tokens").GetProperty("accessToken").GetString()!);
     }
 
+    private static async Task CardAsync(HttpClient client, string scope, string key) =>
+        (await client.PutAsJsonAsync($"/api/memory/cards/{scope}/{key}",
+            new { version = 0, type = "fact", what = $"Card {key}", why = "Dashboard count", body = (string?)null, source = (string?)null }, Ct)).EnsureSuccessStatusCode();
+
     private static async Task<JsonElement> ChatAsync(HttpClient client, string agent, string message, string? conversationId = null)
     {
         var response = await client.PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = agent, message, conversationId }, Ct);
@@ -150,6 +154,9 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
     {
         await ChatAsync(_ann, "seed", "Hello");
         await ChatAsync(_eve, "seed", "Hello");
+        await CardAsync(_sue, "team:billing", "invoice-day");
+        await CardAsync(_owner, "company", "refund-window");
+        await CardAsync(_eve, $"personal:{_eveId}", "eve-note");
 
         var team = await UsageAsync(_sue, "scope=team&id=billing");
         Assert.Equal(1, Total(team, "requests")); // ann's, not eve's
@@ -164,10 +171,12 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(JsonValueKind.Null, summary.GetProperty("topUsers").ValueKind);
         Assert.Equal(JsonValueKind.Null, summary.GetProperty("recentEvents").ValueKind);
         Assert.Equal(CostDisclaimer.Text, summary.GetProperty("costDisclaimer").GetString());
+        Assert.Equal(1, summary.GetProperty("cardsPerDay").EnumerateArray().Sum(d => d.GetInt64())); // billing's card, not the company's or eve's own
 
         var owners = await _owner.GetFromJsonAsync<JsonElement>("/api/dashboard/summary", Ct);
         Assert.Equal(2, owners.GetProperty("active7d").GetInt32());
         Assert.Equal(2, owners.GetProperty("topUsers").GetArrayLength());
+        Assert.Equal(3, owners.GetProperty("cardsPerDay").EnumerateArray().Sum(d => d.GetInt64()));
         Assert.NotEmpty(owners.GetProperty("recentEvents").EnumerateArray());
         Assert.All(owners.GetProperty("recentEvents").EnumerateArray(), e =>
             Assert.Equal(["at", "action", "actor", "target"], e.EnumerateObject().Select(p => p.Name))); // no details, no address

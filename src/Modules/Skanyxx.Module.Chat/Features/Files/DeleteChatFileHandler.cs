@@ -9,7 +9,7 @@ internal sealed class DeleteChatFileHandler(ChatFiles files) : IRequestHandler<D
     {
         if (await files.FindAsync(command.UserId, command.Id, ct) is not { } file)
             return Outcome<bool>.NotFound("No such file.");
-        files.Delete(command.UserId, file);
+        await files.DeleteAsync(command.UserId, file, ct);
         return Outcome<bool>.Ok(true);
     }
 }
