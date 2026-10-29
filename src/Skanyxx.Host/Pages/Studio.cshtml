@@ -4,234 +4,323 @@
     ViewData["Title"] = "Studio";
     var me = Model.Me;
 }
-@await Component.InvokeAsync("SetupGuide", new { id = "studio" })
+<page-header description="Propose agents for review. Nothing is live until a supervisor merges it; Skanyxx then applies it to kagent.">
+    @if (me.CanPropose && Model.Overview is { RepoProblem: null } && Model.Options is not null)
+    {
+        <a class="btn btn-primary" href="#compose"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Compose an agent</a>
+    }
+</page-header>
 @if (Model.Error is not null)
 {
-    <p class="text-error" role="alert">@Model.Error</p>
+    <alert tone="error">@Model.Error</alert>
 }
 @if (Model.Message is not null)
 {
-    <p class="text-success" role="status">@Model.Message</p>
+    <alert tone="success">@Model.Message</alert>
 }
-<p class="text-muted">
-    Compose an agent and save it as a pull request in <code>@(Model.Overview?.Repo ?? "skanyxx-agents")</code>. Nothing is
-    live until a supervisor merges it; Skanyxx then applies it to kagent. Memory grants travel in the same pull request.
-</p>
 @if (Model.Overview?.RepoProblem is { } problem)
 {
-    <p><strong>@problem</strong></p>
+    <alert tone="error" title="The agent repository cannot be used">@problem</alert>
 }
+
+@await Component.InvokeAsync("SetupGuide", new { id = "studio" })
 
 @if (Model.Detail is { } detail)
 {
     var s = detail.Summary;
-    <div class="card mb-3" id="proposal">
+    var canMerge = me.CanMerge && detail.Problems.Count == 0 && (!detail.NeedsOwner || me.IsOwner);
+    <section class="card" id="proposal" aria-labelledby="proposal-title">
         <div class="card-header">
-            <h3 class="card-title">#@s.Number @s.Title</h3>
-            <span class="text-muted">proposed by @(s.ProposedBy == me.UserId ? "you" : s.ProposedBy) · head <code>@s.HeadSha[..Math.Min(12, s.HeadSha.Length)]</code></span>
+            <div>
+                <h2 class="card-title" id="proposal-title">#@s.Number @s.Title</h2>
+                <p class="card-subtitle">Proposed by @(s.ProposedBy == me.UserId ? "you" : s.ProposedBy)</p>
+            </div>
+            <span class="badges">
+                @if (detail.Problems.Count > 0)
+                {
+                    <status-badge tone="danger" label="Cannot merge" />
+                }
+                else
+                {
+                    <status-badge tone="success" label="Open" />
+                }
+                @if (detail.NeedsOwner)
+                {
+                    <status-badge tone="warning" label="Owner merges" />
+                }
+            </span>
         </div>
-        @if (detail.Problems.Count > 0)
-        {
-            <p class="text-error">Cannot be merged: @string.Join(" ", detail.Problems)</p>
-        }
-        @if (detail.NeedsOwner)
-        {
-            <p><span class="badge badge-warning">owner merge</span> @(s.Plugin is null
-                ? "It sets or removes a team or department grant: only the owner merges it."
-                : "It brings a plugin from git or a zip (third-party content): only the owner merges it.")</p>
-        }
-        @foreach (var note in detail.Notes)
-        {
-            <p class="text-muted" data-note>@note</p>
-        }
-        @foreach (var file in detail.Files)
-        {
-            <h4><code>@file.Path</code> <span class="text-muted">@file.Status</span></h4>
-            <pre data-file="@file.Path">@file.Content</pre>
-        }
-        <div class="flex gap-2 items-center">
-            @if (me.CanMerge && detail.Problems.Count == 0 && (!detail.NeedsOwner || me.IsOwner))
+        <div class="card-body">
+            <dl class="kv">
+                <dt>Agent</dt><dd><code>@s.Agent</code></dd>
+                <dt>Version</dt><dd><code>@s.HeadSha[..Math.Min(12, s.HeadSha.Length)]</code></dd>
+            </dl>
+            @if (detail.Problems.Count > 0)
             {
-                <form method="post" asp-page-handler="Merge" asp-route-pr="@s.Number">
-                    <button type="submit" class="btn btn-primary" data-merge="@s.Number">Merge and make live</button>
-                </form>
+                <alert tone="error" title="Cannot be merged">@string.Join(" ", detail.Problems)</alert>
             }
-            @if (detail.Problems.Count == 0)
+            @if (detail.NeedsOwner)
             {
-                <form method="post" asp-page-handler="Preview" asp-route-pr="@s.Number">
-                    <button type="submit" class="btn btn-secondary" data-preview="@s.Number">@(detail.Preview is null ? "Start preview" : "Refresh preview")</button>
-                </form>
+                <alert tone="warning" title="Only the owner merges this">@(s.Plugin is null
+                    ? "It sets or removes a team or department grant."
+                    : "It brings a plugin from git or a zip (third-party content).")</alert>
             }
-            @if (me.CanMerge || s.ProposedBy == me.UserId)
+            @foreach (var note in detail.Notes)
             {
-                <form method="post" asp-page-handler="Close" asp-route-pr="@s.Number">
-                    <button type="submit" class="btn btn-ghost">Close without merging</button>
-                </form>
+                <p class="text-secondary" data-note>@note</p>
+            }
+            <details class="details-admin">
+                <summary>Files in this proposal (@detail.Files.Count)</summary>
+                @foreach (var file in detail.Files)
+                {
+                    <h3 class="text-sm mt-2"><code>@file.Path</code> <span class="text-muted">@file.Status</span></h3>
+                    <pre class="text-block mt-1" data-file="@file.Path">@file.Content</pre>
+                }
+            </details>
+            <div class="form-actions">
+                @if (canMerge)
+                {
+                    <form method="post" asp-page-handler="Merge" asp-route-pr="@s.Number"
+                          data-confirm="Skanyxx merges #@s.Number into the agent repo and applies it to kagent: it is live for everyone it is offered to."
+                          data-confirm-title="Merge and make live?" data-confirm-action="Merge">
+                        <button type="submit" class="btn btn-primary" data-merge="@s.Number">Merge and make live</button>
+                    </form>
+                }
+                @if (detail.Problems.Count == 0)
+                {
+                    <form method="post" asp-page-handler="Preview" asp-route-pr="@s.Number" data-once>
+                        <button type="submit" class="btn btn-secondary" data-preview="@s.Number">@(detail.Preview is null ? "Start preview" : "Refresh preview")</button>
+                    </form>
+                }
+                @if (me.CanMerge || s.ProposedBy == me.UserId)
+                {
+                    <form method="post" asp-page-handler="Close" asp-route-pr="@s.Number"
+                          data-confirm="The proposal closes without changing anything. It can be proposed again." data-confirm-title="Close #@s.Number?"
+                          data-confirm-action="Close" data-danger>
+                        <button type="submit" class="btn btn-danger-ghost">Close without merging</button>
+                    </form>
+                }
+            </div>
+            @if (detail.Preview is { } preview)
+            {
+                <section aria-labelledby="preview-title">
+                    <h3 class="section-title" id="preview-title">Preview chat <status-badge status="@(preview.Ready ? "ready" : "starting")" /></h3>
+                    <p class="section-description mb-1"><code>@preview.Name</code> · it searches memory but never saves to it.</p>
+                    <div id="previewLog" class="transcript mb-2" aria-live="polite"></div>
+                    <form id="previewChat" class="inline-form" data-number="@s.Number">
+                        <input id="previewMessage" maxlength="16000" placeholder="Ask the proposed agent" autocomplete="off" aria-label="Message" class="flex-1" />
+                        <button type="submit" class="btn btn-primary">Send</button>
+                    </form>
+                </section>
             }
         </div>
-        @if (detail.Preview is { } preview)
-        {
-            <h4>Preview chat <span class="text-muted">@preview.Name · @(preview.Ready ? "ready" : "starting") · search only, never saves to memory</span></h4>
-            <div id="previewLog" class="mb-3" aria-live="polite"></div>
-            <form id="previewChat" class="flex gap-2 items-center" data-number="@s.Number">
-                <input id="previewMessage" maxlength="16000" placeholder="Ask the proposed agent" autocomplete="off" aria-label="Message" />
-                <button type="submit" class="btn btn-primary">Send</button>
-            </form>
-        }
-    </div>
+    </section>
 }
 
 @if (Model.Overview is { RepoProblem: null } overview)
 {
-    <div class="table-container card mb-3">
-        <div class="card-header"><h3 class="card-title">Open proposals</h3></div>
-        <table>
-            <thead><tr><th>#</th><th>Title</th><th>Agent</th><th>Proposed by</th></tr></thead>
-            <tbody>
-                @foreach (var p in overview.Open)
-                {
-                    <tr>
-                        <td><a asp-page="/Studio" asp-route-pr="@p.Number" asp-fragment="proposal">#@p.Number</a></td>
-                        <td>@p.Title</td>
-                        <td><code>@p.Agent</code></td>
-                        <td>@(p.ProposedBy == me.UserId ? "you" : p.ProposedBy)</td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-        @if (overview.Open.Count == 0)
-        {
-            <p class="text-muted">No open proposals.</p>
-        }
-    </div>
-
-    <div class="table-container card mb-3">
-        <div class="card-header"><h3 class="card-title">Agents in main</h3></div>
-        <table>
-            <thead><tr><th>Agent</th><th>Description</th><th>In kagent</th><th></th></tr></thead>
-            <tbody>
-                @foreach (var a in overview.Agents)
-                {
-                    <tr>
-                        <td><code>@a.Name</code></td>
-                        <td>@a.Description</td>
-                        <td>@(a.Live ? "live (merged)" : "not yet applied")</td>
-                        <td>
-                            @if (me.CanPropose)
+    <section class="section" aria-labelledby="open-title">
+        <div class="section-header"><h2 class="section-title" id="open-title">Open proposals</h2></div>
+        <div class="card card-flush">
+            @if (overview.Open.Count == 0)
+            {
+                <empty-state icon="i-studio" title="No open proposals" compact="true">
+                    <p>@(me.CanPropose ? "Compose an agent below, or describe one to the factory." : "Proposals appear here when a builder sends one.")</p>
+                </empty-state>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table class="table table-stack">
+                        <thead><tr><th scope="col">#</th><th scope="col">Title</th><th scope="col">Agent</th><th scope="col">Proposed by</th></tr></thead>
+                        <tbody>
+                            @foreach (var p in overview.Open)
                             {
-                                <a asp-page="/Studio" asp-route-edit="@a.Name" asp-fragment="compose">Propose a change</a>
+                                <tr class="@(Model.Detail?.Summary.Number == p.Number ? "is-selected" : null)">
+                                    <td><a asp-page="/Studio" asp-route-pr="@p.Number" asp-fragment="proposal">#@p.Number</a></td>
+                                    <td>@p.Title</td>
+                                    <td><code>@p.Agent</code></td>
+                                    <td>@(p.ProposedBy == me.UserId ? "you" : p.ProposedBy)</td>
+                                </tr>
                             }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-        @if (overview.Agents.Count == 0)
-        {
-            <p class="text-muted">No agents yet (the seed is set up with the install, not here).</p>
-        }
-    </div>
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </section>
+
+    <section class="section" aria-labelledby="main-title">
+        <div class="section-header"><h2 class="section-title" id="main-title">Agents in the repository</h2></div>
+        <div class="card card-flush">
+            @if (overview.Agents.Count == 0)
+            {
+                <empty-state icon="i-bot" title="No agents yet" compact="true">
+                    <p>The seed agent comes with the install; agents merged here are listed next to it.</p>
+                </empty-state>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table class="table table-stack">
+                        <thead><tr><th scope="col">Agent</th><th scope="col">Description</th><th scope="col">In kagent</th><th scope="col" aria-label="Actions"></th></tr></thead>
+                        <tbody>
+                            @foreach (var a in overview.Agents)
+                            {
+                                <tr>
+                                    <td><code>@a.Name</code></td>
+                                    <td>@a.Description</td>
+                                    <td><status-badge status="@(a.Live ? "live" : "pending")" label="@(a.Live ? "live (merged)" : "not yet applied")" /></td>
+                                    <td>
+                                        @if (me.CanPropose)
+                                        {
+                                            <div class="row-actions"><a class="btn btn-secondary btn-sm" asp-page="/Studio" asp-route-edit="@a.Name" asp-fragment="compose">Propose a change</a></div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </section>
 
     @if (me.CanPropose && Model.Options is { } options)
     {
-        <div class="card mb-3">
-            <div class="card-header"><h3 class="card-title">Factory</h3></div>
-            <p class="text-muted">Describe the agent in words; the factory drafts the form below. It creates nothing.</p>
-            <form method="post" asp-page-handler="Factory" class="flex gap-2 items-center">
-                <input name="FactoryRequest" maxlength="4000" placeholder="e.g. a refund helper that answers from company memory" autocomplete="off" aria-label="Describe the agent" />
+        <section class="section" aria-labelledby="factory-title">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title" id="factory-title">Describe an agent</h2>
+                    <p class="section-description">The factory drafts the form below from your words. It creates nothing.</p>
+                </div>
+            </div>
+            <form method="post" asp-page-handler="Factory" class="toolbar" data-once>
+                <input name="FactoryRequest" maxlength="4000" placeholder="e.g. a refund helper that answers from company memory" autocomplete="off" aria-label="Describe the agent" class="flex-1" />
                 <button type="submit" class="btn btn-secondary">Draft</button>
             </form>
-        </div>
+        </section>
 
-        <form method="post" asp-page-handler="Propose" class="card auth-form mb-3" id="compose">
-            <div class="card-header"><h3 class="card-title">@(string.IsNullOrEmpty(Model.Edit) ? "Compose an agent" : $"Change {Model.Edit}")</h3></div>
-            <label asp-for="Name">Name</label>
-            <input asp-for="Name" required maxlength="34" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
-            <label asp-for="Description">Description</label>
-            <input asp-for="Description" maxlength="500" autocomplete="off" />
-            <label asp-for="ModelConfig">Model</label>
-            <select asp-for="ModelConfig">
-                @foreach (var m in options.ModelConfigs)
-                {
-                    <option value="@m">@m</option>
-                }
-            </select>
-            <label asp-for="Instructions">Instructions (the job, tone, what it must not do)</label>
-            <textarea asp-for="Instructions" rows="8" maxlength="16000" required></textarea>
-            <label asp-for="Skills">Skills (OCI image references, one per line)</label>
-            <textarea asp-for="Skills" rows="2"></textarea>
-            <fieldset>
-                <legend>MCP tools (allow-listed and merged plugin servers)</legend>
-                @if (options.McpServers.Count == 0)
-                {
-                    <p class="text-muted">None allow-listed (Studio:McpServers).</p>
-                }
-                @foreach (var server in options.McpServers)
-                {
-                    <p><code>@server.Server</code>
-                        @foreach (var tool in server.Tools)
+        <section class="section" aria-labelledby="compose-title">
+            <form method="post" asp-page-handler="Propose" class="form" id="compose" data-once>
+                <div>
+                    <h2 class="section-title" id="compose-title">@(string.IsNullOrEmpty(Model.Edit) ? "Compose an agent" : $"Change {Model.Edit}")</h2>
+                    <p class="section-description">Saving opens a pull request; a supervisor reviews and merges it.</p>
+                </div>
+                <div class="field">
+                    <label asp-for="Name">Name</label>
+                    <input asp-for="Name" required maxlength="34" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" aria-describedby="name-hint" />
+                    <p class="field-hint" id="name-hint">Lowercase letters, digits and <code>-</code>.</p>
+                </div>
+                <div class="field">
+                    <label asp-for="Description">Description <span class="field-optional">(optional)</span></label>
+                    <input asp-for="Description" maxlength="500" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label asp-for="ModelConfig">Model</label>
+                    <select asp-for="ModelConfig">
+                        @foreach (var m in options.ModelConfigs)
                         {
-                            var value = $"{server.Server}/{tool}";
-                            <label><input type="checkbox" name="Tools" value="@value" checked="@Model.Ticked(Model.Tools, value)" /> @tool</label>
+                            <option value="@m">@m</option>
                         }
-                    </p>
-                }
-            </fieldset>
-            <fieldset>
-                <legend>Memory grants (Skanyxx, D033)</legend>
-                <table>
-                    <thead><tr><th>Scope</th><th>Search</th><th>Upsert</th></tr></thead>
-                    <tbody>
-                        @foreach (var scope in options.Scopes)
-                        {
-                            <tr>
-                                <td><code>@scope</code>@(scope == "company" ? "" : " (owner merges)")</td>
-                                <td><input type="checkbox" name="Search" value="@scope" checked="@Model.Ticked(Model.Search, scope)" aria-label="Search @scope" /></td>
-                                <td><input type="checkbox" name="Upsert" value="@scope" checked="@Model.Ticked(Model.Upsert, scope)" aria-label="Upsert @scope" /></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </fieldset>
-            <label asp-for="TtlDays">kagent TTL memory, days (empty = off; not the company bank)</label>
-            <input asp-for="TtlDays" type="number" min="1" max="365" />
-            <button type="submit" class="btn btn-primary">Propose (opens a pull request)</button>
-        </form>
+                    </select>
+                </div>
+                <div class="field">
+                    <label asp-for="Instructions">Instructions</label>
+                    <textarea asp-for="Instructions" rows="8" maxlength="16000" required aria-describedby="instructions-hint"></textarea>
+                    <p class="field-hint" id="instructions-hint">The agent's job, its tone, and what it must not do.</p>
+                </div>
+                <fieldset class="form-section">
+                    <legend>Tools</legend>
+                    <p class="form-section-hint">From the allowed tool servers and merged plugin servers.</p>
+                    @if (options.McpServers.Count == 0)
+                    {
+                        <p class="text-muted text-sm">None are allowed yet (Studio:McpServers).</p>
+                    }
+                    @foreach (var server in options.McpServers)
+                    {
+                        <div class="subcard">
+                            <code>@server.Server</code>
+                            <div class="checks">
+                                @foreach (var tool in server.Tools)
+                                {
+                                    var value = $"{server.Server}/{tool}";
+                                    <label class="check"><input type="checkbox" name="Tools" value="@value" checked="@Model.Ticked(Model.Tools, value)" /> @tool</label>
+                                }
+                            </div>
+                        </div>
+                    }
+                </fieldset>
+                <fieldset class="form-section">
+                    <legend>Company memory</legend>
+                    <p class="form-section-hint">Which cards the agent may search, and where it may save. Team and department grants are merged by the owner.</p>
+                    <div class="table-container">
+                        <table class="table">
+                            <thead><tr><th scope="col">Scope</th><th scope="col">Search</th><th scope="col">Save (upsert)</th></tr></thead>
+                            <tbody>
+                                @foreach (var scope in options.Scopes)
+                                {
+                                    <tr>
+                                        <td><code>@scope</code>@(scope == "company" ? "" : " (owner merges)")</td>
+                                        <td><input type="checkbox" name="Search" value="@scope" checked="@Model.Ticked(Model.Search, scope)" aria-label="Search @scope" /></td>
+                                        <td><input type="checkbox" name="Upsert" value="@scope" checked="@Model.Ticked(Model.Upsert, scope)" aria-label="Upsert @scope" /></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </fieldset>
+                <details class="details-admin">
+                    <summary>Advanced: skills and kagent memory</summary>
+                    <div class="stack">
+                        <div class="field">
+                            <label asp-for="Skills">Skills <span class="field-optional">(optional)</span></label>
+                            <textarea asp-for="Skills" rows="2" aria-describedby="skills-hint"></textarea>
+                            <p class="field-hint" id="skills-hint">OCI image references, one per line.</p>
+                        </div>
+                        <div class="field">
+                            <label asp-for="TtlDays">kagent memory, days <span class="field-optional">(optional)</span></label>
+                            <input asp-for="TtlDays" type="number" min="1" max="365" aria-describedby="ttl-hint" />
+                            <p class="field-hint" id="ttl-hint">Empty = off. What the agent remembers between chats; not the company's cards.</p>
+                        </div>
+                    </div>
+                </details>
+                <div class="form-actions"><button type="submit" class="btn btn-primary">Propose (opens a pull request)</button></div>
+            </form>
+        </section>
     }
 }
 
 <script>
     (() => {
         const form = document.getElementById('previewChat');
-    if (!form) return;
+        if (!form) return;
         const log = document.getElementById('previewLog');
         const input = document.getElementById('previewMessage');
         let conversationId = null;
-        const line = (who, text) => {
-            const p = document.createElement('p');
-            const b = document.createElement('strong');
-            b.textContent = who + ': ';
-            p.appendChild(b);
-            p.appendChild(document.createTextNode(text));
+        const line = (who, text, kind) => {
+            const p = document.createElement('div');
+            p.className = `transcript-line${kind ? ' ' + kind : ''}`;
+            const b = document.createElement('span');
+            b.className = 'transcript-who';
+            b.textContent = who;
+            p.append(b, document.createTextNode(text));
             log.appendChild(p);
+            log.scrollTop = log.scrollHeight;
         };
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const message = input.value.trim();
             if (!message) return;
             input.value = '';
-            line('You', message);
-            const response = await fetch(`/api/studio/proposals/${form.dataset.number}/chat`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message, conversationId })
-            });
-            const body = await response.json().catch(() => ({}));
-            if (response.ok) {
+            line('You', message, 'is-you');
+            const send = form.querySelector('button[type=submit]');
+            try {
+                const body = await skx.busy(send, skx.api('POST', `/api/studio/proposals/${form.dataset.number}/chat`, { message, conversationId }));
                 conversationId = body.conversationId;
                 line('Preview', body.message?.content ?? '');
-            } else {
-                line('Error', body.detail ?? body.title ?? `HTTP ${response.status}`);
+            } catch (error) {
+                line('Error', error.message, 'is-error');
             }
         });
     })();

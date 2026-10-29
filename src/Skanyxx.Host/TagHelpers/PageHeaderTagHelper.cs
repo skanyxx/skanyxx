@@ -27,6 +27,7 @@ public sealed class PageHeaderTagHelper(HtmlEncoder encoder) : TagHelper
         ViewContext.ViewData[Flag] = true;
         var actions = (await output.GetChildContentAsync()).GetContent();
         output.TagName = "header";
+        output.TagMode = TagMode.StartTagAndEndTag; // written self-closing, it still renders its content
         output.Attributes.SetAttribute("class", "page-header");
         var title = encoder.Encode(Title ?? ViewContext.ViewData["Title"]?.ToString() ?? "");
         var description = Description is null ? "" : $"<p class=\"page-description\">{encoder.Encode(Description)}</p>";

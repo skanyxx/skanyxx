@@ -6,18 +6,23 @@
 }
 @if (Model.Error is not null)
 {
-    <p class="text-error" role="alert">@Model.Error</p>
+    <alert tone="error">@Model.Error</alert>
 }
 @if (Model.Invite is not null)
 {
-    <p class="text-muted">You are invited as <strong>@Model.Invite.Email</strong> with the role(s) @string.Join(", ", Model.Invite.Roles).</p>
-    <form method="post" class="auth-form" onsubmit="this.querySelector('button[type=submit]').disabled = true">
+    <p class="text-secondary">You are invited as <strong>@Model.Invite.Email</strong> with the role(s) @string.Join(", ", Model.Invite.Roles).</p>
+    <form method="post" class="form auth-form" data-once>
         <input type="hidden" asp-for="Token" />
         <input type="email" value="@Model.Invite.Email" autocomplete="username" readonly hidden />
-        <label asp-for="DisplayName">Display name (optional)</label>
-        <input asp-for="DisplayName" autocomplete="name" maxlength="100" />
-        <label asp-for="Password">Password (at least 12 characters)</label>
-        <input asp-for="Password" type="password" autocomplete="new-password" required minlength="12" maxlength="128" autofocus />
+        <div class="field">
+            <label asp-for="DisplayName">Display name <span class="field-optional">(optional)</span></label>
+            <input asp-for="DisplayName" autocomplete="name" maxlength="100" />
+        </div>
+        <div class="field">
+            <label asp-for="Password">Password</label>
+            <input asp-for="Password" type="password" autocomplete="new-password" required minlength="12" maxlength="128" autofocus aria-describedby="Password-hint" />
+            <p class="field-hint" id="Password-hint">At least 12 characters.</p>
+        </div>
         <button type="submit" class="btn btn-primary">Create account and sign in</button>
     </form>
 }

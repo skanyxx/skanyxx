@@ -3,106 +3,126 @@
 @{
     ViewData["Title"] = "Sandboxes";
 }
+<page-header description="Run a container in a sandbox on Google AX, watch it start, and stop it.">
+    <status-badge tone="warning" label="Experimental" />
+    @if (Model.Enabled)
+    {
+        <button type="button" class="btn btn-secondary" id="refresh"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>Refresh</button>
+        <button type="button" class="btn btn-primary" data-dialog-open="run-dialog"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Run a sandbox</button>
+    }
+</page-header>
 @await Component.InvokeAsync("SetupGuide", new { id = "sandboxes" })
-<p class="text-muted">
-    <span class="badge badge-warning">Experimental</span>
-    Run a container in a sandbox on Google AX, watch it start and stop it. AX is pre-1.0 and may change or break.
-</p>
-<p class="text-muted">Resume is unreliable on AX v0.3.1: if a resumed sandbox ends Failed, stop it and run it again.</p>
 
 @if (!Model.Enabled)
 {
     <div class="card" id="sandboxes-off">
-        <p>Sandboxes are off. Set <code>Sandboxes:Enabled</code> to <code>true</code> and point <code>Sandboxes:Address</code>
-            at an AX server (README, "Sandboxes on Google AX (Experimental)").</p>
+        <empty-state icon="i-sandbox" title="Sandboxes are off">
+            <p>An administrator turns them on for this install.</p>
+            <details class="details-admin mt-2">
+                <summary>Details for administrators</summary>
+                <p>Set <code>Sandboxes:Enabled</code> to <code>true</code> and point <code>Sandboxes:Address</code> at an AX server
+                    (README, "Sandboxes on Google AX (Experimental)").</p>
+            </details>
+        </empty-state>
     </div>
 }
 else
 {
     <section id="sandboxes" data-me="@Model.Me">
-        <p id="sandboxes-error" class="text-error" role="alert" hidden></p>
-        <p id="sandboxes-status" class="text-success" role="status" hidden></p>
+        <alert tone="warning">AX is pre-1.0 and may change or break. Resume is unreliable on AX v0.3.1: if a resumed sandbox ends Failed, stop it and run it again.</alert>
 
-        <div class="card mb-3">
-            <div class="card-header"><h3 class="card-title">Run a sandbox</h3></div>
-            <form id="run-form" class="flex flex-col gap-2">
-                <label for="run-name">Name (lowercase letters, digits and <code>-</code>)</label>
-                @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
-                <input id="run-name" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
-                <label for="run-image">Image (full reference; the allowed prefixes are suggested)</label>
-                <input id="run-image" required list="allowed-images" autocomplete="off" />
-                <datalist id="allowed-images">
-                    @foreach (var image in Model.AllowedImages)
-                    {
-                        <option value="@image"></option>
-                    }
-                </datalist>
-                <label for="run-command">Command, one argument per line, kept as typed (empty = the image's own)</label>
-                <textarea id="run-command" rows="3" spellcheck="false">sh
--c
-echo hello from a sandbox; sleep 300</textarea>
-                <div><button type="submit" class="btn btn-primary" id="run-button">Run</button></div>
-            </form>
-        </div>
-
-        <div class="card mb-3">
-            <div class="card-header flex items-center gap-2">
-                <h3 class="card-title">Sandboxes</h3>
-                <button type="button" class="btn btn-ghost" id="refresh">Refresh</button>
-            </div>
-            <div class="table-container">
-                <table>
+        <div class="card card-flush">
+            <div class="table-container" id="sandbox-table" hidden>
+                <table class="table table-stack">
                     <thead><tr><th scope="col">Name</th><th scope="col">Owner</th><th scope="col">Image</th><th scope="col">Phase</th><th scope="col" aria-label="Actions"></th></tr></thead>
                     <tbody id="sandbox-rows"></tbody>
                 </table>
             </div>
-            <p id="sandboxes-empty" class="text-muted" hidden>No sandboxes.</p>
-            <p id="sandboxes-capped" class="text-muted" hidden></p>
+            <div id="sandboxes-state"></div>
+            <div class="table-footer" id="sandboxes-capped" hidden></div>
         </div>
 
-        <div class="card" id="watch-card" hidden>
-            <div class="card-header"><h3 class="card-title">Watching <code id="watch-name"></code></h3></div>
-            <pre id="watch-log" role="log" aria-live="polite"></pre>
-        </div>
+        <dialog class="dialog" id="run-dialog" aria-labelledby="run-title">
+            <form id="run-form" class="dialog-form">
+                <div class="dialog-header">
+                    <h2 class="dialog-title" id="run-title">Run a sandbox</h2>
+                    <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
+                </div>
+                <div class="dialog-body form">
+                    <div class="alert alert-error" id="run-error" role="alert" hidden></div>
+                    <div class="field">
+                        <label for="run-name">Name</label>
+                        @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
+                        <input id="run-name" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" aria-describedby="run-name-hint" />
+                        <p class="field-hint" id="run-name-hint">Lowercase letters, digits and <code>-</code>.</p>
+                    </div>
+                    <div class="field">
+                        <label for="run-image">Image</label>
+                        <input id="run-image" required list="allowed-images" autocomplete="off" />
+                        <datalist id="allowed-images">
+                            @foreach (var image in Model.AllowedImages)
+                            {
+                                <option value="@image"></option>
+                            }
+                        </datalist>
+                        <p class="field-hint">The full reference; the allowed prefixes are suggested as you type.</p>
+                    </div>
+                    <div class="field">
+                        <label for="run-command">Command <span class="field-optional">(optional)</span></label>
+                        <textarea id="run-command" rows="3" spellcheck="false" aria-describedby="run-command-hint">sh
+-c
+echo hello from a sandbox; sleep 300</textarea>
+                        <p class="field-hint" id="run-command-hint">One argument per line, kept as typed. Empty runs the image's own command.</p>
+                    </div>
+                </div>
+                <div class="dialog-footer">
+                    <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="run-button">Run</button>
+                </div>
+            </form>
+        </dialog>
+
+        <dialog class="dialog dialog-side" id="watch-card" aria-labelledby="watch-title">
+            <div class="dialog-header">
+                <div>
+                    <h2 class="dialog-title" id="watch-title">Watching</h2>
+                    <p class="dialog-subtitle"><code id="watch-name"></code></p>
+                </div>
+                <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
+            </div>
+            <div class="dialog-body">
+                <p class="field-hint">AX reports start-up only: the watch ends once the sandbox is Running or Failed.</p>
+                <pre id="watch-log" class="log" role="log" aria-live="polite"></pre>
+            </div>
+        </dialog>
     </section>
 
     <script>
     (() => {
         const me = document.getElementById('sandboxes').dataset.me;
-        const errorBox = document.getElementById('sandboxes-error');
-        const statusBox = document.getElementById('sandboxes-status');
         const base = '/api/sandboxes';
         // The API pages its list (at most 100 a page); a full page says so rather than passing for the whole list.
         const listLimit = 100;
         let watching = null;
+        let loaded = false;
+        const listState = document.getElementById('sandboxes-state');
+        const watchDialog = document.getElementById('watch-card');
 
         // Values from the API are only ever set with textContent.
         const say = (box, text) => { box.textContent = text; box.hidden = !text; };
-        const fail = text => { say(statusBox, ''); say(errorBox, text); };
-        const done = text => { say(errorBox, ''); say(statusBox, text); };
+        const fail = text => skx.toast(text, { tone: 'error' });
+        const done = text => skx.toast(text);
 
-        const problemText = (problem, status) =>
-            problem.detail || problem.message
-            || (problem.errors ? Object.values(problem.errors).flat().join(' ') : '')
-            || problem.title || `HTTP ${status}`;
+        // The shared client (js/ui.js): problem+json becomes the error's message.
+        const call = (method, path, body) => skx.api(method, path, body);
 
-        // Content-Type only with a body: the API reads a JSON body whenever one is announced.
-        async function call(method, path, body) {
-            const init = { method };
-            if (body !== undefined) {
-                init.headers = { 'Content-Type': 'application/json' };
-                init.body = JSON.stringify(body);
-            }
-            const response = await fetch(path, init);
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok) throw new Error(problemText(data, response.status));
-            return data;
-        }
+        // AX phases in the shared status words, so Running is green and Failed red as everywhere else.
+        const phaseWord = s => s.suspended ? 'suspended' : ({ Running: 'running', Pending: 'pending', Succeeded: 'succeeded', Failed: 'failed', Suspended: 'suspended', Terminating: 'pending' })[s.phase] ?? 'unknown';
 
-        function button(label, name, action) {
+        function button(label, name, action, cls = 'btn btn-secondary btn-sm') {
             const b = document.createElement('button');
             b.type = 'button';
-            b.className = 'btn btn-ghost';
+            b.className = cls;
             b.textContent = label;
             b.setAttribute('aria-label', `${label} ${name}`);
             b.addEventListener('click', action);
@@ -117,8 +137,10 @@ echo hello from a sandbox; sleep 300</textarea>
         }
 
         async function load() {
+            if (!loaded) skx.state.loading(listState, { rows: 3 });
             try {
                 const sandboxes = await call('GET', `${base}?limit=${listLimit}`);
+                loaded = true;
                 const body = document.getElementById('sandbox-rows');
                 body.replaceChildren();
                 for (const s of sandboxes) {
@@ -127,22 +149,32 @@ echo hello from a sandbox; sleep 300</textarea>
                     cell(row, s.name);
                     cell(row, s.owner === me ? 'you' : (s.owner ?? '—'));
                     cell(row, s.image);
-                    cell(row, s.suspended ? `${s.phase} (suspended)` : s.phase);
-                    const actions = cell(row, '');
+                    cell(row, '').appendChild(skx.badge(phaseWord(s), s.suspended ? `${s.phase} (suspended)` : s.phase));
+                    const actions = document.createElement('div');
+                    actions.className = 'row-actions';
+                    cell(row, '').appendChild(actions);
                     actions.appendChild(button('Watch', s.name, () => watch(s.name)));
                     if ((s.phase === 'Pending' || s.phase === 'Running') && !s.suspended) actions.appendChild(button('Suspend', s.name, () => act(s.name, 'suspend')));
                     if (s.phase === 'Suspended') actions.appendChild(button('Resume', s.name, () => act(s.name, 'resume')));
-                    if (s.phase !== 'Terminating') actions.appendChild(button('Stop', s.name, () => {
-                        if (confirm(`Stop ${s.name}? AX deletes the sandbox.`)) act(s.name, 'stop');
-                    }));
+                    if (s.phase !== 'Terminating') actions.appendChild(button('Stop', s.name, async () => {
+                        if (await skx.confirm({ title: `Stop ${s.name}?`, body: 'AX deletes the sandbox and what ran in it.', confirm: 'Stop', danger: true })) act(s.name, 'stop');
+                    }, 'btn btn-danger-ghost btn-sm'));
                     body.appendChild(row);
                 }
-                document.getElementById('sandboxes-empty').hidden = sandboxes.length > 0;
+                document.getElementById('sandbox-table').hidden = sandboxes.length === 0;
+                if (sandboxes.length === 0) skx.state.empty(listState, {
+                    icon: 'i-sandbox', title: 'No sandboxes running',
+                    body: 'Run one to try an image in isolation; it is yours until you stop it.',
+                    action: { label: 'Run a sandbox', onClick: () => document.getElementById('run-dialog').showModal() }
+                });
+                else listState.replaceChildren();
                 const capped = document.getElementById('sandboxes-capped');
                 capped.textContent = `Showing the first ${listLimit} sandboxes.`;
                 capped.hidden = sandboxes.length < listLimit;
             } catch (e) {
-                fail(e.message);
+                if (loaded) return fail(`The sandboxes could not be refreshed: ${e.message}`);
+                document.getElementById('sandbox-table').hidden = true;
+                skx.state.error(listState, { title: 'The sandboxes could not be loaded', detail: e.message, retry: load });
             }
         }
 
@@ -162,7 +194,7 @@ echo hello from a sandbox; sleep 300</textarea>
             const log = document.getElementById('watch-log');
             log.textContent = '';
             document.getElementById('watch-name').textContent = name;
-            document.getElementById('watch-card').hidden = false;
+            if (!watchDialog.open) watchDialog.showModal();
             const line = text => { log.textContent += `${new Date().toLocaleTimeString()}  ${text}\n`; };
             const source = new EventSource(`${base}/${encodeURIComponent(name)}/watch`);
             watching = source;
@@ -204,19 +236,22 @@ echo hello from a sandbox; sleep 300</textarea>
             // Each line is one argument exactly as typed (spaces included); only blank lines are dropped.
             const command = document.getElementById('run-command').value.split('\n').map(s => s.replace(/\r$/, '')).filter(s => s.trim().length > 0);
             const runButton = document.getElementById('run-button');
-            runButton.disabled = true;
+            const runError = document.getElementById('run-error');
+            say(runError, '');
             try {
-                await call('PUT', `${base}/${encodeURIComponent(name)}`, command.length > 0 ? { image, command } : { image });
+                await skx.busy(runButton, call('PUT', `${base}/${encodeURIComponent(name)}`, command.length > 0 ? { image, command } : { image }));
+                document.getElementById('run-dialog').close();
                 done(`${name} started.`);
                 watch(name);
             } catch (e) {
-                fail(e.message);
-            } finally {
-                runButton.disabled = false;
+                say(runError, e.message);
+                return;
             }
             await load();
         });
 
+        // Closing the watch panel ends the stream: a watch counts against the person's few at a time.
+        watchDialog.addEventListener('close', () => { watching?.close(); watching = null; });
         document.getElementById('refresh').addEventListener('click', load);
         load();
     })();

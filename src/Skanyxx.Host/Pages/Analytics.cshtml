@@ -3,8 +3,9 @@
 @{
     ViewData["Title"] = "Analytics";
 }
+<page-header description="Tokens, chats and cache savings over time: yours, and for owners and supervisors their teams'." />
 <div class="insights" id="analytics" data-owner="@(Model.IsOwner ? "true" : "false")">
-    <div class="card mb-3 analytics-controls">
+    <div class="card analytics-controls">
         <nav aria-label="Scope" id="crumbs" class="crumbs"></nav>
         <div class="flex gap-2 items-center analytics-filters">
             <label for="scope-pick">View</label>
@@ -26,7 +27,7 @@
                 <button type="button" class="btn btn-secondary" id="export" title="Download the rows behind this view (counts only). Audited.">Export CSV</button>
             }
         </div>
-        <p id="error" class="text-error" role="alert" hidden></p>
+        <div id="error" class="alert alert-error mt-2" role="alert" hidden></div>
     </div>
 
     <section class="insights-section" aria-labelledby="totals-title">

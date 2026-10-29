@@ -20,6 +20,7 @@ public sealed class EmptyStateTagHelper(HtmlEncoder encoder) : TagHelper
     {
         var body = (await output.GetChildContentAsync()).GetContent();
         output.TagName = "div";
+        output.TagMode = TagMode.StartTagAndEndTag; // written self-closing, it still renders its content
         output.Attributes.SetAttribute("class", Compact ? "empty-state compact" : "empty-state");
         output.Content.SetHtmlContent(
             TagHelpers.Icon.Svg(Icon, "empty-state-icon")

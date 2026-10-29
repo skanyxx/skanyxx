@@ -355,7 +355,7 @@ svg[focusable="false"] {
   width: 100%;
 }
 
-/* ---------- Legacy components (pages not yet migrated keep these) ---------- */
+/* ---------- Cards and stats ---------- */
 .card {
   background-color: var(--surface-1);
   border: 1px solid var(--border);
@@ -433,7 +433,7 @@ svg[focusable="false"] {
 .btn-ghost { background-color: transparent; color: var(--text-2); }
 .btn-ghost:hover { background-color: var(--surface-2); color: var(--text); }
 
-.btn-danger { background-color: var(--danger-solid); color: oklch(1 0 0); }
+.btn-danger { background-color: var(--danger-solid); color: var(--text-on-danger); }
 .btn-danger:hover { filter: brightness(0.92); }
 
 .btn-danger-ghost { background: transparent; color: var(--danger); }
@@ -462,8 +462,11 @@ svg[focusable="false"] {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
-.btn-primary[aria-busy="true"]::after, .btn-danger[aria-busy="true"]::after {
+.btn-primary[aria-busy="true"]::after {
   border-color: var(--text-on-accent) transparent var(--text-on-accent) transparent;
+}
+.btn-danger[aria-busy="true"]::after {
+  border-color: var(--text-on-danger) transparent var(--text-on-danger) transparent;
 }
 
 /* ---------- Inputs ---------- */
@@ -664,28 +667,6 @@ pre {
 
 pre code { padding: 0; background: none; }
 
-/* ---------- Chat (the Chat page's own styles build on these) ---------- */
-.chat-container {
-  display: flex;
-  flex-direction: column;
-  height: calc(100vh - 140px);
-}
-
-.chat-messages { flex: 1; overflow-y: auto; padding: var(--space-4); }
-
-.chat-input-container {
-  padding: var(--space-4);
-  border-top: 1px solid var(--border);
-  display: flex;
-  gap: var(--space-3);
-}
-
-.chat-input { flex: 1; }
-
-/* The chat-layout preference: hide the agent details and the usage panel. */
-html[data-chat-details="hidden"] .agent-details,
-html[data-chat-details="hidden"] .analytics-panel { display: none; }
-
 /* ---------- Sign-in pages ---------- */
 .auth-page {
   display: flex;
@@ -706,7 +687,6 @@ html[data-chat-details="hidden"] .analytics-panel { display: none; }
   margin-top: var(--space-4);
 }
 
-.auth-form label { font-weight: var(--weight-medium); font-size: var(--text-sm); margin-top: var(--space-2); }
 .auth-form button { margin-top: var(--space-3); }
 .auth-card > p { margin-top: var(--space-3); }
 

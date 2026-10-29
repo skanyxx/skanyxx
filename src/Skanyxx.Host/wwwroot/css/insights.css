@@ -1,45 +1,40 @@
 /*
- * Dashboard and Analytics. Colours are tokens only: the charts read --chart-1 … --chart-8 and --status-* from the
- * document at render time (insights.js) and redraw when the theme changes, so a theme overrides these and nothing else.
- * Every theme in tokens.css defines them.
+ * Dashboard, Analytics and the Audit explorer: the pages with charts. Colours are tokens only: the charts read
+ * --chart-1 … --chart-8 and --status-* from the document at render time (insights.js, the Audit script) and redraw when
+ * the theme changes, so a theme overrides these and nothing else. Every theme in tokens.css defines them.
  */
 .insights-section {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-6);
 }
 
 .insights-title {
-  font-size: 15px;
-  font-weight: 600;
-  margin-bottom: 12px;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-3);
 }
 
 .tile-grid,
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .health-tile {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-left: 4px solid var(--status-off);
-  border-radius: 8px;
-  padding: 14px 16px;
+  background-color: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
-
-.health-tile[data-status="ok"] { border-left-color: var(--status-ok); }
-.health-tile[data-status="warn"] { border-left-color: var(--status-warn); }
-.health-tile[data-status="down"] { border-left-color: var(--status-down); }
 
 .health-tile .tile-head {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 600;
+  gap: var(--space-2);
+  font-weight: var(--weight-semibold);
 }
 
 .status-dot {
@@ -53,40 +48,41 @@
 .health-tile[data-status="ok"] .status-dot { background-color: var(--status-ok); }
 .health-tile[data-status="warn"] .status-dot { background-color: var(--status-warn); }
 .health-tile[data-status="down"] .status-dot { background-color: var(--status-down); }
+.health-tile[data-status="down"] { border-color: var(--status-down); }
 
-.health-tile .tile-summary { color: var(--text-secondary); }
-.health-tile .tile-reason { color: var(--text-muted); font-size: 13px; }
-.health-tile ol { margin: 0 0 0 18px; font-size: 13px; color: var(--text-secondary); }
-.health-tile .tile-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
+.health-tile .tile-summary { color: var(--text-2); }
+.health-tile .tile-reason { color: var(--text-3); font-size: var(--text-sm); }
+.health-tile ol { margin: 0 0 0 var(--space-5); font-size: var(--text-sm); color: var(--text-2); overflow-wrap: anywhere; }
+.health-tile .tile-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
 
 .stat-tile {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 14px 16px;
+  background-color: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
 }
 
-.stat-tile .stat-value { font-size: 22px; }
-.stat-tile .stat-delta { font-size: 12px; color: var(--text-muted); }
-.stat-tile .sparkline { height: 36px; margin-top: 6px; }
+.stat-tile .stat-value { font-size: var(--text-xl); overflow-wrap: anywhere; }
+.stat-tile .stat-delta { font-size: var(--text-xs); color: var(--text-3); }
+.stat-tile .sparkline { height: 36px; margin-top: var(--space-1); }
 
 .chart-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: var(--space-3);
 }
 
 .chart-card {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  padding: 14px 16px;
+  background-color: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
   margin: 0;
 }
 
 .chart-card figcaption {
-  font-weight: 600;
-  margin-bottom: 8px;
+  font-weight: var(--weight-semibold);
+  margin-bottom: var(--space-2);
 }
 
 .chart-box {
@@ -95,59 +91,104 @@
 }
 
 .chart-empty {
-  color: var(--text-muted);
-  padding: 24px 0;
+  color: var(--text-3);
+  padding: var(--space-6) 0;
 }
 
 .top-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
+  gap: var(--space-3);
 }
 
 .alert-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 
 .alert-list li {
-  border-left: 3px solid var(--status-off);
-  padding: 4px 10px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
 }
 
-.alert-list li[data-severity="warn"] { border-left-color: var(--status-warn); }
-.alert-list li[data-severity="down"] { border-left-color: var(--status-down); }
+.alert-list li::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--status-off);
+}
+
+.alert-list li[data-severity="warn"]::before { background: var(--status-warn); }
+.alert-list li[data-severity="down"]::before { background: var(--status-down); }
+.alert-list li.is-empty::before { content: none; }
 
 .cost-disclaimer {
-  margin-top: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--status-warn);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  font-size: 13px;
+  margin-top: var(--space-2);
+  color: var(--text-2);
+  font-size: var(--text-xs);
 }
 
 .analytics-filters { flex-wrap: wrap; }
 
+.segmented { display: inline-flex; border: 1px solid var(--border-strong); border-radius: var(--radius-md); overflow: hidden; }
+.segmented .btn { border-radius: 0; }
 .segmented .btn[aria-pressed="true"] {
-  background-color: var(--accent-color);
-  color: var(--text-primary);
+  background-color: var(--accent-solid);
+  color: var(--text-on-accent);
 }
 
-.crumbs { margin-bottom: 8px; color: var(--text-secondary); }
-.crumbs button { background: none; border: none; color: var(--accent-color); cursor: pointer; padding: 0; font: inherit; }
+.crumbs { margin-bottom: var(--space-2); color: var(--text-2); }
+.crumbs button { background: none; border: none; color: var(--accent-text); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 table.sortable th { cursor: pointer; user-select: none; }
 table.sortable th[aria-sort="ascending"]::after { content: " \25B2"; }
 table.sortable th[aria-sort="descending"]::after { content: " \25BC"; }
 table.sortable td.num, table.sortable th.num { text-align: right; }
-table.sortable td button { background: none; border: none; color: var(--accent-color); cursor: pointer; padding: 0; font: inherit; }
+table.sortable td button { background: none; border: none; color: var(--accent-text); cursor: pointer; padding: 0; font: inherit; text-decoration: underline; text-underline-offset: 2px; }
 
 /* site.css's .flex would otherwise beat the hidden attribute. */
 .insights [hidden] { display: none !important; }
 .analytics-filters select { width: auto; min-width: 240px; }
 .analytics-filters label { white-space: nowrap; }
-.stat-tile .stat-value { overflow-wrap: anywhere; }
-.health-tile ol { overflow-wrap: anywhere; }
+
+/* ---------- Audit explorer ---------- */
+.audit-row { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+.audit-row > input, .audit-row > select, .audit-row > span > input { width: auto; }
+.audit-row #q { flex: 1 1 320px; }
+.audit-row .spacer { flex: 1; }
+.audit-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-top: var(--space-2); }
+.audit-chips:empty { display: none; }
+.audit-chip { display: inline-flex; gap: var(--space-1); align-items: center; padding: 2px var(--space-1) 2px var(--space-3); border-radius: var(--radius-pill); background: var(--accent-tint); color: var(--accent-text); border: 1px solid var(--accent-text); font-size: var(--text-xs); font-weight: var(--weight-medium); }
+.audit-chip.exclude { background: var(--danger-tint); color: var(--danger); border-color: var(--danger); }
+.audit-chip button, .audit-value button { background: none; border: 0; color: inherit; cursor: pointer; padding: 0 var(--space-1); font-size: var(--text-base); line-height: 1; }
+.audit-value button { color: var(--text-2); }
+.audit-histogram { position: relative; height: 180px; margin-top: var(--space-2); }
+.audit-brush { position: absolute; top: 0; bottom: 0; background: var(--accent-tint); pointer-events: none; }
+.audit-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.audit-fields h5 { margin: var(--space-3) 0 var(--space-1); font-size: var(--text-xs); color: var(--text-3); }
+.audit-value { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; font-size: var(--text-xs); gap: 2px; }
+.audit-value span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audit-bar { grid-column: 1 / -1; height: 3px; background: var(--chart-1); border-radius: 2px; margin-bottom: var(--space-1); }
+.audit-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+.audit-chart { height: 220px; display: flex; flex-direction: column; padding: var(--space-3); margin: 0; }
+.audit-chart h3 { font-size: var(--text-sm); font-weight: var(--weight-semibold); margin-bottom: var(--space-1); }
+.audit-chart canvas { flex: 1; min-height: 0; }
+.audit-table tbody tr.audit-hit { cursor: pointer; }
+.audit-table tbody tr.audit-hit:focus-visible { outline: 2px solid var(--accent-text); outline-offset: -2px; }
+.audit-detail td { background: var(--surface-0); }
+.audit-detail dl { display: grid; grid-template-columns: max-content minmax(0, 1fr) auto; gap: var(--space-1) var(--space-3); font-size: var(--text-xs); margin-bottom: var(--space-2); }
+.audit-detail dt { color: var(--text-3); }
+.audit-detail dd { overflow-wrap: anywhere; }
+.audit-detail pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--text-xs); padding: var(--space-2); }
+.audit-sort { background: none; border: 0; color: inherit; font: inherit; cursor: pointer; padding: 0; }
+.audit-more { width: 100%; margin-top: var(--space-2); }
+@media (max-width: 900px) { .audit-layout { grid-template-columns: 1fr; } }

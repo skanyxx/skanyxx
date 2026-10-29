@@ -3,113 +3,239 @@
 @{
     ViewData["Title"] = "Org";
 }
+<page-header description="Departments contain teams, and people belong to teams. Company memory is shared along these lines: a team's cards, a department's cards.">
+    @if (Model.Departments.Count > 0)
+    {
+        <button type="button" class="btn btn-secondary" data-dialog-open="new-team"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New team</button>
+    }
+    <button type="button" class="btn btn-primary" data-dialog-open="new-department"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New department</button>
+</page-header>
 @if (Model.Error is not null)
 {
-    <p class="text-error" role="alert">@Model.Error</p>
+    <alert tone="error">@Model.Error</alert>
 }
 @if (Model.Message is not null)
 {
-    <p class="text-success" role="status">@Model.Message</p>
+    <alert tone="success">@Model.Message</alert>
 }
-<p class="text-muted">
-    Departments contain teams; people belong to teams, and to a team's department through it. Memory's
-    <code>team:&lt;slug&gt;</code> and <code>department:&lt;slug&gt;</code> scopes are these. A slug never changes.
-    A disabled person stays in their teams but cannot sign in; enabling them restores their team access.
-</p>
 
-<div class="card mb-3">
-    <div class="card-header"><h3 class="card-title">New department</h3></div>
-    <form method="post" asp-page-handler="CreateDepartment" class="flex gap-2 items-center">
-        <input name="slug" placeholder="slug, e.g. finance" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@\-]{0,127}" autocomplete="off" />
-        <input name="name" placeholder="Name" required maxlength="100" autocomplete="off" />
-        <button type="submit" class="btn btn-primary">Create department</button>
-    </form>
-</div>
-
-@if (Model.Departments.Count > 0)
+@if (Model.Departments.Count == 0)
 {
-    <div class="card mb-3">
-        <div class="card-header"><h3 class="card-title">New team</h3></div>
-        <form method="post" asp-page-handler="CreateTeam" class="flex gap-2 items-center">
-            <input name="slug" placeholder="slug, e.g. billing" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@\-]{0,127}" autocomplete="off" />
-            <input name="name" placeholder="Name" required maxlength="100" autocomplete="off" />
-            <select name="department" required>
-                @foreach (var department in Model.Departments)
-                {
-                    <option value="@department.Slug">@department.Name (@department.Slug)</option>
-                }
-            </select>
-            <button type="submit" class="btn btn-primary">Create team</button>
-        </form>
+    <div class="card">
+        <empty-state icon="i-org" title="No departments yet">
+            <ol class="steps mt-2">
+                <li class="step" data-state="current"><div><div class="step-title">Create a department</div><div class="step-body">For example Finance. Its short name (slug) never changes.</div></div></li>
+                <li class="step"><div><div class="step-title">Add its teams and their people</div><div class="step-body">People see their teams' and departments' cards in the Library.</div></div></li>
+            </ol>
+            <div class="empty-state-actions"><button type="button" class="btn btn-primary" data-dialog-open="new-department">New department</button></div>
+        </empty-state>
     </div>
 }
 
 @foreach (var department in Model.Departments)
 {
-    <div class="table-container card mb-3">
-        <div class="card-header">
-            <h3 class="card-title">@department.Name <span class="text-muted">department:@department.Slug</span></h3>
-            <form method="post" asp-page-handler="RenameDepartment" asp-route-slug="@department.Slug" class="flex gap-2 items-center">
-                <input name="name" value="@department.Name" required maxlength="100" aria-label="Department name" />
-                <button type="submit" class="btn btn-secondary">Rename</button>
-            </form>
+    var teams = Model.Teams.Where(t => t.Department == department.Slug).ToList();
+    <section class="section" aria-labelledby="dept-@department.Slug">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title" id="dept-@department.Slug">@department.Name</h2>
+                <p class="section-description">Memory scope <code>department:@department.Slug</code></p>
+            </div>
+            <button type="button" class="btn btn-secondary btn-sm" data-dialog-open="rename-@department.Slug">Rename</button>
         </div>
-        <table>
-            <thead>
-                <tr><th>Team</th><th>Members</th><th>Add a member</th></tr>
-            </thead>
-            <tbody>
-                @foreach (var team in Model.Teams.Where(t => t.Department == department.Slug))
-                {
-                    <tr>
-                        <td>
-                            <span class="text-muted">team:@team.Slug</span>
-                            <form method="post" asp-page-handler="UpdateTeam" asp-route-slug="@team.Slug" class="flex gap-2 items-center">
-                                <input name="name" value="@team.Name" required maxlength="100" aria-label="Team name" />
-                                <select name="department" aria-label="Department">
-                                    @foreach (var d in Model.Departments)
-                                    {
-                                        <option value="@d.Slug" selected="@(d.Slug == team.Department)">@d.Name</option>
-                                    }
-                                </select>
-                                <button type="submit" class="btn btn-secondary">Save</button>
-                            </form>
-                        </td>
-                        <td>
-                            @foreach (var member in team.Members)
+        <div class="card card-flush">
+            @if (teams.Count == 0)
+            {
+                <empty-state icon="i-users" title="No teams in @department.Name yet" compact="true">
+                    <div class="empty-state-actions"><button type="button" class="btn btn-secondary" data-dialog-open="new-team">New team</button></div>
+                </empty-state>
+            }
+            else
+            {
+                <div class="table-container">
+                    <table class="table table-stack">
+                        <thead>
+                            <tr><th scope="col">Team</th><th scope="col">Members</th><th scope="col" aria-label="Actions"></th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var team in teams)
                             {
-                                <form method="post" asp-page-handler="RemoveMember" asp-route-slug="@team.Slug" asp-route-userId="@member" class="flex gap-2 items-center">
-                                    <span>@Model.NameOf(member)</span>
-                                    @if (Model.IsEntraManaged(member))
-                                    {
-                                        <span class="badge badge-info" title="Teams are rewritten from the Entra group mapping at each Microsoft sign-in">managed by Entra</span>
-                                    }
-                                    @if (Model.IsDisabled(member))
-                                    {
-                                        <span class="badge badge-warning" title="Keeps the membership; it counts again once the account is enabled">disabled</span>
-                                    }
-                                    <button type="submit" class="btn btn-ghost">Remove</button>
-                                </form>
-                            }
-                        </td>
-                        <td>
-                            @{ var members = team.Members.ToHashSet(); var candidates = Model.People.Where(p => !p.Disabled && !members.Contains(p.Id)).ToList(); }
-                            @if (candidates.Count > 0)
-                            {
-                                <form method="post" asp-page-handler="AddMember" asp-route-slug="@team.Slug" class="flex gap-2 items-center">
-                                    <select name="userId" aria-label="Person">
-                                        @foreach (var person in candidates)
+                                <tr>
+                                    <td>@team.Name<span class="table-cell-sub"><code>team:@team.Slug</code></span></td>
+                                    <td>
+                                        @if (team.Members.Count == 0)
                                         {
-                                            <option value="@person.Id">@(person.DisplayName ?? person.Email)</option>
+                                            <span class="text-muted">No members</span>
                                         }
-                                    </select>
-                                    <button type="submit" class="btn btn-secondary">Add</button>
-                                </form>
+                                        <span class="badges">
+                                            @foreach (var member in team.Members)
+                                            {
+                                                <span class="badge badge-neutral">@Model.NameOf(member)</span>
+                                            }
+                                        </span>
+                                    </td>
+                                    <td><div class="row-actions"><button type="button" class="btn btn-secondary btn-sm" data-dialog-open="team-@team.Slug" aria-label="Edit team @team.Name">Edit</button></div></td>
+                                </tr>
                             }
-                        </td>
-                    </tr>
-                }
-            </tbody>
-        </table>
-    </div>
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </section>
+
+    <dialog class="dialog" id="rename-@department.Slug" aria-labelledby="rename-title-@department.Slug">
+        <form method="post" asp-page-handler="RenameDepartment" asp-route-slug="@department.Slug" class="dialog-form" data-once>
+            <div class="dialog-header"><h2 class="dialog-title" id="rename-title-@department.Slug">Rename @department.Name</h2></div>
+            <div class="dialog-body">
+                <div class="field">
+                    <label for="dept-name-@department.Slug">Name</label>
+                    <input id="dept-name-@department.Slug" name="name" value="@department.Name" required maxlength="100" aria-label="Department name" />
+                    <p class="field-hint">The scope <code>department:@department.Slug</code> keeps its slug.</p>
+                </div>
+            </div>
+            <div class="dialog-footer">
+                <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+                <button type="submit" class="btn btn-primary">Rename</button>
+            </div>
+        </form>
+    </dialog>
 }
+
+@foreach (var team in Model.Teams)
+{
+    var members = team.Members.ToHashSet();
+    var candidates = Model.People.Where(p => !p.Disabled && !members.Contains(p.Id)).ToList();
+    <dialog class="dialog dialog-side" id="team-@team.Slug" aria-labelledby="team-title-@team.Slug">
+        <div class="dialog-header">
+            <div>
+                <h2 class="dialog-title" id="team-title-@team.Slug">@team.Name</h2>
+                <p class="dialog-subtitle">Memory scope <code>team:@team.Slug</code></p>
+            </div>
+            <button type="button" class="btn btn-ghost btn-icon" data-dialog-close aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
+        </div>
+        <div class="dialog-body">
+            <form method="post" asp-page-handler="UpdateTeam" asp-route-slug="@team.Slug" class="form" data-once>
+                <div class="field">
+                    <label for="team-name-@team.Slug">Name</label>
+                    <input id="team-name-@team.Slug" name="name" value="@team.Name" required maxlength="100" aria-label="Team name" />
+                </div>
+                <div class="field">
+                    <label for="team-dept-@team.Slug">Department</label>
+                    <select id="team-dept-@team.Slug" name="department" aria-label="Department">
+                        @foreach (var d in Model.Departments)
+                        {
+                            <option value="@d.Slug" selected="@(d.Slug == team.Department)">@d.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="form-actions"><button type="submit" class="btn btn-primary">Save</button></div>
+            </form>
+
+            <section>
+                <h3 class="section-title mb-1">Members</h3>
+                @if (team.Members.Count == 0)
+                {
+                    <p class="text-muted text-sm">Nobody in this team yet.</p>
+                }
+                <ul class="list-plain">
+                    @foreach (var member in team.Members)
+                    {
+                        <li class="subcard-head">
+                            <span class="badges">
+                                @Model.NameOf(member)
+                                @if (Model.IsEntraManaged(member))
+                                {
+                                    <span class="badge badge-info" title="Teams are rewritten from the Entra group mapping at each Microsoft sign-in">managed by Entra</span>
+                                }
+                                @if (Model.IsDisabled(member))
+                                {
+                                    <span class="badge badge-warning" title="Keeps the membership; it counts again once the account is enabled">disabled</span>
+                                }
+                            </span>
+                            <form method="post" asp-page-handler="RemoveMember" asp-route-slug="@team.Slug" asp-route-userId="@member"
+                                  data-confirm="@Model.NameOf(member) loses access to the team's cards. You can add them again." data-confirm-title="Remove from @team.Name?"
+                                  data-confirm-action="Remove" data-danger>
+                                <button type="submit" class="btn btn-danger-ghost btn-sm">Remove</button>
+                            </form>
+                        </li>
+                    }
+                </ul>
+            </section>
+
+            @if (candidates.Count > 0)
+            {
+                <form method="post" asp-page-handler="AddMember" asp-route-slug="@team.Slug" class="form" data-once>
+                    <div class="field">
+                        <label for="team-add-@team.Slug">Add a member</label>
+                        <div class="inline-form">
+                            <select id="team-add-@team.Slug" name="userId" aria-label="Person" class="w-auto">
+                                @foreach (var person in candidates)
+                                {
+                                    <option value="@person.Id">@(person.DisplayName ?? person.Email)</option>
+                                }
+                            </select>
+                            <button type="submit" class="btn btn-secondary">Add</button>
+                        </div>
+                    </div>
+                </form>
+            }
+        </div>
+    </dialog>
+}
+
+<dialog class="dialog" id="new-department" aria-labelledby="new-department-title">
+    <form method="post" asp-page-handler="CreateDepartment" class="dialog-form" data-once>
+        <div class="dialog-header"><h2 class="dialog-title" id="new-department-title">New department</h2></div>
+        <div class="dialog-body form">
+            <div class="field">
+                <label for="dept-new-name">Name</label>
+                <input id="dept-new-name" name="name" placeholder="Finance" required maxlength="100" autocomplete="off" />
+            </div>
+            <div class="field">
+                <label for="dept-new-slug">Short name (slug)</label>
+                <input id="dept-new-slug" name="slug" placeholder="finance" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@\-]{0,127}" autocomplete="off" aria-describedby="dept-new-slug-hint" />
+                <p class="field-hint" id="dept-new-slug-hint">Lowercase letters and digits. It names the memory scope and never changes.</p>
+            </div>
+        </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+            <button type="submit" class="btn btn-primary">Create department</button>
+        </div>
+    </form>
+</dialog>
+
+@if (Model.Departments.Count > 0)
+{
+    <dialog class="dialog" id="new-team" aria-labelledby="new-team-title">
+        <form method="post" asp-page-handler="CreateTeam" class="dialog-form" data-once>
+            <div class="dialog-header"><h2 class="dialog-title" id="new-team-title">New team</h2></div>
+            <div class="dialog-body form">
+                <div class="field">
+                    <label for="team-new-name">Name</label>
+                    <input id="team-new-name" name="name" placeholder="Billing" required maxlength="100" autocomplete="off" />
+                </div>
+                <div class="field">
+                    <label for="team-new-slug">Short name (slug)</label>
+                    <input id="team-new-slug" name="slug" placeholder="billing" required maxlength="128" pattern="[a-z0-9][a-z0-9._@@\-]{0,127}" autocomplete="off" aria-describedby="team-new-slug-hint" />
+                    <p class="field-hint" id="team-new-slug-hint">Lowercase letters and digits. It names the memory scope and never changes.</p>
+                </div>
+                <div class="field">
+                    <label for="team-new-dept">Department</label>
+                    <select id="team-new-dept" name="department" required>
+                        @foreach (var department in Model.Departments)
+                        {
+                            <option value="@department.Slug">@department.Name (@department.Slug)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="dialog-footer">
+                <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
+                <button type="submit" class="btn btn-primary">Create team</button>
+            </div>
+        </form>
+    </dialog>
+}
+
+<p class="field-hint mt-4">A disabled person stays in their teams but cannot sign in; enabling them restores their team access.</p>

@@ -26,6 +26,9 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
 
     public LibraryShelf Shelf { get; private set; } = new([], []);
 
+    /// <summary>False when the list itself could not be read: the page then says so instead of showing an empty shelf.</summary>
+    public bool ShelfLoaded { get; private set; }
+
     public LibraryCard? Opened { get; private set; }
 
     /// <summary>What the last action did; carried across its redirect (post/redirect/get).</summary>
@@ -95,7 +98,10 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
     {
         var shelf = await ValidatedAsync(() => mediator.Send(new BrowseLibraryQuery(LibraryUser.From(User), Q?.Trim(), Filter), ct));
         if (shelf?.Value is { } value)
+        {
             Shelf = value;
+            ShelfLoaded = true;
+        }
         else if (shelf is not null)
             Fail(shelf);
     }

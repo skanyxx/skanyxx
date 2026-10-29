@@ -3,177 +3,201 @@
 @{
     ViewData["Title"] = "Agents";
 }
+<page-header description="The assistants people chat with. Open one to see what it can do, or make a new one.">
+    <button type="button" class="btn btn-secondary" id="refresh"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>Refresh</button>
+    <button type="button" class="btn btn-primary" id="new-agent">@(Model.CanWrite ? "New agent" : "Propose an agent")</button>
+</page-header>
 
 <section id="agents" data-can-write="@(Model.CanWrite ? "true" : "false")" data-can-propose-changes="@(Model.CanProposeChanges ? "true" : "false")">
     <div id="guides"></div>
-    <p id="agents-error" class="text-error" role="alert" hidden></p>
-    <p id="agents-status" class="text-success" role="status" hidden></p>
+    @if (!Model.CanWrite)
+    {
+        <alert tone="info">You cannot change a live agent: the form sends your agent to a supervisor as a Studio proposal.</alert>
+    }
 
     @* ---------- List (kagent-ui: /agents) ---------- *@
     <div id="list-view">
-        <div class="card mb-3">
-            <div class="card-header flex items-center gap-2 agents-toolbar">
-                <h3 class="card-title">Agents <span id="agent-count" class="text-muted"></span></h3>
+        <div class="toolbar" role="search">
+            <div class="search">
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg>
                 <input id="search" type="search" placeholder="Search agents" aria-label="Search agents" autocomplete="off" />
-                <select id="filter-type" aria-label="Filter by type">
-                    <option value="">All types</option>
-                    <option value="Declarative">Declarative</option>
-                    <option value="BYO">BYO</option>
-                </select>
-                <select id="filter-status" aria-label="Filter by status">
-                    <option value="">Any status</option>
-                    <option value="ready">Ready</option>
-                    <option value="starting">Starting</option>
-                    <option value="not-ready">Not ready</option>
-                    <option value="suspended">Suspended</option>
-                </select>
-                <button type="button" class="btn btn-ghost" id="refresh">Refresh</button>
-                <button type="button" class="btn btn-primary" id="new-agent">@(Model.CanWrite ? "New agent" : "Propose an agent")</button>
             </div>
-            <p class="text-muted">
-                The agents in kagent. Agents made in Studio change only through a Studio proposal (git is their source of truth),
-                and Skanyxx's own agents (the seed, the factory) cannot be changed here.
-                @if (!Model.CanWrite)
-                {
-                    <span>You cannot change a live agent: the form sends your agent to a supervisor as a Studio proposal.</span>
-                }
-            </p>
+            <select id="filter-type" aria-label="Filter by type">
+                <option value="">All types</option>
+                <option value="Declarative">Declarative</option>
+                <option value="BYO">BYO</option>
+            </select>
+            <select id="filter-status" aria-label="Filter by status">
+                <option value="">Any status</option>
+                <option value="ready">Ready</option>
+                <option value="starting">Starting</option>
+                <option value="not-ready">Not ready</option>
+                <option value="suspended">Suspended</option>
+            </select>
+            <span class="spacer"></span>
+            <span id="agent-count" class="text-muted text-sm" role="status" aria-live="polite"></span>
         </div>
-        <div id="agent-grid" class="agent-grid"></div>
-        <p id="agents-empty" class="text-muted" hidden>No agents you can see.</p>
-        <p id="agents-nomatch" class="text-muted" hidden>No agent matches the search.</p>
+        <div id="agent-grid" class="card-grid" aria-label="Agents"></div>
+        <p class="field-hint mt-2">Agents made in Studio change only through a Studio proposal, and Skanyxx's own agents (the seed, the factory) cannot be changed here.</p>
     </div>
 
     @* ---------- Details (kagent-ui: agent page) ---------- *@
     <div id="detail-view" hidden>
-        <div class="card mb-3">
-            <div class="card-header flex items-center gap-2">
-                <button type="button" class="btn btn-ghost" id="detail-back">← Agents</button>
-                <h3 class="card-title"><span id="detail-name"></span> <span id="detail-ns" class="text-muted"></span></h3>
-                <span id="detail-badges" class="flex gap-1"></span>
+        <div class="card">
+            <div class="card-header">
+                <div>
+                    <button type="button" class="btn btn-ghost btn-sm" id="detail-back"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-left"/></svg>All agents</button>
+                    <h2 class="card-title mt-1"><span id="detail-name"></span> <span id="detail-ns" class="text-muted"></span></h2>
+                </div>
+                <span id="detail-badges" class="badges"></span>
             </div>
             <p id="detail-description"></p>
-            <p id="detail-protection" class="text-muted" hidden></p>
-            <div id="detail-actions" class="flex gap-2 mt-2"></div>
+            <p id="detail-protection" class="field-hint" hidden></p>
+            <div id="detail-actions" class="form-actions mt-2"></div>
         </div>
-        <div class="agent-detail-grid">
-            <div class="card" id="d-prompt-card"><h4>System message</h4><pre id="d-prompt" class="agent-prompt"></pre></div>
-            <div class="card"><h4>Model</h4><dl id="d-model" class="agent-fields"></dl></div>
-            <div class="card"><h4>Tools</h4><div id="d-tools"></div></div>
-            <div class="card"><h4>Skills</h4><div id="d-skills"></div></div>
-            <div class="card"><h4>Memory</h4><div id="d-memory"></div></div>
-            <div class="card"><h4>A2A skills</h4><div id="d-a2a"></div></div>
-            <div class="card"><h4>Deployment</h4><dl id="d-deployment" class="agent-fields"></dl></div>
-            <div class="card"><h4>Recent sessions</h4><div id="d-sessions"></div></div>
+        <div class="card-grid wide">
+            <div class="card" id="d-prompt-card"><h3 class="section-title mb-1">System message</h3><pre id="d-prompt" class="text-block"></pre></div>
+            <div class="card"><h3 class="section-title mb-1">Model</h3><dl id="d-model" class="kv"></dl></div>
+            <div class="card"><h3 class="section-title mb-1">Tools</h3><div id="d-tools"></div></div>
+            <div class="card"><h3 class="section-title mb-1">Skills</h3><div id="d-skills"></div></div>
+            <div class="card"><h3 class="section-title mb-1">Memory</h3><div id="d-memory"></div></div>
+            <div class="card"><h3 class="section-title mb-1">A2A skills</h3><div id="d-a2a"></div></div>
+            <div class="card"><h3 class="section-title mb-1">Deployment</h3><dl id="d-deployment" class="kv"></dl></div>
+            <div class="card"><h3 class="section-title mb-1">Recent sessions</h3><div id="d-sessions"></div></div>
         </div>
     </div>
 
     @* ---------- Create / edit / propose (kagent-ui: /agents/new) ---------- *@
     <div id="form-view" hidden>
-        <form id="agent-form" class="flex flex-col gap-3" novalidate>
-            <div class="card">
-                <div class="card-header flex items-center gap-2">
-                    <button type="button" class="btn btn-ghost" id="f-back">← Agents</button>
-                    <h3 class="card-title" id="form-title">New agent</h3>
-                </div>
-                <p id="f-mode-note" class="text-muted" hidden>
+        <form id="agent-form" class="form" novalidate>
+            <div>
+                <button type="button" class="btn btn-ghost btn-sm" id="f-back"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-arrow-left"/></svg>All agents</button>
+                <h2 class="section-title mt-1" id="form-title">New agent</h2>
+                <p id="f-mode-note" class="section-description" hidden>
                     You cannot change a live agent, so this form opens a Studio proposal: a supervisor reviews it, and it is live only once merged.
                 </p>
-                <p class="field-error" data-error="form" role="alert" hidden></p>
+            </div>
+            <div class="alert alert-error" role="alert" data-error-box hidden>
+                <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-alert-circle"/></svg>
+                <div class="alert-body field-error-text" data-error="form"></div>
             </div>
 
-            <fieldset class="card agent-section">
+            <fieldset class="form-section">
                 <legend>Basic information</legend>
-                <label for="f-name">Agent name (lowercase letters, digits and <code>-</code>, starting with a letter)</label>
-                @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
-                <input id="f-name" required maxlength="63" pattern="[a-z]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" />
-                <p class="field-error" data-error="name" hidden></p>
-                <label for="f-namespace">Namespace</label>
-                <input id="f-namespace" readonly />
-                <p class="field-error" data-error="namespace" hidden></p>
-                <label for="f-description">Description (one line)</label>
-                <input id="f-description" maxlength="500" autocomplete="off" />
-                <p class="field-error" data-error="description" hidden></p>
-                <span>Agent type</span>
-                <div class="flex gap-3">
-                    <label><input type="radio" name="f-type" value="Declarative" checked /> Declarative</label>
-                    <label><input type="radio" name="f-type" value="BYO" disabled /> BYO (bring your own container)</label>
+                <div class="field">
+                    <label for="f-name">Agent name</label>
+                    @* Browsers compile pattern with the v flag, where a literal "-" in a class must be escaped. *@
+                    <input id="f-name" required maxlength="63" pattern="[a-z]([a-z0-9\-]*[a-z0-9])?" autocomplete="off" aria-describedby="f-name-hint" />
+                    <p class="field-hint" id="f-name-hint">Lowercase letters, digits and <code>-</code>, starting with a letter.</p>
+                    <p class="field-error" data-error="name" hidden></p>
                 </div>
-                <p class="text-muted">BYO agents are deployed where they were made (their image is never set here); Skanyxx creates and edits Declarative agents.</p>
+                <div class="field">
+                    <label for="f-namespace">Namespace</label>
+                    <input id="f-namespace" readonly />
+                    <p class="field-error" data-error="namespace" hidden></p>
+                </div>
+                <div class="field">
+                    <label for="f-description">Description <span class="field-optional">(one line)</span></label>
+                    <input id="f-description" maxlength="500" autocomplete="off" />
+                    <p class="field-error" data-error="description" hidden></p>
+                </div>
+                <div class="field" role="radiogroup" aria-labelledby="f-type-label">
+                    <span class="field-label" id="f-type-label">Agent type</span>
+                    <div class="checks">
+                        <label class="check"><input type="radio" name="f-type" value="Declarative" checked /> Declarative</label>
+                        <label class="check"><input type="radio" name="f-type" value="BYO" disabled /> BYO (bring your own container)</label>
+                    </div>
+                    <p class="field-hint">BYO agents are deployed where they were made (their image is never set here); Skanyxx creates and edits Declarative agents.</p>
+                </div>
             </fieldset>
 
-            <fieldset class="card agent-section">
+            <fieldset class="form-section">
                 <legend>System message</legend>
-                <textarea id="f-prompt" rows="14" required maxlength="16000" spellcheck="true" aria-describedby="f-prompt-count"></textarea>
-                <p class="text-muted" id="f-prompt-count"></p>
+                <p class="form-section-hint">The agent's job, its tone, and what it must not do.</p>
+                <textarea id="f-prompt" rows="14" required maxlength="16000" spellcheck="true" aria-label="System message" aria-describedby="f-prompt-count"></textarea>
+                <p class="field-hint" id="f-prompt-count"></p>
                 <p class="field-error" data-error="systemMessage" hidden></p>
             </fieldset>
 
-            <fieldset class="card agent-section">
+            <fieldset class="form-section">
                 <legend>Model</legend>
                 <select id="f-model" required aria-label="Model"></select>
-                <p id="f-model-empty" class="text-muted" hidden>No model is configured in this namespace (see the guide above).</p>
+                <p id="f-model-empty" class="field-hint" hidden>No model is set up in this namespace yet: see the guide above, or ask the owner to add one on Models.</p>
                 <p class="field-error" data-error="modelConfig" hidden></p>
             </fieldset>
 
-            <fieldset class="card agent-section">
+            <fieldset class="form-section">
                 <legend>Tools &amp; agents</legend>
-                <p class="text-muted">MCP servers on the allow-list, grouped as kagent discovered their tools. Pick the tools the agent may call.</p>
+                <p class="form-section-hint">Pick the tools the agent may call, from the tool servers the owner allowed.</p>
                 <div id="f-mcp"></div>
-                <p id="f-mcp-empty" class="text-muted" hidden>No MCP servers are allow-listed (Studio:McpServers).</p>
+                <p id="f-mcp-empty" class="field-hint" hidden>No tool servers are allowed for agents yet (Studio:McpServers).</p>
                 <p class="field-error" data-error="mcpTools" hidden></p>
-                <div id="f-agents-box">
-                    <span>Agents as tools</span>
+                <div id="f-agents-box" class="field">
+                    <span class="field-label">Agents as tools</span>
                     <div id="f-agents" class="check-list"></div>
-                    <p id="f-agents-empty" class="text-muted" hidden>No other agent can be called as a tool.</p>
+                    <p id="f-agents-empty" class="field-hint" hidden>No other agent can be called as a tool.</p>
                 </div>
-                <p id="f-agents-off" class="text-muted" hidden>Studio agents do not call other agents as tools.</p>
+                <p id="f-agents-off" class="field-hint" hidden>Studio agents do not call other agents as tools.</p>
                 <p class="field-error" data-error="agentTools" hidden></p>
             </fieldset>
 
-            <fieldset class="card agent-section">
-                <legend>Skills</legend>
-                <label for="f-skills">OCI images pinned by digest, one per line</label>
-                <textarea id="f-skills" rows="2" spellcheck="false"></textarea>
-                <p id="f-skills-off" class="text-muted" hidden>Skills are off: the owner has not allow-listed a registry (Studio:SkillRegistries).</p>
-                <p class="field-error" data-error="skills" hidden></p>
-            </fieldset>
+            <details class="details-admin" id="f-advanced">
+                <summary>Advanced: skills, memory, A2A and deployment</summary>
+                <div class="stack">
+                    <fieldset class="form-section">
+                        <legend>Skills</legend>
+                        <div class="field">
+                            <label for="f-skills">Skill images</label>
+                            <textarea id="f-skills" rows="2" spellcheck="false" aria-describedby="f-skills-hint"></textarea>
+                            <p class="field-hint" id="f-skills-hint">OCI images pinned by digest, one per line.</p>
+                        </div>
+                        <p id="f-skills-off" class="field-hint" hidden>Skills are off: the owner has not allow-listed a registry (Studio:SkillRegistries).</p>
+                        <p class="field-error" data-error="skills" hidden></p>
+                    </fieldset>
 
-            <fieldset class="card agent-section">
-                <legend>Memory</legend>
-                <label><input type="checkbox" id="f-memory-on" /> Give the agent kagent memory (what it learns in chats, kept per agent)</label>
-                <div id="f-memory-box" class="flex flex-col gap-1" hidden>
-                    <label for="f-memory-model">Embedding model</label>
-                    <select id="f-memory-model"></select>
-                    <label for="f-memory-ttl">Keep entries (days, 1–365)</label>
-                    <input id="f-memory-ttl" type="number" min="1" max="365" value="15" />
+                    <fieldset class="form-section">
+                        <legend>Memory</legend>
+                        <label class="check"><input type="checkbox" id="f-memory-on" /> Give the agent kagent memory (what it learns in chats, kept per agent)</label>
+                        <div id="f-memory-box" class="form-row" hidden>
+                            <div class="field">
+                                <label for="f-memory-model">Embedding model</label>
+                                <select id="f-memory-model"></select>
+                            </div>
+                            <div class="field">
+                                <label for="f-memory-ttl">Keep entries (days, 1–365)</label>
+                                <input id="f-memory-ttl" type="number" min="1" max="365" value="15" />
+                            </div>
+                        </div>
+                        <p class="field-hint">Company knowledge belongs in memory cards (Library), not here.</p>
+                        <p class="field-error" data-error="memory" hidden></p>
+                    </fieldset>
+
+                    <fieldset class="form-section" id="f-a2a-section">
+                        <legend>A2A skills</legend>
+                        <p class="form-section-hint">What the agent's A2A card advertises to other agents.</p>
+                        <div id="f-a2a"></div>
+                        <div><button type="button" class="btn btn-secondary btn-sm" id="f-a2a-add"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Add A2A skill</button></div>
+                        <p class="field-error" data-error="a2aSkills" hidden></p>
+                    </fieldset>
+
+                    <fieldset class="form-section" id="f-deploy-section">
+                        <legend>Deployment</legend>
+                        <div class="field">
+                            <label for="f-runtime">Runtime</label>
+                            <select id="f-runtime">
+                                <option value="">kagent's default</option>
+                                <option value="go">go</option>
+                                <option value="python">python</option>
+                            </select>
+                        </div>
+                        <label class="check"><input type="checkbox" id="f-stream" /> Stream responses</label>
+                        <p class="field-hint">Replicas, image, env and resources are never set here; suspend or resume an agent from its details.</p>
+                        <p class="field-error" data-error="runtime" hidden></p>
+                    </fieldset>
                 </div>
-                <p class="text-muted">Company knowledge belongs in memory cards (Library), not here.</p>
-                <p class="field-error" data-error="memory" hidden></p>
-            </fieldset>
+            </details>
 
-            <fieldset class="card agent-section" id="f-a2a-section">
-                <legend>A2A skills</legend>
-                <p class="text-muted">What the agent's A2A card advertises to other agents.</p>
-                <div id="f-a2a"></div>
-                <button type="button" class="btn btn-ghost" id="f-a2a-add">Add A2A skill</button>
-                <p class="field-error" data-error="a2aSkills" hidden></p>
-            </fieldset>
-
-            <fieldset class="card agent-section" id="f-deploy-section">
-                <legend>Deployment</legend>
-                <label for="f-runtime">Runtime</label>
-                <select id="f-runtime">
-                    <option value="">kagent's default</option>
-                    <option value="go">go</option>
-                    <option value="python">python</option>
-                </select>
-                <label><input type="checkbox" id="f-stream" /> Stream responses</label>
-                <p class="text-muted">Replicas, image, env and resources are never set here; suspend or resume an agent from its details.</p>
-                <p class="field-error" data-error="runtime" hidden></p>
-            </fieldset>
-
-            <div class="flex gap-2">
+            <div class="form-actions">
                 <button type="submit" class="btn btn-primary" id="f-save">Save</button>
                 <button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>
             </div>
@@ -181,50 +205,22 @@
     </div>
 </section>
 
-<style>
-    .agents-toolbar { flex-wrap: wrap; }
-    .agents-toolbar input[type=search] { flex: 1; min-width: 180px; }
-    .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
-    .agent-card { display: flex; flex-direction: column; gap: 8px; cursor: pointer; }
-    .agent-card:hover, .agent-card:focus-visible { border-color: var(--accent-color); outline: none; }
-    .agent-card .agent-desc { color: var(--text-secondary); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; min-height: 3em; }
-    .agent-card .agent-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--text-muted); font-size: 12px; }
-    .agent-card .agent-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
-    .agent-detail-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; }
-    .agent-detail-grid h4 { margin-bottom: 8px; }
-    .agent-prompt { white-space: pre-wrap; word-break: break-word; max-height: 360px; overflow: auto; font-size: 13px; }
-    .agent-fields { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; }
-    .agent-fields dt { font-weight: 600; }
-    .agent-fields dd { margin: 0; word-break: break-word; }
-    .tool-server { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; margin-bottom: 8px; }
-    .tool-server ul { list-style: none; margin-left: 12px; }
-    .tool-desc { color: var(--text-muted); font-size: 12px; }
-    .agent-section { display: flex; flex-direction: column; gap: 6px; }
-    .agent-section legend { font-weight: 600; font-size: 15px; padding: 0 4px; }
-    .check-list { display: flex; flex-direction: column; gap: 2px; margin-left: 12px; }
-    .a2a-skill { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px; margin-bottom: 8px; display: flex; flex-direction: column; gap: 4px; }
-    .field-error { color: var(--error-color); }
-    .setup-guide { border-left: 4px solid var(--warning-color); }
-    .setup-guide ol { margin: 8px 0 8px 20px; }
-</style>
-
 <script>
 (() => {
     const root = document.getElementById('agents');
     const canWrite = root.dataset.canWrite === 'true';
     const canProposeChanges = root.dataset.canProposeChanges === 'true';
     const base = '/api/agents';
-    const errorBox = document.getElementById('agents-error');
-    const statusBox = document.getElementById('agents-status');
+    const grid = document.getElementById('agent-grid');
     const views = ['list-view', 'detail-view', 'form-view'].map(id => document.getElementById(id));
-    let agents = [];
+    let agents = null;
     let options = null;
     let editing = null;
 
     // Values from the API are only ever set with textContent.
     const say = (box, text) => { box.textContent = text; box.hidden = !text; };
-    const fail = text => { say(statusBox, ''); say(errorBox, text); };
-    const done = text => { say(errorBox, ''); say(statusBox, text); };
+    const fail = text => skx.toast(text, { tone: 'error' });
+    const done = text => skx.toast(text);
     const path = (ns, name) => `${base}/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`;
     // The Chat deep link (chat-ui branch): /Chat/{namespace}/{agent}, never a bare name another namespace may share.
     const chatLink = a => `/Chat/${encodeURIComponent(a.namespace)}/${encodeURIComponent(a.name)}`;
@@ -233,29 +229,14 @@
     const show = view => views.forEach(v => { v.hidden = v.id !== view; });
     const status = a => a.suspended ? 'suspended' : (a.ready ? 'ready' : (a.accepted ? 'starting' : 'not-ready'));
     const statusLabel = { suspended: 'Suspended', ready: 'Ready', starting: 'Accepted, starting', 'not-ready': 'Not ready' };
-    const statusBadge = { suspended: 'badge-warning', ready: 'badge-success', starting: 'badge-info', 'not-ready': 'badge-error' };
+    // The shared status words (skx.badge, StatusTone): ready is green, starting and suspended amber, not ready red.
+    const statusWord = { suspended: 'suspended', ready: 'ready', starting: 'starting', 'not-ready': 'failed' };
+    const stateBadge = a => skx.badge(statusWord[status(a)], statusLabel[status(a)]);
 
-    class ApiError extends Error {
-        constructor(message, status, data) { super(message); this.status = status; this.data = data; }
-    }
+    // The shared client (js/ui.js): the error carries the status and the problem body (a 400's errors by field).
+    const call = (method, url, body) => skx.api(method, url, body);
 
-    // Content-Type only with a body: the API reads a JSON body whenever one is announced.
-    async function call(method, url, body) {
-        const init = { method };
-        if (body !== undefined) {
-            init.headers = { 'Content-Type': 'application/json' };
-            init.body = JSON.stringify(body);
-        }
-        const response = await fetch(url, init);
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            const text = (data.errors ? Object.values(data.errors).flat().join(' ') : '') || data.detail || data.message || data.title || `HTTP ${response.status}`;
-            throw new ApiError(text, response.status, data);
-        }
-        return data;
-    }
-
-    function button(label, name, action, cls = 'btn btn-ghost') {
+    function button(label, name, action, cls = 'btn btn-secondary btn-sm') {
         const b = el('button', label, cls);
         b.type = 'button';
         b.setAttribute('aria-label', `${label} ${name}`);
@@ -263,7 +244,7 @@
         return b;
     }
 
-    function badge(text, cls) { return el('span', text, `badge ${cls}`); }
+    function badge(text) { return el('span', text, 'badge badge-neutral'); }
 
     // ---------- Setup guides ----------
     // Drawn by the shared setup block (js/setup-guide.js): the API's { id, title, cause, steps } and its copy-for-agent.
@@ -271,60 +252,76 @@
         const box = document.getElementById('guides');
         try {
             box.replaceChildren(...(await call('GET', `${base}/setup`)).map(g => skxSetupGuide.render(g)));
-        } catch (e) {
+        } catch {
+            // The list shows the failure with its retry; a missing guide adds nothing to it.
             box.replaceChildren();
-            fail(e.message);
         }
     }
 
     // ---------- List ----------
     function card(a) {
-        const c = el('div', undefined, 'card agent-card');
+        const c = el('div', undefined, 'card tile');
         c.dataset.agent = `${a.namespace}/${a.name}`;
         c.tabIndex = 0;
         c.setAttribute('role', 'link');
         c.setAttribute('aria-label', `Open ${a.namespace}/${a.name}`);
-        const head = el('div', undefined, 'flex items-center justify-between gap-2');
+        const head = el('div', undefined, 'tile-head');
         const title = el('div');
-        title.append(el('strong', a.name), el('div', a.namespace, 'text-muted'));
-        const badges = el('div', undefined, 'flex gap-1');
-        badges.append(badge(a.type, 'badge-info'), badge(statusLabel[status(a)], statusBadge[status(a)]));
+        title.append(el('div', a.name, 'tile-title'), el('div', a.namespace, 'tile-sub'));
+        const badges = el('div', undefined, 'badges');
+        badges.append(badge(a.type), stateBadge(a));
         head.append(title, badges);
-        const meta = el('div', undefined, 'agent-meta');
+        const meta = el('div', undefined, 'tile-meta');
         meta.append(el('span', `Model: ${a.modelConfig || '—'}`), el('span', `${a.toolCount} tool${a.toolCount === 1 ? '' : 's'}`), el('span', a.source));
-        const actions = el('div', undefined, 'agent-actions');
+        const actions = el('div', undefined, 'tile-actions');
         if (a.inChat && !a.suspended) actions.appendChild(button('Chat', a.name, () => { location.href = chatLink(a); }));
         if (canWrite && a.canEdit) actions.appendChild(button('Edit', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }));
         if (canProposeChanges && a.source === 'studio') actions.appendChild(button('Propose change', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }));
-        if (canWrite && a.canDelete) actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name)));
-        c.append(head, el('p', a.description || 'No description.', 'agent-desc'), meta, actions);
+        if (canWrite && a.canDelete) actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name), 'btn btn-danger-ghost btn-sm'));
+        c.append(head, el('p', a.description || 'No description.', 'text-secondary clamp'), meta, actions);
         const open = () => { location.hash = `agent/${a.namespace}/${a.name}`; };
         c.addEventListener('click', open);
         c.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
         return c;
     }
 
+    function clearSearch() {
+        for (const id of ['search', 'filter-type', 'filter-status']) document.getElementById(id).value = '';
+        render();
+        document.getElementById('search').focus();
+    }
+
     function render() {
+        if (agents === null) return;
         const q = document.getElementById('search').value.trim().toLowerCase();
         const type = document.getElementById('filter-type').value;
         const state = document.getElementById('filter-status').value;
         const shown = agents.filter(a =>
             (!q || [a.name, a.namespace, a.description, a.modelConfig].some(v => (v || '').toLowerCase().includes(q)))
             && (!type || a.type === type) && (!state || status(a) === state));
-        document.getElementById('agent-grid').replaceChildren(...shown.map(card));
-        document.getElementById('agent-count').textContent = `(${shown.length}${shown.length !== agents.length ? ` of ${agents.length}` : ''})`;
-        document.getElementById('agents-empty').hidden = agents.length > 0;
-        document.getElementById('agents-nomatch').hidden = agents.length === 0 || shown.length > 0;
+        document.getElementById('agent-count').textContent = `${shown.length}${shown.length !== agents.length ? ` of ${agents.length}` : ''} agent${agents.length === 1 ? '' : 's'}`;
+        if (agents.length === 0) {
+            skx.state.empty(grid, {
+                icon: 'i-bot', title: 'No agents yet', compact: false,
+                body: canWrite ? 'An agent answers in Chat with a model, instructions and the tools you give it.' : 'Propose the first one: a supervisor reviews it before it goes live.',
+                action: { label: canWrite ? 'New agent' : 'Propose an agent', onClick: () => { location.hash = 'new'; } }
+            });
+        } else if (shown.length === 0) {
+            skx.state.empty(grid, { icon: 'i-search', title: 'No agent matches', body: 'Try another word, or clear the search and filters.', action: { label: 'Clear search', onClick: clearSearch } });
+        } else {
+            grid.replaceChildren(...shown.map(card));
+        }
     }
 
     async function load() {
+        if (agents === null) skx.state.loading(grid, { rows: 4 });
         try {
             agents = await call('GET', base);
             render();
         } catch (e) {
-            agents = [];
-            render();
-            fail(e.message);
+            agents = null;
+            document.getElementById('agent-count').textContent = '';
+            skx.state.error(grid, { title: 'The agents could not be loaded', detail: e.message, retry: () => { loadGuides(); load(); } });
             if (e.status >= 500) await loadGuides();
         }
     }
@@ -332,7 +329,7 @@
     ['search', 'filter-type', 'filter-status'].forEach(id => document.getElementById(id).addEventListener('input', render));
 
     // ---------- Details ----------
-    function empty(box, text) { box.replaceChildren(el('p', text, 'text-muted')); }
+    function empty(box, text) { box.replaceChildren(el('p', text, 'text-muted text-sm')); }
 
     function fields(dl, rows) {
         dl.replaceChildren();
@@ -353,7 +350,7 @@
         document.getElementById('detail-name').textContent = a.name;
         document.getElementById('detail-ns').textContent = a.namespace;
         const badges = document.getElementById('detail-badges');
-        badges.replaceChildren(badge(a.type, 'badge-info'), badge(statusLabel[status(a)], statusBadge[status(a)]), badge(a.source, 'badge-info'));
+        badges.replaceChildren(badge(a.type), stateBadge(a), badge(a.source));
         document.getElementById('detail-description').textContent = a.description || 'No description.';
         say(document.getElementById('detail-protection'), a.protection ?? '');
 
@@ -364,13 +361,13 @@
             chat.href = chatLink(a);
             actions.appendChild(chat);
         }
-        if (canWrite && a.canEdit) actions.appendChild(button('Edit', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }));
-        if (canProposeChanges && a.source === 'studio') actions.appendChild(button('Propose change', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }));
+        if (canWrite && a.canEdit) actions.appendChild(button('Edit', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }, 'btn btn-secondary'));
+        if (canProposeChanges && a.source === 'studio') actions.appendChild(button('Propose change', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }, 'btn btn-secondary'));
         if (canWrite && a.canDelete) {
             actions.appendChild(a.suspended
-                ? button('Resume', a.name, () => lifecycle(a.namespace, a.name, 'resume'))
-                : button('Suspend', a.name, () => lifecycle(a.namespace, a.name, 'suspend')));
-            actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name), 'btn btn-ghost text-error'));
+                ? button('Resume', a.name, () => lifecycle(a.namespace, a.name, 'resume'), 'btn btn-secondary')
+                : button('Suspend', a.name, () => lifecycle(a.namespace, a.name, 'suspend'), 'btn btn-secondary'));
+            actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name), 'btn btn-danger-ghost'));
         }
 
         document.getElementById('d-prompt-card').hidden = a.systemMessage === null;
@@ -380,21 +377,21 @@
         const tools = document.getElementById('d-tools');
         tools.replaceChildren();
         for (const server of a.toolsByServer) {
-            const box = el('div', undefined, 'tool-server');
+            const box = el('div', undefined, 'subcard');
             box.appendChild(el('strong', server.server));
-            const list = el('ul');
+            const list = el('ul', undefined, 'list-plain');
             if (server.tools.length === 0) list.appendChild(el('li', 'Every tool the server lists', 'text-muted'));
             for (const t of server.tools) {
                 const li = el('li');
                 li.append(el('code', t.name));
-                if (t.description) li.append(el('div', t.description, 'tool-desc'));
+                if (t.description) li.append(el('span', t.description, 'table-cell-sub'));
                 list.appendChild(li);
             }
             box.appendChild(list);
             tools.appendChild(box);
         }
         if (a.agentTools.length) {
-            const box = el('div', undefined, 'tool-server');
+            const box = el('div', undefined, 'subcard');
             box.append(el('strong', 'Agents as tools'), el('div', a.agentTools.join(', ')));
             tools.appendChild(box);
         }
@@ -407,11 +404,11 @@
         else empty(memory, 'Off.');
         const a2a = document.getElementById('d-a2a');
         if (a.a2aSkills.length) a2a.replaceChildren(...a.a2aSkills.map(s => {
-            const d = el('div', undefined, 'tool-server');
+            const d = el('div', undefined, 'subcard');
             d.append(el('strong', `${s.name} (${s.id})`));
-            if (s.description) d.append(el('div', s.description, 'tool-desc'));
-            if (s.tags?.length) d.append(el('div', `Tags: ${s.tags.join(', ')}`, 'tool-desc'));
-            if (s.examples?.length) d.append(el('div', `Examples: ${s.examples.join(' · ')}`, 'tool-desc'));
+            if (s.description) d.append(el('div', s.description, 'table-cell-sub'));
+            if (s.tags?.length) d.append(el('div', `Tags: ${s.tags.join(', ')}`, 'table-cell-sub'));
+            if (s.examples?.length) d.append(el('div', `Examples: ${s.examples.join(' · ')}`, 'table-cell-sub'));
             return d;
         })); else empty(a2a, 'None.');
 
@@ -436,7 +433,10 @@
                 const row = el('div');
                 const link = el('a', s.title || 'Untitled chat');
                 link.href = chatLink(a);
-                row.append(link, el('span', ` · ${new Date(s.updatedAt).toLocaleString()}`, 'text-muted'));
+                const when = el('time', ` · ${skx.time(s.updatedAt)}`, 'text-muted');
+                when.dateTime = s.updatedAt;
+                when.title = skx.utc(s.updatedAt);
+                row.append(link, when);
                 return row;
             }));
         } catch {
@@ -445,7 +445,7 @@
     }
 
     async function lifecycle(ns, name, verb) {
-        if (verb === 'suspend' && !confirm(`Suspend ${ns}/${name}? Its pod stops and Chat stops offering it until you resume it.`)) return;
+        if (verb === 'suspend' && !await skx.confirm({ title: `Suspend ${ns}/${name}?`, body: 'Its pod stops and Chat stops offering it until you resume it.', confirm: 'Suspend' })) return;
         try {
             await call('POST', `${path(ns, name)}/${verb}`);
             done(`${ns}/${name} ${verb === 'suspend' ? 'suspended' : 'resumed'}.`);
@@ -464,8 +464,8 @@
             fail(e.message);
             return;
         }
-        const warning = usedBy.length ? `\n\nWarning: ${usedBy.join(', ')} call${usedBy.length === 1 ? 's' : ''} this agent as a tool and will fail to use it.` : '';
-        if (!confirm(`Delete the agent ${ns}/${name}? kagent removes it and its pod; this cannot be undone.${warning}`)) return;
+        const warning = usedBy.length ? ` ${usedBy.join(', ')} call${usedBy.length === 1 ? 's' : ''} this agent as a tool and will fail to use it.` : '';
+        if (!await skx.confirm({ title: `Delete ${ns}/${name}?`, body: `kagent removes it and its pod; this cannot be undone.${warning}`, confirm: 'Delete', danger: true })) return;
         try {
             await call('DELETE', path(ns, name));
             done(`${ns}/${name} deleted.`);
@@ -482,24 +482,36 @@
         return options;
     }
 
-    function clearErrors() { document.querySelectorAll('#agent-form .field-error').forEach(p => say(p, '')); }
+    const errorBox = document.querySelector('#agent-form [data-error-box]');
+    function formError(text) {
+        say(errorBox.querySelector('[data-error="form"]'), text);
+        errorBox.hidden = !text;
+    }
+
+    function clearErrors() {
+        document.querySelectorAll('#agent-form .field-error').forEach(p => say(p, ''));
+        formError('');
+    }
 
     // A 400 is keyed by field; anything without its own place shows at the top.
     function showErrors(errors) {
         clearErrors();
         for (const [key, messages] of Object.entries(errors)) {
-            const slot = document.querySelector(`#agent-form [data-error="${CSS.escape(key)}"]`) ?? document.querySelector('#agent-form [data-error="form"]');
-            say(slot, [slot.textContent, ...messages].filter(Boolean).join(' '));
+            const slot = document.querySelector(`#agent-form .field-error[data-error="${CSS.escape(key)}"]`);
+            if (slot) say(slot, [slot.textContent, ...messages].filter(Boolean).join(' '));
+            else formError([errorBox.textContent.trim(), ...messages].filter(Boolean).join(' '));
         }
-        document.querySelector('#agent-form .field-error:not([hidden])')?.scrollIntoView({ block: 'center' });
+        // An error inside the closed Advanced part opens it, so it is never hidden.
+        if (document.querySelector('#f-advanced .field-error:not([hidden])')) document.getElementById('f-advanced').open = true;
+        document.querySelector('#agent-form .field-error:not([hidden]), #agent-form [data-error-box]:not([hidden])')?.scrollIntoView({ block: 'center' });
     }
 
     function option(value, label = value) { const o = el('option', label); o.value = value; return o; }
 
     function toolServer(server, tools, chosen, kept) {
-        const box = el('div', undefined, 'tool-server');
+        const box = el('div', undefined, 'subcard tool-server');
         box.dataset.server = server;
-        const label = el('label');
+        const label = el('label', undefined, 'check');
         const on = document.createElement('input');
         on.type = 'checkbox';
         on.className = 'mcp-on';
@@ -510,7 +522,7 @@
         (chosen ?? []).forEach(t => { if (!known.has(t)) known.set(t, ''); });
         const list = el('div', undefined, 'check-list');
         for (const [tool, description] of known) {
-            const row = el('label');
+            const row = el('label', undefined, 'check');
             const c = document.createElement('input');
             c.type = 'checkbox';
             c.value = tool;
@@ -518,7 +530,7 @@
             c.disabled = kept;
             c.addEventListener('change', () => { if (c.checked) on.checked = true; });
             row.append(c, ' ', el('code', tool));
-            if (description) row.append(el('span', ` — ${description}`, 'tool-desc'));
+            if (description) row.append(el('span', ` — ${description}`, 'text-muted text-xs'));
             list.appendChild(row);
         }
         if (!known.size) list.appendChild(el('span', 'kagent has not discovered this server\'s tools yet.', 'text-muted'));
@@ -528,21 +540,25 @@
     }
 
     function a2aSkill(skill = {}) {
-        const box = el('div', undefined, 'a2a-skill');
+        const box = el('div', undefined, 'subcard a2a-skill');
         const field = (label, key, value, area) => {
+            const wrap = el('div', undefined, 'field');
             const l = el('label', label);
             const i = document.createElement(area ? 'textarea' : 'input');
+            i.id = `a2a-${key}-${crypto.randomUUID()}`;
+            l.htmlFor = i.id;
             i.dataset.key = key;
             i.value = value ?? '';
             if (area) i.rows = 2;
-            box.append(l, i);
+            wrap.append(l, i);
+            box.append(wrap);
         };
         field('Id', 'id', skill.id);
         field('Name', 'name', skill.name);
         field('Description', 'description', skill.description);
         field('Tags (comma separated)', 'tags', (skill.tags ?? []).join(', '));
         field('Examples (one per line)', 'examples', (skill.examples ?? []).join('\n'), true);
-        box.appendChild(button('Remove', 'A2A skill', () => box.remove()));
+        box.appendChild(button('Remove', 'A2A skill', () => box.remove(), 'btn btn-danger-ghost btn-sm'));
         return box;
     }
 
@@ -558,7 +574,7 @@
         try {
             o = await loadOptions();
         } catch (e) {
-            fail(e.message);
+            formError(`The form could not be prepared: ${e.message}`);
             if (e.status >= 500) await loadGuides();
             return;
         }
@@ -593,7 +609,7 @@
         // An agent tool the agent already has stays offered (kept as it is), even when no longer callable from new agents.
         const callable = [...new Set([...o.agents, ...(agent?.agentTools ?? [])])].filter(a => a !== agent?.name);
         document.getElementById('f-agents').replaceChildren(...callable.map(a => {
-            const row = el('label');
+            const row = el('label', undefined, 'check');
             const c = document.createElement('input');
             c.type = 'checkbox';
             c.value = a;
@@ -621,6 +637,7 @@
         document.getElementById('f-runtime').value = agent?.runtime ?? '';
         document.getElementById('f-stream').checked = !!agent?.stream;
         document.getElementById('f-deploy-section').hidden = proposal;
+        document.getElementById('f-advanced').open = !!(agent && (agent.skills.length || agent.memory || agent.a2aSkills.length || agent.runtime || agent.stream));
         (agent ? document.getElementById('f-description') : name).focus();
     }
 
@@ -662,6 +679,7 @@
         const body = formBody();
         const proposal = options.mode === 'proposal';
         const save = document.getElementById('f-save');
+        save.setAttribute('aria-busy', 'true');
         save.disabled = true;
         try {
             if (proposal) {
@@ -678,13 +696,14 @@
             location.hash = proposal || !editing ? '' : `agent/${body.namespace}/${body.name}`;
             await load();
         } catch (e) {
-            if (e.status === 400 && e.data.errors) showErrors(e.data.errors);
+            if (e.status === 400 && e.data?.errors) showErrors(e.data.errors);
             else {
-                say(document.querySelector('#agent-form [data-error="form"]'), e.message);
+                formError(e.message);
                 if (e.data?.reason === 'studio-not-configured' || e.status >= 500) await loadGuides();
                 document.getElementById('form-view').scrollIntoView();
             }
         } finally {
+            save.removeAttribute('aria-busy');
             save.disabled = false;
         }
     }
@@ -705,7 +724,7 @@
     document.getElementById('new-agent').addEventListener('click', () => { location.hash = 'new'; });
     for (const id of ['f-cancel', 'f-back', 'detail-back'])
         document.getElementById(id).addEventListener('click', () => { location.hash = ''; });
-    document.getElementById('refresh').addEventListener('click', () => { say(errorBox, ''); loadGuides(); load(); });
+    document.getElementById('refresh').addEventListener('click', () => { loadGuides(); load(); });
 
     // #agent/ns/name = details, #edit/ns/name = edit or propose a change, #new = the form, anything else = the grid.
     function route() {

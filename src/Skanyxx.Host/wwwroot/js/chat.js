@@ -46,24 +46,19 @@
         return el;
     }
 
-    const problemText = (problem, status) =>
-        (problem.errors ? Object.values(problem.errors).flat().join(' ') : '')
-        || problem.detail || problem.message || problem.title || `The request failed (HTTP ${status}).`;
+    // The shared client (js/ui.js): problem+json becomes the error's message, with its status.
+    const call = (method, url, body) => skx.api(method, url, body);
 
-    async function call(method, url, body) {
-        const init = { method, headers: {} };
-        if (body !== undefined) {
-            init.headers['Content-Type'] = 'application/json';
-            init.body = JSON.stringify(body);
-        }
-        const response = await fetch(url, init);
-        const data = response.status === 204 ? {} : await response.json().catch(() => ({}));
-        if (!response.ok) {
-            const error = new Error(problemText(data, response.status));
-            error.status = response.status;
-            throw error;
-        }
-        return data;
+    // An empty conversation, a failure, a load: the design system's states, built with text only.
+    function emptyState(title, body, extra) {
+        return h('div', { class: 'empty-state' }, skx.icon('i-chat', 'empty-state-icon'),
+            h('h3', { class: 'empty-state-title', text: title }), body ? h('div', { class: 'empty-state-body', text: body }) : null, extra ?? null);
+    }
+
+    function errorAlert(title, message, retry) {
+        return h('div', { class: 'alert alert-error', role: 'alert' }, skx.icon('i-alert-circle'),
+            h('div', { class: 'alert-body' }, h('div', { class: 'alert-title', text: title }), h('div', { class: 'message-content plain', text: message }),
+                retry ? h('div', { class: 'mt-1' }, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onclick: retry }, 'Try again')) : null));
     }
 
     const formatTokens = n => n >= 10000 ? `${(n / 1000).toFixed(1)}k` : Number(n || 0).toLocaleString();
@@ -142,9 +137,8 @@
     }
 
     function showEmptyAgents() {
-        $('chatMessages').replaceChildren(h('div', { class: 'welcome-message' },
-            h('h3', { text: 'No agents to chat with yet' }),
-            h('p', { text: 'An agent appears here once a supervisor adds it to Chat on the Agents page.' })));
+        $('chatMessages').replaceChildren(emptyState('No agents to chat with yet',
+            'An agent appears here once a supervisor adds it to Chat on the Agents page.'));
     }
 
     async function selectAgent(agent, conversationId, push) {
@@ -201,6 +195,7 @@
         }
         if (!state.agent || agentKey(state.agent) !== agentKey(agent)) return;
         $('detailsLink').href = d.agentsPageUrl;
+        $('detailsLink').hidden = !d.agentsPageUrl;
         const section = (title, ...content) => h('section', { class: 'details-section' }, h('h4', { text: title }), ...content);
         const servers = d.toolServers.map(s => h('details', { class: 'tool-server', open: d.toolServers.length === 1 },
             h('summary', {}, h('span', { text: s.ref }), h('span', { class: 'count', text: s.allTools ? `all ${s.tools.length}` : String(s.tools.length) })),
@@ -301,7 +296,7 @@
     }
 
     function renameInline(row, s) {
-        const input = h('input', { class: 'form-control rename-input', value: s.title, maxlength: '120', 'aria-label': 'New title' });
+        const input = h('input', { class: 'rename-input', value: s.title, maxlength: '120', 'aria-label': 'New title' });
         row.replaceChildren(input);
         input.focus();
         input.select();
@@ -329,7 +324,7 @@
     }
 
     async function removeSession(s) {
-        if (!confirm(`Delete "${s.title}"? Its messages and files are deleted for good.`)) return;
+        if (!await skx.confirm({ title: 'Delete this chat?', body: `"${s.title}": its messages and files are deleted for good.`, confirm: 'Delete', danger: true })) return;
         try {
             await call('DELETE', `/api/chat/conversations/${encodeURIComponent(s.id)}`);
         } catch (e) {
@@ -375,7 +370,7 @@
         state.items = [];
         state.notes.clear();
         setUrl(push);
-        $('chatMessages').replaceChildren(h('p', { class: 'muted loading', text: 'Loading the conversation…' }));
+        skx.state.loading($('chatMessages'), { rows: 3 });
         try {
             const view = await call('GET', `/api/chat/conversations/${encodeURIComponent(id)}`);
             if (state.conversationId !== id) return;
@@ -401,18 +396,21 @@
             }
             // kagent down: keep the conversation, so what is sent next still continues it.
             setTitle(state.sessions.find(s => s.id === id)?.title || 'Chat');
-            $('chatMessages').replaceChildren(h('div', { class: 'welcome-message' },
-                h('h3', { text: 'Earlier messages could not be shown' }), h('p', { text: e.message })));
+            $('chatMessages').replaceChildren(errorAlert('Earlier messages could not be shown', e.message, () => openConversation(id, false)));
         }
         renderSessions();
     }
 
+    // Questions anyone can start with; a click puts one in the box, it is never sent by itself.
+    const examples = ['How does our refund process work?', 'What did we decide about remote work?', 'Who do I ask about invoices?'];
+
     function welcome() {
         const name = state.agent ? state.agent.name : 'an agent';
-        return h('div', { class: 'welcome-message' },
-            h('h3', { text: `New chat with ${name}` }),
-            h('p', { text: state.agent?.description || 'Ask how the company works: the agent searches company memory and cites the cards it used.' }),
-            ticketKeys.length ? h('p', { class: 'muted small', text: `Linked to ${ticketKeys.join(', ')}.` }) : null);
+        const chips = h('div', { class: 'chips example-questions', role: 'group', 'aria-label': 'Example questions' },
+            examples.map(q => h('button', { type: 'button', class: 'chip', onclick: () => { const input = $('chatInput'); input.value = q; autosize(); input.focus(); } }, q)));
+        return emptyState(`New chat with ${name}`,
+            state.agent?.description || 'Ask how the company works: the agent searches company memory and cites the cards it used.',
+            h('div', {}, chips, ticketKeys.length ? h('p', { class: 'muted small mt-1', text: `Linked to ${ticketKeys.join(', ')}.` }) : null));
     }
 
     function renderItems() {
@@ -469,7 +467,7 @@
         const label = calls.length
             ? `${calls.length} ${calls.length === 1 ? 'step' : 'steps'}: ${names.join(', ')}`
             : 'Working';
-        return h('details', { class: 'steps' + (running ? ' running' : ''), open: running },
+        return h('details', { class: 'tool-steps' + (running ? ' running' : ''), open: running },
             h('summary', {}, h('span', { class: 'steps-icon', 'aria-hidden': 'true' }, running ? '◌' : '⚙'), h('span', { text: label })), ...body);
     }
 
@@ -554,10 +552,7 @@
     }
 
     function failedBubble(message, retry) {
-        return h('div', { class: 'chat-message assistant' },
-            h('div', { class: 'message-bubble error-bubble' },
-                h('div', { class: 'message-content plain', text: message }),
-                h('div', { class: 'message-footer' }, retry ? h('button', { type: 'button', class: 'btn btn-secondary small', onclick: retry }, 'Try again') : null)));
+        return errorAlert('The agent did not answer', message, retry);
     }
 
     function setStreaming(on) {
@@ -902,7 +897,7 @@
 
     function scanInput() {
         const found = [...new Set(Scanner.scan($('chatInput').value))];
-        $('warningFindings').replaceChildren(...found.map(f => h('span', { class: 'finding-tag', text: f })));
+        $('warningFindings').replaceChildren(...found.map(f => h('span', { class: 'badge badge-warning', text: f })));
         $('securityWarning').hidden = found.length === 0;
     }
 
@@ -916,7 +911,8 @@
     }
 
     function wire() {
-        if (matchMedia('(max-width: 1200px)').matches) {
+        // The chat-layout preference (Account, "Chat panel") and narrow screens start with the agent details closed.
+        if (document.documentElement.dataset.chatDetails === 'hidden' || matchMedia('(max-width: 1200px)').matches) {
             app.classList.add('details-hidden');
             $('detailsToggle').setAttribute('aria-expanded', 'false');
         }

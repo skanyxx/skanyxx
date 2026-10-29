@@ -3,47 +3,72 @@
 @{
     ViewData["Title"] = "Debug";
 }
+<page-header description="The owner's diagnostics: what this install runs, and whether each part it depends on answers." />
 @await Component.InvokeAsync("SetupGuide", new { id = "dragonfly" })
-<div class="card mb-3">
-    <p>Skanyxx <code>@Model.Version</code>, Host mode <code>@Model.Mode</code></p>
+
+<div class="card">
+    <dl class="kv">
+        <dt>Version</dt><dd><code>@Model.Version</code></dd>
+        <dt>Host mode</dt><dd><code>@Model.Mode</code></dd>
+        <dt>Overall</dt><dd><status-badge status="@Model.Health.Status.ToString()" /></dd>
+    </dl>
 </div>
-<div class="table-container card mb-3">
-    <table>
-        <thead>
-            <tr><th>Check</th><th>Status</th><th>Detail</th><th>Took</th></tr>
-        </thead>
-        <tbody>
-            @foreach (var (name, entry) in Model.Health.Entries)
-            {
-                <tr>
-                    <td>@name</td>
-                    <td>@entry.Status</td>
-                    <td>@(entry.Description ?? entry.Exception?.Message)</td>
-                    <td>@((int)entry.Duration.TotalMilliseconds) ms</td>
-                </tr>
-            }
-        </tbody>
-    </table>
-</div>
-<div class="table-container card">
-    <table>
-        <thead>
-            <tr><th>Module</th><th>Id</th><th>Version</th><th>Needs</th></tr>
-        </thead>
-        <tbody>
-            @foreach (var module in Model.Modules)
-            {
-                <tr>
-                    <td>@module.DisplayName</td>
-                    <td><code>@module.ModuleId</code></td>
-                    <td>@module.Version</td>
-                    <td>@string.Join(", ", module.Dependencies)</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+
+<section class="section" aria-labelledby="health-title">
+    <div class="section-header"><h2 class="section-title" id="health-title">Health checks</h2></div>
+    <div class="card card-flush">
+        @if (Model.Health.Entries.Count == 0)
+        {
+            <empty-state icon="i-check-circle" title="No health checks registered" compact="true" />
+        }
+        else
+        {
+            <div class="table-container">
+                <table class="table table-stack">
+                    <thead>
+                        <tr><th scope="col">Check</th><th scope="col">Status</th><th scope="col">Detail</th><th scope="col" class="num">Took</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var (name, entry) in Model.Health.Entries)
+                        {
+                            <tr>
+                                <td>@name</td>
+                                <td><status-badge status="@entry.Status.ToString()" /></td>
+                                <td>@(entry.Description ?? entry.Exception?.Message)</td>
+                                <td class="num">@((int)entry.Duration.TotalMilliseconds) ms</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="section" aria-labelledby="modules-title">
+    <div class="section-header"><h2 class="section-title" id="modules-title">Modules</h2></div>
     @if (Model.Disabled.Count > 0)
     {
-        <p class="text-muted">Disabled by configuration: @string.Join(", ", Model.Disabled)</p>
+        <alert tone="info">Disabled by configuration: @string.Join(", ", Model.Disabled)</alert>
     }
-</div>
+    <div class="card card-flush">
+        <div class="table-container">
+            <table class="table table-stack">
+                <thead>
+                    <tr><th scope="col">Module</th><th scope="col">Id</th><th scope="col">Version</th><th scope="col">Needs</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var module in Model.Modules)
+                    {
+                        <tr>
+                            <td>@module.DisplayName</td>
+                            <td><code>@module.ModuleId</code></td>
+                            <td>@module.Version</td>
+                            <td>@string.Join(", ", module.Dependencies)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>

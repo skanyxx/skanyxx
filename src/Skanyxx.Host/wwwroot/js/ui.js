@@ -1,7 +1,7 @@
 /*
  * Skanyxx UI helpers, loaded once by the layout. No dependencies, no inline handlers needed.
  *
- *   skx.api(method, url, body)        fetch JSON; throws Error(problem text) on a non-2xx answer
+ *   skx.api(method, url, body)        fetch JSON (or send FormData); throws Error(problem text) with .status and .data
  *   skx.toast(text, { tone, timeout }) short confirmation (tone: success | error | info)
  *   skx.confirm({ title, body, confirm, danger }) -> Promise<boolean>, a native <dialog>
  *   skx.state.loading(el, { rows })   skeleton rows in el
@@ -12,10 +12,15 @@
  *   skx.busy(button, promise)         spinner + disabled until the promise settles
  *   skx.prefs.update(partial)         merge into the signed-in person's saved preferences
  *   skx.prefs.pageSize                the person's table page size
+ *   skx.time(iso)                     "5 minutes ago" (the UTC time belongs in a title)
  *
  * Declarative: <form data-confirm="…" data-confirm-title="…" data-confirm-action="Disable" data-danger>,
- * <form data-once> (one submit), <button data-copy="…"> / data-copy-target="#id", <table class="table-stack">.
+ * <form data-once> (one submit), <button data-copy="…"> / data-copy-target="#id", <table class="table-stack">,
+ * <button data-dialog-open="id"> / <button data-dialog-close>, <dialog data-autoshow> (opened on load),
+ * <time data-relative datetime="…"> (relative text, UTC in its title).
  * Every value from an API is set with textContent, never innerHTML.
+ *
+ * Loaded in <head> without defer, so pages can call skx from their inline scripts; the shell wiring waits for the DOM.
  */
 (() => {
     'use strict';
@@ -48,7 +53,8 @@
     // Content-Type only with a body: the API reads a JSON body whenever one is announced.
     async function api(method, url, body) {
         const init = { method, headers: { Accept: 'application/json' } };
-        if (body !== undefined) {
+        if (body instanceof FormData) init.body = body;
+        else if (body !== undefined) {
             init.headers['Content-Type'] = 'application/json';
             init.body = JSON.stringify(body);
         }
@@ -62,6 +68,7 @@
         if (!response.ok) {
             const error = new Error(problemText(data, response.status));
             error.status = response.status;
+            error.data = data;
             throw error;
         }
         return data;
@@ -192,6 +199,19 @@
             [...row.children].forEach((cell, i) => { if (!cell.hasAttribute('data-label')) cell.setAttribute('data-label', heads[i] ?? ''); });
     }
 
+    // ---------- Time ----------
+    const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+    const steps = [['year', 31536e6], ['month', 2592e6], ['week', 6048e5], ['day', 864e5], ['hour', 36e5], ['minute', 6e4]];
+    function time(value) {
+        const at = new Date(value);
+        if (Number.isNaN(at.getTime())) return '';
+        const diff = at.getTime() - Date.now();
+        for (const [unit, ms] of steps)
+            if (Math.abs(diff) >= ms) return relative.format(Math.round(diff / ms), unit);
+        return relative.format(0, 'minute');
+    }
+    const utc = value => new Date(value).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+
     // ---------- Preferences ----------
     const prefs = {
         get pageSize() { return Number(root.dataset.pageSize) || 25; },
@@ -201,7 +221,7 @@
         },
     };
 
-    window.skx = { api, toast, confirm: confirmDialog, state, badge, fieldError, busy, prefs, icon, table: { label: labelTable } };
+    window.skx = { api, toast, confirm: confirmDialog, state, badge, fieldError, busy, prefs, icon, time, utc, table: { label: labelTable } };
 
     // ---------- Shell behaviour ----------
     function initNav() {
@@ -327,6 +347,27 @@
         navigator.serviceWorker?.getRegistrations().then(rs => rs.forEach(r => r.unregister()));
     }
 
+    function initDialogs() {
+        document.addEventListener('click', e => {
+            const opener = e.target.closest('[data-dialog-open]');
+            if (opener) {
+                document.getElementById(opener.dataset.dialogOpen)?.showModal();
+                return;
+            }
+            const closer = e.target.closest('[data-dialog-close]');
+            if (closer) closer.closest('dialog')?.close();
+        });
+        document.querySelectorAll('dialog[data-autoshow]').forEach(d => { if (!d.open) d.showModal(); });
+    }
+
+    function initTimes() {
+        for (const t of document.querySelectorAll('time[data-relative]')) {
+            const at = t.getAttribute('datetime');
+            if (!t.title) t.title = utc(at);
+            t.textContent = time(at);
+        }
+    }
+
     // ---------- Appearance settings (Account page) ----------
     function initAppearance() {
         const form = document.getElementById('appearance-form');
@@ -379,13 +420,19 @@
         syncOrder();
     }
 
-    document.querySelectorAll('[data-field]').forEach(wireField);
-    initNav();
-    initMenus();
-    initForms();
-    initCopy();
-    initGuides();
-    initTables();
-    initInstall();
-    initAppearance();
+    function initShell() {
+        document.querySelectorAll('[data-field]').forEach(wireField);
+        initNav();
+        initMenus();
+        initForms();
+        initCopy();
+        initGuides();
+        initTables();
+        initDialogs();
+        initTimes();
+        initInstall();
+        initAppearance();
+    }
+
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initShell); else initShell();
 })();

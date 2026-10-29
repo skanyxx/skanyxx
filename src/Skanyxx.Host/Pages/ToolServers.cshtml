@@ -1,44 +1,46 @@
 @page
 @model Skanyxx.Host.Pages.ToolServersModel
 @{
-    ViewData["Title"] = "Tool Servers";
+    ViewData["Title"] = "Tool servers";
 }
+<page-header description="Tool servers give agents abilities, like reading tickets or searching a wiki. Each lists the tools kagent found on it.">
+    <button class="btn btn-secondary" id="btnRefresh" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg>Refresh</button>
+    @if (Model.IsOwner)
+    {
+        <button class="btn btn-primary" id="btnAddServer" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Add tool server</button>
+    }
+</page-header>
 @await Component.InvokeAsync("SetupGuide", new { id = "toolservers" })
 
-<div class="card mb-3">
-    <div class="card-header">
-        <h3 class="card-title">MCP Tool Servers</h3>
-        <div class="header-actions">
-            <button class="btn btn-secondary" id="btnRefresh" type="button">Refresh</button>
-            @if (Model.IsOwner)
-            {
-                <button class="btn btn-primary" id="btnAddServer" type="button">+ Add server</button>
-            }
-        </div>
+<div class="toolbar" role="search">
+    <div class="search">
+        <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg>
+        <input id="tsSearch" type="search" autocomplete="off" placeholder="Filter by server, tool name or description" aria-label="Filter servers and tools" />
     </div>
-    <p class="text-muted">The Model Context Protocol servers kagent connects agents to, with the tools it discovered on each.
-        Skanyxx adds <strong>Remote MCP servers</strong> (Streamable HTTP or SSE); stdio MCPServers are listed, not managed here.
-        kagent rediscovers every server's tools once a minute.</p>
-    <div class="ts-toolbar">
-        <label for="tsSearch" class="ts-sr">Filter servers and tools</label>
-        <input id="tsSearch" type="search" autocomplete="off" placeholder="Filter by server, tool name or description…" />
-        <span id="tsCount" class="text-muted" role="status" aria-live="polite"></span>
-    </div>
+    <span class="spacer"></span>
+    <span id="tsCount" class="text-muted text-sm" role="status" aria-live="polite"></span>
 </div>
 
 <div id="tsKagent"></div>
-<div id="tsServers" aria-label="MCP tool servers"><div class="ts-empty">Loading tool servers…</div></div>
+<div id="tsServers" aria-label="MCP tool servers"></div>
+
+<details class="details-admin mt-3">
+    <summary>Details for administrators</summary>
+    <p>These are the Model Context Protocol servers kagent connects agents to. Skanyxx adds <strong>Remote MCP servers</strong>
+        (Streamable HTTP or SSE); stdio MCPServers are listed, not managed here. kagent rediscovers every server's tools once a minute.</p>
+</details>
 
 @if (Model.IsOwner)
 {
-    <div class="modal" id="tsFormModal" role="dialog" aria-modal="true" aria-labelledby="tsFormTitle">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="tsFormTitle">Add tool server</h3>
-                <button class="btn btn-ghost" id="tsFormClose" type="button" aria-label="Close">&times;</button>
+    <dialog class="dialog dialog-side" id="tsFormModal" aria-labelledby="tsFormTitle">
+        <form id="tsForm" class="dialog-form" novalidate>
+            <div class="dialog-header">
+                <h2 class="dialog-title" id="tsFormTitle">Add tool server</h2>
+                <button class="btn btn-ghost btn-icon" id="tsFormClose" type="button" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></button>
             </div>
-            <form id="tsForm" novalidate>
-                <div class="form-group">
+            <div class="dialog-body">
+                <div class="alert alert-error" id="tsFormErrors" role="alert" hidden></div>
+                <div class="field">
                     <label for="tsKind">Type</label>
                     <select id="tsKind" name="kind">
                         <option value="RemoteMCPServer.kagent.dev">Remote MCP server (Streamable HTTP or SSE): supported</option>
@@ -46,108 +48,67 @@
                     </select>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="field">
                         <label for="tsName">Name</label>
                         <input type="text" id="tsName" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" placeholder="my-tool-server" autocomplete="off">
                     </div>
-                    <div class="form-group">
+                    <div class="field">
                         <label for="tsNamespace">Namespace</label>
                         <input type="text" id="tsNamespace" value="kagent" required maxlength="63" pattern="[a-z0-9]([a-z0-9\-]*[a-z0-9])?" autocomplete="off">
                     </div>
                 </div>
-                <div class="form-group">
+                <div class="field">
                     <label for="tsUrl">URL</label>
-                    <input type="url" id="tsUrl" required maxlength="2048" placeholder="http://my-mcp.tools.svc.cluster.local:8080/mcp" autocomplete="off">
-                    <small class="text-muted">kagent's controller and agent pods call it: a cluster address, or host.docker.internal for a server on your machine (localhost is the pod itself).
-                        No credentials in the URL: send them as a header.</small>
-                    <small class="text-warning" id="tsUrlWarning" hidden>This is a loopback address: inside the cluster it is the kagent pod, not your machine. Use host.docker.internal or a Service name.</small>
+                    <input type="url" id="tsUrl" required maxlength="2048" placeholder="http://my-mcp.tools.svc.cluster.local:8080/mcp" autocomplete="off" aria-describedby="tsUrlHint tsUrlWarning">
+                    <p class="field-hint" id="tsUrlHint">kagent's controller and agent pods call it: a cluster address, or host.docker.internal for a server on your machine (localhost is the pod itself).
+                        No credentials in the URL: send them as a header.</p>
+                    <p class="field-error" id="tsUrlWarning" hidden>This is a loopback address: inside the cluster it is the kagent pod, not your machine. Use host.docker.internal or a Service name.</p>
                 </div>
                 <div class="form-row">
-                    <div class="form-group">
+                    <div class="field">
                         <label for="tsProtocol">Protocol</label>
                         <select id="tsProtocol">
                             <option value="STREAMABLE_HTTP">Streamable HTTP (usually /mcp)</option>
                             <option value="SSE">SSE (usually /sse)</option>
                         </select>
                     </div>
-                    <div class="form-group">
-                        <label for="tsTimeout">Timeout (seconds)</label>
+                    <div class="field">
+                        <label for="tsTimeout">Timeout (seconds) <span class="field-optional">(optional)</span></label>
                         <input type="number" id="tsTimeout" min="1" max="600" placeholder="30">
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="tsDescription">Description</label>
+                <div class="field">
+                    <label for="tsDescription">Description <span class="field-optional">(optional)</span></label>
                     <input type="text" id="tsDescription" maxlength="500" placeholder="What its tools are for">
                 </div>
-                <fieldset class="form-group ts-headers">
+                <fieldset class="form-section ts-headers">
                     <legend>Headers</legend>
-                    <small class="text-muted">Every header value lives in a Kubernetes Secret. A value typed here goes to kagent once, into a Secret it keeps with the server;
-                        Skanyxx never stores or shows it, so an edit asks for it again.</small>
+                    <p class="form-section-hint">Every header value lives in a Kubernetes Secret. A value typed here goes to kagent once, into a Secret it keeps with the server;
+                        Skanyxx never stores or shows it, so an edit asks for it again.</p>
                     <div id="tsHeaderRows"></div>
-                    <button class="btn btn-ghost" id="tsAddHeader" type="button">+ Add header</button>
+                    <div><button class="btn btn-secondary btn-sm" id="tsAddHeader" type="button"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Add header</button></div>
                 </fieldset>
-                <div class="ts-errors" id="tsFormErrors" role="alert" hidden></div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" id="tsFormCancel">Cancel</button>
-                    <button type="submit" class="btn btn-primary" id="tsFormSubmit">Save</button>
-                </div>
-            </form>
-        </div>
-    </div>
+            </div>
+            <div class="dialog-footer">
+                <button type="button" class="btn btn-secondary" id="tsFormCancel">Cancel</button>
+                <button type="submit" class="btn btn-primary" id="tsFormSubmit">Save</button>
+            </div>
+        </form>
+    </dialog>
 
-    <div class="modal" id="tsDeleteModal" role="dialog" aria-modal="true" aria-labelledby="tsDeleteTitle">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="tsDeleteTitle">Delete tool server</h3>
-            </div>
-            <div class="ts-modal-body">
-                <p id="tsDeleteText"></p>
-                <div id="tsDeleteUsage"></div>
-                <div class="ts-errors" id="tsDeleteErrors" role="alert" hidden></div>
-                <div class="modal-actions">
-                    <button type="button" class="btn btn-ghost" id="tsDeleteCancel">Cancel</button>
-                    <button type="button" class="btn btn-primary ts-danger" id="tsDeleteConfirm">Delete</button>
-                </div>
-            </div>
+    <dialog class="dialog" id="tsDeleteModal" aria-labelledby="tsDeleteTitle">
+        <div class="dialog-header"><h2 class="dialog-title" id="tsDeleteTitle">Delete tool server</h2></div>
+        <div class="dialog-body">
+            <p id="tsDeleteText"></p>
+            <div id="tsDeleteUsage" class="mt-2"></div>
+            <div class="alert alert-error mt-2" id="tsDeleteErrors" role="alert" hidden></div>
         </div>
-    </div>
+        <div class="dialog-footer">
+            <button type="button" class="btn btn-secondary" id="tsDeleteCancel">Cancel</button>
+            <button type="button" class="btn btn-danger" id="tsDeleteConfirm">Delete</button>
+        </div>
+    </dialog>
 }
-
-<style>
-    .ts-toolbar { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
-    .ts-toolbar input { flex: 1; min-width: 220px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: var(--bg-primary); color: var(--text-primary); }
-    .ts-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-    .ts-empty { text-align: center; padding: 40px 20px; color: var(--text-muted); }
-    .ts-server { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 12px; }
-    .ts-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px 16px; }
-    .ts-title { font-weight: 600; word-break: break-all; }
-    .ts-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
-    .ts-actions { display: flex; gap: 6px; flex-shrink: 0; }
-    .ts-body { padding: 0 16px 14px; }
-    .ts-meta { display: grid; grid-template-columns: max-content 1fr; gap: 2px 12px; font-size: 13px; color: var(--text-secondary); margin-bottom: 8px; }
-    .ts-meta dt { color: var(--text-muted); }
-    .ts-meta dd { word-break: break-all; }
-    .ts-tools summary { cursor: pointer; font-size: 13px; color: var(--text-secondary); margin: 6px 0; }
-    .ts-tool-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
-    .ts-tool { border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; }
-    .ts-tool-name { font-family: ui-monospace, monospace; font-size: 13px; }
-    .ts-tool-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-    .modal { display: none; position: fixed; inset: 0; background-color: rgba(0, 0, 0, 0.6); z-index: 1000; align-items: center; justify-content: center; }
-    .modal.active { display: flex; }
-    .modal-content { background-color: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 12px; width: 92%; max-width: 640px; max-height: 92vh; overflow-y: auto; }
-    .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-color); }
-    #tsForm, .ts-modal-body { padding: 20px; }
-    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-    .form-group { margin-bottom: 14px; border: 0; }
-    .form-group label, .form-group legend { display: block; margin-bottom: 6px; font-size: 14px; font-weight: 500; }
-    .form-group input, .form-group select { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 6px; background-color: var(--bg-primary); color: var(--text-primary); font-size: 14px; }
-    .form-group small { display: block; margin-top: 4px; font-size: 12px; }
-    .ts-header-row { display: grid; grid-template-columns: 1fr 1fr 2fr auto; gap: 6px; margin-top: 8px; align-items: center; }
-    .ts-header-row .ts-secret { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .ts-errors { border: 1px solid var(--error-color); color: var(--error-color); border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 13px; }
-    .modal-actions { display: flex; justify-content: flex-end; gap: 12px; padding-top: 14px; border-top: 1px solid var(--border-color); }
-    .ts-danger { background: var(--error-color); }
-</style>
 
 <script>
 (function () {
@@ -156,6 +117,7 @@
     var api = '/api/toolservers';
     var isOwner = @(Model.IsOwner ? "true" : "false");
     var overview = null;
+    var loaded = false;
     var editing = null;
     var deleting = null;
 
@@ -168,7 +130,7 @@
     }
 
     function button(label, onClick, className) {
-        var b = el('button', 'btn ' + (className || 'btn-ghost'), label);
+        var b = el('button', 'btn ' + (className || 'btn-secondary btn-sm'), label);
         b.type = 'button';
         b.addEventListener('click', onClick);
         return b;
@@ -197,15 +159,24 @@
     }
 
     function load() {
+        var box = document.getElementById('tsServers');
+        if (!loaded) skx.state.loading(box, { rows: 4 });
         return send('GET', api).then(function (r) {
             if (!r.ok) throw new Error(problemText(r.body, r.status).join(' '));
             overview = r.body;
+            loaded = true;
             render();
         }).catch(function (err) {
-            var box = document.getElementById('tsServers');
-            clear(box);
-            box.appendChild(el('div', 'ts-empty', 'Could not load tool servers: ' + err.message));
+            if (loaded) { skx.toast('The tool servers could not be refreshed: ' + err.message, { tone: 'error' }); return; }
+            document.getElementById('tsCount').textContent = '';
+            skx.state.error(box, { title: 'The tool servers could not be loaded', detail: err.message, retry: load });
         });
+    }
+
+    function clearFilter() {
+        document.getElementById('tsSearch').value = '';
+        render();
+        document.getElementById('tsSearch').focus();
     }
 
     function matches(server, q) {
@@ -229,9 +200,13 @@
         var box = document.getElementById('tsServers');
         clear(box);
         if (shown.length === 0) {
-            box.appendChild(el('div', 'ts-empty', q ? 'No server or tool matches.' : overview.kAgent.reachable
-                ? 'No tool servers yet.' + (isOwner ? ' Add the first one with "+ Add server".' : '')
-                : 'kagent did not answer, so its servers are not listed.'));
+            if (q) skx.state.empty(box, { icon: 'i-search', title: 'No server or tool matches', body: 'Try another word.', action: { label: 'Clear filter', onClick: clearFilter } });
+            else if (!overview.kAgent.reachable) skx.state.empty(box, { icon: 'i-server', title: 'No servers to list', body: 'kagent did not answer, so its servers are not listed. The guide above says what to check.' });
+            else skx.state.empty(box, {
+                icon: 'i-server', title: 'No tool servers yet', compact: false,
+                body: 'Tool servers give agents abilities, like reading tickets or searching a wiki.' + (isOwner ? '' : ' The owner adds them.'),
+                action: isOwner ? { label: 'Add tool server', onClick: function () { openForm(null); } } : undefined
+            });
             return;
         }
         shown.forEach(function (s) { box.appendChild(card(s, q)); });
@@ -239,33 +214,39 @@
 
     function badge(text, kind) { return el('span', 'badge badge-' + kind, text); }
 
+    // One colour per state across Skanyxx: ready is green, unknown is neutral, missing is red, the rest amber.
     function statusKind(code) {
-        return code === 'ready' ? 'success' : code === 'unknown' ? 'info' : code === 'stdio-unsupported' ? 'info' : code === 'not-registered' ? 'error' : 'warning';
+        return code === 'ready' ? 'success' : code === 'unknown' || code === 'stdio-unsupported' ? 'neutral' : code === 'not-registered' ? 'danger' : 'warning';
     }
 
     function card(s, q) {
-        var root = el('section', 'ts-server');
+        var root = el('section', 'card ts-server');
         root.setAttribute('data-ref', s.ref);
-        var head = el('div', 'ts-head');
+        root.setAttribute('aria-label', s.ref);
+        var head = el('div', 'tile-head');
         var info = el('div');
-        info.appendChild(el('div', 'ts-title', s.ref));
-        var badges = el('div', 'ts-badges');
-        badges.appendChild(badge(s.status.text, statusKind(s.status.code)));
-        badges.appendChild(badge(s.kindLabel, s.supported ? 'info' : 'warning'));
-        if (s.source === 'studio') badges.appendChild(badge('Studio', 'info'));
-        if (s.source === 'other') badges.appendChild(badge('Not added here', 'info'));
+        info.appendChild(el('h2', 'tile-title', s.ref));
+        var badges = el('div', 'badges mt-1');
+        var state = badge(s.status.text, statusKind(s.status.code));
+        var dot = el('span', 'badge-dot');
+        dot.setAttribute('aria-hidden', 'true');
+        state.insertBefore(dot, state.firstChild);
+        badges.appendChild(state);
+        badges.appendChild(badge(s.kindLabel, s.supported ? 'neutral' : 'warning'));
+        if (s.source === 'studio') badges.appendChild(badge('Studio', 'neutral'));
+        if (s.source === 'other') badges.appendChild(badge('Not added here', 'neutral'));
         info.appendChild(badges);
         head.appendChild(info);
 
-        var actions = el('div', 'ts-actions');
+        var actions = el('div', 'form-actions');
         actions.appendChild(button('Refresh tools', function () { refresh(s.ref, this); }));
         if (s.canEdit) actions.appendChild(button('Edit', function () { openForm(s); }));
-        if (s.canDelete) actions.appendChild(button('Delete', function () { openDelete(s); }));
+        if (s.canDelete) actions.appendChild(button('Delete', function () { openDelete(s); }, 'btn-danger-ghost btn-sm'));
         head.appendChild(actions);
         root.appendChild(head);
 
-        var body = el('div', 'ts-body');
-        var meta = el('dl', 'ts-meta');
+        var body = el('div', 'card-body mt-2');
+        var meta = el('dl', 'kv');
         function row(k, v) { meta.appendChild(el('dt', null, k)); meta.appendChild(el('dd', null, v)); }
         row('Namespace', s.namespace);
         row('URL', s.url || (s.source === 'skanyxx' ? '' : 'not reported by kagent (added outside Skanyxx)'));
@@ -280,15 +261,15 @@
         (s.fixes || []).forEach(function (fix) { body.appendChild(skxSetupGuide.render(fix, { badge: 'not working' })); });
 
         if (s.tools && s.tools.length) {
-            var tools = el('details', 'ts-tools');
+            var tools = el('details', 'details-admin');
             if (q) tools.open = true;
             tools.appendChild(el('summary', null, s.tools.length + ' tool' + (s.tools.length === 1 ? '' : 's')));
-            var grid = el('div', 'ts-tool-grid');
+            var grid = el('div', 'card-grid');
             s.tools.forEach(function (t) {
                 if (q && s.ref.toLowerCase().indexOf(q) < 0 && t.name.toLowerCase().indexOf(q) < 0 && (t.description || '').toLowerCase().indexOf(q) < 0) return;
-                var tool = el('div', 'ts-tool');
-                tool.appendChild(el('div', 'ts-tool-name', t.name));
-                if (t.description) tool.appendChild(el('div', 'ts-tool-desc', t.description));
+                var tool = el('div', 'subcard');
+                tool.appendChild(el('code', null, t.name));
+                if (t.description) tool.appendChild(el('div', 'table-cell-sub', t.description));
                 grid.appendChild(tool);
             });
             tools.appendChild(grid);
@@ -302,7 +283,7 @@
         btn.disabled = true;
         send('POST', api + '/' + ref.split('/').map(encodeURIComponent).join('/') + '/refresh').then(function (r) {
             btn.disabled = false;
-            if (!r.ok) { btn.textContent = 'Refresh failed'; btn.title = problemText(r.body, r.status).join(' '); return; }
+            if (!r.ok) { skx.toast(ref + ': the tools could not be refreshed. ' + problemText(r.body, r.status).join(' '), { tone: 'error' }); return; }
             overview.servers = overview.servers.map(function (s) { return s.ref === ref ? r.body : s; });
             render();
         });
@@ -310,12 +291,14 @@
 
     // --- Add / edit ---
     function headerRow(h) {
-        var row = el('div', 'ts-header-row');
+        var row = el('div', 'input-row ts-header-row');
         var name = el('input');
         name.placeholder = 'Header, e.g. Authorization';
+        name.setAttribute('aria-label', 'Header name');
         name.className = 'ts-h-name';
         name.value = h ? h.name : '';
         var source = el('select', 'ts-h-source');
+        source.setAttribute('aria-label', 'Where the value comes from');
         [['value', 'Enter the value'], ['secret', 'From an existing Secret']].forEach(function (o) {
             var opt = el('option', null, o[1]);
             opt.value = o[0];
@@ -326,12 +309,15 @@
         value.type = 'password';
         value.autocomplete = 'new-password';
         value.placeholder = h && h.source === 'value' ? 'Enter the value again' : 'Value (kept in a Secret)';
-        var secret = el('div', 'ts-secret');
+        value.setAttribute('aria-label', 'Header value');
+        var secret = el('div', 'form-row');
         var secretName = el('input', 'ts-h-secret');
         secretName.placeholder = 'Secret name';
+        secretName.setAttribute('aria-label', 'Secret name');
         secretName.value = h && h.source === 'secret' ? h.secretName : '';
         var secretKey = el('input', 'ts-h-key');
         secretKey.placeholder = 'Key';
+        secretKey.setAttribute('aria-label', 'Key in the Secret');
         secretKey.value = h && h.source === 'secret' ? h.secretKey : '';
         secret.appendChild(secretName);
         secret.appendChild(secretKey);
@@ -344,7 +330,7 @@
         cell.appendChild(value);
         cell.appendChild(secret);
         row.appendChild(cell);
-        row.appendChild(button('Remove', function () { row.remove(); }));
+        row.appendChild(button('Remove', function () { row.remove(); }, 'btn-danger-ghost btn-sm'));
         document.getElementById('tsHeaderRows').appendChild(row);
     }
 
@@ -367,11 +353,11 @@
             server.headers.forEach(headerRow);
         }
         warnUrl();
-        document.getElementById('tsFormModal').classList.add('active');
+        document.getElementById('tsFormModal').showModal();
         document.getElementById(server ? 'tsUrl' : 'tsName').focus();
     }
 
-    function closeModal(id) { document.getElementById(id).classList.remove('active'); }
+    function closeModal(id) { document.getElementById(id).close(); }
 
     function showErrors(id, list) {
         var box = document.getElementById(id);
@@ -410,19 +396,28 @@
 
     function submitForm(e) {
         e.preventDefault();
+        if (!document.getElementById('tsForm').reportValidity()) return;
         var submit = document.getElementById('tsFormSubmit');
         submit.disabled = true;
+        submit.setAttribute('aria-busy', 'true');
         var body = formBody();
         var request = editing
             ? send('PUT', api + '/' + encodeURIComponent(editing.namespace) + '/' + encodeURIComponent(editing.name), body)
             : send('POST', api, body);
+        var saved = editing ? 'Saved ' + editing.ref + '.' : 'Added ' + body.namespace + '/' + body.name + '.';
         request.then(function (r) {
             submit.disabled = false;
+            submit.removeAttribute('aria-busy');
             if (!r.ok) { showErrors('tsFormErrors', problemText(r.body, r.status)); if (r.status === 502) load(); return; }
             // Typed header values leave the page with the request; nothing keeps them.
             clear(document.getElementById('tsHeaderRows'));
             closeModal('tsFormModal');
+            skx.toast(saved);
             load();
+        }).catch(function (err) {
+            submit.disabled = false;
+            submit.removeAttribute('aria-busy');
+            showErrors('tsFormErrors', ['Skanyxx could not be reached: ' + err.message]);
         });
     }
 
@@ -435,16 +430,17 @@
         clear(usage);
         if (server.usedBy == null || server.usedBy.length) {
             var box = el('div', 'alert alert-warning');
+            box.appendChild(skx.icon('i-alert-triangle'));
             var warn = el('div', 'alert-body');
             box.appendChild(warn);
-            warn.appendChild(el('strong', null, server.usedBy == null
+            warn.appendChild(el('div', 'alert-title', server.usedBy == null
                 ? 'kagent did not say which agents use this server.'
                 : 'In use by ' + server.usedBy.length + ' agent' + (server.usedBy.length === 1 ? '' : 's') + ': ' + server.usedBy.join(', ')));
             warn.appendChild(el('p', null, 'They lose its tools until it is added again or their tool list is changed on the Agents page.'));
             usage.appendChild(box);
         }
         document.getElementById('tsDeleteConfirm').textContent = server.usedBy && server.usedBy.length === 0 ? 'Delete' : 'Delete anyway';
-        document.getElementById('tsDeleteModal').classList.add('active');
+        document.getElementById('tsDeleteModal').showModal();
     }
 
     function confirmDelete() {
@@ -453,6 +449,7 @@
         send('DELETE', api + '/' + encodeURIComponent(s.namespace) + '/' + encodeURIComponent(s.name) + (confirmInUse ? '?confirmInUse=true' : '')).then(function (r) {
             if (!r.ok) { showErrors('tsDeleteErrors', problemText(r.body, r.status)); return; }
             closeModal('tsDeleteModal');
+            skx.toast('Deleted ' + s.ref + '.');
             load();
         });
     }

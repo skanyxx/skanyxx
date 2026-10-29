@@ -166,7 +166,7 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains("Sign-in is in progress for this account; try again.", await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
     }
 
-    /// <summary>CR3 m1 / SEC3 R3-5: the button disables itself after the first click, and the token field is bounded.</summary>
+    /// <summary>CR3 m1 / SEC3 R3-5: the form sends once (ui.js data-once), and the token field is bounded.</summary>
     [Fact]
     public async Task LoginForm_DisablesSubmitOnce_AndBoundsTheToken()
     {
@@ -174,7 +174,8 @@ public sealed class BrowserSignInTests(PostgresFixture fixture) : IAsyncLifetime
 
         var html = await (await _host.Client().GetAsync("/Login", TestContext.Current.CancellationToken)).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains("onsubmit=\"this.querySelector('button[type=submit]').disabled = true\"", html);
+        Assert.Contains("<form method=\"post\" class=\"form auth-form\" data-once", html);
+        Assert.Contains("/js/ui.js", html);
         Assert.Matches("<input(?=[^>]*name=\"BootstrapToken\")(?=[^>]*maxlength=\"512\")", html);
     }
 

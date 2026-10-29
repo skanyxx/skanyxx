@@ -227,7 +227,7 @@ public sealed class EntraAccountSafetyTests(PostgresFixture fixture, MockIdentit
         Assert.False((await PersonAsync(Email)).GetProperty("hasPassword").GetBoolean());
         Assert.False(OffersRemoval(page, createdId));
         Assert.True(OffersRemoval(page, memberId));
-        Assert.Contains("return confirm(", page);
+        Assert.Contains("data-confirm-title=\"Remove the Microsoft login of", page); // the styled confirm (ui.js), not the browser's
     }
 
     /// <summary>

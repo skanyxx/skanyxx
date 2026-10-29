@@ -33,7 +33,7 @@
         const list = document.getElementById('alerts');
         const items = [...healthAlerts, ...(usageAlerts ?? [])];
         if (items.length === 0) {
-            list.replaceChildren(el('li', { class: 'text-muted' }, usageAlerts === null ? 'Loading…' : 'Nothing needs attention.'));
+            list.replaceChildren(el('li', { class: 'is-empty text-muted' }, usageAlerts === null ? 'Checking…' : 'Nothing needs attention.'));
             return;
         }
         list.replaceChildren(...items.map(a => el('li', { 'data-severity': a.severity },
@@ -42,13 +42,14 @@
 
     async function loadHealth() {
         const grid = document.getElementById('health');
+        skx.state.loading(grid, { rows: 3 });
         try {
             const tiles = await json('/api/dashboard/health');
             grid.replaceChildren(...tiles.map(tileNode));
             healthAlerts.splice(0, healthAlerts.length, ...tiles.filter(t => t.status === 'down')
                 .map(t => ({ severity: 'down', text: `${t.title}: ${t.reason ?? t.summary}`, url: t.fixUrl })));
         } catch (e) {
-            grid.replaceChildren(el('p', { class: 'text-error' }, `Health could not be read: ${e.message}`));
+            skx.state.error(grid, { title: 'Health could not be read', detail: e.message, retry: loadHealth });
         }
         renderAlerts();
     }
@@ -115,6 +116,7 @@
     }
 
     async function loadSummary() {
+        skx.state.loading(document.getElementById('glance'), { rows: 2 });
         try {
             const s = await json('/api/dashboard/summary');
             renderGlance(s);
@@ -122,13 +124,14 @@
             renderTops(s);
             usageAlerts = s.alerts;
         } catch (e) {
-            document.getElementById('glance').replaceChildren(el('p', { class: 'text-error' }, `Usage could not be read: ${e.message}`));
+            skx.state.error(document.getElementById('glance'), { title: 'Usage could not be read', detail: e.message, retry: loadSummary });
             usageAlerts = [];
         }
         renderAlerts();
     }
 
     if (root) {
+        renderAlerts();
         loadHealth();
         loadSummary();
     }
