@@ -31,4 +31,16 @@ public sealed class GuardedPathsTests
 
         Assert.Equal(counted, GuardedPaths.IsCredentialPost(context.Request));
     }
+
+    [Theory]
+    [InlineData("/api/toolservers", true)]
+    [InlineData("/api/agents/kagent/a", true)]
+    [InlineData("/api/analytics/usage", true)]
+    [InlineData("/api/dashboard/health", true)]
+    [InlineData("/api/me/preferences", true)]
+    [InlineData("/api/setup/guides/models", true)]
+    [InlineData("/api/memory/cards", true)]
+    [InlineData("/api/meta", false)]
+    [InlineData("/health", false)]
+    public void RateLimitedAndOriginGuarded(string path, bool guarded) => Assert.Equal(guarded, GuardedPaths.Contains(path));
 }

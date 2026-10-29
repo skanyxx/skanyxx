@@ -103,6 +103,18 @@ internal static class ModelConfigSpec
         _ => JsonValue.Create(value)
     };
 
+    /// <summary>The endpoint fields' values in <paramref name="spec"/>, in <see cref="ProviderSchema.Endpoints"/> order.</summary>
+    public static IReadOnlyList<string?> Endpoints(JsonObject? spec, ProviderSchema schema) => [.. schema.Endpoints.Select(e => Text(spec?[schema.Block]?[e]))];
+
+    /// <summary>
+    /// Each endpoint field's origin for the audit: scheme, host and port, never a path or query; null when unset. Only for
+    /// a spec <see cref="Edit"/> built, whose endpoints <see cref="ModelParams"/> checked are absolute http(s) URLs.
+    /// </summary>
+    public static Dictionary<string, string?> EndpointOrigins(JsonObject spec, ProviderSchema schema) =>
+        schema.Endpoints.Zip(Endpoints(spec, schema)).ToDictionary(e => e.First, e => e.Second is null
+            ? null
+            : new Uri(e.Second).GetComponents(UriComponents.SchemeAndServer | UriComponents.Port, UriFormat.UriEscaped));
+
     public static string? String(JsonNode? node) => node is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
 
     // A scalar as the form shows it; null for objects and lists.

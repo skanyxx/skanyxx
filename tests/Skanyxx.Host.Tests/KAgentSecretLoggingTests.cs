@@ -78,6 +78,43 @@ public sealed class KAgentSecretLoggingTests
         Assert.DoesNotContain("kagent says no", deleted.Message);
     }
 
+    public static TheoryData<string> AgentWrites() => ["create", "update"];
+
+    /// <summary>An edit, suspend or resume sends the whole Agent back; one made outside Skanyxx may hold an inline value (D327).</summary>
+    [Theory]
+    [MemberData(nameof(AgentWrites))]
+    public async Task AgentWrite_WithAnInlineValue_LogsOnlyTheStatus(string write)
+    {
+        var (client, logs) = Client();
+        var agent = new JsonObject
+        {
+            ["metadata"] = new JsonObject { ["name"] = "byo", ["namespace"] = "kagent" },
+            ["spec"] = new JsonObject
+            {
+                ["declarative"] = new JsonObject
+                {
+                    ["tools"] = new JsonArray(new JsonObject
+                    {
+                        ["type"] = "McpServer",
+                        ["headersFrom"] = new JsonArray(new JsonObject { ["name"] = "Authorization", ["value"] = Secret })
+                    }),
+                    ["deployment"] = new JsonObject { ["env"] = new JsonArray(new JsonObject { ["name"] = "TOKEN", ["value"] = Secret }) }
+                }
+            }
+        };
+
+        var refused = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            write == "create" ? client.CreateAgentAsync(agent, Ct) : client.UpdateAgentAsync(agent, Ct));
+
+        Assert.Equal(HttpStatusCode.InternalServerError, refused.StatusCode);
+        Assert.DoesNotContain(Secret, refused.Message);
+        var line = Assert.Single(logs);
+        Assert.DoesNotContain(Secret, line);
+        Assert.DoesNotContain("kagent says no", line);
+        Assert.Contains("/api/agents", line);
+        Assert.Contains(KAgentApiClient.SecretCallRefused, line);
+    }
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static (KAgentApiClient Client, ConcurrentQueue<string> Logs) Client()

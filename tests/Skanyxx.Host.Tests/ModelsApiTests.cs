@@ -508,6 +508,118 @@ public sealed class ModelsApiTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task FieldNames_ThatDifferOnlyBySpaces_Are400_NotAServerError()
+    {
+        var response = await _owner.PostAsync("/api/models", new StringContent(
+            """{"namespace":"kagent","name":"dup","provider":"Ollama","model":"qwen3","params":{"host":"http://a:11434","host ":"http://b:11434"}}""",
+            System.Text.Encoding.UTF8, "application/json"), Ct);
+        var trimmed = await _owner.PostAsJsonAsync("/api/models",
+            new { @namespace = "kagent", name = "spaced", provider = "Ollama", model = "qwen3", @params = new Dictionary<string, string> { [" host "] = "http://a:11434" } }, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains("Each field may be given once", await response.Content.ReadAsStringAsync(Ct));
+        Assert.False(_kagent.ModelConfigs.ContainsKey("kagent/dup"));
+        Assert.Equal(HttpStatusCode.Created, trimmed.StatusCode);
+        Assert.Equal("http://a:11434", _kagent.ModelConfigs["kagent/spaced"]["ollama"]!["host"]!.GetValue<string>());
+    }
+
+    // --- Audit (D325) ---
+
+    [Fact]
+    public async Task CreateEditAndDelete_EachLeaveAnIntentAndAnOutcomeRow_WithFlags_NeverTheKey()
+    {
+        var created = await _owner.PostAsJsonAsync("/api/models", new
+        {
+            @namespace = "kagent", name = "audited", provider = "OpenAI", model = "gpt-4.1", apiKey = ApiKey,
+            @params = new { baseUrl = "https://llm.example/v1" }
+        }, Ct);
+        var edited = await _owner.PutAsJsonAsync("/api/models/kagent/audited", new
+        {
+            provider = "OpenAI", model = "gpt-4o", apiKey = ApiKey + "2", @params = new { baseUrl = "https://other.example:8443/v2" }
+        }, Ct);
+        var deleted = await _owner.DeleteAsync("/api/models/kagent/audited", Ct);
+
+        Assert.Equal([HttpStatusCode.Created, HttpStatusCode.OK, HttpStatusCode.OK], new[] { created.StatusCode, edited.StatusCode, deleted.StatusCode });
+        foreach (var action in new[] { "model.create_requested", "model.created", "model.update_requested", "model.updated", "model.delete_requested", "model.deleted" })
+        {
+            var row = Assert.Single((await AuditAsync(action)).EnumerateArray());
+            Assert.Equal("kagent/audited", row.GetProperty("targetId").GetString());
+            var raw = row.GetRawText();
+            Assert.DoesNotContain(ApiKey, raw);
+            Assert.DoesNotContain("/v1", raw); // origins only, never a path
+            Assert.DoesNotContain("/v2", raw);
+        }
+        var create = (await AuditAsync("model.created"))[0].GetProperty("details");
+        Assert.Equal("OpenAI", create.GetProperty("provider").GetString());
+        Assert.Equal("gpt-4.1", create.GetProperty("model").GetString());
+        Assert.True(create.GetProperty("keyChanged").GetBoolean());
+        Assert.False(create.GetProperty("keyRemoved").GetBoolean());
+        Assert.Equal("https://llm.example", create.GetProperty("endpoints").GetProperty("baseUrl").GetString());
+        var update = (await AuditAsync("model.updated"))[0].GetProperty("details");
+        Assert.True(update.GetProperty("baseUrlChanged").GetBoolean());
+        Assert.Equal("https://other.example:8443", update.GetProperty("endpoints").GetProperty("baseUrl").GetString());
+        Assert.Equal(["baseUrl"], update.GetProperty("fields").EnumerateArray().Select(f => f.GetString()));
+
+        var changes = (await _owner.GetFromJsonAsync<JsonElement>("/api/identity/audit/analytics", Ct)).GetProperty("adminChanges").EnumerateArray()
+            .ToDictionary(v => v.GetProperty("value").GetString()!, v => v.GetProperty("count").GetInt64());
+        Assert.Equal(3, changes["models"]);
+    }
+
+    [Fact]
+    public async Task AFailedWrite_LeavesItsIntentAndAFailureRow_AndARefusedFormNoRowAtAll()
+    {
+        _kagent.ModelWriteStatus = 500;
+
+        var failed = await _owner.PostAsJsonAsync("/api/models", new { @namespace = "kagent", name = "down", provider = "OpenAI", model = "gpt-4.1", apiKey = ApiKey }, Ct);
+        var invalid = await _owner.PostAsJsonAsync("/api/models", new { @namespace = "kagent", name = "bad", provider = "OpenAI", model = "gpt 4", apiKey = ApiKey }, Ct);
+
+        Assert.Equal(HttpStatusCode.BadGateway, failed.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, invalid.StatusCode);
+        Assert.Single((await AuditAsync("model.create_requested")).EnumerateArray());
+        var failure = Assert.Single((await AuditAsync("model.write_failed")).EnumerateArray());
+        Assert.Equal("kagent/down", failure.GetProperty("targetId").GetString());
+        Assert.DoesNotContain(ApiKey, failure.GetRawText());
+        Assert.Empty((await AuditAsync("model.created")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task AFailedDelete_LeavesItsIntentAndAFailureRow()
+    {
+        _kagent.ModelConfigs["kagent/doomed"] = new JsonObject { ["provider"] = "Ollama", ["model"] = "llama3" };
+        _kagent.ModelWriteStatus = 500;
+
+        var response = await _owner.DeleteAsync("/api/models/kagent/doomed", Ct);
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Equal("kagent/doomed", Assert.Single((await AuditAsync("model.delete_requested")).EnumerateArray()).GetProperty("targetId").GetString());
+        var failure = Assert.Single((await AuditAsync("model.write_failed")).EnumerateArray());
+        Assert.Equal("delete", failure.GetProperty("details").GetProperty("reason").GetString());
+        Assert.Empty((await AuditAsync("model.deleted")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task ADeleteRefusedAsInUse_OrAsTheDefault_LeavesNoRow()
+    {
+        _kagent.ModelConfigs["kagent/team"] = new JsonObject { ["provider"] = "Ollama", ["model"] = "llama3" };
+        _kagent.AgentObjects["kagent/helper"] = new JsonObject
+        {
+            ["metadata"] = new JsonObject { ["name"] = "helper", ["namespace"] = "kagent" },
+            ["spec"] = new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject { ["modelConfig"] = "team" } }
+        };
+
+        var inUse = await _owner.DeleteAsync("/api/models/kagent/team", Ct);
+        var theDefault = await _owner.DeleteAsync($"/api/models/{Default}?confirm=true", Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, inUse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, theDefault.StatusCode);
+        foreach (var action in new[] { "model.delete_requested", "model.deleted", "model.write_failed" })
+            Assert.Empty((await AuditAsync(action)).EnumerateArray());
+    }
+
+    private async Task<JsonElement> AuditAsync(string action) =>
+        await _owner.GetFromJsonAsync<JsonElement>($"/api/identity/audit?action={action}", Ct);
+
+    [Fact]
     public async Task Writes_AreOriginGuarded()
     {
         var request = Request("POST", "/api/models");

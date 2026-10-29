@@ -493,11 +493,18 @@ public class KAgentApiClient
             ?? throw new HttpRequestException("kagent answered in an unexpected shape", null, HttpStatusCode.BadGateway);
     }
 
-    /// <summary>Creates the Agent CR as given, labels included (kagent keeps them; an update never changes them).</summary>
-    public Task CreateAgentAsync(JsonObject agent, CancellationToken ct) => ControlAsync(HttpMethod.Post, "/api/agents", agent, ct);
+    /// <summary>
+    /// Creates the Agent CR as given, labels included (kagent keeps them; an update never changes them). Secret-carrying
+    /// like <see cref="UpdateAgentAsync"/>: an imported manifest may hold inline values too.
+    /// </summary>
+    public Task CreateAgentAsync(JsonObject agent, CancellationToken ct) => ControlAsync(HttpMethod.Post, "/api/agents", agent, ct, carriesSecret: true);
 
-    /// <summary>Replaces the Agent's spec; kagent ignores the body's metadata except its name and namespace.</summary>
-    public Task UpdateAgentAsync(JsonObject agent, CancellationToken ct) => ControlAsync(HttpMethod.Put, "/api/agents", agent, ct);
+    /// <summary>
+    /// Replaces the Agent's spec; kagent ignores the body's metadata except its name and namespace. An edit, suspend or
+    /// resume sends back the whole existing Agent, and one made outside Skanyxx may hold an inline <c>value</c> under a
+    /// tool's <c>headersFrom</c> or the deployment's <c>env</c>, so a refusal never logs kagent's answer (D327).
+    /// </summary>
+    public Task UpdateAgentAsync(JsonObject agent, CancellationToken ct) => ControlAsync(HttpMethod.Put, "/api/agents", agent, ct, carriesSecret: true);
 
     /// <returns>False when kagent had no such agent.</returns>
     public async Task<bool> DeleteAgentAsync(string ns, string name, CancellationToken ct) =>
@@ -534,7 +541,7 @@ public class KAgentApiClient
     /// A control call as this process (no person): the envelope's <c>data</c> (an empty object when there is none), or
     /// null for a 404 when <paramref name="notFoundIsNull"/>. The request is never logged; kagent's refusal is, up to 1 000
     /// characters, unless the request <paramref name="carriesSecret"/> (a tool server's companion Secret values, a
-    /// ModelConfig write with an inline API key): kagent's answer could echo them, so then only the method, path, status
+    /// ModelConfig write with an inline API key, any Agent write): kagent's answer could echo them, so then only the method, path, status
     /// and a fixed text are logged. The exception never carries kagent's text.
     /// </summary>
     private async Task<JsonNode?> ControlAsync(HttpMethod method, string endpoint, JsonObject? body, CancellationToken ct,

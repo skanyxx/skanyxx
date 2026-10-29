@@ -12,8 +12,10 @@ internal sealed class CardsPerDayHandler(MemoryDbContext db) : IRequestHandler<C
     {
         var from = query.From.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var to = query.To.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
-        var days = await db.Cards.AsNoTracking()
-            .Where(c => c.CreatedAt >= from && c.CreatedAt < to)
+        var cards = db.Cards.AsNoTracking().Where(c => c.CreatedAt >= from && c.CreatedAt < to);
+        if (query.Scopes is { } scopes)
+            cards = cards.Where(c => scopes.Contains(c.Scope));
+        var days = await cards
             .GroupBy(c => c.CreatedAt.Date)
             .Select(g => new { Day = g.Key, Count = g.LongCount() })
             .ToListAsync(ct);

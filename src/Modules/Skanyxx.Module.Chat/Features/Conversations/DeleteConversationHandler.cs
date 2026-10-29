@@ -23,8 +23,16 @@ internal sealed class DeleteConversationHandler(KAgentApiClient kagent, ChatFile
             logger.LogWarning(ex, "Deleting conversation {ConversationId} failed for {UserId}", command.ConversationId, command.UserId);
             return Outcome<bool>.Unavailable(ChatFailure.Message(ex));
         }
-        // kagent's session is gone: what Skanyxx kept about it goes too, even if the caller leaves now.
-        await files.DeleteConversationAsync(command.UserId, command.ConversationId, CancellationToken.None);
+        // kagent's session is gone: what Skanyxx kept about it goes too, even if the caller leaves now, and the chat index
+        // hears of it even if a file could not be removed (it would otherwise keep a conversation that no longer exists).
+        try
+        {
+            await files.DeleteConversationAsync(command.UserId, command.ConversationId, CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(ex, "Files of deleted conversation {ConversationId} were not all removed for {UserId}", command.ConversationId, command.UserId);
+        }
         await publisher.Publish(new ChatConversationDeleted(command.UserId, command.ConversationId), CancellationToken.None);
         return Outcome<bool>.Ok(true);
     }

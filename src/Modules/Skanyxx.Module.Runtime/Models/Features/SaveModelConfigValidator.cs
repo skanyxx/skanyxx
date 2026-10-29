@@ -25,8 +25,10 @@ internal sealed class SaveModelConfigValidator : AbstractValidator<SaveModelConf
         RuleFor(c => c.ApiKey).Empty().When(c => c.Provider == ProviderCatalog.Ollama).WithMessage("Ollama takes no API key.");
         RuleFor(c => c.ApiKey).Empty().When(c => c.NoApiKey).WithMessage("Paste a key or choose 'No API key', not both.");
         RuleFor(c => c.Params.Count).LessThanOrEqualTo(40).OverridePropertyName("Params");
-        RuleForEach(c => c.Params).Must(p => p.Key.Length is > 0 and <= 64 && p.Key.All(char.IsAsciiLetterOrDigit))
+        RuleForEach(c => c.Params).Must(p => p.Key.Trim() is { Length: > 0 and <= 64 } key && key.All(char.IsAsciiLetterOrDigit))
             .WithMessage("A field name must be letters and digits only.");
+        RuleFor(c => c.Params).Must(p => p.Keys.Select(k => k.Trim()).Distinct(StringComparer.Ordinal).Count() == p.Count)
+            .WithMessage("Each field may be given once.");
         RuleForEach(c => c.Params).Must(p => p.Value.Length <= 2000 && !p.Value.Any(char.IsControl))
             .WithMessage("A field value must be one line of at most 2000 characters.");
     }

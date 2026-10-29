@@ -12,7 +12,8 @@ namespace Skanyxx.Module.Analytics.Features;
 
 /// <summary>
 /// One read of the last 30 days of the rollup, cut into the Dashboard's numbers and charts: everyone for the owner, the
-/// people in their own teams for a supervisor (the same reach Analytics gives them, <see cref="ScopeResolver"/>).
+/// people in their own teams for a supervisor (the same reach Analytics gives them, <see cref="ScopeResolver"/>). A
+/// supervisor's new memory cards are those in their teams' scopes, never a department's, the company's or anyone's personal ones.
 /// </summary>
 internal sealed class DashboardSummaryHandler(
     OrgReader orgs, UsageStore store, CostCalculator cost, IMediator mediator, TimeProvider clock, ILogger<DashboardSummaryHandler> logger)
@@ -28,7 +29,8 @@ internal sealed class DashboardSummaryHandler(
         var week = DateRange.Last(7, today);
         var org = await orgs.ReadAsync(ct);
         var owner = query.Viewer.IsOwner;
-        var users = owner ? null : org.MembersOf(org.TeamsOf(query.Viewer.UserId));
+        var teams = owner ? null : org.TeamsOf(query.Viewer.UserId).ToList();
+        var users = teams is null ? null : org.MembersOf(teams);
         var rows = await store.ReadAsync(month.From, month.To, users, ct);
         var weekRows = rows.Where(r => r.Day >= week.From).ToList();
         var todayRows = rows.Where(r => r.Day == today).ToList();
@@ -45,7 +47,7 @@ internal sealed class DashboardSummaryHandler(
             [.. days.Select(d => d.ToString("yyyy-MM-dd"))],
             UsageReportBuilder.PerDay(rows, days, r => r.TokensIn), UsageReportBuilder.PerDay(rows, days, r => r.TokensOut),
             UsageReportBuilder.Stacked(rows, days, r => r.Agent, r => r.Chats), UsageReportBuilder.PerDay(rows, days, r => r.Errors),
-            await CardsAsync(month, days, ct),
+            await CardsAsync(month, days, teams?.Select(t => $"team:{t.Slug}").ToList(), ct),
             owner ? await EventsAsync(org, ct) : null,
             Alerts(todayTotals, weekTotals));
     }
@@ -56,11 +58,11 @@ internal sealed class DashboardSummaryHandler(
             .OrderByDescending(r => r.Requests).ThenByDescending(r => r.Tokens).ThenBy(r => r.Name, StringComparer.Ordinal)
             .Take(5)];
 
-    private async Task<IReadOnlyList<long>?> CardsAsync(DateRange month, IReadOnlyList<DateOnly> days, CancellationToken ct)
+    private async Task<IReadOnlyList<long>?> CardsAsync(DateRange month, IReadOnlyList<DateOnly> days, IReadOnlyCollection<string>? scopes, CancellationToken ct)
     {
         try
         {
-            var counts = (await mediator.Send(new CardsPerDayQuery(month.From, month.To), ct)).ToDictionary(c => c.Day, c => c.Count);
+            var counts = (await mediator.Send(new CardsPerDayQuery(month.From, month.To, scopes), ct)).ToDictionary(c => c.Day, c => c.Count);
             return [.. days.Select(d => counts.GetValueOrDefault(d))];
         }
         catch (Exception ex) when (ex is DbException or TimeoutException)
