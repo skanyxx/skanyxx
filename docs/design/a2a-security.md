@@ -78,7 +78,10 @@ offers, and what is still open. The pod-level fence is in [`cluster-security.md`
      over: security review H1);
    - sets `app`, `kagent` or `app.kubernetes.io/*` in `deployment.labels` (the NetworkPolicies' pod identities);
    - runs as a ServiceAccount other than the agents' own (kagent's controller SA reads every Secret);
-   - mounts or reads one of this release's Secrets through `deployment.volumes`, `env` or `envFrom`.
+   - sets `volumes`, `volumeMounts`, `envFrom`, `extraContainers`, `securityContext`, `podSecurityContext`,
+     `serviceAccountConfig` or (declarative) `imageRegistry` in its deployment: no Secret or host path mounted, no
+     sidecar, no privilege (D530). Skanyxx itself writes none of them;
+   - reads any Secret through `deployment.env` (`valueFrom.secretKeyRef`).
 
    It applies to declarative and BYO Agents alike, whoever writes them.
 7. **Secrets:** the signing key exists only in the Kubernetes Secret `skanyxx-kagent-gate`. It holds `token-key` (Skanyxx's env
@@ -164,6 +167,17 @@ talks to an unsecured kagent on `localhost:8083` exactly as before. `Mode=signed
   agent is calling. Per-agent identity needs a per-agent SA.
 - **Pod labels are the NetworkPolicies' identity.** The agent guard holds Agent CRs. Anyone with rights to create plain
   Pods or Deployments in the namespace can still wear any label; keep those rights to the release's operators.
+- **kagent itself makes an agent with skills a privileged pod** (its skills init, `manifest_builder.go`). The agent
+  guard cannot refuse what kagent adds; Studio agents use skills. Pod Security admission on the namespace would
+  refuse those pods: an owner decision.
+- **The guard does not reserve every `skanyxx-*` name.** An Agent named like a runtime Secret (a memory bearer
+  `skanyxx-memory-<agent>-<fp>`, a plugin's `<server>-<fp>`) makes kagent overwrite that Secret. Skanyxx's own forms
+  reserve `skanyxx-*`, so this needs kubectl or Argo CD rights. With `agentGuard.enabled=false`, `kagent-controller` and
+  the bare fullname are unguarded again.
+- **The guard covers `agents` in the release namespace only:** not `sandboxagents` (inert while Substrate is off),
+  and not other namespaces in `kagent.rbac.namespaces`. Custom labels named in `controllerFrom`/`httpFrom` can be worn
+  by an Agent.
+- **The gate's names are fixed:** one release per namespace (already the case with the bundled kagent).
 - **Keys are read at start.** Skanyxx and Envoy read the key only when they start, and `helm template`-based GitOps
   draws a new key on every render. Use `kagentGate.existingSecret` there, and restart both after a rotation.
 - **kagent's controller can read every Secret in the namespace**, including `skanyxx-kagent-gate`'s key, so a compromised

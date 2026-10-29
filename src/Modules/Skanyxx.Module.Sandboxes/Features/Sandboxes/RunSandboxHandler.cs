@@ -81,8 +81,18 @@ internal sealed class RunSandboxHandler(
         }
         catch (Exception) when (ct.IsCancellationRequested)
         {
-            // The client went away, but AX may have created it anyway: a demoted maker's sandbox must not survive that.
-            if (!await MayRunAsync(command.UserId!, CancellationToken.None))
+            // The client went away, but AX may have created it anyway: a demoted maker's sandbox must not survive that,
+            // and a check that cannot answer fails closed.
+            bool stillRuns;
+            try
+            {
+                stillRuns = await MayRunAsync(command.UserId!, CancellationToken.None);
+            }
+            catch
+            {
+                stillRuns = false;
+            }
+            if (!stillRuns)
                 await UndoAsync(command.Name, agentId);
             throw;
         }

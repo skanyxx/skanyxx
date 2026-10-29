@@ -347,7 +347,7 @@ KUBECONFIG=/dev/null helm install skanyxx "$CHART" --namespace skanyxx --set kag
 grep -q 'kagentGate.enabled=false' "$WORK/nogate-notes.txt" || die "gate off: NOTES does not warn"
 # D528: the Agent admission policy (names, pod labels, ServiceAccount, Secrets), bound to the release namespace.
 vap=$(doc ValidatingAdmissionPolicy skanyxx-agent-guard "$D")
-for want in "'skanyxx-kagent-gate'" "startsWith('app.kubernetes.io/')" "serviceAccountName == 'kagent-agent'" 'variables.secrets' "startsWith('kagent-')"; do
+for want in "'skanyxx-kagent-gate'" "startsWith('app.kubernetes.io/')" "serviceAccountName == 'kagent-agent'" 'has(object.spec.declarative.deployment.extraContainers)' 'valueFrom.secretKeyRef' "startsWith('kagent-')"; do
   grep -qF -- "$want" <<<"$vap" || die "agent guard: the policy lacks $want"
 done
 doc ValidatingAdmissionPolicyBinding skanyxx-agent-guard "$D" | grep -q 'kubernetes.io/metadata.name: skanyxx' || die "agent guard: not bound to the release namespace"

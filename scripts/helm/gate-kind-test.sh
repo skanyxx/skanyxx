@@ -151,7 +151,9 @@ for _ in $(seq 1 30); do
   printf '%s' "$(agent kagent-probe)" | k apply --dry-run=server -f - 2>&1 | grep -q ValidatingAdmissionPolicy && break; sleep 2
 done
 admit allowed "a plain Agent" "$(agent e2e-test-ok)"
-admit allowed "its own labels and the agents' ServiceAccount" "$(agent e2e-test-ok '      labels: {team: payments}
+admit allowed "its own labels, plain env and the agents' ServiceAccount" "$(agent e2e-test-ok '      labels: {team: payments}
+      env: [{name: LOG_LEVEL, value: debug}]
+      replicas: 1
       serviceAccountName: kagent-agent')"
 admit denied "named like the gate (review H1)" "$(agent skanyxx-kagent-gate)"
 admit denied "named like kagent's controller" "$(agent kagent-controller)"
@@ -163,5 +165,10 @@ admit denied "running as kagent's controller ServiceAccount" "$(agent e2e-test-x
 admit denied "mounting the gate's key" "$(agent e2e-test-x '      volumes: [{name: k, secret: {secretName: skanyxx-kagent-gate}}]')"
 admit denied "reading Skanyxx's database Secret" "$(agent e2e-test-x '      env: [{name: DB, valueFrom: {secretKeyRef: {name: skanyxx-skanyxx-db, key: x}}}]')"
 admit denied "envFrom the bootstrap Secret" "$(agent e2e-test-x '      envFrom: [{secretRef: {name: skanyxx}}]')"
+admit denied "reading any Secret through env" "$(agent e2e-test-x '      env: [{name: K, valueFrom: {secretKeyRef: {name: skanyxx-memory-seed-1a2b, key: token}}}]')"
+admit denied "a sidecar container (review round 2 M1)" "$(agent e2e-test-x '      extraContainers: [{name: side, image: busybox}]')"
+admit denied "a hostPath volume" "$(agent e2e-test-x '      volumes: [{name: h, hostPath: {path: /}}]')"
+admit denied "a privileged container" "$(agent e2e-test-x '      securityContext: {privileged: true}')"
+admit denied "a BYO agent mounting a volume" "$(agent e2e-test-x '      volumes: [{name: h, hostPath: {path: /}}]' byo)"
 admit denied "a BYO agent wearing the gate's label" "$(agent e2e-test-x '      labels: {app.kubernetes.io/name: skanyxx-kagent-gate}' byo)"
 echo "ok: kagent gate on kind ($CLUSTER, $(kubectl version -o json | python3 -c 'import json,sys; print(json.load(sys.stdin)["serverVersion"]["gitVersion"])')), $((checks + 1)) checks"

@@ -17,10 +17,11 @@
 {{- if .Values.dragonfly.enabled }}{{ $names = append $names "dragonfly" }}{{ end }}
 {{- if include "skanyxx.sandboxMemory" . }}{{ $names = append $names (printf "%s-sandbox-mcp" $full) }}{{ end }}
 {{- $names = $names | uniq }}
-# D528: what an Agent in this namespace may not do, whoever writes it (Skanyxx, Argo CD, kubectl). kagent copies an
+# D528, D530: what an Agent in this namespace may not do, whoever writes it (Skanyxx, Argo CD, kubectl). kagent copies an
 # Agent's deployment settings onto its pods, so an Agent could otherwise wear the gate's or Skanyxx's pod labels (the
-# NetworkPolicies' identities), run as another ServiceAccount (kagent's controller reads every Secret), mount one of
-# this release's Secrets, or be named like one of this release's objects. Needs Kubernetes 1.30+.
+# NetworkPolicies' identities), run as another ServiceAccount (kagent's controller reads every Secret), mount any
+# Secret or host path, add a container or run privileged, or be named like one of this release's objects. Skanyxx
+# itself writes none of the refused fields. Needs Kubernetes 1.30+.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
 metadata:
@@ -35,9 +36,6 @@ spec:
         apiVersions: ["*"]
         operations: [CREATE, UPDATE]
         resources: [agents]
-  variables:
-    - name: secrets
-      expression: {{ toJson $secrets | quote }}
   validations:
     - expression: "!(object.metadata.name in {{ toJson $names | replace "\"" "'" }}) && object.metadata.name != 'kagent' && !object.metadata.name.startsWith('kagent-')"
       message: "An Agent may not be named like one of this release's objects or kagent's own (kagent would take it over)."
@@ -48,12 +46,11 @@ spec:
       message: "spec.{{ . }}.deployment.labels may not set app, kagent or app.kubernetes.io/* (the NetworkPolicies' pod identities)."
     - expression: "!({{ $has }} && has({{ $d }}.serviceAccountName)) || {{ $d }}.serviceAccountName == {{ dig "controller" "agentDeployment" "serviceAccountName" "kagent-agent" $.Values.kagent | squote }}"
       message: "spec.{{ . }}.deployment.serviceAccountName may only be the agents' own ServiceAccount (no API token)."
-    - expression: "!({{ $has }} && has({{ $d }}.volumes)) || !{{ $d }}.volumes.exists(v, (has(v.secret) && has(v.secret.secretName) && v.secret.secretName in variables.secrets) || (has(v.projected) && has(v.projected.sources) && v.projected.sources.exists(s, has(s.secret) && has(s.secret.name) && s.secret.name in variables.secrets)))"
-      message: "spec.{{ . }}.deployment.volumes may not mount one of this release's Secrets."
-    - expression: "!({{ $has }} && has({{ $d }}.env)) || !{{ $d }}.env.exists(e, has(e.valueFrom) && has(e.valueFrom.secretKeyRef) && has(e.valueFrom.secretKeyRef.name) && e.valueFrom.secretKeyRef.name in variables.secrets)"
-      message: "spec.{{ . }}.deployment.env may not read one of this release's Secrets."
-    - expression: "!({{ $has }} && has({{ $d }}.envFrom)) || !{{ $d }}.envFrom.exists(e, has(e.secretRef) && has(e.secretRef.name) && e.secretRef.name in variables.secrets)"
-      message: "spec.{{ . }}.deployment.envFrom may not read one of this release's Secrets."
+    {{- $fields := ternary (list "volumes" "volumeMounts" "envFrom" "extraContainers" "securityContext" "podSecurityContext" "serviceAccountConfig" "imageRegistry") (list "volumes" "volumeMounts" "envFrom" "extraContainers" "securityContext" "podSecurityContext" "serviceAccountConfig") (eq . "declarative") }}
+    - expression: "!({{ $has }}) || !({{ range $i, $f := $fields }}{{ if $i }} || {{ end }}has({{ $d }}.{{ $f }}){{ end }})"
+      message: "spec.{{ . }}.deployment may not set {{ join ", " $fields }}: they mount Secrets or host paths, add containers or raise privileges."
+    - expression: "!({{ $has }} && has({{ $d }}.env)) || !{{ $d }}.env.exists(e, has(e.valueFrom) && has(e.valueFrom.secretKeyRef))"
+      message: "spec.{{ . }}.deployment.env may not read a Secret (model keys come from the ModelConfig, tool credentials from the tool server)."
     {{- end }}
 ---
 apiVersion: admissionregistration.k8s.io/v1
