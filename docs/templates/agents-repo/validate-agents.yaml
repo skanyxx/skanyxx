@@ -46,7 +46,9 @@ jobs:
             echo "::error::Set the repo variable SKANYXX_URL and the secret SKANYXX_CI_TOKEN (Studio setup guide)."
             exit 1
           fi
-          command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq jq; }
+          # sudo where the job runs as a user (GitHub's runners), none where it runs as root (a Gitea runner's container).
+          sudo=$(command -v sudo || true)
+          command -v jq >/dev/null || { $sudo apt-get update -qq && $sudo apt-get install -y -qq jq; }
           plugin_agents=$(awk '/^agents:/{f=1;next} /^[^ -]/{f=0} f&&/^- /{print $2}' plugins/*/plugin.yaml 2>/dev/null || true)
           failed=0
           for dir in agents/*/; do
