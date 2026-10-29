@@ -39,7 +39,7 @@ public sealed class DebugLog : ILogEventSink
             return [.. _lines.Reverse()];
     }
 
-    /// <summary>Per method and path, slowest p95 first.</summary>
+    /// <summary>Per method and route template, slowest p95 first.</summary>
     public IReadOnlyList<RequestTiming> Timings(int top)
     {
         RequestSample[] samples;
@@ -76,12 +76,23 @@ public sealed class DebugLog : ILogEventSink
 
     private static double Percentile(double[] sorted, double p) => sorted[(int)Math.Ceiling(p * sorted.Length) - 1];
 
+    /// <summary>The request log's route template property (Program.cs enriches it); a request no endpoint matched has none.</summary>
+    public const string RouteProperty = "RouteTemplate";
+
+    public const string NoRoute = "(no route)";
+
     // Serilog.AspNetCore's request log: "HTTP {RequestMethod} {RequestPath} responded {StatusCode} in {Elapsed:0.0000} ms".
+    // Grouped by the route template, never the raw path: a path can carry an id, an email or a key (D377).
     private static RequestSample? Request(LogEvent logEvent) =>
         logEvent.Properties.TryGetValue("RequestMethod", out var method)
-        && logEvent.Properties.TryGetValue("RequestPath", out var path)
+        && logEvent.Properties.ContainsKey("RequestPath")
         && logEvent.Properties.TryGetValue("StatusCode", out var status) && status is ScalarValue { Value: int code }
         && logEvent.Properties.TryGetValue("Elapsed", out var elapsed) && elapsed is ScalarValue { Value: double ms }
-            ? new RequestSample(method.ToString().Trim('"'), path.ToString().Trim('"'), code, ms)
+            ? new RequestSample(method.ToString().Trim('"'), Route(logEvent), code, ms)
             : null;
+
+    private static string Route(LogEvent logEvent) =>
+        logEvent.Properties.TryGetValue(RouteProperty, out var route) && route is ScalarValue { Value: string { Length: > 0 } template }
+            ? "/" + template.TrimStart('/')
+            : NoRoute;
 }

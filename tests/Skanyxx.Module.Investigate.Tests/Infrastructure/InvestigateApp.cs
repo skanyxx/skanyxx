@@ -40,8 +40,8 @@ public sealed class InvestigateApp : IAsyncDisposable
 
     private readonly WebApplication _app;
 
-    private InvestigateApp(WebApplication app, ScriptedAgents agents, AuditLog audit, FakeCards cards, ErrorLog errors) =>
-        (_app, Agents, Audit, Cards, _errors) = (app, agents, audit, cards, errors);
+    private InvestigateApp(WebApplication app, ScriptedAgents agents, AuditLog audit, FakeCards cards, ErrorLog errors, FakeOrg org, FakeAgentMemory memory) =>
+        (_app, Agents, Audit, Cards, _errors, Org, Memory) = (app, agents, audit, cards, errors, org, memory);
 
     private readonly ErrorLog _errors;
 
@@ -51,6 +51,11 @@ public sealed class InvestigateApp : IAsyncDisposable
     public ScriptedAgents Agents { get; }
     public AuditLog Audit { get; }
     public FakeCards Cards { get; }
+    public FakeOrg Org { get; }
+    public FakeAgentMemory Memory { get; }
+
+    /// <summary>The app's services, for a test that reaches the database or the worker directly.</summary>
+    public IServiceProvider Services => _app.Services;
     private Uri BaseAddress => new(_app.Urls.First());
 
     public static async Task<InvestigateApp> StartAsync(string connectionString, Action<Dictionary<string, string?>>? configure = null)
@@ -76,6 +81,7 @@ public sealed class InvestigateApp : IAsyncDisposable
         var org = new FakeOrg();
         var audit = new AuditLog();
         var cards = new FakeCards();
+        var memory = new FakeAgentMemory();
         var module = new InvestigateModule();
         module.RegisterServices(builder.Services, builder.Configuration);
         builder.Services.AddSingleton<IInvestigationAgents>(agents);
@@ -85,6 +91,7 @@ public sealed class InvestigateApp : IAsyncDisposable
         builder.Services.AddSingleton<IRequestHandler<PersonTeamsQuery, Outcome<IReadOnlyList<TeamDto>>>>(org);
         builder.Services.AddSingleton<IRequestHandler<RecordAuditCommand>>(audit);
         builder.Services.AddSingleton<ICardExtractor>(cards);
+        builder.Services.AddSingleton<IAgentMemoryAccess>(memory);
         builder.Services.AddSkanyxxPlatform([typeof(InvestigateModule).Assembly]);
         builder.Services.AddAuthentication(TestAuthHandler.SchemeName)
             .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);
@@ -101,7 +108,7 @@ public sealed class InvestigateApp : IAsyncDisposable
         app.Map("/Error", () => Results.Content("<html>error page</html>", "text/html")).AllowAnonymous();
         app.UseSkanyxxPlatform([module]);
         await app.StartAsync();
-        return new InvestigateApp(app, agents, audit, cards, errors);
+        return new InvestigateApp(app, agents, audit, cards, errors, org, memory);
     }
 
     /// <summary>Signed in as one of the test people, with their role; null is anonymous.</summary>

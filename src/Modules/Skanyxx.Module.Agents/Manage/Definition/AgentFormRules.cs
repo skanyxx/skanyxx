@@ -7,7 +7,8 @@ namespace Skanyxx.Module.Agents.Manage.Definition;
 /// <summary>
 /// What a direct agent may hold (D251), in words for the person. The studio's limits (<see cref="DraftRules"/>) where
 /// they overlap: allow-listed MCP servers with named tools, digest-pinned skills from allow-listed registries. What the
-/// agent already has may stay as it is (an agent made in kagent-ui is still editable), never be widened.
+/// agent already has may stay as it is (an agent made in kagent-ui is still editable), never be widened. A paid cloud
+/// tool server is refused while cloud tools are off (<see cref="CloudToolsGate"/>, D370), as in the studio.
 /// </summary>
 internal static partial class AgentFormRules
 {
@@ -18,10 +19,11 @@ internal static partial class AgentFormRules
     public const int MaxA2aText = 500;
     public const int MaxA2aItems = 20;
 
+    /// <param name="cloudToolsOn"><see cref="CloudToolsGate.IsOn"/>: paid cloud tool servers may be added.</param>
     /// <param name="existing">The agent's current spec on an update; null on a create.</param>
     /// <param name="models">ModelConfig names in the agents' namespace.</param>
     /// <param name="callable">Agents another agent may call as a tool (<see cref="AgentProtection.IsCallable"/>).</param>
-    public static IReadOnlyList<FormProblem> Check(AgentForm form, StudioOptions options, ExistingSpec? existing,
+    public static IReadOnlyList<FormProblem> Check(AgentForm form, StudioOptions options, bool cloudToolsOn, ExistingSpec? existing,
         IReadOnlyCollection<string> models, IReadOnlyCollection<string> callable)
     {
         var problems = new List<FormProblem>();
@@ -48,7 +50,7 @@ internal static partial class AgentFormRules
         if (form.Runtime is not (null or "" or "go" or "python"))
             problems.Add(new("runtime", "Runtime: 'go', 'python' or empty for kagent's default."));
 
-        CheckMcpTools(form, options, existing, problems);
+        CheckMcpTools(form, options, cloudToolsOn, existing, problems);
         CheckAgentTools(form, existing, callable, problems);
         CheckSkills(form, options, existing, problems);
         CheckA2a(form, problems);
@@ -58,7 +60,7 @@ internal static partial class AgentFormRules
 
     public static bool IsAgentName(string? name) => name is not null && name.Length <= MaxNameLength && AgentName().IsMatch(name);
 
-    private static void CheckMcpTools(AgentForm form, StudioOptions options, ExistingSpec? existing, List<FormProblem> problems)
+    private static void CheckMcpTools(AgentForm form, StudioOptions options, bool cloudToolsOn, ExistingSpec? existing, List<FormProblem> problems)
     {
         if (form.McpTools.Count + form.AgentTools.Count > MaxTools)
             problems.Add(new("mcpTools", $"Tools: at most {MaxTools} MCP servers and agents together."));
@@ -75,6 +77,8 @@ internal static partial class AgentFormRules
             var kept = existing?.McpTools.GetValueOrDefault(choice.Server) is { } before && before.SetEquals(choice.Tools);
             if (!allowed.Contains(choice.Server) && !kept)
                 problems.Add(new("mcpTools", $"MCP server '{choice.Server}' is not on the allow-list ({(allowed.Count == 0 ? "empty" : string.Join(", ", allowed.Order()))})."));
+            else if (!cloudToolsOn && CloudToolRules.IsPaid(choice.Server, options) && !kept)
+                problems.Add(new("mcpTools", CloudToolRules.Refusal(choice.Server)));
             if (choice.Tools.Count == 0 && !kept)
                 problems.Add(new("mcpTools", $"MCP server '{choice.Server}': name at least one tool."));
             if (choice.Tools.Count > DraftRules.MaxMcpTools || choice.Tools.Any(t => t is null || !DraftRules.ToolName().IsMatch(t))

@@ -34,7 +34,7 @@ public sealed partial class ReportTests(PostgresFixture postgres) : InvestigateT
         Assert.Equal(["s1", "g1", "s2", "s3"], steps.Select(s => s.GetProperty("id").GetString()));
         Assert.Equal([1, 1, 2, 2], steps.Select(s => s.GetProperty("depth").GetInt32()));
         Assert.Equal("parallel", steps[1].GetProperty("mode").GetString());
-        Assert.Equal($"{Researcher} says: the question", steps[0].GetProperty("output").GetString());
+        Assert.Equal($"{Researcher} says: {Prompts.Input("the question")}", steps[0].GetProperty("output").GetString());
         Assert.All(steps, s => Assert.True(s.GetProperty("durationMs").GetInt64() >= 0));
     }
 

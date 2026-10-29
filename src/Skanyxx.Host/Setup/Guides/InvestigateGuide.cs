@@ -24,6 +24,8 @@ public static class InvestigateGuide
                 "Seconds, 5 to 3600, e.g. Investigate__StepTimeoutSeconds=900 for slow local models.", Optional: true),
             new("Investigate:MaxActiveRunsPerUser", "Each person may have 3 investigations queued or running at once.",
                 "1 to 1000; Investigate:MaxActiveRuns caps everyone together (20).", Optional: true),
+            new("Investigate:ReadOnlyToolServers", "Every MCP tool server counts as able to write: a step that reads an earlier answer cannot call an agent with tools unless a supervisor allows chained writes on that workflow.",
+                "The RemoteMCPServer names whose tools only read, e.g. Investigate__ReadOnlyToolServers__0=docs-search.", Optional: true),
         ],
         Local:
         [
@@ -45,6 +47,7 @@ public static class InvestigateGuide
         [
             new("\"kagent did not answer\" on the page", "kagent's controller is not reachable from the Host: check the Chat guide."),
             new("409 \"Not an agent you can use now\"", "A step names an agent that was suspended or is no longer merged: pick another agent and save."),
+            new("409 \"… can write (tools or memory)\"", "A step that reads an earlier answer calls a write-capable agent: use a read-only agent, list its servers in Investigate:ReadOnlyToolServers, or have a supervisor tick Allow chained writes."),
             new("A step fails \"timed out after N s\"", "The agent took longer than Investigate:StepTimeoutSeconds: raise it, or split the step."),
             new("429 on Start", "Too many investigations queued or running: wait for one to finish or cancel it."),
             new("A run fails \"The server running this investigation stopped\"", "The Host restarted mid-run; run it again."),

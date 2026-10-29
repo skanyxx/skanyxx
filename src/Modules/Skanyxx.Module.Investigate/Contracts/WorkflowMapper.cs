@@ -5,11 +5,11 @@ namespace Skanyxx.Module.Investigate.Contracts;
 
 internal static class WorkflowMapper
 {
-    public static WorkflowSummaryDto Summary(Workflow w, Viewer viewer) =>
+    public static WorkflowSummaryDto Summary(Workflow w, Viewer viewer, Reach reach) =>
         new(w.Id, w.Name, w.Description, w.OwnerId, w.OwnerId == viewer.UserId, w.SharedTeam, WorkflowTree.Flatten(w.Steps).Count(),
-            WorkflowTree.Agents(w.Steps), w.UpdatedAt, WorkflowAccess.CanEdit(w, viewer));
+            WorkflowTree.Agents(w.Steps), w.UpdatedAt, WorkflowAccess.CanEdit(w, viewer, reach));
 
-    public static WorkflowDto Full(Workflow w, Viewer viewer) =>
+    public static WorkflowDto Full(Workflow w, Viewer viewer, Reach reach) =>
         new(w.Id, w.Name, w.Description, w.OwnerId, w.OwnerId == viewer.UserId, w.SharedTeam, w.Steps, w.CreatedAt, w.UpdatedAt,
-            WorkflowAccess.CanEdit(w, viewer));
+            WorkflowAccess.CanEdit(w, viewer, reach), w.AllowChainedWrites);
 }

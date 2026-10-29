@@ -1,5 +1,6 @@
 using Skanyxx.Module.Investigate.Domain;
 using Skanyxx.Module.Investigate.Rules;
+using Skanyxx.Module.Investigate.Tests.Infrastructure;
 using static Skanyxx.Module.Investigate.Tests.Infrastructure.InvestigateApp;
 
 namespace Skanyxx.Module.Investigate.Tests;
@@ -102,7 +103,7 @@ public sealed class WorkflowRulesTests
     {
         var text = PromptTemplate.Render("Q: {{input}} / A: {{ steps.s1 }} / B: {{steps.s9}} / {{other}}", "why?", new Dictionary<string, string> { ["s1"] = "because" });
 
-        Assert.Equal("Q: why? / A: because / B:  / {{other}}", text);
+        Assert.Equal($"Q: {Prompts.Input("why?")} / A: {Prompts.Step("s1", "because")} / B: {Prompts.Step("s9", "")} / {{{{other}}}}", text);
         Assert.Equal(["s1", "s9"], PromptTemplate.References("{{steps.s1}} {{steps.s9}} {{steps.s1}}"));
     }
 }

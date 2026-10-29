@@ -210,7 +210,7 @@
 
             @{ var otherTeams = Model.Teams.Where(t => t.Slug != team.Slug).ToList(); }
             <form method="post" asp-page-handler="DeleteTeam" asp-route-slug="@team.Slug" class="form danger-zone"
-                  data-confirm="@(team.Members.Count == 0 ? $"{team.Name} is deleted. Its slug is never used again." : $"Its {team.Members.Count} member(s) move to the team you chose. The slug is never used again.")"
+                  data-confirm="@(team.Members.Count == 0 ? $"{team.Name} is deleted. Its slug is never used again." : $"Its {team.Members.Count} member(s) move to the team you chose. The slug is never used again.") Cards, shared chats and Investigate workflows shared with this team stay, but nobody reaches them through it any more."
                   data-confirm-title="Delete @team.Name?" data-confirm-action="Delete team" data-danger>
                 <h3 class="section-title">Delete team</h3>
                 @if (team.Members.Count > 0 && otherTeams.Count == 0)

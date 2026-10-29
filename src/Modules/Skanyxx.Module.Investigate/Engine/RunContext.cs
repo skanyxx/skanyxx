@@ -3,10 +3,11 @@ using System.Collections.Concurrent;
 namespace Skanyxx.Module.Investigate.Engine;
 
 /// <summary>
-/// One executing run: the outputs steps have produced so far, and the token every step honours. The first failure
+/// One executing run: the outputs steps have produced so far, the token every step honours, and the slots that bound how
+/// many of its agent steps call kagent at once (<see cref="InvestigateOptions.MaxParallelSteps"/>). The first failure
 /// wins and cancels the rest of the run (parallel siblings included); a person's cancel does the same without a reason.
 /// </summary>
-internal sealed class RunContext(Guid runId, string input, CancellationToken stopping) : IDisposable
+internal sealed class RunContext(Guid runId, string input, int parallelSteps, CancellationToken stopping) : IDisposable
 {
     private readonly CancellationTokenSource _cancel = CancellationTokenSource.CreateLinkedTokenSource(stopping);
     private string? _failure;
@@ -17,6 +18,9 @@ internal sealed class RunContext(Guid runId, string input, CancellationToken sto
     public string Input { get; } = input;
 
     public ConcurrentDictionary<string, string> Outputs { get; } = new();
+
+    /// <summary>Taken around each agent call only, never by a group, so a group waiting on its steps holds none.</summary>
+    public SemaphoreSlim Slots { get; } = new(parallelSteps, parallelSteps);
 
     public CancellationToken Token => _cancel.Token;
 
@@ -36,5 +40,9 @@ internal sealed class RunContext(Guid runId, string input, CancellationToken sto
         _cancel.Cancel();
     }
 
-    public void Dispose() => _cancel.Dispose();
+    public void Dispose()
+    {
+        _cancel.Dispose();
+        Slots.Dispose();
+    }
 }

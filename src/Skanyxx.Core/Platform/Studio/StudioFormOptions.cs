@@ -9,6 +9,6 @@ public sealed record StudioFormOptions(
     /// <summary>Servers that call a cloud provider's API: a paid feature (D364).</summary>
     public IReadOnlyList<string> PaidServers { get; init; } = [];
 
-    /// <summary>The cloud tools licence is on; when off, <see cref="PaidServers"/> are shown locked.</summary>
+    /// <summary>Cloud tools are on (licence and the Settings switch, D370); when off, <see cref="PaidServers"/> are shown locked.</summary>
     public bool CloudToolsLicensed { get; init; }
 }

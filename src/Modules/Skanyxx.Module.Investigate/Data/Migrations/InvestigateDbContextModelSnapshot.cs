@@ -153,6 +153,10 @@ namespace Skanyxx.Module.Investigate.Data.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("AllowChainedWrites")
+                        .HasColumnType("boolean")
+                        .HasColumnName("allow_chained_writes");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -176,8 +180,8 @@ namespace Skanyxx.Module.Investigate.Data.Migrations
                         .HasColumnName("owner_id");
 
                     b.Property<string>("SharedTeam")
-                        .HasMaxLength(64)
-                        .HasColumnType("character varying(64)")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
                         .HasColumnName("shared_team");
 
                     b.Property<string>("Steps")

@@ -14,8 +14,10 @@ internal sealed class WorkflowConfiguration : IEntityTypeConfiguration<Workflow>
         b.Property(w => w.Name).HasColumnName("name").HasMaxLength(120);
         b.Property(w => w.Description).HasColumnName("description").HasMaxLength(1000);
         b.Property(w => w.OwnerId).HasColumnName("owner_id").HasMaxLength(128);
-        b.Property(w => w.SharedTeam).HasColumnName("shared_team").HasMaxLength(64);
+        // A team slug is an identity Identifier (up to 128 characters, '.', '_', '@' allowed).
+        b.Property(w => w.SharedTeam).HasColumnName("shared_team").HasMaxLength(128);
         b.Property(w => w.Steps).HasColumnName("steps").HasJson();
+        b.Property(w => w.AllowChainedWrites).HasColumnName("allow_chained_writes");
         b.Property(w => w.CreatedAt).HasColumnName("created_at");
         b.Property(w => w.UpdatedAt).HasColumnName("updated_at");
         b.HasIndex(w => w.OwnerId);

@@ -51,6 +51,7 @@ public sealed class InvestigateModule : IModule
         services.AddScoped<InvestigateAudit>();
         services.AddScoped<OrgTeams>();
         services.AddScoped<AgentCheck>();
+        services.AddScoped<ChainedWrites>();
 
         var kagent = configuration.GetSection("KAgent").Get<KAgentConfig>() ?? new KAgentConfig();
         services.AddHttpClient<IInvestigationAgentClient, KAgentInvestigationClient>(http =>

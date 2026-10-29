@@ -11,9 +11,10 @@ internal sealed class GetWorkflowHandler(InvestigateDbContext db, OrgTeams org) 
 {
     public async Task<Outcome<WorkflowDto>> Handle(GetWorkflowQuery query, CancellationToken ct)
     {
+        var reach = await org.ReachAsync(query.Viewer, ct);
         var workflow = await db.Workflows.AsNoTracking().SingleOrDefaultAsync(w => w.Id == query.Id, ct);
-        return workflow is not null && WorkflowAccess.CanSee(workflow, query.Viewer, await org.MemberOfAsync(query.Viewer, ct))
-            ? Outcome<WorkflowDto>.Ok(WorkflowMapper.Full(workflow, query.Viewer))
+        return workflow is not null && WorkflowAccess.CanSee(workflow, query.Viewer, reach)
+            ? Outcome<WorkflowDto>.Ok(WorkflowMapper.Full(workflow, query.Viewer, reach))
             : Outcome<WorkflowDto>.NotFound("No such workflow.");
     }
 }

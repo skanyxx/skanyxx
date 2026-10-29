@@ -63,7 +63,7 @@ public class AgentsModule : IModule
                 .AddCheck<StudioGitHealthCheck>(DashboardChecks.StudioGit, tags: [HealthEndpoint.DiagnosticsTag])
                 .AddCheck<StudioReconcileHealthCheck>(DashboardChecks.StudioReconciler, tags: [HealthEndpoint.DiagnosticsTag]);
         services.AddSingleton<ProposalInspector>();
-        services.AddOptions<LicenceOptions>().Bind(configuration.GetSection(LicenceOptions.Section));
+        services.AddSingleton<CloudToolsGate>();
         services.AddSingleton<DraftProblems>();
         // Argo CD's read of the agent repo's Application (D363); the token rides in the default header, never a URL or a log.
         services.AddHttpClient(DeployStatusReader.ArgoClientName, (sp, client) =>

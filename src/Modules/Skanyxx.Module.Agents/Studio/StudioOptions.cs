@@ -53,7 +53,7 @@ public sealed class StudioOptions
 
     /// <summary>
     /// RemoteMCPServers (names in <see cref="Namespace"/>) whose tools call a cloud provider's API (D364): shown as paid,
-    /// and refused on a proposal or a merge unless <see cref="LicenceOptions.CloudTools"/> is on.
+    /// and refused on a proposal or a merge unless <see cref="CloudToolsGate"/> is on.
     /// </summary>
     public List<string> CloudToolServers { get; set; } = [];
 

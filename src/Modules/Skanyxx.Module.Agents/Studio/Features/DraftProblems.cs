@@ -10,7 +10,7 @@ namespace Skanyxx.Module.Agents.Studio.Features;
 /// plugin servers merged in main when the form names a server off the allow-list), the cloud tools licence (D364) and
 /// credentials typed into its text. One place, so the YAML preview, a proposal and CI say the same thing.
 /// </summary>
-internal sealed class DraftProblems(StudioReconciler reconciler, IOptions<StudioOptions> options, IOptions<LicenceOptions> licence)
+internal sealed class DraftProblems(StudioReconciler reconciler, IOptions<StudioOptions> options, CloudToolsGate cloudTools)
 {
     public const string PluginServersUnreadable = "The plugin servers in main cannot be read right now; try again in a moment.";
 
@@ -37,5 +37,5 @@ internal sealed class DraftProblems(StudioReconciler reconciler, IOptions<Studio
 
     /// <summary>What a valid shape may still not hold: paid cloud tools without the licence, and credentials in its text.</summary>
     public IReadOnlyList<string> Licensing(AgentDraft draft) =>
-        [.. CloudToolRules.Check(draft, options.Value, licence.Value), .. TextSecrets.Check(draft)];
+        [.. CloudToolRules.Check(draft, options.Value, cloudTools.IsOn), .. TextSecrets.Check(draft)];
 }

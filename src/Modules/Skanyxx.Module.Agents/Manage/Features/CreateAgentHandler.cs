@@ -9,7 +9,7 @@ using Skanyxx.Module.Agents.Studio;
 namespace Skanyxx.Module.Agents.Manage.Features;
 
 /// <summary>D251: role, then the form against the namespace's models and agents, then kagent; audited (D255).</summary>
-internal sealed class CreateAgentHandler(KAgentApiClient kagent, IMediator mediator, IOptions<StudioOptions> options, ILogger<CreateAgentHandler> logger)
+internal sealed class CreateAgentHandler(KAgentApiClient kagent, IMediator mediator, IOptions<StudioOptions> options, CloudToolsGate cloudTools, ILogger<CreateAgentHandler> logger)
     : IRequestHandler<CreateAgentCommand, Outcome<AgentDetail>>
 {
     public async Task<Outcome<AgentDetail>> Handle(CreateAgentCommand command, CancellationToken ct)
@@ -21,7 +21,7 @@ internal sealed class CreateAgentHandler(KAgentApiClient kagent, IMediator media
         try
         {
             var agents = await AgentQueries.AgentsAsync(kagent, options.Value.Namespace, ct);
-            var problems = AgentFormRules.Check(form, options.Value, null, await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct),
+            var problems = AgentFormRules.Check(form, options.Value, cloudTools.IsOn, null, await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct),
                 AgentQueries.Callable(agents));
             if (problems.Count > 0)
                 throw AgentFailure.Invalid(problems);

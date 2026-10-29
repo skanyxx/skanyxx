@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Investigate.Agents;
 using Skanyxx.Module.Investigate.Audit;
@@ -14,7 +15,10 @@ namespace Skanyxx.Module.Investigate.Engine;
 /// Runs one claimed run to its end (D342): top-level steps one after another, a group's steps in its mode, each agent
 /// step one kagent turn under its own timeout. The first failed step fails the run with a reason a person can read and
 /// cancels whatever else is running; steps never reached are "skipped". A cancel (asked through the database, so any
-/// replica's API can ask) and a host shutdown end it the same way. A success leaves a memory card. Never throws.
+/// replica's API can ask) and a host shutdown end it the same way. A step that cannot be recorded (a database error)
+/// fails the run at once rather than leaving its siblings to their timeouts. Answers and reasons pass through
+/// <see cref="SecretText.Redact"/> before they are stored or read by a later step (D373). A success leaves a memory
+/// card. Never throws.
 /// </summary>
 internal sealed partial class RunExecutor(
     IDbContextFactory<InvestigateDbContext> dbs,
@@ -36,7 +40,7 @@ internal sealed partial class RunExecutor(
             await using (var db = await dbs.CreateDbContextAsync(stopping))
                 run = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == runId, stopping);
 
-            using var context = new RunContext(runId, run.Input, stopping);
+            using var context = new RunContext(runId, run.Input, _options.MaxParallelSteps, stopping);
             using var watching = CancellationTokenSource.CreateLinkedTokenSource(stopping);
             var watch = WatchAsync(context, watching.Token);
             try
@@ -83,47 +87,79 @@ internal sealed partial class RunExecutor(
 
     private async Task<StepState> RunStepAsync(WorkflowStep step, RunContext context)
     {
+        try
+        {
+            return step.Kind == StepKind.Group ? await RunGroupAsync(step, context) : await RunAgentAsync(step, context);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The step's own row could not be written (or another internal error): stop the whole run now.
+            LogStepCrashed(logger, context.RunId, step.Id, ex);
+            context.Fail($"Step '{step.Title}' stopped on an internal error ({ex.GetType().Name}).");
+            return StepState.Failed;
+        }
+    }
+
+    private async Task<StepState> RunGroupAsync(WorkflowStep step, RunContext context)
+    {
         // Never started: stays pending, and the end of the run marks it skipped.
         if (context.Token.IsCancellationRequested)
             return StepState.Cancelled;
-
         await steps.StartedAsync(context.RunId, step.Id);
-        if (step.Kind == StepKind.Group)
-        {
-            var state = await RunStepsAsync(step.Steps, step.Mode, context);
-            await steps.EndedAsync(context.RunId, step.Id, state);
-            return state;
-        }
+        var state = await RunStepsAsync(step.Steps, step.Mode, context);
+        await steps.EndedAsync(context.RunId, step.Id, state);
+        return state;
+    }
 
-        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.Token);
-        deadline.CancelAfter(TimeSpan.FromSeconds(_options.StepTimeoutSeconds));
+    private async Task<StepState> RunAgentAsync(WorkflowStep step, RunContext context)
+    {
         try
         {
-            var prompt = TextCut.Take(PromptTemplate.Render(step.Prompt!, context.Input, context.Outputs), _options.MaxRenderedPromptChars);
-            var output = TextCut.Take(await agents.AskAsync(step.Agent!, prompt, deadline.Token), _options.MaxOutputChars);
-            context.Outputs[step.Id] = output;
-            await steps.EndedAsync(context.RunId, step.Id, StepState.Succeeded, output);
-            return StepState.Succeeded;
-        }
-        catch (OperationCanceledException) when (!context.Token.IsCancellationRequested)
-        {
-            return await FailAsync(step, context, $"timed out after {_options.StepTimeoutSeconds} s");
+            await context.Slots.WaitAsync(context.Token);
         }
         catch (OperationCanceledException)
         {
-            await steps.EndedAsync(context.RunId, step.Id, StepState.Cancelled);
-            return StepState.Cancelled;
+            return StepState.Cancelled; // never started: stays pending, then skipped
         }
-        catch (AgentCallException ex)
+
+        try
         {
-            return await FailAsync(step, context, ex.Message);
+            await steps.StartedAsync(context.RunId, step.Id);
+            using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.Token);
+            deadline.CancelAfter(TimeSpan.FromSeconds(_options.StepTimeoutSeconds));
+            try
+            {
+                var prompt = TextCut.Take(PromptTemplate.Render(step.Prompt!, context.Input, context.Outputs), _options.MaxRenderedPromptChars);
+                var output = SecretText.Redact(TextCut.Take(await agents.AskAsync(step.Agent!, prompt, deadline.Token), _options.MaxOutputChars));
+                context.Outputs[step.Id] = output;
+                await steps.EndedAsync(context.RunId, step.Id, StepState.Succeeded, output);
+                return StepState.Succeeded;
+            }
+            catch (OperationCanceledException) when (!context.Token.IsCancellationRequested)
+            {
+                return await FailAsync(step, context, $"timed out after {_options.StepTimeoutSeconds} s");
+            }
+            catch (OperationCanceledException)
+            {
+                await steps.EndedAsync(context.RunId, step.Id, StepState.Cancelled);
+                return StepState.Cancelled;
+            }
+            catch (AgentCallException ex)
+            {
+                return await FailAsync(step, context, ex.Message);
+            }
+        }
+        finally
+        {
+            context.Slots.Release();
         }
     }
 
     private async Task<StepState> FailAsync(WorkflowStep step, RunContext context, string reason)
     {
-        await steps.EndedAsync(context.RunId, step.Id, StepState.Failed, error: reason);
+        reason = SecretText.Redact(reason);
         context.Fail($"Step '{step.Title}' ({step.Agent}) failed: {reason}.");
+        await steps.EndedAsync(context.RunId, step.Id, StepState.Failed, error: reason);
         return StepState.Failed;
     }
 
@@ -138,8 +174,8 @@ internal sealed partial class RunExecutor(
                 try
                 {
                     await using var db = await dbs.CreateDbContextAsync(ct);
-                    var now = clock.GetUtcNow().UtcDateTime;
-                    await db.Runs.Where(r => r.Id == context.RunId).ExecuteUpdateAsync(s => s.SetProperty(r => r.HeartbeatAt, now), ct);
+                    // The database's clock, as the stale sweep reads it: replicas' clocks may disagree (D373).
+                    await db.Runs.Where(r => r.Id == context.RunId).ExecuteUpdateAsync(s => s.SetProperty(r => r.HeartbeatAt, r => DateTime.UtcNow), ct);
                     if (await db.Runs.Where(r => r.Id == context.RunId).Select(r => r.CancelRequested).SingleAsync(ct))
                     {
                         context.CancelByUser();
@@ -191,8 +227,8 @@ internal sealed partial class RunExecutor(
             await db.Runs.Where(r => r.Id == runId && r.State == RunState.Running)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(r => r.State, state)
-                    .SetProperty(r => r.Failure, reason == null ? null : TextCut.Take(reason, 900))
-                    .SetProperty(r => r.EndedAt, now)
+                    .SetProperty(r => r.Failure, reason == null ? null : TextCut.Take(SecretText.Redact(reason), 900))
+                    .SetProperty(r => r.EndedAt, r => DateTime.UtcNow) // the database's clock, as StartedAt (D373)
                     .SetProperty(r => r.CardScope, card == null ? null : card.Scope)
                     .SetProperty(r => r.CardKey, card == null ? null : card.Key), CancellationToken.None);
         }
@@ -205,6 +241,9 @@ internal sealed partial class RunExecutor(
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Investigation run {RunId} stopped on an internal error")]
     private static partial void LogRunCrashed(ILogger logger, Guid runId, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Investigation run {RunId}: step {StepId} stopped on an internal error")]
+    private static partial void LogStepCrashed(ILogger logger, Guid runId, string stepId, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Investigation run {RunId}: the heartbeat or cancel check failed; retrying")]
     private static partial void LogWatchFailed(ILogger logger, Guid runId, Exception ex);

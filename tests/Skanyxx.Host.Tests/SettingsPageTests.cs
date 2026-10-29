@@ -1,5 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Skanyxx.Core.Platform.Settings;
 
 namespace Skanyxx.Host.Tests;
@@ -186,6 +188,34 @@ public sealed class SettingsPageTests(PostgresFixture fixture) : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.OK, on.StatusCode);
         Assert.Equal("true", values.GetProperty("features.cloudTools").GetString());
+    }
+
+    [Fact]
+    public async Task TheAuditTrail_IsKeptAtLeast90Days_WhateverTheOwnerSaves()
+    {
+        var api = await _host.OwnerAsync();
+
+        var tooShort = await api.PutAsJsonAsync("/api/identity/settings", new { values = new Dictionary<string, string> { ["retention.auditDays"] = "89" } }, Ct);
+        var floor = await api.PutAsJsonAsync("/api/identity/settings", new { values = new Dictionary<string, string> { ["retention.auditDays"] = "90" } }, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, tooShort.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, floor.StatusCode);
+        Assert.Equal(InstallationSettings.MinAuditDays, InstallationSettings.Find(InstallationSettings.AuditDays)!.Min);
+    }
+
+    [Fact]
+    public async Task SavedSettings_AreInTheConfiguration_BeforeTheFirstRequest_AfterARestart()
+    {
+        var api = await _host.OwnerAsync();
+        (await api.PutAsJsonAsync("/api/identity/settings",
+            new { values = new Dictionary<string, string> { [InstallationSettings.InstallationName] = "Restarted Co" } }, Ct)).EnsureSuccessStatusCode();
+        await _host.DisposeAsync();
+
+        _host = await HostApp.StartAsync(_database, HostApp.WithoutSandboxes);
+
+        // Read the moment the host is listening, before any request or poll: loaded in StartAsync.
+        var key = InstallationSettings.Find(InstallationSettings.InstallationName)!.ConfigKey!;
+        Assert.Equal("Restarted Co", _host.Services.GetRequiredService<IConfiguration>()[key]);
     }
 
     [Fact]

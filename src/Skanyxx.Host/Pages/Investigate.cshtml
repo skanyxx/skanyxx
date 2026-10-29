@@ -87,6 +87,14 @@
                 <select id="invShare" aria-describedby="invShareHint"><option value="">Not shared: only you (and supervisors)</option></select>
                 <p class="field-hint" id="invShareHint">Team members can run and copy it; only you and supervisors can change it.</p>
             </div>
+            @if (Model.IsSupervisor)
+            {
+                <div class="field">
+                    <label class="check"><input type="checkbox" id="invChainedWrites" aria-describedby="invChainedWritesHint" /> Allow chained writes</label>
+                    <p class="field-hint" id="invChainedWritesHint">A step that reads an earlier step's answer may then call an agent that can write (tools that change things, or memory it may write to).
+                        That answer could carry instructions planted in it, so this is off unless you turn it on; turning it on is audited.</p>
+                </div>
+            }
             <fieldset class="form-section">
                 <legend>Steps</legend>
                 <p class="form-section-hint" id="invStepsHint">Top-level steps run one after another. A group runs its own steps one after another or at the same time.

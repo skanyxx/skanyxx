@@ -43,9 +43,6 @@ internal sealed class DeployStatusReader(
                 foreach (var agent in agents)
                     result[agent] = KAgentStatusMap.For(live.GetValueOrDefault(agent), reconcileStatus.Last);
             }
-            foreach (var agent in agents)
-                if ((await reconciler.PrincipalAsync(agent, ct)).Suspended)
-                    result[agent] = new DeployStatus(DeployState.Suspended, result[agent].Source, "The owner suspended it; it is not running until resumed.");
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException or System.Text.Json.JsonException)
         {
@@ -55,7 +52,23 @@ internal sealed class DeployStatusReader(
                 result[agent] = new DeployStatus(DeployState.Unknown, source,
                     argo.Configured ? "Argo CD cannot be reached right now." : "kagent cannot be reached right now.");
         }
+        foreach (var agent in agents)
+            await OwnerStopAsync(agent, result, ct);
         return result;
+    }
+
+    /// <summary>The owner's emergency stop outranks the source; an agent whose principal cannot be read keeps the source's status alone.</summary>
+    private async Task OwnerStopAsync(string agent, Dictionary<string, DeployStatus> result, CancellationToken ct)
+    {
+        try
+        {
+            if ((await reconciler.PrincipalAsync(agent, ct)).Suspended)
+                result[agent] = new DeployStatus(DeployState.Suspended, result[agent].Source, "The owner suspended it; it is not running until resumed.");
+        }
+        catch (Exception ex) when (ex is StudioApplyException or HttpRequestException or TimeoutException)
+        {
+            logger.LogWarning("Studio deploy status: whether {Agent} is suspended could not be read ({Error})", agent, ex.GetType().Name);
+        }
     }
 
     private async Task<JsonNode?> ArgoApplicationAsync(ArgoOptions argo, CancellationToken ct)

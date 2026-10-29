@@ -33,6 +33,7 @@ public sealed class DebugPageTests(PostgresFixture fixture)
         // A refused sign-in is a logged warning; the first Debug load is a timed request for the second.
         await new Browser(host).SubmitAsync("/Login", new() { ["Email"] = HostApp.OwnerEmail, ["Password"] = "wrong password here" });
         await owner.GetAsync("/Debug");
+        await owner.GetAsync("/api/investigate/runs/6f1c2d3e-0000-4000-8000-00000000beef");
 
         var html = await owner.HtmlAsync("/Debug");
 
@@ -45,6 +46,7 @@ public sealed class DebugPageTests(PostgresFixture fixture)
         Assert.Contains("<td>AX (sandboxes)</td>", html); // off here: "not configured"
         Assert.Contains("not configured", html);
         Assert.Contains("GET /Debug", html);
+        Assert.DoesNotContain("00000000beef", html); // timed by its route template, never the raw path (D377)
         Assert.Contains("<code>Identity:Smtp:Password</code>", html);
         Assert.Contains("<code>Studio:Git:Token</code>", html);
         Assert.Contains("<code>ConnectionStrings:Identity</code>", html);
@@ -88,6 +90,9 @@ public sealed class DebugPageTests(PostgresFixture fixture)
     [InlineData("ConnectionStrings:Memory", "Host=db;Database=m", true)]
     [InlineData("Memory:Dragonfly:Configuration", "dfly:6379,password=x", true)]
     [InlineData("Studio:Git:BaseUrl", "https://user:pass@git.example", true)]
+    [InlineData("Studio:Git:Pat", "abc", true)]
+    [InlineData("Plugins:Sources:0:Pat", "abc", true)]
+    [InlineData("Studio:Ci:WorkflowPath", ".gitea/workflows/validate-agents.yaml", false)]
     [InlineData("KAgent:BaseUrl", "http://kagent:8083", false)]
     [InlineData("Sandboxes:Enabled", "true", false)]
     public void ConfigurationValues_AreRedactedByKeyOrValue(string key, string value, bool redacted)
@@ -101,12 +106,12 @@ public sealed class DebugPageTests(PostgresFixture fixture)
     }
 
     [Fact]
-    public void RequestTimings_AreGroupedPerPath_SlowestFirst()
+    public void RequestTimings_AreGroupedPerRouteTemplate_SlowestFirst()
     {
         var log = new DebugLog();
         foreach (var ms in new[] { 10.0, 20, 30, 40, 1000 })
-            log.Emit(Request("GET", "/Library", 200, ms));
-        log.Emit(Request("POST", "/Org", 500, 5));
+            log.Emit(Request("GET", "/Library", 200, ms, "Library"));
+        log.Emit(Request("POST", "/Org", 500, 5, "Org"));
 
         var timings = log.Timings(10);
 
@@ -117,12 +122,28 @@ public sealed class DebugPageTests(PostgresFixture fixture)
         Assert.Equal(1, timings[1].Errors);
     }
 
-    private static Serilog.Events.LogEvent Request(string method, string path, int status, double ms) =>
+    [Fact]
+    public void RequestTimings_NeverShowARawPath_ThatCouldCarryAKeyOrAnId()
+    {
+        var log = new DebugLog();
+        log.Emit(Request("GET", "/api/memory/cards/sk-live-0123456789abcdef", 200, 3, "api/memory/cards/{key}"));
+        log.Emit(Request("GET", "/api/memory/cards/someone@example.com", 200, 4, "api/memory/cards/{key}"));
+        log.Emit(Request("GET", "/no/such/secret-path-4242", 404, 1, null));
+
+        var timings = log.Timings(10);
+
+        Assert.Equal([DebugLog.NoRoute, "/api/memory/cards/{key}"], timings.Select(t => t.Path).Order(StringComparer.Ordinal));
+        Assert.Equal(2, timings.Single(t => t.Path == "/api/memory/cards/{key}").Count);
+        Assert.DoesNotContain(timings, t => t.Path.Contains("sk-live") || t.Path.Contains('@') || t.Path.Contains("secret-path"));
+    }
+
+    private static Serilog.Events.LogEvent Request(string method, string path, int status, double ms, string? route) =>
         new(DateTimeOffset.UtcNow, Serilog.Events.LogEventLevel.Information, null, Serilog.Events.MessageTemplate.Empty,
         [
             new("RequestMethod", new Serilog.Events.ScalarValue(method)),
             new("RequestPath", new Serilog.Events.ScalarValue(path)),
             new("StatusCode", new Serilog.Events.ScalarValue(status)),
             new("Elapsed", new Serilog.Events.ScalarValue(ms)),
+            .. route is null ? [] : new[] { new Serilog.Events.LogEventProperty(DebugLog.RouteProperty, new Serilog.Events.ScalarValue(route)) },
         ]);
 }

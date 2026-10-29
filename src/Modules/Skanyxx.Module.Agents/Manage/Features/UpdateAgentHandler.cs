@@ -12,7 +12,7 @@ namespace Skanyxx.Module.Agents.Manage.Features;
 /// D251/D252: a studio or system agent is refused (audited) before the form is even read; otherwise the form replaces
 /// its fields in the current spec, and kagent's PUT replaces the spec (labels stay).
 /// </summary>
-internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator mediator, IOptions<StudioOptions> options, ILogger<UpdateAgentHandler> logger)
+internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator mediator, IOptions<StudioOptions> options, CloudToolsGate cloudTools, ILogger<UpdateAgentHandler> logger)
     : IRequestHandler<UpdateAgentCommand, Outcome<AgentDetail>>
 {
     public async Task<Outcome<AgentDetail>> Handle(UpdateAgentCommand command, CancellationToken ct)
@@ -50,7 +50,7 @@ internal sealed class UpdateAgentHandler(KAgentApiClient kagent, IMediator media
             if (form.Version != AgentSpec.Version(existing))
                 return Outcome<AgentDetail>.Conflict(null, AgentFailure.Stale, "stale");
 
-            var problems = AgentFormRules.Check(form, options.Value, AgentSpec.Existing(existing),
+            var problems = AgentFormRules.Check(form, options.Value, cloudTools.IsOn, AgentSpec.Existing(existing),
                 await AgentQueries.ModelsAsync(kagent, options.Value.Namespace, ct),
                 AgentQueries.Callable(await AgentQueries.AgentsAsync(kagent, options.Value.Namespace, ct)));
             if (problems.Count > 0)

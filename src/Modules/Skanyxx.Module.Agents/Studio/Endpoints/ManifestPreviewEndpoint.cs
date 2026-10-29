@@ -13,6 +13,7 @@ internal sealed class ManifestPreviewEndpoint(IMediator mediator) : Endpoint<Age
     public override void Configure()
     {
         Post("api/studio/manifest");
+        Roles(StudioRoles.People);
         Options(b => b.WithMetadata(new RequestSizeLimitAttribute(64 * 1024)));
     }
 

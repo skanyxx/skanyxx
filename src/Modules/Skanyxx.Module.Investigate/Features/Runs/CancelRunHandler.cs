@@ -14,12 +14,12 @@ namespace Skanyxx.Module.Investigate.Features.Runs;
 /// it sees the request within <see cref="InvestigateOptions.WatchMilliseconds"/>; the answer is 202 until it has.
 /// A finished run is a 409.
 /// </summary>
-internal sealed class CancelRunHandler(InvestigateDbContext db, InvestigateAudit audit, TimeProvider clock) : IRequestHandler<CancelRunCommand, Outcome<RunDto>>
+internal sealed class CancelRunHandler(InvestigateDbContext db, OrgTeams org, InvestigateAudit audit, TimeProvider clock) : IRequestHandler<CancelRunCommand, Outcome<RunDto>>
 {
     public async Task<Outcome<RunDto>> Handle(CancelRunCommand command, CancellationToken ct)
     {
         var run = await db.Runs.AsNoTracking().SingleOrDefaultAsync(r => r.Id == command.Id, ct);
-        if (run is null || !WorkflowAccess.CanSee(run, command.Viewer))
+        if (run is null || !WorkflowAccess.CanSee(run, command.Viewer, await org.ReachAsync(command.Viewer, ct)))
             return Outcome<RunDto>.NotFound("No such investigation run.");
 
         var now = clock.GetUtcNow().UtcDateTime;

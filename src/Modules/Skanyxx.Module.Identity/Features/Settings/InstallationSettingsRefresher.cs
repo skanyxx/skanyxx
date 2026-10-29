@@ -9,8 +9,10 @@ namespace Skanyxx.Module.Identity.Features.Settings;
 
 /// <summary>
 /// Copies the saved settings into the configuration (D350): at start, after every save on this replica, and every
-/// <see cref="Interval"/> for saves on other replicas. Without the Host's <see cref="InstallationSettingsProvider"/>
-/// (module tests) it does nothing.
+/// <see cref="Interval"/> for saves on other replicas. The first load is in <see cref="StartAsync"/>, after the identity
+/// migrator and before Kestrel listens, so no request is served on the deployment's values when the owner saved others
+/// (Microsoft sign-in switched off, say). Without the Host's <see cref="InstallationSettingsProvider"/> (module tests) it
+/// does nothing.
 /// </summary>
 internal sealed class InstallationSettingsRefresher(
     IServiceScopeFactory scopes, IServiceProvider services, ILogger<InstallationSettingsRefresher> logger) : BackgroundService
@@ -46,19 +48,28 @@ internal sealed class InstallationSettingsRefresher(
         base.Dispose();
     }
 
+    public override async Task StartAsync(CancellationToken cancellationToken)
+    {
+        await TryReloadAsync(cancellationToken);
+        await base.StartAsync(cancellationToken);
+    }
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         using var timer = new PeriodicTimer(Interval);
-        do
+        while (await timer.WaitForNextTickAsync(stoppingToken))
+            await TryReloadAsync(stoppingToken);
+    }
+
+    private async Task TryReloadAsync(CancellationToken ct)
+    {
+        try
         {
-            try
-            {
-                await ReloadAsync(stoppingToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                logger.LogWarning(ex, "Installation settings could not be read; the last values stay in use");
-            }
-        } while (await timer.WaitForNextTickAsync(stoppingToken));
+            await ReloadAsync(ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Installation settings could not be read; the last values stay in use");
+        }
     }
 }

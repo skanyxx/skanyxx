@@ -10,22 +10,23 @@ using Skanyxx.Module.Agents.Studio.Templates;
 namespace Skanyxx.Module.Agents.Studio.Features;
 
 /// <summary>
-/// The gallery (D360): every template on the owner's default model. A cloud template is locked without the licence
-/// (D364); with it, it brings the allow-listed cloud tool servers with the tools kagent discovered on them.
+/// The gallery (D360): every template on the owner's default model. A cloud template is locked while cloud tools are off
+/// (D364, <see cref="CloudToolsGate"/>); with it, it brings the allow-listed cloud tool servers with the tools kagent discovered on them.
 /// </summary>
 internal sealed class StudioTemplatesHandler(
-    StudioReconciler reconciler, IOptions<StudioOptions> options, IOptions<LicenceOptions> licence, ILogger<StudioTemplatesHandler> logger)
+    StudioReconciler reconciler, IOptions<StudioOptions> options, CloudToolsGate gate, ILogger<StudioTemplatesHandler> logger)
     : IRequestHandler<StudioTemplatesQuery, Outcome<IReadOnlyList<StudioTemplate>>>
 {
     public async Task<Outcome<IReadOnlyList<StudioTemplate>>> Handle(StudioTemplatesQuery query, CancellationToken ct)
     {
         if (!query.User.CanEnter)
             return Outcome<IReadOnlyList<StudioTemplate>>.Forbidden(StudioFailure.NotStudio);
-        var cloudTools = licence.Value.CloudTools ? await CloudToolsAsync(ct) : [];
+        var on = gate.IsOn;
+        var cloudTools = on ? await CloudToolsAsync(ct) : [];
         return Outcome<IReadOnlyList<StudioTemplate>>.Ok([.. StudioTemplates.All.Select(t => t with
         {
             Draft = t.Draft with { ModelConfig = options.Value.FactoryModelConfig, McpTools = t.CloudTools ? cloudTools : [] },
-            Locked = t.CloudTools && !licence.Value.CloudTools
+            Locked = t.CloudTools && !on
         })]);
     }
 

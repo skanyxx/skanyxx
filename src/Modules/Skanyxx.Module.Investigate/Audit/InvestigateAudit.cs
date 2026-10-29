@@ -15,6 +15,9 @@ internal sealed partial class InvestigateAudit(IMediator mediator, ILogger<Inves
     public const string WorkflowUpdated = "investigate.workflow_updated";
     public const string WorkflowDuplicated = "investigate.workflow_duplicated";
     public const string WorkflowDeleted = "investigate.workflow_deleted";
+
+    /// <summary>A save by the owner or a supervisor that lets steps reading earlier answers call write-capable agents (D372).</summary>
+    public const string ChainedWritesAllowed = "investigate.chained_writes_allowed";
     public const string RunStarted = "investigate.run_started";
     public const string RunCancelRequested = "investigate.run_cancel_requested";
     public const string RunFinished = "investigate.run_finished";

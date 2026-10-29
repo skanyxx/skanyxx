@@ -14,7 +14,7 @@ namespace Skanyxx.Host.Tests.Infrastructure;
 /// <summary>
 /// The slice of Gitea 1.24's API the studio uses (research/gitea-api.md), in memory on real Kestrel: one org, one repo,
 /// branches as file maps, pull requests, the main protection rule (no direct writes), merges pinned to a head commit.
-/// Every request must carry <see cref="Token"/>; requests are recorded. Knobs: <see cref="Down"/>, <see cref="MoveHeadOnMerge"/>, <see cref="OnRequest"/>,
+/// Every request must carry <see cref="Token"/>; requests are recorded. Knobs: <see cref="Down"/>, <see cref="MoveHeadOnMerge"/>, <see cref="MergesBeforeMergeable"/>, <see cref="OnRequest"/>,
 /// and <see cref="PushToBranch"/> to put files on a branch the way someone with git access would.
 /// </summary>
 public sealed class FakeGitea : IAsyncDisposable
@@ -63,6 +63,15 @@ public sealed class FakeGitea : IAsyncDisposable
 
     /// <summary>The merge happens, but its answer is lost (a 502 from a proxy).</summary>
     public bool LoseMergeAnswer { get; set; }
+
+    /// <summary>
+    /// The next this many merges are answered 405 "Please try again later", as Gitea does while it still computes
+    /// whether a just-opened pull request can merge.
+    /// </summary>
+    public int MergesBeforeMergeable { get; set; }
+
+    /// <summary>Every merge request git answered, the refused ones too.</summary>
+    public int MergeAttempts { get; private set; }
 
     /// <summary>Runs once git has merged, before it answers (a person closing the page right then).</summary>
     public Action? OnMerge { get; set; }
@@ -297,6 +306,12 @@ public sealed class FakeGitea : IAsyncDisposable
             {
                 var name = $"{owner}/{repo}";
                 var pull = Pulls.First(p => p.Number == number);
+                MergeAttempts++;
+                if (pull.Open && MergesBeforeMergeable > 0)
+                {
+                    MergesBeforeMergeable--;
+                    return Results.Json(new { message = "Please try again later" }, statusCode: 405);
+                }
                 if (!pull.Open)
                     return Results.Json(new { message = "" }, statusCode: 405);
                 if (MoveHeadOnMerge)

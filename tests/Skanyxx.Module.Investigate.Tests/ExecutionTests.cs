@@ -23,9 +23,9 @@ public sealed class ExecutionTests(PostgresFixture postgres) : InvestigateTestBa
         Assert.Equal([Researcher, Analyst, Writer], App.Agents.Calls.Select(c => c.Agent));
         Assert.Equal(
         [
-            "Find: slow checkout",
-            $"Weigh: {Researcher} says: Find: slow checkout",
-            $"Write: {Analyst} says: Weigh: {Researcher} says: Find: slow checkout"
+            "Find: " + Prompts.Input("slow checkout"),
+            "Weigh: " + Prompts.Step("s1", $"{Researcher} says: Find: " + Prompts.Input("slow checkout")),
+            "Write: " + Prompts.Step("s2", $"{Analyst} says: Weigh: " + Prompts.Step("s1", $"{Researcher} says: Find: " + Prompts.Input("slow checkout")))
         ], App.Agents.Calls.Select(c => c.Prompt));
         Assert.All(done.StepRuns, s => Assert.Equal(StepState.Succeeded, s.State));
         Assert.All(done.StepRuns, s => Assert.True(s.EndedAt >= s.StartedAt));
@@ -65,7 +65,7 @@ public sealed class ExecutionTests(PostgresFixture postgres) : InvestigateTestBa
 
         Assert.Equal(RunState.Succeeded, done.State);
         Assert.Equal(Writer, App.Agents.Calls.Last().Agent);
-        Assert.Equal("seen a | seen b | seen c", App.Agents.Calls.Last().Prompt);
+        Assert.Equal($"{Prompts.Step("p1", "seen a")} | {Prompts.Step("p2", "seen b")} | {Prompts.Step("p3", "seen c")}", App.Agents.Calls.Last().Prompt);
         var group = done.StepRuns.Single(s => s.StepId == "g1");
         Assert.Equal(StepState.Succeeded, group.State);
         Assert.True(done.StepRuns.Single(s => s.StepId == "s4").StartedAt >= group.EndedAt);
@@ -142,7 +142,7 @@ public sealed class ExecutionTests(PostgresFixture postgres) : InvestigateTestBa
 
         Assert.Equal(HttpStatusCode.Accepted, rerun.StatusCode);
         Assert.NotEqual(first.Id, second.Id);
-        Assert.Equal(["same question", "same question"], App.Agents.Calls.Select(c => c.Prompt));
+        Assert.Equal([Prompts.Input("same question"), Prompts.Input("same question")], App.Agents.Calls.Select(c => c.Prompt));
     }
 
     [Fact]

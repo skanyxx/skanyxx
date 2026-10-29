@@ -193,7 +193,7 @@
     async function openEditor(summary) {
         showErrors($('invEditorErrors'), []);
         $('invEditorForm').reset();
-        let workflow = { name: '', description: '', sharedTeam: null, steps: [], canEdit: true };
+        let workflow = { name: '', description: '', sharedTeam: null, steps: [], canEdit: true, allowChainedWrites: false };
         if (summary) {
             try {
                 workflow = await skx.api('GET', `${api}/workflows/${summary.id}`);
@@ -214,7 +214,8 @@
             $('invShare').append(o);
             $('invShare').value = workflow.sharedTeam;
         }
-        ['invName', 'invDescription', 'invShare', 'invAddStep', 'invAddGroup'].forEach(id => { $(id).disabled = editing.readOnly; });
+        if ($('invChainedWrites')) $('invChainedWrites').checked = !!workflow.allowChainedWrites;
+        ['invName', 'invDescription', 'invShare', 'invAddStep', 'invAddGroup', 'invChainedWrites'].forEach(id => { if ($(id)) $(id).disabled = editing.readOnly; });
         $('invEditorSave').hidden = editing.readOnly;
         $('invEditorCancel').textContent = editing.readOnly ? 'Close' : 'Cancel';
         renderTree();
@@ -323,7 +324,9 @@
             name: $('invName').value.trim(),
             description: $('invDescription').value.trim(),
             sharedTeam: $('invShare').value || null,
-            steps: editing.steps
+            steps: editing.steps,
+            // Only supervisors have the box; a builder's save never carries an allowance forward.
+            allowChainedWrites: $('invChainedWrites') ? $('invChainedWrites').checked : false
         };
         try {
             await skx.busy($('invEditorSave'), editing.id
@@ -478,7 +481,10 @@
     }
 
     // ---------- History ----------
+    let runsRequest = 0;
+
     async function loadRuns() {
+        const ticket = ++runsRequest; // latest request wins: an older answer landing late is dropped
         const box = $('invRuns');
         skx.state.loading(box, { rows: 4 });
         const params = new URLSearchParams();
@@ -488,6 +494,7 @@
         if (isSupervisor && $('invFilterMine').checked) params.set('mine', 'true');
         try {
             const runs = await skx.api('GET', `${api}/runs?${params}`);
+            if (ticket !== runsRequest) return;
             if (runs.length === 0) {
                 skx.state.empty(box, { icon: 'i-inbox', title: 'No investigations', body: params.toString() ? 'Nothing matches these filters.' : 'Run a workflow and it shows up here.' });
                 return;
@@ -519,6 +526,7 @@
             skx.table.label(table);
             box.replaceChildren(table);
         } catch (err) {
+            if (ticket !== runsRequest) return;
             skx.state.error(box, { title: 'The history could not be loaded', detail: err.message, retry: loadRuns });
         }
     }

@@ -17,5 +17,5 @@ internal sealed class CreateWorkflowEndpoint(IMediator mediator) : Endpoint<Save
 
     public override async Task HandleAsync(SaveWorkflowRequest req, CancellationToken ct) =>
         await Send.ResultAsync((await mediator.Send(
-            new SaveWorkflowCommand(Viewer.From(User), null, req.Name, req.Description, req.SharedTeam, req.Steps), ct)).ToHttp());
+            new SaveWorkflowCommand(Viewer.From(User), null, req.Name, req.Description, req.SharedTeam, req.Steps, req.AllowChainedWrites), ct)).ToHttp());
 }

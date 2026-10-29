@@ -28,6 +28,9 @@ internal sealed class GiteaAgentRepo(IHttpClientFactory clients, IOptions<Studio
 
     private const int MaxJsonBytes = 8 * 1024 * 1024;
 
+    internal static readonly TimeSpan[] MergeRetryDelays =
+        [TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2)];
+
     private readonly StudioOptions.GitOptions _git = options.Value.Git;
 
     public string Name => $"{_git.Owner}/{_git.Repo}";
@@ -157,16 +160,30 @@ internal sealed class GiteaAgentRepo(IHttpClientFactory clients, IOptions<Studio
         throw new HttpRequestException($"git lists more than {MaxPages * TreePageSize} files in main");
     }
 
+    /// <summary>
+    /// Gitea answers a merge of a pull request whose mergeability it has not computed yet (right after it was opened) with
+    /// 405 "Please try again later": that one answer is retried, at most <see cref="MergeRetryDelays"/> more times with a
+    /// short backoff (about 4 s in all). Any other 405 or 409 is final.
+    /// </summary>
     public async Task<MergeOutcome> MergeAsync(int number, string headSha, string title, string message, CancellationToken ct)
     {
-        var (status, text) = await CallAsync(HttpMethod.Post, $"{RepoPath}/pulls/{number}/merge", new JsonObject
+        var body = new JsonObject
         {
             ["Do"] = "merge",
             ["head_commit_id"] = headSha,
             ["MergeTitleField"] = title,
             ["MergeMessageField"] = message,
             ["delete_branch_after_merge"] = true
-        }, MaxJsonBytes, ct);
+        };
+        var (status, text) = await CallAsync(HttpMethod.Post, $"{RepoPath}/pulls/{number}/merge", body, MaxJsonBytes, ct);
+        foreach (var delay in MergeRetryDelays)
+        {
+            if (!(status == HttpStatusCode.MethodNotAllowed && text.Contains("try again later", StringComparison.OrdinalIgnoreCase)))
+                break;
+            logger.LogInformation("git is still checking whether #{Number} of {Repo} can merge; retrying in {Delay} ms", number, Name, delay.TotalMilliseconds);
+            await Task.Delay(delay, ct);
+            (status, text) = await CallAsync(HttpMethod.Post, $"{RepoPath}/pulls/{number}/merge", body, MaxJsonBytes, ct);
+        }
         switch (status)
         {
             case HttpStatusCode.Conflict when text.Contains("head out of date", StringComparison.OrdinalIgnoreCase):

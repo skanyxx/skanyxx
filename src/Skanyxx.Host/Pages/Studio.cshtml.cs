@@ -83,7 +83,7 @@ public sealed class StudioModel(IMediator mediator) : PageModel
                     Fail("No such template.", StatusCodes.Status404NotFound);
                     break;
                 case { Locked: true } locked:
-                    Fail($"{locked.Title} uses cloud tools, a paid feature that is not turned on. The owner turns it on with Skanyxx:Licence:CloudTools.",
+                    Fail($"{locked.Title} uses cloud tools, a paid feature that is not turned on. The owner turns it on (the licence Skanyxx:Licence:CloudTools, then Settings → Features).",
                         StatusCodes.Status403Forbidden);
                     break;
                 case { } template:
@@ -163,7 +163,7 @@ public sealed class StudioModel(IMediator mediator) : PageModel
 
     public bool Ticked(List<string> list, string value) => list.Contains(value);
 
-    /// <summary>A paid cloud tool server while the licence is off: shown, never selectable (D364).</summary>
+    /// <summary>A paid cloud tool server while cloud tools are off: shown, never selectable (D364, D370).</summary>
     public bool Locked(string server) => Options is { CloudToolsLicensed: false } o && o.PaidServers.Contains(server);
 
     /// <summary>Merge and close end the proposal: success goes back to the list (post/redirect/get).</summary>

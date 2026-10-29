@@ -26,9 +26,9 @@ internal sealed class StartRunHandler(
     {
         var viewer = command.Viewer;
         var workflow = await db.Workflows.AsNoTracking().SingleOrDefaultAsync(w => w.Id == command.WorkflowId, ct);
-        if (workflow is null || !WorkflowAccess.CanSee(workflow, viewer, await org.MemberOfAsync(viewer, ct)))
+        if (workflow is null || !WorkflowAccess.CanSee(workflow, viewer, await org.ReachAsync(viewer, ct)))
             return Outcome<RunDto>.NotFound("No such workflow.");
-        if (await agents.RefuseAsync<RunDto>(WorkflowTree.Agents(workflow.Steps), ct) is { } refused)
+        if (await agents.RefuseAsync<RunDto>(workflow.Steps, workflow.AllowChainedWrites, ct) is { } refused)
             return refused;
 
         var now = clock.GetUtcNow().UtcDateTime;

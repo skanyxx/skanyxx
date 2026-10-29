@@ -51,11 +51,12 @@ public sealed class StudioDeliveryMappingTests
         var draft = new AgentDraft("costs", "", "default-model-config", "Answer.", [],
             [new McpToolChoice("aws-cost", ["get_costs"]), new McpToolChoice("jira", ["search"])], [], null);
 
-        var refused = Assert.Single(CloudToolRules.Check(draft, Options, new LicenceOptions()));
+        var refused = Assert.Single(CloudToolRules.Check(draft, Options, cloudToolsOn: false));
         Assert.Contains("'aws-cost'", refused);
         Assert.Contains("Skanyxx:Licence:CloudTools", refused);
-        Assert.Empty(CloudToolRules.Check(draft, Options, new LicenceOptions { CloudTools = true }));
-        Assert.Empty(CloudToolRules.Check(draft with { McpTools = [new McpToolChoice("jira", ["search"])] }, Options, new LicenceOptions()));
+        Assert.Contains("Settings", refused);
+        Assert.Empty(CloudToolRules.Check(draft, Options, cloudToolsOn: true));
+        Assert.Empty(CloudToolRules.Check(draft with { McpTools = [new McpToolChoice("jira", ["search"])] }, Options, cloudToolsOn: false));
         Assert.True(CloudToolRules.IsPaid("aws-cost", Options));
         Assert.False(CloudToolRules.IsPaid("jira", Options));
     }

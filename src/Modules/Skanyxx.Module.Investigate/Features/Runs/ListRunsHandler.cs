@@ -6,14 +6,24 @@ using Skanyxx.Module.Investigate.Data;
 
 namespace Skanyxx.Module.Investigate.Features.Runs;
 
-internal sealed class ListRunsHandler(InvestigateDbContext db) : IRequestHandler<ListRunsQuery, Outcome<IReadOnlyList<RunSummaryDto>>>
+/// <summary>
+/// The owner sees every run, a supervisor theirs and those of the people in their teams (D371), everyone else their own.
+/// Projected to the summary in the query: a list never loads a run's step tree, input or answers.
+/// </summary>
+internal sealed class ListRunsHandler(InvestigateDbContext db, OrgTeams org) : IRequestHandler<ListRunsQuery, Outcome<IReadOnlyList<RunSummaryDto>>>
 {
     public async Task<Outcome<IReadOnlyList<RunSummaryDto>>> Handle(ListRunsQuery query, CancellationToken ct)
     {
         var viewer = query.Viewer;
+        var me = viewer.UserId;
         var runs = db.Runs.AsNoTracking();
-        if (!viewer.IsSupervisor || query.MineOnly)
-            runs = runs.Where(r => r.CreatedBy == viewer.UserId);
+        if (query.MineOnly)
+            runs = runs.Where(r => r.CreatedBy == me);
+        else if (!viewer.IsOwner)
+        {
+            var people = viewer.IsSupervisor ? (await org.ReachAsync(viewer, ct)).People.ToList() : [];
+            runs = runs.Where(r => r.CreatedBy == me || people.Contains(r.CreatedBy));
+        }
         if (query.WorkflowId is { } workflow)
             runs = runs.Where(r => r.WorkflowId == workflow);
         if (query.State is { } state)
@@ -24,7 +34,9 @@ internal sealed class ListRunsHandler(InvestigateDbContext db) : IRequestHandler
             runs = runs.Where(r => EF.Functions.ILike(r.WorkflowName, pattern));
         }
 
-        var list = await runs.OrderByDescending(r => r.CreatedAt).Take(query.Limit).ToListAsync(ct);
-        return Outcome<IReadOnlyList<RunSummaryDto>>.Ok([.. list.Select(r => RunMapper.Summary(r, viewer))]);
+        var list = await runs.OrderByDescending(r => r.CreatedAt).Take(query.Limit)
+            .Select(r => new RunSummaryDto(r.Id, r.WorkflowId, r.WorkflowName, r.State, r.CreatedBy, r.CreatedBy == me, r.CreatedAt, r.StartedAt, r.EndedAt, r.Failure))
+            .ToListAsync(ct);
+        return Outcome<IReadOnlyList<RunSummaryDto>>.Ok(list);
     }
 }

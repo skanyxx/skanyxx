@@ -22,10 +22,15 @@ public sealed class AuditTests(PostgresFixture postgres) : InvestigateTestBase(p
             new { name = "Audited 2", description = "", steps = new[] { Agent("s1", Researcher, $"{PromptText} again {{{{input}}}}") } }, Json, Ct)).EnsureSuccessStatusCode();
         var run = await App.StartAsync(Builder, workflow.Id, InputText);
         await App.WaitForAsync(run.Id, RunState.Succeeded);
-        App.Agents.Answers[Researcher] = async (_, ct) => { await Task.Delay(TimeSpan.FromSeconds(30), ct); return AnswerText; };
+        await FinishedRowsAsync(1);
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        App.Agents.Answers[Researcher] = async (_, ct) => { entered.TrySetResult(); await Task.Delay(TimeSpan.FromSeconds(30), ct); return AnswerText; };
         var second = await App.StartAsync(Builder, workflow.Id, InputText);
+        // Cancelled while running (a queued run is dequeued and never "finishes"), so its finished row is certain.
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(10), Ct);
         (await App.Client(Builder).PostAsync($"/api/investigate/runs/{second.Id}/cancel", null, Ct)).EnsureSuccessStatusCode();
         await App.WaitForAsync(second.Id, RunState.Cancelled);
+        await FinishedRowsAsync(2);
         (await App.Client(Builder).PostAsync($"/api/investigate/workflows/{workflow.Id}/duplicate", null, Ct)).EnsureSuccessStatusCode();
         (await App.Client(Builder).DeleteAsync($"/api/investigate/workflows/{workflow.Id}", Ct)).EnsureSuccessStatusCode();
 
@@ -42,5 +47,16 @@ public sealed class AuditTests(PostgresFixture postgres) : InvestigateTestBase(p
         foreach (var row in rows)
             foreach (var secret in new[] { PromptText, InputText, AnswerText })
                 Assert.DoesNotContain(secret, row.Details);
+    }
+
+    /// <summary>A run's finished row is written just after its end is saved: wait for it, so later rows come after it.</summary>
+    private async Task FinishedRowsAsync(int count)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (App.Audit.Rows.Count(r => r.Action == "investigate.run_finished") < count)
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"waited 10 s for {count} investigate.run_finished row(s)");
+            await Task.Delay(20, Ct);
+        }
     }
 }

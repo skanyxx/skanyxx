@@ -14,7 +14,7 @@ namespace Skanyxx.Module.Agents.Studio.Features;
 /// and every plugin server merged in main (P7) — and the scopes.
 /// </summary>
 internal sealed class StudioFormOptionsHandler(
-    KAgentApiClient kagent, StudioReconciler reconciler, IMediator mediator, IOptions<StudioOptions> options, IOptions<LicenceOptions> licence,
+    KAgentApiClient kagent, StudioReconciler reconciler, IMediator mediator, IOptions<StudioOptions> options, CloudToolsGate cloudTools,
     ILogger<StudioFormOptionsHandler> logger)
     : IRequestHandler<StudioFormOptionsQuery, Outcome<StudioFormOptions>>
 {
@@ -44,7 +44,7 @@ internal sealed class StudioFormOptionsHandler(
             ["company", .. teams.Select(t => $"team:{t.Slug}"), .. departments.Select(d => $"department:{d.Slug}")])
         {
             PaidServers = [.. servers.Select(s => s.Server).Where(s => Definition.CloudToolRules.IsPaid(s, options.Value))],
-            CloudToolsLicensed = licence.Value.CloudTools
+            CloudToolsLicensed = cloudTools.IsOn
         });
     }
 

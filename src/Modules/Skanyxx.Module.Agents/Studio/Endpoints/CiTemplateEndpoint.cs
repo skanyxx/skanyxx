@@ -8,7 +8,11 @@ namespace Skanyxx.Module.Agents.Studio.Endpoints;
 /// <summary>The agent repo's CI workflow (D362), as text to copy: builders and supervisors.</summary>
 internal sealed class CiTemplateEndpoint : EndpointWithoutRequest
 {
-    public override void Configure() => Get("api/studio/ci-template");
+    public override void Configure()
+    {
+        Get("api/studio/ci-template");
+        Roles(StudioRoles.People);
+    }
 
     public override async Task HandleAsync(CancellationToken ct)
     {

@@ -216,7 +216,11 @@ public partial class Program
 
         app.UseHttpsRedirection();
         app.UseStaticFiles();
-        app.UseSerilogRequestLogging();
+        app.UseSerilogRequestLogging(o => o.EnrichDiagnosticContext = (diagnostics, http) =>
+        {
+            if (http.GetEndpoint() is RouteEndpoint { RoutePattern.RawText: { } template })
+                diagnostics.Set(DebugLog.RouteProperty, template);
+        });
         app.UseSkanyxxApiGuards();
 
         app.UseRouting();

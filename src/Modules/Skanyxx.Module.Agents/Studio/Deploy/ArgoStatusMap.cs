@@ -21,7 +21,7 @@ internal static class ArgoStatusMap
         var phase = Text(status["operationState"]?["phase"]);
         if (resource is null)
             return phase is "Failed" or "Error"
-                ? new DeployStatus(DeployState.Failed, Source, $"Argo CD's last sync {phase!.ToLowerInvariant()}ed before it reached this agent.")
+                ? new DeployStatus(DeployState.Failed, Source, $"Argo CD's last sync ended '{phase}' before it reached this agent.")
                 : new DeployStatus(DeployState.Waiting, Source, "Argo CD has not synced this agent yet.");
         var sync = Text(resource["status"]) ?? "Unknown";
         var health = Text(resource["health"]?["status"]) ?? "Unknown";

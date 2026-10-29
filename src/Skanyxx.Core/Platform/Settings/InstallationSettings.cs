@@ -16,6 +16,9 @@ public static class InstallationSettings
     public const string Entra = "signin.entra";
     public const string CloudTools = "features.cloudTools";
     public const string AuditDays = "retention.auditDays";
+
+    /// <summary>The audit trail is kept at least this long whatever is saved (D376): the owner cannot erase their own recent actions.</summary>
+    public const int MinAuditDays = 90;
     public const string ChatDays = "retention.chatDays";
 
     private const string Now = "At once, on every replica within 30 seconds.";
@@ -40,7 +43,7 @@ public static class InstallationSettings
         new(CloudTools, Features, "Cloud tools", "A paid feature: it can be turned on only when this install's licence includes it.",
             SettingKind.Bool, "false", "Features:CloudTools", Now),
         new(AuditDays, Retention, "Audit history (days)", "Audit rows and finished invites older than this are deleted.",
-            SettingKind.Number, "365", "Identity:AuditRetentionDays", "At the next retention run (within 6 hours).", Min: 1, Max: 3650),
+            SettingKind.Number, "365", "Identity:AuditRetentionDays", "At the next retention run (within 6 hours).", Min: MinAuditDays, Max: 3650),
         new(ChatDays, Retention, "Chat history index (days)",
             "Chat sessions in the related-work index older than this are deleted. 0 keeps them. Transcripts are kagent's and follow its own TTL.",
             SettingKind.Number, "0", "ChatContext:SessionRetentionDays", "At the next chat purge (within 6 hours).", Min: 0, Max: 3650),

@@ -58,6 +58,7 @@ public static partial class ConfigurationView
         return keys;
     }
 
-    [GeneratedRegex("pass|pwd|secret|token|key|credential|certificate|pfx|pat\b|auth|cookie|private|signing", RegexOptions.IgnoreCase)]
+    // Verbatim: in a plain string "\b" is a backspace character, and "...Pat" keys were never masked.
+    [GeneratedRegex(@"pass|pwd|secret|token|key|credential|certificate|pfx|pat\b|auth|cookie|private|signing", RegexOptions.IgnoreCase)]
     private static partial Regex SecretName();
 }

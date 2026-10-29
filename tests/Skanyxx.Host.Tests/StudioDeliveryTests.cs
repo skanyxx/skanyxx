@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
+using Skanyxx.Module.Agents.Studio.Git;
 
 namespace Skanyxx.Host.Tests;
 
@@ -180,8 +181,17 @@ public sealed class StudioDeliveryTests(PostgresFixture fixture) : IAsyncLifetim
         Assert.Equal(HttpStatusCode.Conflict, merge.StatusCode);
         Assert.Contains("paid feature", await merge.Content.ReadAsStringAsync(Ct));
 
-        // With the licence, the cloud template is usable and brings the cloud server's discovered tools.
+        // The licence alone is not enough: the owner's Settings switch is off by default (D370).
         await StartAsync(s => s["Skanyxx:Licence:CloudTools"] = "true");
+        Assert.True((await _builder.GetFromJsonAsync<JsonElement>("/api/studio/templates", Ct)).EnumerateArray()
+            .Single(t => t.GetProperty("id").GetString() == "cloud-ops").GetProperty("locked").GetBoolean());
+        Assert.False((await _builder.GetFromJsonAsync<JsonElement>("/api/studio/options", Ct)).GetProperty("cloudToolsLicensed").GetBoolean());
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _builder.PostAsJsonAsync("/api/studio/proposals", Draft("costs3", tools: [new { server = "aws-cost", tools = new[] { "get_costs" } }]), Ct)).StatusCode);
+
+        // With the licence and the switch, saved on the Settings page and read on the next request (no restart), the cloud
+        // template is usable and brings the cloud server's discovered tools.
+        await SetCloudToolsAsync(true);
         var templates = await _builder.GetFromJsonAsync<JsonElement>("/api/studio/templates", Ct);
         var cloud = templates.EnumerateArray().Single(t => t.GetProperty("id").GetString() == "cloud-ops");
         Assert.False(cloud.GetProperty("locked").GetBoolean());
@@ -190,6 +200,50 @@ public sealed class StudioDeliveryTests(PostgresFixture fixture) : IAsyncLifetim
         Assert.Equal(["get_costs"], tools.GetProperty("tools").EnumerateArray().Select(t => t.GetString()));
         Assert.True((await _builder.GetFromJsonAsync<JsonElement>("/api/studio/options", Ct)).GetProperty("cloudToolsLicensed").GetBoolean());
         await ProposeAsync(_builder, await TemplateDraftAsync(_builder, "cloud-ops", "cloud-costs"));
+
+        // Switched off again: locked again at once.
+        await SetCloudToolsAsync(false);
+        Assert.False((await _builder.GetFromJsonAsync<JsonElement>("/api/studio/options", Ct)).GetProperty("cloudToolsLicensed").GetBoolean());
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await _builder.PostAsJsonAsync("/api/studio/proposals", Draft("costs4", tools: [new { server = "aws-cost", tools = new[] { "get_costs" } }]), Ct)).StatusCode);
+    }
+
+    [Fact]
+    public async Task TheAgentsPage_DirectSave_CannotAttachACloudToolServer_WhileCloudToolsAreOff()
+    {
+        await StartAsync(s => s["Skanyxx:Licence:CloudTools"] = "true");
+        var form = new Dictionary<string, object?>
+        {
+            ["namespace"] = Ns, ["name"] = "cost-helper", ["description"] = "Reads costs.", ["systemMessage"] = "Report the month's costs.",
+            ["modelConfig"] = "default-model-config", ["runtime"] = null, ["stream"] = false,
+            ["mcpTools"] = new[] { new { server = "aws-cost", tools = new[] { "get_costs" } } },
+            ["agentTools"] = Array.Empty<string>(), ["skills"] = Array.Empty<string>(), ["a2aSkills"] = Array.Empty<object>()
+        };
+
+        var refused = await _supervisor.PostAsJsonAsync("/api/agents", form, Ct);
+        Assert.Equal(HttpStatusCode.BadRequest, refused.StatusCode);
+        Assert.Contains("paid feature", await refused.Content.ReadAsStringAsync(Ct));
+        Assert.False(_kagent.AgentObjects.ContainsKey($"{Ns}/cost-helper"));
+
+        await SetCloudToolsAsync(true);
+        Assert.Equal(HttpStatusCode.Created, (await _supervisor.PostAsJsonAsync("/api/agents", form, Ct)).StatusCode);
+        Assert.True(_kagent.AgentObjects.ContainsKey($"{Ns}/cost-helper"));
+    }
+
+    [Fact]
+    public async Task EditingAnAgentWithALockedCloudTool_KeepsTheTicks_SoSavingSaysWhatToRemove()
+    {
+        var paid = new AgentDraft("costs5", "Answers refund questions", "default-model-config", "Answer refund questions from company memory.", [],
+            [new McpToolChoice("aws-cost", ["get_costs"])], [new StudioGrant("company", true, false)], null);
+        var (agentYaml, grantsYaml) = AgentManifest.Render(paid, Ns);
+        _git.Main()["agents/costs5/agent.yaml"] = agentYaml;
+        _git.Main()["agents/costs5/grants.yaml"] = grantsYaml;
+
+        var owner = await SignInAsync(HostApp.OwnerEmail, HostApp.OwnerPassword);
+        var page = await (await owner.GetAsync("/Studio?edit=costs5")).Content.ReadAsStringAsync(Ct);
+
+        Assert.Contains("value=\"aws-cost/get_costs\" checked=\"checked\" disabled=\"disabled\"", page);
+        Assert.Contains("<input type=\"hidden\" name=\"Tools\" value=\"aws-cost/get_costs\" data-locked-kept", page);
     }
 
     // --- Checks (D362) and the timeline (D365) ---
@@ -240,20 +294,70 @@ public sealed class StudioDeliveryTests(PostgresFixture fixture) : IAsyncLifetim
         var none = await _supervisor.PostAsync($"/api/studio/proposals/{number}/merge", null, Ct);
         Assert.Equal(HttpStatusCode.Conflict, none.StatusCode);
         Assert.Contains("No CI has reported", await none.Content.ReadAsStringAsync(Ct));
-        _git.Report(_git.HeadOf(number), "validate", "failure");
+        // A passing status under another name (anyone with push access can post one) is not the shipped check (D374).
+        _git.Report(_git.HeadOf(number), "looks-fine", "success");
+        var impostor = await _supervisor.PostAsync($"/api/studio/proposals/{number}/merge", null, Ct);
+        Assert.Equal(HttpStatusCode.Conflict, impostor.StatusCode);
+        Assert.Contains("No CI has reported", await impostor.Content.ReadAsStringAsync(Ct));
+
+        _git.Report(_git.HeadOf(number), "validate-agents / validate (pull_request)", "pending");
+        var pending = await _supervisor.PostAsync($"/api/studio/proposals/{number}/merge", null, Ct);
+        Assert.Contains("still running", await pending.Content.ReadAsStringAsync(Ct));
+        _git.Report(_git.HeadOf(number), "validate-agents / validate (pull_request)", "failure");
         var failed = await _supervisor.PostAsync($"/api/studio/proposals/{number}/merge", null, Ct);
         Assert.Equal(HttpStatusCode.Conflict, failed.StatusCode);
         Assert.Contains("checks failed", await failed.Content.ReadAsStringAsync(Ct));
         Assert.False(_git.Pulls.Single(p => p.Number == number).Merged);
 
-        _git.Report(_git.HeadOf(number), "validate", "success");
+        _git.Report(_git.HeadOf(number), "validate-agents / validate (pull_request)", "success");
         Assert.Equal(HttpStatusCode.OK, (await _supervisor.PostAsync($"/api/studio/proposals/{number}/merge", null, Ct)).StatusCode);
 
-        // A direct apply stops at the open pull request until its checks pass.
+        // A direct apply stops at the open pull request until its checks pass, and is audited as opened, not applied.
         var applied = await _supervisor.PostAsJsonAsync("/api/studio/apply", Draft("gated-direct"), Ct);
         Assert.Equal(HttpStatusCode.Created, applied.StatusCode);
         Assert.Contains("once its checks pass", await applied.Content.ReadAsStringAsync(Ct));
         Assert.True(_git.Pulls.Last().Open);
+        Assert.Equal(["studio.apply_requested", "studio.apply_opened"], _audit.Written.Where(a => a.Action.StartsWith("studio.appl")).Select(a => a.Action));
+    }
+
+    [Fact]
+    public void TheRequiredCheck_IsTheShippedWorkflowsContext()
+    {
+        static ChangeChecks Checks(params (string Name, CheckState State)[] runs) =>
+            new(CheckStatusMap.Combine(runs.Select(r => r.State)), [.. runs.Select(r => new CheckRun(r.Name, r.State, "", null))]);
+
+        Assert.Equal(CheckState.Passed, RequiredCheck.State(Checks(("validate-agents", CheckState.Passed))));
+        Assert.Equal(CheckState.Passed, RequiredCheck.State(Checks(("validate-agents / validate (pull_request)", CheckState.Passed), ("lint", CheckState.Pending))));
+        Assert.Equal(CheckState.None, RequiredCheck.State(Checks(("validate", CheckState.Passed), ("validate-agents-fake", CheckState.Passed))));
+        Assert.Equal(CheckState.Failed, RequiredCheck.State(Checks(("validate-agents", CheckState.Passed), ("lint", CheckState.Failed))));
+    }
+
+    // --- git computes mergeability after a pull request opens (Gitea: 405 "try again later") ---
+
+    [Fact]
+    public async Task ADirectApply_AndTheCiInstall_WaitOutGitsMergeabilityCheck()
+    {
+        _git.MergesBeforeMergeable = 2;
+        var applied = await _supervisor.PostAsJsonAsync("/api/studio/apply", Draft("eventually"), Ct);
+        Assert.Equal(HttpStatusCode.OK, applied.StatusCode);
+        Assert.True(Assert.Single(_git.Pulls).Merged);
+        Assert.Equal(3, _git.MergeAttempts);
+
+        _git.MergesBeforeMergeable = 1;
+        Assert.Equal(HttpStatusCode.OK, (await _owner.PostAsync("/api/studio/ci/install", null, Ct)).StatusCode);
+        Assert.True(_git.Pulls.Last().Merged);
+    }
+
+    [Fact]
+    public async Task GitThatNeverBecomesMergeable_IsRetriedABoundedNumberOfTimes()
+    {
+        _git.MergesBeforeMergeable = 100;
+        var applied = await _supervisor.PostAsJsonAsync("/api/studio/apply", Draft("never"), Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, applied.StatusCode);
+        Assert.Contains("did not merge", await applied.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(1 + GiteaAgentRepo.MergeRetryDelays.Length, _git.MergeAttempts);
+        Assert.True(Assert.Single(_git.Pulls).Open);
     }
 
     // --- Direct by role, PR for users (D366) ---
@@ -282,7 +386,9 @@ public sealed class StudioDeliveryTests(PostgresFixture fixture) : IAsyncLifetim
         Assert.Equal(HttpStatusCode.Forbidden, builder.StatusCode);
         Assert.Equal(HttpStatusCode.Forbidden, (await _employee.PostAsJsonAsync("/api/studio/apply", Draft("not-direct"), Ct)).StatusCode);
         Assert.Empty(_git.Pulls);
-        Assert.Equal(2, _audit.Written.Count(a => a.Action == "studio.apply_refused"));
+        // Refused by the endpoint's roles (D375), before the handler: nothing was attempted, so nothing is audited.
+        Assert.DoesNotContain(_audit.Written, a => a.Action.StartsWith("studio.appl"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await _builder.PostAsync("/api/studio/ci/install", null, Ct)).StatusCode);
 
         // A builder's proposal merges only by a supervisor.
         var number = await ProposeAsync(_builder, Draft("reviewed"));
@@ -457,6 +563,11 @@ public sealed class StudioDeliveryTests(PostgresFixture fixture) : IAsyncLifetim
         grants = grants ?? [new { scope = "company", search = true, upsert = false }],
         memoryTtlDays = (int?)null
     };
+
+    /// <summary>The owner's Settings switch (D354), as the Settings page saves it.</summary>
+    private async Task SetCloudToolsAsync(bool on) =>
+        (await _owner.PutAsJsonAsync("/api/identity/settings",
+            new { values = new Dictionary<string, string> { ["features.cloudTools"] = on ? "true" : "false" } }, Ct)).EnsureSuccessStatusCode();
 
     private async Task<JsonObject> TemplateDraftAsync(HttpClient who, string template, string name)
     {

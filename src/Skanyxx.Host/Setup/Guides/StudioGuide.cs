@@ -37,7 +37,7 @@ public static class StudioGuide
                 "Argo CD's API server as the Host reaches it, e.g. https://argocd-server.argocd.svc. Needs Studio:Argo:Token (a read-only account token) and Studio:Argo:Application (default skanyxx-agents).",
                 Optional: true),
             new("Skanyxx:Licence:CloudTools", "Tool servers listed in Studio:CloudToolServers (they call cloud provider APIs) are shown locked and cannot be added to agents.",
-                "true when your licence includes cloud tools. List those servers in both Studio:McpServers and Studio:CloudToolServers.",
+                "true when your licence includes cloud tools; then turn on Settings → Features → Cloud tools. List those servers in both Studio:McpServers and Studio:CloudToolServers.",
                 Optional: true, MustBeTrue: true),
         ],
         Local:
@@ -63,7 +63,7 @@ public static class StudioGuide
                 "read -rs T && kubectl -n <namespace> create secret generic skanyxx-studio-ci --from-literal=Studio__Ci__Token=\"$T\"; unset T"),
             new("As the owner, Add CI to the agent repo on /Studio; in Gitea enable Actions on the repo, set SKANYXX_URL (http://<release>.<namespace>.svc:8080) and the secret SKANYXX_CI_TOKEN, and register a runner."),
             new("Optional, Argo CD: an Application syncing the agent repo's agents/*/agent.yaml into kagent's namespace (ignoreDifferences on /metadata/labels, which the reconciler sets); a read-only Argo account token in a Secret with key Studio__Argo__Token, and Studio__Argo__BaseUrl in skanyxx.extraEnv."),
-            new("Optional, cloud tools: list the cloud tool servers in Studio__McpServers__N and Studio__CloudToolServers__N, and set Skanyxx__Licence__CloudTools=true if your licence includes them."),
+            new("Optional, cloud tools: list the cloud tool servers in Studio__McpServers__N and Studio__CloudToolServers__N, and set Skanyxx__Licence__CloudTools=true if your licence includes them; then the owner turns on Settings → Features → Cloud tools."),
         ],
         Verify:
         [
@@ -78,7 +78,7 @@ public static class StudioGuide
                 "The repo's git id is recorded and never re-created: restore it, or the owner confirms on /Studio (POST api/studio/confirm)."),
             new("Checks stay \"no CI\"", "The workflow is not in main, Actions are off on the repo, or no runner picked the job: see Gitea's Actions tab."),
             new("CI says \"Skanyxx answered HTTP 401\"", "The repo secret SKANYXX_CI_TOKEN differs from Studio:Ci:Token; set both again (404 means Studio:Ci:Token is not set)."),
-            new("A cloud tool is \"Paid · locked\"", "Skanyxx:Licence:CloudTools is not true; agents already merged keep running, new ones cannot add it."),
+            new("A cloud tool is \"Paid · locked\"", "Skanyxx:Licence:CloudTools is not true, or the owner has not turned on Settings → Features → Cloud tools; agents already merged keep running, new ones (Studio or the Agents page) cannot add it."),
             new("Deploy shows \"Argo CD cannot be reached\"", "Check Studio:Argo:BaseUrl from the Host and that the token may read the Application (applications, get)."),
             new("No token file after first-hour.sh git", "Gitea did not issue a token: check the gitea container (docker compose -p skanyxx logs gitea) and run `git` again."),
         ]);

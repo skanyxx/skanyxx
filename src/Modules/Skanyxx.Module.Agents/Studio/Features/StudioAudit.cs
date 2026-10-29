@@ -14,6 +14,9 @@ internal static class StudioAudit
 {
     public const string ApplyRequested = "studio.apply_requested";
     public const string Applied = "studio.applied";
+
+    /// <summary>A direct apply that opened its pull request and stopped there, waiting for checks (D367): nothing merged.</summary>
+    public const string ApplyOpened = "studio.apply_opened";
     public const string ApplyRefused = "studio.apply_refused";
     public const string CiInstallRequested = "studio.ci_install_requested";
     public const string CiInstalled = "studio.ci_installed";

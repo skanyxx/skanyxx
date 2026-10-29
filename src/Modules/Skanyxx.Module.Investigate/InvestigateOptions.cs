@@ -68,6 +68,20 @@ public sealed class InvestigateOptions
     [Range(1, 1_000)]
     public int MaxPoolSize { get; set; } = 20;
 
+    /// <summary>Agent steps of one run that call kagent at the same time; the rest of a parallel group waits its turn.</summary>
+    [Range(1, 50)]
+    public int MaxParallelSteps { get; set; } = 4;
+
+    /// <summary>Workflows one person may own; creating or duplicating past it is a 409.</summary>
+    [Range(1, 10_000)]
+    public int MaxWorkflowsPerUser { get; set; } = 100;
+
+    /// <summary>
+    /// MCP tool servers (RemoteMCPServer names) whose tools only read (D372). An agent naming any other server is
+    /// write-capable, so a step reading an earlier answer may call it only on a workflow that allows chained writes.
+    /// </summary>
+    public List<string> ReadOnlyToolServers { get; set; } = [];
+
     internal NpgsqlConnectionStringBuilder ConnectionSettings()
     {
         var settings = new NpgsqlConnectionStringBuilder(ConnectionString) { MaxPoolSize = MaxPoolSize };

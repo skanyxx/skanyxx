@@ -13,6 +13,7 @@ internal sealed class ApplyAgentEndpoint(IMediator mediator) : Endpoint<AgentDra
     public override void Configure()
     {
         Post("api/studio/apply");
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Options(b => b.WithMetadata(new RequestSizeLimitAttribute(64 * 1024)));
     }
 

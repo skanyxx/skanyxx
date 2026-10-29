@@ -55,7 +55,8 @@ internal sealed class SaveInstallationSettingsHandler(
         if (changed.Count > 0)
         {
             logger.LogWarning("Installation settings {Keys} changed by {ActorUserId} from {RemoteIp}", changed, command.ActorId, client.Current);
-            await refresher.ReloadAsync(ct);
+            // Committed: the reload is not the caller's to cancel (a closed page must not leave this replica on old values).
+            await refresher.ReloadAsync(CancellationToken.None);
         }
         return Outcome<IReadOnlyList<string>>.Ok(changed);
     }

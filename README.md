@@ -502,9 +502,9 @@ All configuration is in `src/Skanyxx.Host/appsettings.json`:
 | `Tickets` | `Source` (`jira` \| `local`), `LocalPath` (JSON file, required when `local`), `Jira` (`Site` — https only, `Email`, `ApiToken`, `Project` or `Jql` (overrides `Project`), `TimeoutSeconds` (20)), `KAgentUserId` (`skanyxx-tickets`; the kagent user that owns every stage session), `StageTimeoutSeconds` (600), `PollSeconds` (5), `MaxTicketChars` (20000), `MaxPromptChars` (96000), `MaxAnswerChars` (100000), `MaxStageAttemptsPerRun` (30), `MaxActiveRunsPerUser` (5), `MaxActiveRuns` (20, all users), `MaxPoolSize` (40), `AllowedAgents` (`namespace/name`; empty = the five ticket agents; a list replaces that default). Editing and deleting pipelines needs role `owner` or `supervisor` |
 | `Sandboxes` | `Address` (AX gRPC, h2c; `http://ax-server.ax-system.svc:8080`), `Atespace` (`default`), `AllowedImages` (`[]`; registry/repo prefixes, empty = nothing runs, a configured list replaces the default), `RequireDigest` (`false`; on = image must be `@sha256:`), `MaxCpu` (`4`), `MaxMemory` (`8Gi`), `DefaultCpuRequest` (`250m`), `DefaultMemoryRequest` (`256Mi`), `DefaultCpuLimit` (`1`), `DefaultMemoryLimit` (`1Gi`), `MaxActiveTasksPerUser` (`3`), `MaxActiveTasks` (`50`, whole atespace), `CountBudgetSeconds` (`30`), `NetworkIsolationConfirmed` (`false`; must be `true` for a non-empty `AllowedImages`), `MemoryMcpUrl` (`""` = memory attach off; startup refuses any value but the sandbox listener's `/mcp/memory` — its port must be `Memory:SandboxMcpPort`, with `Memory:SandboxTokenKey` set; D193, see "Sandboxes and memory"), `TimeoutSeconds` (`15`), `WatchSeconds` (`120`), `KeepAliveSeconds` (`15`), `MaxWatchesPerUser` (`2`), `MaxWatches` (`50`) |
 
-**Installation settings (D350, D352, D354, D356).** The owner's `/Settings` page (and `GET`/`PUT /api/identity/settings`) holds installation-wide choices in the identity database: installation name, default theme, landing page per role (owner and supervisor land on the Dashboard by default), Microsoft sign-in (off by default; feeds `Identity:EntraAvailable`), Cloud tools (a paid feature: locked unless `Skanyxx:Licence:CloudTools=true`), audit history days (`Identity:AuditRetentionDays`) and chat history index days (`ChatContext:SessionRetentionDays`, 0 = keep). A saved value overrides appsettings and environment variables; an unsaved one falls through to them. Saves apply without a restart (every replica within 30 seconds) and each change writes a `settings.changed` audit row with the key and its old and new values. Sandboxes are shown read-only: they are deployment configuration.
+**Installation settings (D350, D352, D354, D356).** The owner's `/Settings` page (and `GET`/`PUT /api/identity/settings`) holds installation-wide choices in the identity database: installation name, default theme, landing page per role (owner and supervisor land on the Dashboard by default), Microsoft sign-in (off by default; feeds `Identity:EntraAvailable`), Cloud tools (a paid feature: locked unless `Skanyxx:Licence:CloudTools=true`; Studio, templates and the Agents page offer cloud tool servers only while both the licence and this switch are on, read on every request, D370), audit history days (`Identity:AuditRetentionDays`, at least 90, D376) and chat history index days (`ChatContext:SessionRetentionDays`, 0 = keep). A saved value overrides appsettings and environment variables; an unsaved one falls through to them. Saves apply without a restart (every replica within 30 seconds) and each change writes a `settings.changed` audit row with the key and its old and new values. Sandboxes are shown read-only: they are deployment configuration.
 
-**Debug page (D353).** The owner's `/Debug`: build and uptime, connectivity (kagent, AX, each module's Postgres, Dragonfly), health checks, modules, the last 100 warnings and errors and request timings since this replica started, and the configuration sources with Skanyxx's own keys — passwords, tokens, keys, certificates and connection strings shown as `[redacted]`. It only reads; older logs are in the pod's logs.
+**Debug page (D353).** The owner's `/Debug`: build and uptime, connectivity (kagent, AX, each module's Postgres, Dragonfly), health checks, modules, the last 100 warnings and errors and request timings (per route template, never the raw path, D377) since this replica started, and the configuration sources with Skanyxx's own keys — passwords, tokens, keys, certificates and connection strings shown as `[redacted]`. It only reads; older logs are in the pod's logs.
 
 ## API Endpoints
 
@@ -1160,7 +1160,10 @@ in the agent repo `skanyxx-agents` carries them; only a supervisor's merge makes
   `docs/templates/agents-repo/validate-agents.yaml` (Gitea or GitHub Actions; the owner commits it with "Add CI to the
   agent repo", `POST api/studio/ci/install`) posts each agent folder to `POST api/studio/ci/validate` with
   `Authorization: Bearer <Studio:Ci:Token>`, which runs a merge's rules; `Studio:RequireChecks` makes a merge wait for
-  passing checks. Cloud tools (`Studio:CloudToolServers`) are paid: locked unless `Skanyxx:Licence:CloudTools=true`.
+  the shipped `validate-agents` check to pass (a status under another name never counts, D374). A merge git answers
+  405 "try again later" (Gitea still computing mergeability) is retried a few times within about 4 s. Cloud tools
+  (`Studio:CloudToolServers`) are paid: locked unless `Skanyxx:Licence:CloudTools=true` and Settings → Features →
+  Cloud tools is on (D370).
 - `/api/agents` only reads: its kubectl writes are gone (Phase 1). Creating, editing or deleting a tool server is the owner's
   (D116, D313). The Host runs no processes and holds no Kubernetes credentials.
 
@@ -1379,8 +1382,17 @@ time, nested up to `Investigate:MaxDepth` (4) levels and `Investigate:MaxSteps` 
   replica within `Investigate:WatchMilliseconds`.
 - Reports: `GET /api/investigate/runs/{id}/report.json` (everything) and `report.pdf` (a plain PDF written in-process,
   D345). A succeeded run leaves a memory card `investigation-<run>` in the starter's personal scope (D343).
-- Access (D341): the owner and supervisors see and edit everything; a builder sees their own workflows and those shared
-  with one of their teams, edits and deletes only their own, and sees only their own runs. Employees get 403.
+- Access (D341, D371): the owner sees and edits everything; a supervisor the workflows and runs (input and answers
+  included) of the people in their own teams, as Analytics scopes them; a builder sees their own workflows and those
+  shared with one of their teams, edits and deletes only their own, and sees only their own runs. Employees get 403;
+  anything out of reach is 404.
+- Untrusted data (D372): `{{input}}` and `{{steps.<id>}}` reach a prompt inside a fixed `SKANYXX-DATA` envelope that
+  says the enclosed text is data, not instructions. A step that reads an earlier answer may call a *write-capable* agent
+  (it names an MCP server not on `Investigate:ReadOnlyToolServers`, calls other agents, or has an explicit memory
+  upsert grant) only on a workflow the owner or a supervisor saved with "Allow chained writes"
+  (`investigate.chained_writes_allowed` in the audit); checked on save and again on start.
+- Limits (D373): `Investigate:MaxParallelSteps` (4) agent calls at once per run, `Investigate:MaxWorkflowsPerUser`
+  (100); answers and failure reasons are redacted (`SecretText.Redact`) before they are stored or read by a later step.
 - The identity audit records `investigate.*` rows with ids, names and states only, never prompts, inputs or answers (D344).
 
 ## Sandboxes on Google AX (Experimental)

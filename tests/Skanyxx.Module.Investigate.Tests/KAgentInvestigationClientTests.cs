@@ -33,6 +33,26 @@ public sealed class KAgentInvestigationClientTests
             Lines.Enqueue(formatter(state, exception) + exception);
     }
 
+    /// <summary>Cancels the call's token, then fails the way a torn connection does.</summary>
+    private sealed class CancelThenFail(CancellationTokenSource cancel) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+        {
+            await cancel.CancelAsync();
+            throw new HttpRequestException("The response ended prematurely.");
+        }
+    }
+
+    [Fact]
+    public async Task AnIoErrorAfterTheCallWasCancelled_IsACancellation_NotAnAgentFailure()
+    {
+        using var cancel = new CancellationTokenSource();
+        var http = new HttpClient(new CancelThenFail(cancel)) { BaseAddress = new Uri("http://kagent.test/") };
+        var client = new KAgentInvestigationClient(http, Options.Create(new InvestigateOptions()), new Recorder());
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.AskAsync("team-a/writer", "Why?", cancel.Token));
+    }
+
     private static (KAgentInvestigationClient Client, Handler Handler, Recorder Log) Create(HttpStatusCode status, string body)
     {
         var handler = new Handler(status, body);

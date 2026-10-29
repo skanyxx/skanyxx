@@ -1,4 +1,5 @@
 using FluentValidation;
+using Skanyxx.Core.Platform;
 using Microsoft.Extensions.Options;
 using Skanyxx.Module.Investigate.Rules;
 
@@ -14,7 +15,8 @@ internal sealed class SaveWorkflowValidator : AbstractValidator<SaveWorkflowComm
             .OverridePropertyName("name").WithMessage("Give the workflow a name of at most 120 characters.");
         RuleFor(c => c.Description).Must(d => d is null || (d.Length <= 1000 && !d.Contains('\0')))
             .OverridePropertyName("description").WithMessage("The description is at most 1000 characters.");
-        RuleFor(c => c.SharedTeam).Must(t => t is null || StepId.IsValid(t))
+        // Team slugs are identity's Identifiers (dots, '_', '@', up to 128), not step ids.
+        RuleFor(c => c.SharedTeam).Must(t => t is null || Identifier.IsValid(t))
             .OverridePropertyName("sharedTeam").WithMessage("Not a team.");
         RuleFor(c => c).Custom((c, context) =>
         {

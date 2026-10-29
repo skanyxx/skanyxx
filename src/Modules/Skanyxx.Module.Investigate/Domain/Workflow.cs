@@ -18,6 +18,12 @@ public sealed class Workflow
 
     public List<WorkflowStep> Steps { get; set; } = [];
 
+    /// <summary>
+    /// Set by the owner or a supervisor (audited, D372): steps that read an earlier answer may call an agent that can
+    /// write. Off, such a workflow is refused on save and on start.
+    /// </summary>
+    public bool AllowChainedWrites { get; set; }
+
     public DateTime CreatedAt { get; set; }
 
     public DateTime UpdatedAt { get; set; }

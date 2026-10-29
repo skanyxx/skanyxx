@@ -57,6 +57,11 @@ internal sealed partial class KAgentInvestigationClient(
             }
             body = await response.Content.ReadFromJsonAsync<JsonNode>(ct);
         }
+        catch (HttpRequestException) when (ct.IsCancellationRequested)
+        {
+            // Cancelled mid-send (the run's cancel or the step's deadline): some handlers surface that as an I/O error.
+            throw new OperationCanceledException(ct);
+        }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
             throw new AgentCallException("kagent answered invalid JSON");

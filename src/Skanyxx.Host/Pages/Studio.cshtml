@@ -311,7 +311,7 @@
                         <div class="tile-actions">
                             @if (t.Locked)
                             {
-                                <p class="lock-note" data-locked>Cloud tools are a paid feature. The owner turns them on (Skanyxx:Licence:CloudTools).</p>
+                                <p class="lock-note" data-locked>Cloud tools are a paid feature. The owner turns them on (the licence Skanyxx:Licence:CloudTools, then Settings → Features).</p>
                             }
                             else
                             {
@@ -389,13 +389,18 @@
                             }
                             @if (locked)
                             {
-                                <p class="lock-note" data-locked>Calls a cloud provider's API. Cloud tools are a paid feature that is not turned on; the owner turns it on with Skanyxx:Licence:CloudTools.</p>
+                                <p class="lock-note" data-locked>Calls a cloud provider's API. Cloud tools are a paid feature that is not turned on; the owner turns it on (the licence Skanyxx:Licence:CloudTools, then Settings → Features). Tools already ticked stay in the form, so saving says what to remove instead of dropping them.</p>
                             }
                             <div class="checks">
                                 @foreach (var tool in server.Tools)
                                 {
                                     var value = $"{server.Server}/{tool}";
                                     <label class="check"><input type="checkbox" name="Tools" value="@value" checked="@Model.Ticked(Model.Tools, value)" disabled="@locked" /> @tool</label>
+                                    @* A disabled checkbox is never posted: a ticked locked tool rides along hidden, so the save refuses it in words instead of removing it silently. *@
+                                    @if (locked && Model.Ticked(Model.Tools, value))
+                                    {
+                                        <input type="hidden" name="Tools" value="@value" data-locked-kept />
+                                    }
                                 }
                             </div>
                         </div>

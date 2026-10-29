@@ -44,7 +44,7 @@ internal sealed class ApplyAgentHandler(IMediator mediator, IOptions<StudioOptio
         }
         if (options.Value.RequireChecks)
         {
-            await StudioAudit.OutcomeAsync(mediator, logger, StudioAudit.Applied, user, draft, number, "waiting-for-checks");
+            await StudioAudit.OutcomeAsync(mediator, logger, StudioAudit.ApplyOpened, user, draft, number, "waiting-for-checks");
             return Outcome<StudioResult>.Created(new StudioResult(
                 $"Opened #{number}. It merges once its checks pass (Studio:RequireChecks): merge it from the proposal then.", number, draft.Name));
         }

@@ -10,18 +10,21 @@ namespace Skanyxx.Module.Investigate.Engine;
 
 /// <summary>
 /// Takes queued runs, oldest first, and executes up to <see cref="InvestigateOptions.MaxConcurrentRuns"/> at once. A run is
-/// claimed by one conditional update (queued → running), so with several replicas each run executes once. Running runs
-/// whose heartbeat stopped (their replica died) are failed with a reason. On shutdown every executing run is cancelled
-/// and awaited, and ends as failed ("Skanyxx stopped"), never left running.
+/// claimed by one conditional update (queued → running), so with several replicas each run executes once, and starts as
+/// soon as it is claimed, so an error claiming the next one never strands it. Running runs whose heartbeat stopped
+/// (their replica died) are failed with a reason; heartbeats and that sweep both read the database's clock, never a
+/// replica's (D373). On shutdown every executing run is cancelled and awaited, and ends as failed ("Skanyxx stopped"),
+/// never left running.
 /// </summary>
 internal sealed partial class InvestigationWorker(
     IServiceScopeFactory scopes,
     IDbContextFactory<InvestigateDbContext> dbs,
     RunSignal signal,
     IOptions<InvestigateOptions> options,
-    TimeProvider clock,
     ILogger<InvestigationWorker> logger) : BackgroundService
 {
+    private const int ClaimCandidates = 5;
+
     private readonly InvestigateOptions _options = options.Value;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -36,7 +39,7 @@ internal sealed partial class InvestigationWorker(
                 try
                 {
                     await FailStaleAsync(stoppingToken);
-                    foreach (var id in await ClaimAsync(_options.MaxConcurrentRuns - executing.Count, stoppingToken))
+                    while (executing.Count < _options.MaxConcurrentRuns && await ClaimOneAsync(stoppingToken) is { } id)
                         executing.Add(Task.Run(() => ExecuteAsync(id, stoppingToken), CancellationToken.None));
                 }
                 catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
@@ -65,38 +68,47 @@ internal sealed partial class InvestigationWorker(
         signal.Notify();
     }
 
-    private async Task<List<Guid>> ClaimAsync(int free, CancellationToken ct)
+    /// <returns>The oldest queued run, now running on this replica; null when the queue is empty.</returns>
+    private async Task<Guid?> ClaimOneAsync(CancellationToken ct)
     {
-        if (free <= 0)
-            return [];
         await using var db = await dbs.CreateDbContextAsync(ct);
-        var queued = await db.Runs.Where(r => r.State == RunState.Queued).OrderBy(r => r.CreatedAt).Select(r => r.Id).Take(free).ToListAsync(ct);
-        var claimed = new List<Guid>();
-        foreach (var id in queued)
-        {
-            var now = clock.GetUtcNow().UtcDateTime;
+        // A few candidates: another replica may take the oldest between the read and the update.
+        foreach (var id in await db.Runs.Where(r => r.State == RunState.Queued).OrderBy(r => r.CreatedAt).Select(r => r.Id).Take(ClaimCandidates).ToListAsync(ct))
             if (await db.Runs.Where(r => r.Id == id && r.State == RunState.Queued)
-                    .ExecuteUpdateAsync(s => s.SetProperty(r => r.State, RunState.Running).SetProperty(r => r.StartedAt, now).SetProperty(r => r.HeartbeatAt, now), ct) == 1)
-                claimed.Add(id);
-        }
-        return claimed;
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(r => r.State, RunState.Running)
+                        .SetProperty(r => r.StartedAt, r => DateTime.UtcNow)
+                        .SetProperty(r => r.HeartbeatAt, r => DateTime.UtcNow), ct) == 1)
+                return id;
+        return null;
     }
 
+    /// <summary>
+    /// Fails runs whose heartbeat is older than <see cref="InvestigateOptions.StaleAfterSeconds"/> by the database's clock.
+    /// The run is ended first, by a conditional update, so a run that stamps a heartbeat meanwhile is left alone and its
+    /// steps untouched; then, in the same transaction, its steps end as <see cref="RunExecutor"/> ends them: never started
+    /// skipped, running cancelled.
+    /// </summary>
     private async Task FailStaleAsync(CancellationToken ct)
     {
-        var now = clock.GetUtcNow().UtcDateTime;
-        var stale = now.AddSeconds(-_options.StaleAfterSeconds);
+        var staleAfter = _options.StaleAfterSeconds;
         await using var db = await dbs.CreateDbContextAsync(ct);
-        var ids = await db.Runs.Where(r => r.State == RunState.Running && r.HeartbeatAt < stale).Select(r => r.Id).ToListAsync(ct);
+        var ids = await db.Runs.Where(r => r.State == RunState.Running && r.HeartbeatAt < DateTime.UtcNow.AddSeconds(-staleAfter)).Select(r => r.Id).ToListAsync(ct);
         foreach (var id in ids)
         {
-            await db.StepRuns.Where(s => s.RunId == id && (s.State == StepState.Pending || s.State == StepState.Running))
+            // One transaction: nobody reads a run that ended with steps still running.
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            if (await db.Runs.Where(r => r.Id == id && r.State == RunState.Running && r.HeartbeatAt < DateTime.UtcNow.AddSeconds(-staleAfter))
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(r => r.State, RunState.Failed)
+                        .SetProperty(r => r.Failure, "The server running this investigation stopped; run it again.")
+                        .SetProperty(r => r.EndedAt, r => DateTime.UtcNow), ct) == 0)
+                continue;
+            await db.StepRuns.Where(s => s.RunId == id && s.State == StepState.Pending)
                 .ExecuteUpdateAsync(s => s.SetProperty(x => x.State, StepState.Skipped), ct);
-            await db.Runs.Where(r => r.Id == id && r.State == RunState.Running && r.HeartbeatAt < stale)
-                .ExecuteUpdateAsync(s => s
-                    .SetProperty(r => r.State, RunState.Failed)
-                    .SetProperty(r => r.Failure, "The server running this investigation stopped; run it again.")
-                    .SetProperty(r => r.EndedAt, now), ct);
+            await db.StepRuns.Where(s => s.RunId == id && s.State == StepState.Running)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.State, StepState.Cancelled).SetProperty(x => x.EndedAt, x => DateTime.UtcNow), ct);
+            await tx.CommitAsync(ct);
         }
     }
 
