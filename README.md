@@ -1050,6 +1050,12 @@ dotnet test tests/Skanyxx.Module.Memory.Tests   # needs Docker (Testcontainers)
 
 - A card is `scope` + `key` (`personal:ana/refund-window`), `type` (decision | fact | procedure | open), `what` ≤ 200, `why` ≤ 400; `body`/`source` are never sent to agents.
 - Write with `PUT /api/memory/cards/{scope}/{key}`: `version: 0` creates, otherwise pass the version you read. A stale version is a `409` with the current card — never last-write-wins.
+  A write (REST or the `memory_upsert` tool) whose `what`, `why`, `body` or `source` seems to hold a credential — a
+  private key, a known token format, a JWT, a bearer or basic credential, a URL with a password, or a value under a
+  credential-named field (`password: …`, `apiKey=…`) — is a `400` naming the field ("memory never stores credentials");
+  so is one with Unicode tag characters or stray variation selectors (hidden text a model would read). Talking about
+  credentials (`Bearer ${TOKEN}`, `password: required`, `[redacted]`) is fine. A lift re-checks the card, its stored body
+  included, and is a `409` if it holds one (D391).
 - `POST …/{scope}/{key}/lift` copies a card up (personal → team → department → company); the original stays. Into `company` needs a supervisor; into a team or department, membership of it (the org tree, see "Teams and departments").
 - Team and department scopes follow the org tree: members read, search and write their teams and departments; owner and supervisors read all of them but write only where they are members. Only the owner grants an agent a team or department scope.
 - kagent reaches the bank over MCP at `/mcp/memory` (`memory_search`, `memory_upsert`) with a per-agent secret: `POST /api/memory/agents/{agentId}/secret` as a supervisor, then give the agent's `RemoteMCPServer` an `Authorization: Bearer <secret>` header from a Kubernetes Secret (`deploy/kagent/memory/`). Agents without grants search `company` + the calling user's personal scope and may upsert only that personal scope (needs `X-User-Id`, honoured only for an agent whose secret the owner issued with `actsForUsers: true`); `PUT /api/memory/grants/{agentId}` replaces the default with explicit search/upsert per scope (at least one entry; revoke an agent with a single grant that has `canSearch` and `canUpsert` false).

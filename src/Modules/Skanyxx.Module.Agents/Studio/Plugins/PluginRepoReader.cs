@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform;
 using Skanyxx.Module.Agents.Plugins;
 using Skanyxx.Module.Agents.Studio.Definition;
 using Skanyxx.Module.Agents.Studio.Git;
