@@ -55,6 +55,21 @@
         <field for="lib-tag" label="Tag">
             <input id="lib-tag" name="tag" value="@Model.Tag" placeholder="e.g. refunds" maxlength="64" autocomplete="off" />
         </field>
+        <field for="lib-ticket" label="Ticket">
+            <input id="lib-ticket" name="ticket" value="@Model.Ticket" placeholder="e.g. SDB-58" maxlength="40" autocomplete="off" />
+        </field>
+        <field for="lib-agent" label="Written via agent">
+            <input id="lib-agent" name="agent" value="@Model.Agent" placeholder="e.g. seed" maxlength="64" autocomplete="off" />
+        </field>
+        <field for="lib-origin" label="Came from">
+            <select id="lib-origin" name="origin">
+                <option value="">Anywhere</option>
+                @foreach (var (value, label) in new[] { ("manual", "Written by hand"), ("chat", "A chat"), ("run", "A run or investigation") })
+                {
+                    <option value="@value" selected="@(Model.Origin == value)">@label</option>
+                }
+            </select>
+        </field>
         <field for="lib-owner" label="Last written by">
             <select id="lib-owner" name="owner">
                 <option value="">Anyone</option>

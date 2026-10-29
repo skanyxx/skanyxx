@@ -70,6 +70,29 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         Assert.DoesNotContain("Billing closes", searched);
     }
 
+    /// <summary>D506: the page offers the API's ticket, agent and origin filters, and keeps them across its links.</summary>
+    [Fact]
+    public async Task TicketAgentAndOriginFilters_NarrowTheShelf()
+    {
+        Created(await _miaApi.PutAsJsonAsync($"/api/memory/cards/personal:{_miaId}/sdb-note",
+            new { version = 0, type = "fact", what = "SDB-58 needs a refund form", why = "Seen twice", tickets = new[] { "SDB-58" } }));
+
+        var ticket = await (await _mia.GetAsync("/Library?ticket=sdb-58")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var chats = await (await _mia.GetAsync("/Library?origin=chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var agent = await (await _mia.GetAsync("/Library?agent=seed")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var bad = await _mia.GetAsync("/Library?origin=nowhere");
+
+        Assert.Contains("SDB-58 needs a refund form", ticket);
+        Assert.DoesNotContain("Mia invoices on Fridays", ticket);
+        Assert.Contains("id=\"lib-ticket\" name=\"ticket\" value=\"sdb-58\"", ticket);
+        Assert.Contains("ticket=sdb-58", ticket); // the type chips keep the filter
+        Assert.DoesNotContain("Mia invoices on Fridays", chats);
+        Assert.Contains("<option value=\"chat\" selected=\"selected\">", chats);
+        Assert.DoesNotContain("Mia invoices on Fridays", agent);
+        Assert.Contains("id=\"lib-agent\" name=\"agent\" value=\"seed\"", agent);
+        Assert.Contains("Origin must be one of", await bad.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task LiftButtons_AreExactlyTheTargetsThePersonMayWrite()
     {
