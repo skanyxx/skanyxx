@@ -25,7 +25,7 @@ public sealed class TicketsModule : IModule
     public string ModuleId => "tickets";
     public string DisplayName => "Tickets";
     public string Version => "1.0.0";
-    public IReadOnlyList<string> Dependencies => [];
+    public IReadOnlyList<string> Dependencies => ["identity"];
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {

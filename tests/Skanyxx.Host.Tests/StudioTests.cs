@@ -473,6 +473,32 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains($"/api/a2a/{Ns}/{name}/", _kagent.Calls.Select(c => c.Path));
     }
 
+    /// <summary>
+    /// D396: a preview deployed before D392 still runs its MCP tools. Studio chat refuses to talk to it, and the next
+    /// reconcile pass removes it, though its proposal is open; starting the preview again gives one without them.
+    /// </summary>
+    [Fact]
+    public async Task APreviewThatStillCarriesMcpTools_IsRefusedInChat_AndRemoved()
+    {
+        var number = await ProposeAsync(_builder, Draft());
+        Assert.Equal(HttpStatusCode.OK, (await _builder.PostAsync($"/api/studio/proposals/{number}/preview", null, TestContext.Current.CancellationToken)).StatusCode);
+        var name = $"preview-{number}-refund-helper";
+        var spec = _kagent.AgentObjects[$"{Ns}/{name}"]["spec"]!["declarative"]!.AsObject();
+        var tools = spec["tools"] as JsonArray ?? [];
+        tools.Add(new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "jira-ro", ["toolNames"] = new JsonArray("search_issues") } });
+        spec["tools"] = tools;
+
+        var turn = await _builder.PostAsJsonAsync($"/api/studio/proposals/{number}/chat", new { message = "refund window?" }, cancellationToken: TestContext.Current.CancellationToken);
+        await ReconcileAsync();
+
+        Assert.Equal(HttpStatusCode.Conflict, turn.StatusCode);
+        Assert.DoesNotContain($"/api/a2a/{Ns}/{name}/", _kagent.Calls.Select(c => c.Path));
+        Assert.DoesNotContain($"{Ns}/{name}", _kagent.AgentObjects.Keys);
+        Assert.Equal(HttpStatusCode.OK, (await _builder.PostAsync($"/api/studio/proposals/{number}/preview", null, TestContext.Current.CancellationToken)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await _builder.PostAsJsonAsync($"/api/studio/proposals/{number}/chat", new { message = "refund window?" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+    }
+
     [Fact]
     public async Task APreview_IsRemoved_WhenItsProposalMerges_OrCloses()
     {

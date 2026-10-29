@@ -1,4 +1,6 @@
 using MediatR;
+using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Core.Platform.Memory;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -10,16 +12,30 @@ namespace Skanyxx.Module.Tickets.Engine;
 /// <summary>
 /// Moves one run by one stage and saves the attempt, its agent turns and the new cursor in ONE transaction.
 /// A crash mid-stage therefore leaves nothing half-written: after a restart the stage simply runs again.
-/// A step that ends the run tells memory, after the save (<see cref="RunFinishedNotice"/>).
+/// A step that ends the run tells memory, after the save (<see cref="RunFinishedNotice"/>). Each stage is picked up only
+/// while its starter is still an enabled supervisor or the owner (D395): a role saved away between the request and the
+/// work, or a revocation that raced a start, still stops the run. A gate's approval resumes through here too.
 /// </summary>
 public sealed class RunStepper(
-    TicketsDbContext db, StageRunner runner, IOptions<TicketsOptions> options, TimeProvider clock, IPublisher publisher)
+    TicketsDbContext db, StageRunner runner, IOptions<TicketsOptions> options, TimeProvider clock, IPublisher publisher, IPersonStanding standing)
 {
+    private const string StarterRefused = "cancelled: the person who started it may no longer run it (disabled, or no longer a supervisor)";
+
+    private static readonly string[] Starters = [SkanyxxRoles.Owner, SkanyxxRoles.Supervisor];
+
     /// <returns>Whether the run moved (and may move again).</returns>
     public async Task<bool> StepAsync(Guid runId, CancellationToken ct)
     {
         // Earlier attempts' prompts and answers are not needed to run the next stage, only their outputs.
         var run = await db.Runs.Include(r => r.StageRuns).SingleAsync(r => r.Id == runId, ct);
+        if (run.State is RunState.Pending or RunState.Running && !(await standing.ActiveRolesAsync(run.CreatedBy, ct)).Overlaps(Starters))
+        {
+            run.State = RunState.Cancelled;
+            run.Error = StarterRefused;
+            await SaveAsync(run, ct); // a cancelled run is not finished work: memory is not told
+            return false;
+        }
+
         if (run.State == RunState.Pending)
         {
             // Saved before the agent is called, so the run shows as running (with its stage) while it works.

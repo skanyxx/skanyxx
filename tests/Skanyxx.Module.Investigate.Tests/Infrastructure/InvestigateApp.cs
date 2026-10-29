@@ -90,6 +90,7 @@ public sealed class InvestigateApp : IAsyncDisposable
         builder.Services.AddSingleton<IInvestigationAgents>(agents);
         builder.Services.AddSingleton<IInvestigationAgentClient>(agents);
         builder.Services.AddSingleton<IOrgMembership>(org);
+        builder.Services.AddSingleton<IPersonStanding>(org);
         builder.Services.AddSingleton<IRequestHandler<ListTeamsQuery, Outcome<IReadOnlyList<TeamDto>>>>(org);
         builder.Services.AddSingleton<IRequestHandler<PersonTeamsQuery, Outcome<IReadOnlyList<TeamDto>>>>(org);
         builder.Services.AddSingleton<IRequestHandler<ListPeopleQuery, Outcome<IReadOnlyList<PersonDto>>>>(org);

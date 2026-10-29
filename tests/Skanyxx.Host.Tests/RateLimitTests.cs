@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using Skanyxx.Core.Platform;
 
 namespace Skanyxx.Host.Tests;
 
@@ -73,7 +74,7 @@ public sealed class RateLimitTests(PostgresFixture fixture)
             s["Skanyxx:SignInRateLimit:PermitLimit"] = "1";
             s["Skanyxx:SignInRateLimit:WindowSeconds"] = "600";
             if (trusted)
-                s["Skanyxx:TrustedProxies:0"] = "127.0.0.0/8";
+                s["Skanyxx:TrustedProxies:0"] = "127.0.0.1/32";
         });
 
         async Task<HttpStatusCode> SignInAsync(string client)
@@ -103,4 +104,28 @@ public sealed class RateLimitTests(PostgresFixture fixture)
 
         Assert.Contains("Skanyxx:TrustedProxies must be CIDRs", ex.ToString(), StringComparison.Ordinal);
     }
+
+    /// <summary>D397: a range as wide as a pod network would let any pod in it name itself any client.</summary>
+    [Fact]
+    public async Task ATrustedProxyRangeBroaderThanASlash16_StopsStartup()
+    {
+        var ex = await Assert.ThrowsAnyAsync<Exception>(() =>
+            HostApp.StartAsync(fixture.ConnectionString, s => s["Skanyxx:TrustedProxies:0"] = "0.0.0.0/0"));
+
+        Assert.Contains("Skanyxx:TrustedProxies may not be broader than /16 (IPv4) or /48 (IPv6)", ex.ToString(), StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("0.0.0.0/0", true)]
+    [InlineData("10.0.0.0/8", true)]
+    [InlineData("10.42.0.0/15", true)]
+    [InlineData("10.42.0.0/16", false)]
+    [InlineData("10.42.3.17/32", false)]
+    [InlineData("::/0", true)]
+    [InlineData("fd00::/47", true)]
+    [InlineData("fd00:7::/48", false)]
+    [InlineData("::ffff:10.0.0.0/104", true)]
+    [InlineData("::ffff:10.42.0.0/112", false)]
+    public void TrustedProxyBreadth(string cidr, bool tooBroad) =>
+        Assert.Equal(tooBroad, ApiGuardExtensions.TooBroad(System.Net.IPNetwork.Parse(cidr)));
 }

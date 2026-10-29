@@ -19,14 +19,14 @@ public sealed class TicketViewTests(PostgresFixture postgres) : ChatContextTestB
     public async Task ATicket_ShowsItsChatsAndRuns_AndRelatedTicketsWithTheirRuns()
     {
         App.Org.Join(Ana, "billing", "finance");
-        App.Org.Join(Bob, "billing", "finance");
+        App.Org.Join(Boss, "billing", "finance");
         await App.TurnAsync(Ana, "on-58", "EU refund payouts are delayed by the bank batch", "Moved the batch to daily.", ["SDB-58"]);
         await App.ShareAsync(Ana, "on-58", "team:billing");
-        await App.TurnAsync(Bob, "on-64", "EU refund payouts delayed again", "Investigating.", ["SDB-64"]);
-        await App.TurnAsync(Bob, "unrelated", "Office plants", "Water them.", ["SDB-77"]);
+        await App.TurnAsync(Boss, "on-64", "EU refund payouts delayed again", "Investigating.", ["SDB-64"]);
+        await App.TurnAsync(Boss, "unrelated", "Office plants", "Water them.", ["SDB-77"]);
         App.Runs.Runs.AddRange([Run("SDB-58"), Run("SDB-64"), Run("SDB-77")]);
 
-        var view = await ViewAsync(Bob, "SDB-64");
+        var view = await ViewAsync(Boss, "SDB-64");
 
         Assert.Equal(["on-64"], view.Sessions.Select(s => s.SessionId));
         Assert.Single(view.Runs);
@@ -34,9 +34,27 @@ public sealed class TicketViewTests(PostgresFixture postgres) : ChatContextTestB
         Assert.Equal("SDB-58", related.TicketKey);
         Assert.Single(related.Runs);
 
-        var back = await ViewAsync(Bob, "SDB-58");
+        var back = await ViewAsync(Boss, "SDB-58");
         Assert.Equal(["on-58"], back.Sessions.Select(s => s.SessionId));
         Assert.Contains(back.RelatedTickets, t => t.TicketKey == "SDB-64");
+    }
+
+    /// <summary>D394: ticket runs are the supervisors' (D392), so an employee's view of a ticket has its chats and no runs.</summary>
+    [Fact]
+    public async Task BelowSupervisor_ATicketsRuns_AreLeftOut()
+    {
+        App.Org.Join(Ana, "billing", "finance");
+        App.Org.Join(Bob, "billing", "finance");
+        await App.TurnAsync(Ana, "on-58", "EU refund payouts are delayed by the bank batch", "Moved the batch to daily.", ["SDB-58"]);
+        await App.ShareAsync(Ana, "on-58", "team:billing");
+        await App.TurnAsync(Bob, "on-64", "EU refund payouts delayed again", "Investigating.", ["SDB-64"]);
+        App.Runs.Runs.AddRange([Run("SDB-58"), Run("SDB-64")]);
+
+        var view = await ViewAsync(Bob, "SDB-64");
+
+        Assert.Equal(["on-64"], view.Sessions.Select(s => s.SessionId));
+        Assert.Empty(view.Runs);
+        Assert.Empty(Assert.Single(view.RelatedTickets).Runs);
     }
 
     [Fact]

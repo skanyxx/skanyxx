@@ -11,6 +11,8 @@ internal sealed class CancelRunEndpoint(IMediator mediator) : Endpoint<RunRouteR
     public override void Configure()
     {
         Post("runs/{id}/cancel");
+        // D394: every Tickets route is a supervisor's; a demoted starter's runs are cancelled for them (CancelRunsOnPrivilegesRevoked).
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<TicketsGroup>();
     }
 

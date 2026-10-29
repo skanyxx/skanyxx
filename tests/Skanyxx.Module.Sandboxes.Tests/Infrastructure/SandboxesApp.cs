@@ -8,6 +8,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
 
 namespace Skanyxx.Module.Sandboxes.Tests.Infrastructure;
 
@@ -34,6 +35,9 @@ public sealed class SandboxesApp : IAsyncDisposable
     public LogCapture Logs { get; }
 
     public IServiceProvider Services => _app.Services;
+
+    /// <summary>Who identity says may still run sandboxes (D395).</summary>
+    public FakeStanding Standing => (FakeStanding)Services.GetRequiredService<IPersonStanding>();
 
     private Uri BaseAddress => new(_app.Urls.First());
 
@@ -68,6 +72,7 @@ public sealed class SandboxesApp : IAsyncDisposable
 
         var module = new SandboxesModule();
         module.RegisterServices(builder.Services, builder.Configuration);
+        builder.Services.AddSingleton<IPersonStanding, FakeStanding>();
         builder.Services.AddSkanyxxPlatform([typeof(SandboxesModule).Assembly]);
         builder.Services.AddAuthentication(TestAuthHandler.SchemeName)
             .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);

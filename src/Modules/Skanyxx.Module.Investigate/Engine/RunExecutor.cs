@@ -3,11 +3,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Chat;
+using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Investigate.Agents;
 using Skanyxx.Module.Investigate.Audit;
 using Skanyxx.Module.Investigate.Data;
 using Skanyxx.Module.Investigate.Domain;
+using Skanyxx.Module.Investigate.Endpoints;
 using Skanyxx.Module.Investigate.Features;
 using Skanyxx.Module.Investigate.Rules;
 
@@ -23,7 +25,9 @@ namespace Skanyxx.Module.Investigate.Engine;
 /// card. Every step's turn is admitted against the starter's token quota before kagent is asked (a refusal fails the
 /// step) and counted to them afterwards, also when it failed, timed out or was cancelled (D385), priced on the agent's
 /// ModelConfig when its spec names one. Before the first step the agents are checked again (D386): one may have gained a
-/// write tool or grant, or been suspended, while the run was queued. Never throws.
+/// write tool or grant, or been suspended, while the run was queued. The starter is checked too, at pickup and before
+/// each agent step (D395): a person disabled or no longer a builder stops being able to spend on their earlier
+/// authority, whichever replica holds the run. Never throws.
 /// </summary>
 internal sealed partial class RunExecutor(
     IDbContextFactory<InvestigateDbContext> dbs,
@@ -33,10 +37,13 @@ internal sealed partial class RunExecutor(
     StepWriter steps,
     InvestigateAudit audit,
     ICardExtractor cards,
+    IPersonStanding standing,
     IOptions<InvestigateOptions> options,
     TimeProvider clock,
     ILogger<RunExecutor> logger)
 {
+    private const string StarterRefused = "The person who started this run may no longer run investigations (disabled, or no longer a builder).";
+
     private readonly InvestigateOptions _options = options.Value;
 
     public async Task ExecuteAsync(Guid runId, CancellationToken stopping)
@@ -47,7 +54,9 @@ internal sealed partial class RunExecutor(
             await using (var db = await dbs.CreateDbContextAsync(stopping))
                 run = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == runId, stopping);
 
-            var (refusal, allowed) = await CheckAgentsAsync(run, stopping);
+            var (refusal, allowed) = await MayRunAsync(run.CreatedBy, stopping)
+                ? await CheckAgentsAsync(run, stopping)
+                : (StarterRefused, []);
             if (refusal is not null)
             {
                 await EndAsync(runId, RunState.Failed, refusal);
@@ -81,6 +90,9 @@ internal sealed partial class RunExecutor(
             await EndAsync(runId, RunState.Failed, $"The run stopped on an internal error ({ex.GetType().Name}).");
         }
     }
+
+    private async Task<bool> MayRunAsync(string userId, CancellationToken ct) =>
+        (await standing.ActiveRolesAsync(userId, ct)).Overlaps(InvestigateGroup.Roles);
 
     /// <summary>The start's check, with the workflow's allowance as it is now (none once the workflow is deleted).</summary>
     private async Task<(string? Refusal, IReadOnlyList<AgentChoice> Allowed)> CheckAgentsAsync(InvestigationRun run, CancellationToken ct)
@@ -150,6 +162,12 @@ internal sealed partial class RunExecutor(
 
         try
         {
+            // Not the run's token: a cancel already ends the run, and this is one short query.
+            if (!await MayRunAsync(context.StartedBy, CancellationToken.None))
+            {
+                context.Fail(StarterRefused);
+                return StepState.Failed; // never started: stays pending, then skipped
+            }
             await steps.StartedAsync(context.RunId, step.Id);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.Token);
             deadline.CancelAfter(TimeSpan.FromSeconds(_options.StepTimeoutSeconds));

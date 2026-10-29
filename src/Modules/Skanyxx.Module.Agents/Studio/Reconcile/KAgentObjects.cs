@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform.Plugins;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
@@ -70,6 +71,14 @@ internal static class KAgentObjects
         Grants = draft.Grants.Any(g => g.Scope == "company" && g.Search) ? [new StudioGrant("company", true, false)] : [],
         MemoryTtlDays = null
     };
+
+    /// <summary>
+    /// Whether a running preview has more than <see cref="Preview"/> gives one (D396): any MCP server or agent tool but its
+    /// own memory server's <c>memory_search</c>. A preview deployed before D392 still carries its allow-listed tools.
+    /// </summary>
+    public static bool HasTools(Agent preview) =>
+        preview.AgentToolNames.Count > 0
+        || preview.McpToolNames.Any(t => t.Key != StudioNames.MemoryServer(preview.Name) || t.Value is not [StudioNames.MemorySearch]);
 
     /// <summary>
     /// Whether kagent's spec already is <paramref name="desired"/>'s, comparing only the fields the studio sets (kagent

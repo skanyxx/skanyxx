@@ -21,7 +21,7 @@ public sealed class SandboxesModule : IModule
     public string ModuleId => "sandboxes";
     public string DisplayName => "Sandboxes (Experimental)";
     public string Version => "0.1.0";
-    public IReadOnlyList<string> Dependencies => [];
+    public IReadOnlyList<string> Dependencies => ["identity"];
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {

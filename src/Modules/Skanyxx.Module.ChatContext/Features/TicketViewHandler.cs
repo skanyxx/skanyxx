@@ -1,5 +1,6 @@
 using MediatR;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Tickets;
 using Skanyxx.Module.ChatContext.Access;
 using Skanyxx.Module.ChatContext.Data;
@@ -9,7 +10,7 @@ namespace Skanyxx.Module.ChatContext.Features;
 /// <summary>
 /// Related tickets come from readable sessions only: those linked to this ticket give their other links and their
 /// keywords, and readable sessions matching those keywords give their tickets. Runs come from the tickets module when it
-/// is loaded.
+/// is loaded, and only for a supervisor: ticket runs are the supervisors' (D392, D394).
 /// </summary>
 internal sealed class TicketViewHandler(SessionSearch search, SessionAccess access, IEnumerable<ITicketRuns> runs)
     : IRequestHandler<TicketViewQuery, Outcome<TicketView>>
@@ -26,14 +27,16 @@ internal sealed class TicketViewHandler(SessionSearch search, SessionAccess acce
         var relatedViews = new List<RelatedTicketView>();
         foreach (var ticket in related)
             relatedViews.Add(new RelatedTicketView(ticket.TicketKey, ticket.Sessions, ticket.Score,
-                await RunsAsync(ticket.TicketKey, TicketViewQuery.MaxRelatedRuns, ct)));
+                await RunsAsync(query.User, ticket.TicketKey, TicketViewQuery.MaxRelatedRuns, ct)));
         return Outcome<TicketView>.Ok(new TicketView(
-            query.TicketKey, sessions, await RunsAsync(query.TicketKey, TicketViewQuery.MaxRuns, ct), relatedViews));
+            query.TicketKey, sessions, await RunsAsync(query.User, query.TicketKey, TicketViewQuery.MaxRuns, ct), relatedViews));
     }
 
-    private async Task<IReadOnlyList<TicketRunSummary>> RunsAsync(string ticket, int limit, CancellationToken ct)
+    private async Task<IReadOnlyList<TicketRunSummary>> RunsAsync(ChatReader user, string ticket, int limit, CancellationToken ct)
     {
         var found = new List<TicketRunSummary>();
+        if (!user.IsSupervisor)
+            return found;
         foreach (var source in runs)
             found.AddRange(await source.ForTicketsAsync([ticket], limit, ct));
         return found;

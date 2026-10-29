@@ -1,11 +1,15 @@
+using System.Collections.Concurrent;
 using MediatR;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
 
 namespace Skanyxx.Module.Investigate.Tests.Infrastructure;
 
-/// <summary>Identity's org tree for tests: billing (bea, sam), sales (ben); people carry the roles <see cref="InvestigateApp"/> signs them in with.</summary>
-public sealed class FakeOrg : IOrgMembership,
+/// <summary>
+/// Identity's org tree for tests: billing (bea, sam), sales (ben); people carry the roles <see cref="InvestigateApp"/>
+/// signs them in with, until <see cref="RolesNow"/> says otherwise (an empty array: a disabled account).
+/// </summary>
+public sealed class FakeOrg : IOrgMembership, IPersonStanding,
     IRequestHandler<ListTeamsQuery, Outcome<IReadOnlyList<TeamDto>>>,
     IRequestHandler<PersonTeamsQuery, Outcome<IReadOnlyList<TeamDto>>>,
     IRequestHandler<ListPeopleQuery, Outcome<IReadOnlyList<PersonDto>>>
@@ -15,6 +19,12 @@ public sealed class FakeOrg : IOrgMembership,
         new("billing", "Billing", "finance", ["bea", "sam"]),
         new("sales", "Sales", "sales", ["ben"]),
     ];
+
+    public ConcurrentDictionary<string, string[]> RolesNow { get; } = new();
+
+    public Task<IReadOnlySet<string>> ActiveRolesAsync(string userId, CancellationToken ct) =>
+        Task.FromResult<IReadOnlySet<string>>((RolesNow.TryGetValue(userId, out var now) ? now
+            : InvestigateApp.RolesOf.TryGetValue(userId, out var role) ? [role] : []).ToHashSet());
 
     /// <summary>When false, listing teams fails, as identity would if its database were down.</summary>
     public bool TeamsListable { get; set; } = true;

@@ -9,6 +9,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Tickets.Contracts;
 using Skanyxx.Module.Tickets.Domain;
 
@@ -36,6 +37,9 @@ public sealed class TicketsApp : IAsyncDisposable
     public IReadOnlyList<string> Errors => _errors.Entries;
 
     public IServiceProvider Services => _app.Services;
+
+    /// <summary>Who identity says may still run things (D395).</summary>
+    public FakeStanding Standing => (FakeStanding)Services.GetRequiredService<IPersonStanding>();
     private Uri BaseAddress => new(_app.Urls.First());
 
     public static async Task<TicketsApp> StartAsync(
@@ -69,6 +73,7 @@ public sealed class TicketsApp : IAsyncDisposable
 
         var module = new TicketsModule();
         module.RegisterServices(builder.Services, builder.Configuration);
+        builder.Services.AddSingleton<IPersonStanding, FakeStanding>();
         services?.Invoke(builder.Services);
         builder.Services.AddSkanyxxPlatform([typeof(TicketsModule).Assembly]);
         builder.Services.AddAuthentication(TestAuthHandler.SchemeName)
@@ -95,7 +100,7 @@ public sealed class TicketsApp : IAsyncDisposable
 
     /// <summary>
     /// <paramref name="userId"/> holding the supervisor role: only supervisors and the owner start runs, decide gates and
-    /// read Jira (D392). The run stays readable and cancellable by its starter through <see cref="Client"/>, without it.
+    /// read Jira (D392), and every other Tickets route is theirs too (D394).
     /// </summary>
     public HttpClient Starter(string userId = User) => ClientAs(userId, SkanyxxRoles.Supervisor);
 
@@ -117,7 +122,7 @@ public sealed class TicketsApp : IAsyncDisposable
     }
 
     public async Task<RunDto> GetRunAsync(Guid id) =>
-        (await Client().GetFromJsonAsync<RunDto>($"/api/tickets/runs/{id}", Json))!;
+        (await Starter().GetFromJsonAsync<RunDto>($"/api/tickets/runs/{id}", Json))!;
 
     /// <summary>Polls until the run reaches one of <paramref name="states"/>; fails loudly with the last state seen.</summary>
     public async Task<RunDto> WaitForAsync(Guid id, params RunState[] states)

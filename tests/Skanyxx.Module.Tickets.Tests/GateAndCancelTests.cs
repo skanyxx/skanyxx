@@ -13,9 +13,9 @@ namespace Skanyxx.Module.Tickets.Tests;
 
 public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBase(postgres)
 {
-    /// <summary>D392: someone else's run is the 404 of no run; a supervisor cancels any.</summary>
+    /// <summary>D392, D394: below supervisor, cancelling is refused by role; a supervisor cancels any run.</summary>
     [Fact]
-    public async Task OnlyTheCreatorOrASupervisor_Cancels_AnyoneElseSeesNoRun()
+    public async Task OnlyASupervisor_Cancels_AnyoneElseIsRefused()
     {
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
@@ -23,7 +23,7 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         var byOther = await App.Client("bob").PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
         var bySupervisor = await App.Client(TicketsApp.Supervisor).PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, byOther.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, byOther.StatusCode);
         Assert.Equal(HttpStatusCode.OK, bySupervisor.StatusCode);
     }
 
@@ -73,13 +73,33 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         Assert.Equal(HttpStatusCode.Conflict, (await App.DecideAsync(mine.Id, "approve", userId: TicketsApp.Supervisor)).StatusCode);
     }
 
+    /// <summary>
+    /// D395: a start let in by a supervisor session just before the starter's role was saved away (or the account
+    /// disabled) is caught when its first stage is picked up, after the revocation already swept: no agent is called.
+    /// Every later stage, a gate's resume included, passes the same check.
+    /// </summary>
+    [Theory]
+    [InlineData(SkanyxxRoles.Builder)]
+    [InlineData(null)] // disabled
+    public async Task AStarterNoLongerASupervisor_AtStagePickup_StopsTheRun(string? roleNow)
+    {
+        App.Standing.Roles[TicketsApp.User] = roleNow is null ? [] : [roleNow];
+
+        var run = await App.StartRunAsync();
+        var stopped = await App.WaitForAsync(run.Id, RunState.Cancelled);
+
+        Assert.Contains("may no longer run it", stopped.Error);
+        Assert.Empty(stopped.StageRuns);
+        Assert.Empty(KAgent.Calls);
+    }
+
     [Fact]
     public async Task CancelAtAGate_ClosesTheWaitingStage()
     {
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
-        await App.Client().PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
+        await App.Starter().PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
         var cancelled = await App.GetRunAsync(run.Id);
 
         var gate = cancelled.StageRuns[^1];
@@ -172,7 +192,7 @@ public sealed class GateAndCancelTests(PostgresFixture postgres) : TicketsTestBa
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
-        var response = await App.Client().GetAsync($"/api/tickets/runs/{run.Id}/report", TestContext.Current.CancellationToken);
+        var response = await App.Starter().GetAsync($"/api/tickets/runs/{run.Id}/report", TestContext.Current.CancellationToken);
         var md = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal("text/markdown; charset=utf-8", response.Content.Headers.ContentType!.ToString());

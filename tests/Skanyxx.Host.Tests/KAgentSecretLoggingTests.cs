@@ -141,6 +141,30 @@ public sealed class KAgentSecretLoggingTests
         Assert.Contains(SecretScan.Redacted, line);
     }
 
+    /// <summary>
+    /// D397: a JSON-RPC error is redacted before it is escaped. Escaped, a <c>+</c> becomes <c>\u002B</c> and splits a
+    /// base64 credential, so only its first fragment would have been blanked.
+    /// </summary>
+    [Fact]
+    public async Task AJsonRpcError_IsRedactedBeforeItIsEscaped()
+    {
+        const string tail = "Zm9vYmFyYmF6cXV4cXV1eGNvcmdlZ3JhdWx0";
+        var error = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["error"] = new JsonObject { ["code"] = -32603, ["message"] = $"upstream refused Authorization: Basic dXNlcjpw+{tail}== for the tool" }
+        };
+        var (client, logs) = Client(new Fixed(error.ToJsonString(), HttpStatusCode.OK));
+
+        await Assert.ThrowsAsync<HttpRequestException>(() => client.SendMessageAsync("kagent", "helper", "s1", "hi", "ana", Ct));
+
+        var line = Assert.Single(logs);
+        Assert.Contains("upstream refused", line);
+        Assert.DoesNotContain(tail, line);
+        Assert.DoesNotContain("dXNlcjpw", line);
+        Assert.Contains(SecretScan.Redacted, line);
+    }
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     private static (KAgentApiClient Client, ConcurrentQueue<string> Logs) Client(HttpMessageHandler? kagent = null)
@@ -168,10 +192,10 @@ public sealed class KAgentSecretLoggingTests
         }
     }
 
-    private sealed class Fixed(string body) : HttpMessageHandler
+    private sealed class Fixed(string body, HttpStatusCode status = HttpStatusCode.BadRequest) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.BadRequest)
+            Task.FromResult(new HttpResponseMessage(status)
             {
                 RequestMessage = request,
                 Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")

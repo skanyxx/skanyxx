@@ -8,10 +8,14 @@ using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Core.Services;
 using Skanyxx.Module.Agents.Studio.Definition;
 using Skanyxx.Module.Agents.Studio.Git;
+using Skanyxx.Module.Agents.Studio.Reconcile;
 
 namespace Skanyxx.Module.Agents.Studio.Features;
 
-/// <summary>Talks only to the preview of an open proposal (by its labels), never to a merged or foreign agent.</summary>
+/// <summary>
+/// Talks only to the preview of an open proposal (by its labels), never to a merged or foreign agent, and never to one that
+/// still carries MCP tools (D396).
+/// </summary>
 internal sealed class PreviewChatHandler(
     IAgentRepo repo, KAgentApiClient kagent, StudioChat chat, IOptions<StudioOptions> options, ILogger<PreviewChatHandler> logger)
     : IRequestHandler<PreviewChatCommand, Outcome<ChatResponse>>
@@ -33,6 +37,9 @@ internal sealed class PreviewChatHandler(
                 && !a.Labels.ContainsKey(StudioNames.MergedLabel));
             if (preview is null)
                 return Outcome<ChatResponse>.NotFound("This proposal has no preview yet: start one first.");
+            // D396: deployed before D392, it may still act through MCP tools; the reconciler removes it.
+            if (KAgentObjects.HasTools(preview))
+                return StudioFailure.Conflict<ChatResponse>("This preview was started when previews still had MCP tools: start the preview again.");
             return await chat.SendAsync(ns, preview.Name, ChatQuotaUsage.ModelRef(ns, preview.ModelConfig), command.User.UserId!, command.Message,
                 command.ConversationId, ct);
         }

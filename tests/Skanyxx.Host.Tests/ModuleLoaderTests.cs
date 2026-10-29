@@ -21,7 +21,7 @@ public sealed class ModuleLoaderTests(PostgresFixture fixture)
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             HostApp.StartAsync(fixture.ConnectionString, s => s["Modules:Enabled:identity"] = "false"));
 
-        // The first module (by id) that needs it is named: analytics, before memory.
-        Assert.Equal("Module 'analytics' needs module 'identity', which is not loaded. Enable 'identity' or set Modules:Enabled:analytics=false.", ex.Message);
+        // The first module found that needs it is named: tickets (D395: it asks identity who may still run things).
+        Assert.Equal("Module 'tickets' needs module 'identity', which is not loaded. Enable 'identity' or set Modules:Enabled:tickets=false.", ex.Message);
     }
 }

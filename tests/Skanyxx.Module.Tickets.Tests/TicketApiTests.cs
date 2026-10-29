@@ -86,8 +86,8 @@ public sealed class TicketApiTests(PostgresFixture postgres) : TicketsTestBase(p
         await App.StartRunAsync("SDB-1");
         await App.StartRunAsync("SDB-2");
 
-        var all = await App.Client().GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken);
-        var one = await App.Client().GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs?ticketKey=SDB-1", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        var all = await App.Starter().GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken);
+        var one = await App.Starter().GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs?ticketKey=SDB-1", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken);
 
         Assert.Equal(["SDB-2", "SDB-1"], all!.Select(r => r.TicketKey));
         Assert.Equal(["SDB-1"], one!.Select(r => r.TicketKey));

@@ -109,10 +109,11 @@ public sealed class OffboardingTests(PostgresFixture fixture)
             .Select(h => new NotificationHandlerExecutor(h, (_, _) => Task.CompletedTask));
         var names = AllHandlersPublisher.Ordered(order).Select(e => e.HandlerInstance.GetType().Name).ToList();
 
-        // The local revocations (memory's agent secrets and sandbox tokens, D076; the person's ticket runs, D392) before
-        // anything that calls AX.
-        Assert.Equal(["CancelRunsOnPrivilegesRevoked", "RevokeSandboxTokensOnPrivilegesRevoked", "RevokeSecretsOnPrivilegesRevoked"], names[..3].Order());
-        Assert.Equal(["StopSandboxesOnPrivilegesRevoked"], names[3..]);
+        // The local revocations (memory's agent secrets and sandbox tokens, D076; the person's ticket runs, D392, and
+        // investigations, D395) before anything that calls AX.
+        Assert.Equal(["CancelInvestigateRunsOnPrivilegesRevoked", "CancelRunsOnPrivilegesRevoked", "RevokeSandboxTokensOnPrivilegesRevoked",
+            "RevokeSecretsOnPrivilegesRevoked"], names[..4].Order());
+        Assert.Equal(["StopSandboxesOnPrivilegesRevoked"], names[4..]);
     }
 
     private static Task<HttpResponseMessage> WithCookie(HostApp host, string cookie, HttpMethod method, string path)

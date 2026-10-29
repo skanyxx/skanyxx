@@ -46,21 +46,32 @@ A scope a caller may not open is 403 whether it exists or not (only the owner ge
 
 ## Sandboxes, ticket runs, studio previews (D392, requirements.md §2)
 
-"Nobody who is not a supervisor can do harm." The API decides; `RoleMatrixTests` calls every write route as an employee
-and a builder and lists, line by line, the few they may still reach (their own chat, preferences, quota requests and
-memory cards; proposals; the builders' Studio, Plugins and Investigate routes).
+"Nobody who is not a supervisor can do harm." The API decides; `RoleMatrixTests` calls every write route, and every API
+read (D394), as an employee and a builder and lists, line by line, the few they may still reach (their own chat,
+preferences, quota and analytics; memory cards by scope; the agents catalog; proposals; the builders' Studio, Plugins
+and Investigate routes). A route with an id outside those lists must be refused by its roles (401/403) before the
+handler runs: a made-up id is a 404 from any handler and proves nothing.
 
 | Action | Owner | Supervisor | Builder | Employee |
 |---|---|---|---|---|
 | Sandboxes page and every `api/sandboxes` route | yes | yes | 403 | 403 |
 | Start a ticket run (`POST api/tickets/runs`) | yes | yes | 403 | 403 |
 | Decide a gate (`POST …/runs/{id}/decision`) | any run | any run | 403 | 403 |
-| Cancel a run | any run | any run | own run; others 404 | own run; others 404 |
+| Cancel a run | any run | any run | 403 | 403 |
 | Jira reads (`GET api/tickets/issues*`) | yes | yes | 403 | 403 |
-| Write or delete a pipeline | yes | yes | 403 | 403 |
+| Run reads: list, detail, report, dataset (`GET api/tickets/runs*`, D394) | yes | yes | 403 | 403 |
+| A ticket's runs in Chat's ticket view (`GET api/chat/tickets/{key}`, D394) | yes | yes | left out | left out |
+| Read, write or delete a pipeline (`api/tickets/pipelines*`; reads D394) | yes | yes | 403 | 403 |
 | Agent memory secrets and grants (`api/memory/agents/{id}/secret`, `api/memory/grants/{id}`) | yes | yes¹ | 403 | 403 |
 | Studio preview | no MCP tools | no MCP tools | no MCP tools | — |
+| Chat with a preview that still has MCP tools (deployed before D392) | 409, removed by the reconciler (D396) | 409 | 409 | — |
 
 ¹ The handler keeps the owner-only cases (acting for users, team or department grants).
 
 Losing supervisor, or being disabled, stops the person's active sandboxes and cancels their unfinished ticket runs.
+Being disabled, or left below builder, cancels their Investigate runs (D395). Work picked up later asks identity again
+(`IPersonStanding`): each ticket stage, each Investigate run and step, and a sandbox start, so a request let in just
+before the role was saved away still stops. An open sandbox watch is not cut; it ends within `Sandboxes:WatchSeconds`.
+
+Memory's credential check on cards (D391) catches accidents and is not a control: a secret split across fields or
+lines, encoded (non-PEM base64, hex, percent), written without a separator, or short passes it (D397).

@@ -44,6 +44,23 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
         Assert.True(response.IsSuccessStatusCode, $"{user} {action}: {response.StatusCode}");
     }
 
+    /// <summary>
+    /// D395: a run let in by a supervisor session whose role was saved away meanwhile (or whose account was disabled)
+    /// starts nothing: identity is asked again just before AX is told.
+    /// </summary>
+    [Theory]
+    [InlineData(SkanyxxRoles.Builder)]
+    [InlineData(null)] // disabled
+    public async Task ARunWhoseMakerLostTheRole_InFlight_StartsNoSandbox(string? roleNow)
+    {
+        App.Standing.Roles[SandboxesApp.User] = roleNow is null ? [] : [roleNow];
+
+        var response = await RunAsync("fix-42");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(Ax.Updates);
+    }
+
     [Fact]
     public async Task AnotherUser_CannotOverwriteTheSandbox()
     {

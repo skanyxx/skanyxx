@@ -43,7 +43,9 @@ never the pod network: any pod inside the range could name itself any client.
 {{- else if .Values.skanyxx.trustedProxies }}
 
 X-Forwarded-For is trusted from {{ join ", " .Values.skanyxx.trustedProxies }}. These must be the ingress controller pod IPs,
-never the pod network: any pod inside the range could name itself any client.
+never the pod network: any pod inside the range could name itself any client. Keep ingress-nginx's
+use-forwarded-headers at false (its default): with it on, the controller passes on the X-Forwarded-For the client sent,
+and the hop Skanyxx reads becomes the client's choice.
 {{- end }}
 
 /mcp is never on the ingress: /mcp/memory is served on port {{ .Values.skanyxx.service.mcpPort }} only (which serves nothing else), for kagent in-cluster.

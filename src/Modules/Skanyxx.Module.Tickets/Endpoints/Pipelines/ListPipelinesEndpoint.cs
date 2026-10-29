@@ -10,6 +10,8 @@ internal sealed class ListPipelinesEndpoint(IMediator mediator) : EndpointWithou
     public override void Configure()
     {
         Get("pipelines");
+        // D394: runs and pipelines hold Jira snapshots, prompts and answers: the Tickets panel is supervisors' (D392).
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<TicketsGroup>();
     }
 

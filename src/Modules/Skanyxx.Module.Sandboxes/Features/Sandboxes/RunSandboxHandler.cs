@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Sandboxes.Domain;
 using Skanyxx.Module.Sandboxes.Gateway;
 using AxTask = Ax.V1Alpha1.Task;
@@ -17,11 +18,15 @@ namespace Skanyxx.Module.Sandboxes.Features.Sandboxes;
 /// With memory attach on (D076/D077), a run that binds a workspace with memory attached gets a freshly signed token for
 /// its agent id in its env (a replace re-issues it, so the previous one stops working); a run without one gets none, and
 /// the previous activation's token is revoked first either way — before AX is told, so a failed save fails closed.
+/// Under the sandbox lock, just before AX is told, the caller is checked again against identity (D395): a request let in
+/// before its maker's role was saved away must not start a sandbox the revocation has already swept for.
 /// </summary>
 internal sealed class RunSandboxHandler(
-    AxGateway ax, KeyedLock locks, MemoryAccess memory, IOptions<SandboxesOptions> options, ILogger<RunSandboxHandler> logger)
+    AxGateway ax, KeyedLock locks, MemoryAccess memory, IPersonStanding standing, IOptions<SandboxesOptions> options, ILogger<RunSandboxHandler> logger)
     : IRequestHandler<RunSandboxCommand, Outcome<Sandbox>>
 {
+    private static readonly string[] Runners = [SkanyxxRoles.Owner, SkanyxxRoles.Supervisor];
+
     public Task<Outcome<Sandbox>> Handle(RunSandboxCommand command, CancellationToken ct) =>
         AxErrors.Guard(logger, ct, () => locks.RunAsync(KeyedLock.ForSandbox(command.Name), () => RunAsync(command, ct), ct));
 
@@ -43,6 +48,8 @@ internal sealed class RunSandboxHandler(
 
     private async Task<Outcome<Sandbox>> UpsertAsync(RunSandboxCommand command, AxTask? existing, string? keptAgentId, CancellationToken ct)
     {
+        if (!(await standing.ActiveRolesAsync(command.UserId!, ct)).Overlaps(Runners))
+            return Outcome<Sandbox>.Forbidden("Your account may no longer run sandboxes.");
         var agentId = keptAgentId ?? SandboxEnv.NewAgentId(command.Name);
         (string Url, string Token)? access = null;
         if (memory.On)

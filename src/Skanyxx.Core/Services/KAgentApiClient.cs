@@ -389,7 +389,7 @@ public class KAgentApiClient
     {
         if (body?["error"] is { } error)
         {
-            _logger.LogWarning("kagent JSON-RPC error: {Error}", Cut(error.ToJsonString()));
+            _logger.LogWarning("kagent JSON-RPC error: {Error}", Cut(SecretScan.RedactJson(error)));
             throw new HttpRequestException("kagent refused the message");
         }
         var result = body?["result"] ?? throw new HttpRequestException("kagent answered without a result");
@@ -776,7 +776,7 @@ public class KAgentApiClient
         }
         if (body?["error"] is { } error)
         {
-            _logger.LogWarning("kagent JSON-RPC error: {Error}", Cut(error.ToJsonString()));
+            _logger.LogWarning("kagent JSON-RPC error: {Error}", Cut(SecretScan.RedactJson(error)));
             throw new HttpRequestException("kagent refused the message");
         }
         return body?["result"] ?? throw new HttpRequestException("kagent answered without a result", null, HttpStatusCode.BadGateway);

@@ -100,6 +100,7 @@ public sealed class IdentityModule : IModule
         services.AddHttpContextAccessor();
         services.AddSingleton<IAuthorizationHandler, OwnerRouteRefusals>();
         services.AddScoped<IOrgMembership, OrgMembershipReader>();
+        services.AddScoped<IPersonStanding, PersonStandingReader>();
         services.AddSingleton<InstallationSettingsRefresher>();
         services.AddHostedService(sp => sp.GetRequiredService<InstallationSettingsRefresher>());
         AddEmailAndAudit(services);

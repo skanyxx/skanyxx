@@ -153,6 +153,12 @@ internal sealed class StudioReconciler(
         // m5); anything else under the prefix is someone's own and stays.
         gone.AddRange(managed.Where(a => a.Labels.TryGetValue(StudioNames.PreviewLabel, out var pr) && !(int.TryParse(pr, out var n) && open.Contains(n)))
             .Select(a => a.Name));
+        // D396: a preview of an open proposal deployed before D392 still runs its MCP tools; it goes, and the builder
+        // starts it again without them.
+        var tooled = managed.Where(a => a.Labels.ContainsKey(StudioNames.PreviewLabel) && KAgentObjects.HasTools(a)).Select(a => a.Name).ToList();
+        if (tooled.Count > 0)
+            logger.LogWarning("Studio removes the previews that still carry MCP tools (deployed before D392): {Agents}", string.Join(", ", tooled));
+        gone.AddRange(tooled);
         foreach (var orphan in servers.Where(s => s.StartsWith($"{Ns}/{StudioNames.MemoryServerPrefix}preview-", StringComparison.Ordinal))
             .Select(s => s[(Ns.Length + 1 + StudioNames.MemoryServerPrefix.Length)..])
             .Where(a => StudioNames.PreviewNumber(a) is { } n && !open.Contains(n)))

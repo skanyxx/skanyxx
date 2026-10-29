@@ -17,6 +17,8 @@ internal sealed class GetDatasetEndpoint(IMediator mediator) : Endpoint<RunRoute
     public override void Configure()
     {
         Get("runs/{id}/dataset");
+        // D394: runs and pipelines hold Jira snapshots, prompts and answers: the Tickets panel is supervisors' (D392).
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<TicketsGroup>();
     }
 

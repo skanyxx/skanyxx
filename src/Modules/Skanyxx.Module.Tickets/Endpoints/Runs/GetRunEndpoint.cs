@@ -11,6 +11,8 @@ internal sealed class GetRunEndpoint(IMediator mediator) : Endpoint<RunRouteRequ
     public override void Configure()
     {
         Get("runs/{id}");
+        // D394: runs and pipelines hold Jira snapshots, prompts and answers: the Tickets panel is supervisors' (D392).
+        Roles(SkanyxxRoles.Owner, SkanyxxRoles.Supervisor);
         Group<TicketsGroup>();
     }
 

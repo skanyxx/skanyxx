@@ -622,7 +622,10 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window, unless
   `Skanyxx:TrustedProxies` (Helm `skanyxx.trustedProxies`) lists the proxy as CIDRs: then the client is the last
   `X-Forwarded-For` hop that proxy added (one hop, D390). List the ingress controller pod IPs only, never the pod network:
-  any pod inside the range could name itself any client. A value that is not a CIDR stops startup.
+  any pod inside the range could name itself any client. A value that is not a CIDR, or a range broader than /16
+  (IPv4) or /48 (IPv6), stops startup (D397; the Helm schema refuses the same, and `skanyxx.extraEnvFrom` may not use a
+  prefix that sets it). Keep ingress-nginx's `use-forwarded-headers` at `false` (its default): with it on, the
+  controller passes on the client's own `X-Forwarded-For`, and the hop Skanyxx reads becomes the client's choice.
 - Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. A signed-in person
   on a page their role lacks is redirected to `/AccessDenied`, a `403` page (D236). Anonymous:
   `/health`, static files, `/Login` (the Microsoft sign-in too), `/signin-oidc`, `/Setup`, `/Invite`, `/ForgotPassword`, `/ResetPassword`, `/Privacy`, `/Error`, `/Offline`, `/AccessDenied`, `GET /api/identity/status`, the
@@ -680,7 +683,12 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   someone again does not restore anything. **Disabling, or losing `supervisor`, also stops the person's active sandboxes**
   (D154, D392; with sandboxes on): their Pending, Running and Suspended sandboxes are deleted in AX, each logged at
   Warning; workspaces stay. It also **cancels the ticket runs they started** that have not finished (a waiting gate is
-  skipped, D392). If AX cannot be reached or a sandbox will not stop, the disable is saved, the
+  skipped, D392), and, when they are disabled or left below builder, **their Investigate runs** (queued ones at once,
+  running ones within `Investigate:WatchMilliseconds`; a supervisor demoted to builder keeps theirs, D395). Work picked
+  up later asks identity again: a ticket stage, an Investigate run and each of its steps, and a sandbox start (just
+  before AX is told) stop when the starter is no longer enabled with a role that may start them, which closes the race
+  with a request let in just before the role was saved away. An open sandbox watch (`…/watch`) is not cut: it is
+  read-only and ends within `Sandboxes:WatchSeconds` (120), and reconnecting is refused. If AX cannot be reached or a sandbox will not stop, the disable is saved, the
   call answers `500` with `detail` "Account disabled. Its sandboxes could not be stopped (AX unavailable) — disable
   again to retry." (the People page shows the same line, D162; Error log) and disabling again retries. A sandbox someone
   else deleted meanwhile counts as stopped (D163). Every handler of the announcement runs even when another fails
@@ -1056,7 +1064,9 @@ dotnet test tests/Skanyxx.Module.Memory.Tests   # needs Docker (Testcontainers)
   credential-named field (`password: …`, `apiKey=…`) — is a `400` naming the field ("memory never stores credentials");
   so is one with Unicode tag characters or stray variation selectors (hidden text a model would read). Talking about
   credentials (`Bearer ${TOKEN}`, `password: required`, `[redacted]`) is fine. A lift re-checks the card, its stored body
-  included, and is a `409` if it holds one (D391).
+  included, and is a `409` if it holds one (D391). This catches accidents, it is not a control (D397): each field is
+  scanned on its own, so a secret split across fields or lines, encoded (base64 other than PEM, hex, percent), written
+  without a separator ("the password is S3cret!") or short passes.
 - `POST …/{scope}/{key}/lift` copies a card up (personal → team → department → company); the original stays. Into `company` needs a supervisor; into a team or department, membership of it (the org tree, see "Teams and departments").
 - Team and department scopes follow the org tree: members read, search and write their teams and departments; owner and supervisors read all of them but write only where they are members. Only the owner grants an agent a team or department scope.
 - kagent reaches the bank over MCP at `/mcp/memory` (`memory_search`, `memory_upsert`) with a per-agent secret: `POST /api/memory/agents/{agentId}/secret` as a supervisor, then give the agent's `RemoteMCPServer` an `Authorization: Bearer <secret>` header from a Kubernetes Secret (`deploy/kagent/memory/`). Agents without grants search `company` + the calling user's personal scope and may upsert only that personal scope (needs `X-User-Id`, honoured only for an agent whose secret the owner issued with `actsForUsers: true`); `PUT /api/memory/grants/{agentId}` replaces the default with explicit search/upsert per scope (at least one entry; revoke an agent with a single grant that has `canSearch` and `canUpsert` false).
@@ -1151,7 +1161,9 @@ in the agent repo `skanyxx-agents` carries them; only a supervisor's merge makes
 - **Preview (D030, D032).** "Start preview" deploys `preview-<pr>-<name>`: not labelled merged (never in Chat), memory
   **search on `company` only, never upsert**, no TTL memory, no skills, **no MCP tools** (D392: an unreviewed agent acts
   on nothing; it answers from its instructions and company search), never acting for users. Builders and supervisors chat with
-  it on the proposal; it is removed when the PR merges or closes.
+  it on the proposal; it is removed when the PR merges or closes. A preview deployed before D392 that still carries MCP
+  (or agent) tools is refused in Studio chat (`409`, "start the preview again") and removed by the next reconcile pass,
+  though its proposal is open (D396).
 - **API:** `GET api/studio`, `GET api/studio/options`, `GET api/studio/agents/{name}/draft`, `POST api/studio/proposals`,
   `GET api/studio/proposals/{n}`, `POST api/studio/proposals/{n}/merge|close|preview|chat`, `POST api/studio/factory`
   (rate limited and origin guarded like `/api/chat`; so are the `/Studio` form posts). Owner only:
@@ -1369,10 +1381,11 @@ kubectl apply -k deploy/kagent/ticket-flow/        # the five stage agents
 dotnet test tests/Skanyxx.Module.Tickets.Tests     # needs Docker; kagent is faked
 ```
 
-- **Who (D392):** starting a run, deciding a gate, the Jira reads (`api/tickets/issues*`) and writing pipelines are
-  supervisors' and the owner's; anyone else gets `403`. Every signed-in person still lists runs and pipelines; the
-  starter or a supervisor cancels a run, and to anyone else someone else's run is the `404` of no run. A person who
-  loses supervisor (or is disabled) has their unfinished runs cancelled.
+- **Who (D392, D394):** every `api/tickets` route is supervisors' and the owner's: starting a run, deciding a gate,
+  cancelling, the Jira reads (`api/tickets/issues*`), the run reads (list, detail, report, dataset) and the pipelines
+  (list, read, write); anyone else gets `403`. Runs hold Jira snapshots, stage prompts and agent answers. A person who
+  loses supervisor (or is disabled) has their unfinished runs cancelled, and each stage is picked up only while its
+  starter still is one. Chat's ticket view (`GET api/chat/tickets/{key}`) shows a ticket's runs to supervisors only.
 - `GET /api/tickets/issues?assignee=` (`unassigned` for none) · `GET /api/tickets/issues/{key}` · `GET /api/tickets/issues/assignees`.
 - `GET /api/tickets/runs?ticketKey=` lists runs (optionally for one ticket).
 - `POST /api/tickets/runs {ticketKey, pipelineId}` → `202`; the run snapshots the ticket and the pipeline, so editing

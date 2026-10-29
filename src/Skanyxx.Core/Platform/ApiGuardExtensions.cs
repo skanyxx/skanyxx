@@ -10,6 +10,17 @@ namespace Skanyxx.Core.Platform;
 /// <summary>Origin allow-list (guarded routes, and unsafe methods everywhere) and per-client rate limits on the guarded routes, credential posts and invite links.</summary>
 public static class ApiGuardExtensions
 {
+    /// <summary>The broadest Skanyxx:TrustedProxies range startup accepts (D397); the Helm schema holds the same line.</summary>
+    public const int MinIPv4Prefix = 16;
+
+    /// <inheritdoc cref="MinIPv4Prefix"/>
+    public const int MinIPv6Prefix = 48;
+
+    /// <summary>An IPv4-mapped range (<c>::ffff:a.b.c.d/n</c>) is an IPv4 one: its first 96 bits are fixed.</summary>
+    public static bool TooBroad(System.Net.IPNetwork network) =>
+        network.PrefixLength < (network.BaseAddress.IsIPv4MappedToIPv6 ? 96 + MinIPv4Prefix
+            : network.BaseAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? MinIPv6Prefix : MinIPv4Prefix);
+
     public static IServiceCollection AddSkanyxxApiGuards(this IServiceCollection services, IConfiguration configuration)
     {
         services.AddOptions<SkanyxxOptions>()
@@ -23,6 +34,9 @@ public static class ApiGuardExtensions
                 "Skanyxx:InviteRateLimit:PermitLimit and WindowSeconds must be positive.")
             .Validate(o => o.TrustedProxies.All(p => System.Net.IPNetwork.TryParse(p, out _)),
                 "Skanyxx:TrustedProxies must be CIDRs: the ingress controller's own pod IPs, e.g. 10.42.3.17/32, never the whole pod network.")
+            // D397: a range that wide is a pod network, not the ingress pods; any pod in it could name itself any client.
+            .Validate(o => o.TrustedProxies.All(p => System.Net.IPNetwork.TryParse(p, out var n) && !TooBroad(n)),
+                $"Skanyxx:TrustedProxies may not be broader than /{MinIPv4Prefix} (IPv4) or /{MinIPv6Prefix} (IPv6): list the ingress controller pods, not the pod network.")
             .ValidateOnStart();
         // D390: behind a trusted proxy the client is the last X-Forwarded-For hop it added.
         services.AddOptions<ForwardedHeadersOptions>().Configure<IOptions<SkanyxxOptions>>((forwarded, skanyxx) =>

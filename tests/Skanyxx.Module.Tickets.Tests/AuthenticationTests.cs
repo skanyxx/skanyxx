@@ -44,7 +44,7 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
         var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
-        Assert.Empty((await App.Client().GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken))!);
+        Assert.Empty((await App.Starter().GetFromJsonAsync<List<RunSummaryDto>>("/api/tickets/runs", TicketsApp.Json, cancellationToken: TestContext.Current.CancellationToken))!);
     }
 
     [Fact]
@@ -73,7 +73,8 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
 
         var response = await bob.PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.NotEqual(RunState.Cancelled, (await App.GetRunAsync(run.Id)).State);
     }
 
     [Theory]
@@ -91,8 +92,8 @@ public sealed class AuthenticationTests(PostgresFixture postgres) : TicketsTestB
         var cancel = await olga.PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, save.StatusCode);
-        // Someone else's run is the 404 of no run to anyone below supervisor (D392).
-        Assert.Equal(expected == HttpStatusCode.Created ? HttpStatusCode.OK : HttpStatusCode.NotFound, cancel.StatusCode);
+        // Every Tickets route is a supervisor's (D392, D394): below it, refused before the run is looked up.
+        Assert.Equal(expected == HttpStatusCode.Created ? HttpStatusCode.OK : HttpStatusCode.Forbidden, cancel.StatusCode);
     }
 
     /// <summary>

@@ -256,7 +256,7 @@ public sealed class RunFlowTests(PostgresFixture postgres) : TicketsTestBase(pos
         var run = await App.StartRunAsync();
         await App.WaitForAsync(run.Id, RunState.AwaitingHuman);
 
-        var response = await App.Client().GetAsync($"/api/tickets/runs/{run.Id}/dataset", TestContext.Current.CancellationToken);
+        var response = await App.Starter().GetAsync($"/api/tickets/runs/{run.Id}/dataset", TestContext.Current.CancellationToken);
         var rows = (await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken)).Split('\n', StringSplitOptions.RemoveEmptyEntries)
             .Select(l => System.Text.Json.JsonSerializer.Deserialize<DatasetRow>(l, TicketsApp.Json)!).ToList();
 
@@ -278,7 +278,7 @@ public sealed class RunFlowTests(PostgresFixture postgres) : TicketsTestBase(pos
         var run = await App.StartRunAsync();
         await WaitUntil(() => KAgent.CallsTo("ticket-planner").Count == 1);
 
-        var cancel = await App.Client().PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
+        var cancel = await App.Starter().PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
         await App.SavePipelineAsync("after", Pipeline(Stage("plan", "plan", "ticket-planner")));
         var after = await App.StartRunAsync(pipelineId: "after");
         release.SetResult();
@@ -311,7 +311,7 @@ public sealed class RunFlowTests(PostgresFixture postgres) : TicketsTestBase(pos
         var run = await App.StartRunAsync(pipelineId: "three");
         await WaitUntil(() => KAgent.CallsTo("ticket-coder").Count == 1);
 
-        var cancel = await App.Client().PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
+        var cancel = await App.Starter().PostAsync($"/api/tickets/runs/{run.Id}/cancel", null, TestContext.Current.CancellationToken);
         await App.SavePipelineAsync("after", Pipeline(Stage("plan", "plan", "ticket-plan-reviewer")));
         var after = await App.StartRunAsync(pipelineId: "after");
         release.SetResult();
