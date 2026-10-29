@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Module.Investigate.Agents;
 
 namespace Skanyxx.Module.Investigate.Tests.Infrastructure;
@@ -29,9 +30,13 @@ public sealed class ScriptedAgents : IInvestigationAgents, IInvestigationAgentCl
     public Task<IReadOnlyList<AgentChoice>> ListAsync(CancellationToken ct) =>
         Down ? throw new HttpRequestException("kagent down") : Task.FromResult<IReadOnlyList<AgentChoice>>([.. Agents]);
 
-    public Task<string> AskAsync(string agentRef, string prompt, CancellationToken ct)
+    /// <summary>The tokens every answer reports; none by default, so the quota estimates.</summary>
+    public ChatUsage Usage { get; set; } = ChatUsage.None;
+
+    public async Task<AgentAnswer> AskAsync(string agentRef, string prompt, CancellationToken ct)
     {
         Calls.Enqueue(new AgentCall(agentRef, prompt, DateTime.UtcNow));
-        return Answers.TryGetValue(agentRef, out var answer) ? answer(prompt, ct) : Task.FromResult($"{agentRef} says: {prompt}");
+        var text = Answers.TryGetValue(agentRef, out var answer) ? await answer(prompt, ct) : $"{agentRef} says: {prompt}";
+        return new AgentAnswer(text, Usage);
     }
 }

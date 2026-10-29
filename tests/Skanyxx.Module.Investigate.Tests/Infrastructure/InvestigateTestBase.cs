@@ -4,7 +4,7 @@ namespace Skanyxx.Module.Investigate.Tests.Infrastructure;
 public abstract class InvestigateTestBase(PostgresFixture postgres) : IAsyncLifetime
 {
     protected PostgresFixture Postgres { get; } = postgres;
-    protected InvestigateApp App { get; private set; } = null!;
+    protected InvestigateApp App { get; set; } = null!;
     protected static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     protected virtual void Configure(Dictionary<string, string?> settings)

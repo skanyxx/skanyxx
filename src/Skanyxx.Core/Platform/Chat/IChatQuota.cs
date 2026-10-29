@@ -2,8 +2,8 @@ namespace Skanyxx.Core.Platform.Chat;
 
 /// <summary>
 /// The hook for per-person, per-team and per-department token limits. Every model turn run in a person's name asks first
-/// (<see cref="AdmitAsync"/>: Chat, Studio previews and the factory) or is at least counted (ticket stage turns), and
-/// reports what it used, also when it failed or was stopped. Investigate must do the same once it is merged (D383). The
+/// (<see cref="AdmitAsync"/>: Chat, Studio previews, the factory and Investigate steps) or is at least counted (ticket
+/// stage turns), and reports what it used, also when it failed or was stopped (D383, D385). The
 /// default (<see cref="UnlimitedChatQuota"/>) admits everything; the quotas module replaces it.
 /// </summary>
 public interface IChatQuota

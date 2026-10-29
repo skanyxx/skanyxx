@@ -1326,12 +1326,12 @@ bounds how far parallel turns can pass the limit. Everyone sees their own percen
   it stands, which a supervisor may only lower. Team and department limits and prices are the owner's. Every rule is
   enforced by the API, not the page.
 - **Cost** is optional: the owner's USD price per 1,000 tokens per ModelConfig (`PUT api/quotas/prices/{ns}/{name}`). It is
-  an estimate, never a bill, and is always shown with that disclaimer. Ticket stage turns are not priced (their model is
-  not known to the pipeline).
+  an estimate, never a bill, and is always shown with that disclaimer. Ticket stage and Investigate step turns are not
+  priced (their model is not known to the pipeline or the workflow).
 - **Audit**: `quota.limit.set`, `quota.price.set`, `quota.requested`, `quota.request.approved|denied`, with names and
   numbers only (never a reason or chat text).
 - **New features that call a model** go through Core's `IChatQuota` (`AdmitAsync` before the turn, `RecordAsync` after,
-  `ChatQuotaUsage.Measure` for the count). Investigate (on its own branch) must do the same when it is merged.
+  `ChatQuotaUsage.Measure` for the count); Investigate steps do (D385).
 - Storage: memory's database, tables `quota_*`, own history `__quotas_migrations`. Disable with `Modules:Enabled:quotas=false`
   (no limits anywhere then).
 
@@ -1423,6 +1423,9 @@ time, nested up to `Investigate:MaxDepth` (4) levels and `Investigate:MaxSteps` 
   (`investigate.chained_writes_allowed` in the audit); checked on save and again on start.
 - Limits (D373): `Investigate:MaxParallelSteps` (4) agent calls at once per run, `Investigate:MaxWorkflowsPerUser`
   (100); answers and failure reasons are redacted (`SecretText.Redact`) before they are stored or read by a later step.
+- Token quota (D385): every agent step is admitted against the run starter's quota before kagent is asked (over it,
+  the step fails with the quota's reason and the run fails) and counted to them afterwards, failed, timed-out and
+  cancelled steps included.
 - The identity audit records `investigate.*` rows with ids, names and states only, never prompts, inputs or answers (D344).
 
 ## Sandboxes on Google AX (Experimental)

@@ -3,6 +3,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Services;
 using Skanyxx.Module.Investigate.Agents;
 
@@ -71,13 +72,27 @@ public sealed class KAgentInvestigationClientTests
 
         var answer = await client.AskAsync("team-a/writer", "Why?", TestContext.Current.CancellationToken);
 
-        Assert.Equal("The cause is X.", answer);
+        Assert.Equal("The cause is X.", answer.Text);
+        Assert.Equal(ChatUsage.None, answer.Usage);
         var (request, body) = Assert.Single(handler.Requests);
         Assert.Equal("http://kagent.test/api/a2a/team-a/writer/", request.RequestUri!.ToString());
         Assert.Equal("0.3", request.Headers.GetValues("A2A-Version").Single());
         Assert.Equal("skanyxx-investigate", request.Headers.GetValues("X-User-Id").Single());
         Assert.Contains("\"method\":\"message/send\"", body);
         Assert.Contains("\"blocking\":true", body);
+    }
+
+    [Fact]
+    public async Task ReportsTheTokensKAgentCounted()
+    {
+        var (client, _, _) = Create(HttpStatusCode.OK, """
+            {"result":{"kind":"task","status":{"state":"completed"},"metadata":{"kagent_usage_metadata":{"promptTokenCount":100,"candidatesTokenCount":20,"totalTokenCount":150}},
+             "artifacts":[{"parts":[{"kind":"text","text":"done"}]}]}}
+            """);
+
+        var answer = await client.AskAsync("team-a/writer", "Why?", TestContext.Current.CancellationToken);
+
+        Assert.Equal(new ChatUsage(100, 50, 150), answer.Usage);
     }
 
     [Theory]

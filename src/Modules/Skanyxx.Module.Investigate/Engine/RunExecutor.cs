@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Memory;
 using Skanyxx.Module.Investigate.Agents;
 using Skanyxx.Module.Investigate.Audit;
@@ -18,11 +19,13 @@ namespace Skanyxx.Module.Investigate.Engine;
 /// replica's API can ask) and a host shutdown end it the same way. A step that cannot be recorded (a database error)
 /// fails the run at once rather than leaving its siblings to their timeouts. Answers and reasons pass through
 /// <see cref="SecretText.Redact"/> before they are stored or read by a later step (D373). A success leaves a memory
-/// card. Never throws.
+/// card. Every step's turn is admitted against the starter's token quota before kagent is asked (a refusal fails the
+/// step) and counted to them afterwards, also when it failed, timed out or was cancelled (D385). Never throws.
 /// </summary>
 internal sealed partial class RunExecutor(
     IDbContextFactory<InvestigateDbContext> dbs,
     IInvestigationAgentClient agents,
+    IChatQuota quota,
     StepWriter steps,
     InvestigateAudit audit,
     ICardExtractor cards,
@@ -40,7 +43,7 @@ internal sealed partial class RunExecutor(
             await using (var db = await dbs.CreateDbContextAsync(stopping))
                 run = await db.Runs.AsNoTracking().SingleAsync(r => r.Id == runId, stopping);
 
-            using var context = new RunContext(runId, run.Input, _options.MaxParallelSteps, stopping);
+            using var context = new RunContext(runId, run.CreatedBy, run.Input, _options.MaxParallelSteps, stopping);
             using var watching = CancellationTokenSource.CreateLinkedTokenSource(stopping);
             var watch = WatchAsync(context, watching.Token);
             try
@@ -127,10 +130,19 @@ internal sealed partial class RunExecutor(
             await steps.StartedAsync(context.RunId, step.Id);
             using var deadline = CancellationTokenSource.CreateLinkedTokenSource(context.Token);
             deadline.CancelAfter(TimeSpan.FromSeconds(_options.StepTimeoutSeconds));
+            var prompt = TextCut.Take(PromptTemplate.Render(step.Prompt!, context.Input, context.Outputs), _options.MaxRenderedPromptChars);
+            var asked = false;
+            AgentAnswer? answer = null;
             try
             {
-                var prompt = TextCut.Take(PromptTemplate.Render(step.Prompt!, context.Input, context.Outputs), _options.MaxRenderedPromptChars);
-                var output = SecretText.Redact(TextCut.Take(await agents.AskAsync(step.Agent!, prompt, deadline.Token), _options.MaxOutputChars));
+                // Released at once, as for a ticket run: this run's own parallel steps (up to MaxParallelSteps) must not
+                // take the person's in-flight places and refuse each other (D385).
+                using (var admission = await quota.AdmitAsync(context.StartedBy, step.Agent!, deadline.Token))
+                    if (admission.Refusal is { } refusal)
+                        return await FailAsync(step, context, refusal.TrimEnd('.'));
+                asked = true;
+                answer = await agents.AskAsync(step.Agent!, prompt, deadline.Token);
+                var output = SecretText.Redact(TextCut.Take(answer.Text, _options.MaxOutputChars));
                 context.Outputs[step.Id] = output;
                 await steps.EndedAsync(context.RunId, step.Id, StepState.Succeeded, output);
                 return StepState.Succeeded;
@@ -147,6 +159,13 @@ internal sealed partial class RunExecutor(
             catch (AgentCallException ex)
             {
                 return await FailAsync(step, context, ex.Message);
+            }
+            finally
+            {
+                // Not the run's token: a timed-out or cancelled call was paid for too.
+                if (asked)
+                    await quota.RecordAsync(ChatQuotaUsage.Measure(context.StartedBy, step.Agent!, ChatQuotaUsage.ModelRef(AgentRef.Split(step.Agent!).Namespace, null),
+                        context.RunId.ToString(), answer?.Usage ?? ChatUsage.None, prompt, answer?.Text ?? ""), CancellationToken.None);
             }
         }
         finally

@@ -7,13 +7,16 @@ namespace Skanyxx.Module.Investigate.Engine;
 /// many of its agent steps call kagent at once (<see cref="InvestigateOptions.MaxParallelSteps"/>). The first failure
 /// wins and cancels the rest of the run (parallel siblings included); a person's cancel does the same without a reason.
 /// </summary>
-internal sealed class RunContext(Guid runId, string input, int parallelSteps, CancellationToken stopping) : IDisposable
+internal sealed class RunContext(Guid runId, string startedBy, string input, int parallelSteps, CancellationToken stopping) : IDisposable
 {
     private readonly CancellationTokenSource _cancel = CancellationTokenSource.CreateLinkedTokenSource(stopping);
     private string? _failure;
     private int _cancelledByUser;
 
     public Guid RunId { get; } = runId;
+
+    /// <summary>Whose token quota every step's turn is admitted against and counted to (D385).</summary>
+    public string StartedBy { get; } = startedBy;
 
     public string Input { get; } = input;
 

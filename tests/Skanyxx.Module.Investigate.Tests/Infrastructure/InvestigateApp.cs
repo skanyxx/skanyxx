@@ -58,7 +58,8 @@ public sealed class InvestigateApp : IAsyncDisposable
     public IServiceProvider Services => _app.Services;
     private Uri BaseAddress => new(_app.Urls.First());
 
-    public static async Task<InvestigateApp> StartAsync(string connectionString, Action<Dictionary<string, string?>>? configure = null)
+    public static async Task<InvestigateApp> StartAsync(
+        string connectionString, Action<Dictionary<string, string?>>? configure = null, Action<IServiceCollection>? services = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
         builder.Logging.ClearProviders();
@@ -92,6 +93,7 @@ public sealed class InvestigateApp : IAsyncDisposable
         builder.Services.AddSingleton<IRequestHandler<RecordAuditCommand>>(audit);
         builder.Services.AddSingleton<ICardExtractor>(cards);
         builder.Services.AddSingleton<IAgentMemoryAccess>(memory);
+        services?.Invoke(builder.Services);
         builder.Services.AddSkanyxxPlatform([typeof(InvestigateModule).Assembly]);
         builder.Services.AddAuthentication(TestAuthHandler.SchemeName)
             .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>(TestAuthHandler.SchemeName, null);

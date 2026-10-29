@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Services;
 using Skanyxx.Module.Investigate.Rules;
 
@@ -11,14 +12,14 @@ namespace Skanyxx.Module.Investigate.Agents;
 
 /// <summary>
 /// One blocking A2A 0.3 <c>message/send</c> to <c>{kagent}/api/a2a/{ns}/{agent}/</c>, the same call a ticket stage
-/// makes; every step is a fresh kagent session. The prompt carries what a person typed and earlier answers, which may
+/// makes; every step is a fresh kagent session, and the answer carries the tokens kagent reported (<see cref="A2AUsage"/>). The prompt carries what a person typed and earlier answers, which may
 /// hold a secret, so this call follows D322 as a secret-carrying one: a refusal logs method, path, status and
 /// <see cref="KAgentApiClient.SecretCallRefused"/>, never kagent's body, and the exception says only a category.
 /// </summary>
 internal sealed partial class KAgentInvestigationClient(
     HttpClient http, IOptions<InvestigateOptions> options, ILogger<KAgentInvestigationClient> logger) : IInvestigationAgentClient
 {
-    public async Task<string> AskAsync(string agentRef, string prompt, CancellationToken ct)
+    public async Task<AgentAnswer> AskAsync(string agentRef, string prompt, CancellationToken ct)
     {
         var (ns, name) = AgentRef.Split(agentRef);
         var path = $"api/a2a/{Uri.EscapeDataString(ns)}/{Uri.EscapeDataString(name)}/";
@@ -74,7 +75,7 @@ internal sealed partial class KAgentInvestigationClient(
 
         try
         {
-            return Answer(body!, path);
+            return new AgentAnswer(Answer(body!, path), ChatUsage.Of(A2AUsage.From(body!["result"])));
         }
         catch (Exception ex) when (ex is InvalidOperationException or NullReferenceException or FormatException or ArgumentException)
         {
