@@ -48,7 +48,7 @@ it always prints fresh values.
 
 {{- define "skanyxx.kagentUrl" -}}
 {{- if and .Values.kagent.enabled .Values.kagentGate.enabled -}}
-{{- printf "http://kagent-gate.%s.svc:8084" .Release.Namespace -}}
+{{- printf "http://skanyxx-kagent-gate.%s.svc:8084" .Release.Namespace -}}
 {{- else if .Values.kagent.enabled -}}
 {{- printf "http://kagent-controller.%s.svc:8083" .Release.Namespace -}}
 {{- else -}}
@@ -194,5 +194,5 @@ key: password
 
 {{/* The Secret with the gate's signing key: `token-key` (Skanyxx signs with it) and `jwks.json` (the gate verifies with it). */}}
 {{- define "skanyxx.kagentGateSecret" -}}
-{{- default "kagent-gate" .Values.kagentGate.existingSecret -}}
+{{- default "skanyxx-kagent-gate" .Values.kagentGate.existingSecret -}}
 {{- end -}}

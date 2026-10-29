@@ -52,7 +52,9 @@ static_resources:
                           max_lifetime: 300s
                           clock_skew_seconds: 30
                           forward: false
-                          local_jwks: {filename: /etc/kagent-gate/jwks.json}
+                          # Not ?access_token= (jwt_authn's other default place, which `forward` would not strip).
+                          from_headers: [{name: Authorization, value_prefix: "Bearer "}]
+                          local_jwks: {filename: /etc/skanyxx-kagent-gate/jwks.json}
                           claim_to_headers: [{header_name: x-user-id, claim_name: sub}]
                       rules:
                         - match: {path: /health}
@@ -105,14 +107,14 @@ static_resources:
 {{- end -}}
 {{- if .Values.kagent.enabled }}
 {{- $g := .Values.kagentGate }}
-{{- $selector := ternary (dict "app.kubernetes.io/name" "kagent-gate" "app.kubernetes.io/instance" .Release.Name) (dict "app.kubernetes.io/name" "kagent" "app.kubernetes.io/component" "controller") $g.enabled }}
+{{- $selector := ternary (dict "app.kubernetes.io/name" "skanyxx-kagent-gate" "app.kubernetes.io/instance" .Release.Name) (dict "app.kubernetes.io/name" "kagent" "app.kubernetes.io/component" "controller") $g.enabled }}
 # D520: kagent's agent pods call http://<KAGENT_CONTROLLER_NAME>.<ns>:8083 (sessions, tasks); the umbrella sets that name
 # to this Service (kagent.controller.env). With the gate on it is the gate's agent listener, which forwards only
 # kagentGate.agentPaths; off, it is the controller itself, as before.
 apiVersion: v1
 kind: Service
 metadata:
-  name: kagent-gate
+  name: skanyxx-kagent-gate
   labels:
     {{- include "skanyxx.labels" . | nindent 4 }}
 spec:
@@ -132,14 +134,14 @@ spec:
 ---
 # D520-D522: Envoy in front of kagent's controller (which authenticates nobody, D101).
 #  - 8084, Skanyxx's listener: every request but /health needs an HS256 token Skanyxx signed (issuer skanyxx, audience
-#    kagent-gate, expiring, at most 300 s long). The caller's own X-User-Id is dropped and the token's `sub` put there
+#    skanyxx-kagent-gate, expiring, at most 300 s long). The caller's own X-User-Id is dropped and the token's `sub` put there
 #    instead; `?user_id=` (which kagent reads first) is refused; the token itself is not passed on.
 #  - 8083, the agents' listener: only kagentGate.agentPaths (session and task storage) and /health; agent CRUD,
 #    ModelConfigs, tool servers and A2A to other agents are 403.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: kagent-gate
+  name: skanyxx-kagent-gate
   labels:
     {{- include "skanyxx.labels" . | nindent 4 }}
 data:
@@ -149,7 +151,7 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kagent-gate
+  name: skanyxx-kagent-gate
   labels:
     {{- include "skanyxx.labels" . | nindent 4 }}
     {{- toYaml $selector | nindent 4 }}
@@ -199,12 +201,12 @@ spec:
               drop: [ALL]
           volumeMounts:
             - {name: config, mountPath: /etc/envoy, readOnly: true}
-            - {name: jwks, mountPath: /etc/kagent-gate, readOnly: true}
+            - {name: jwks, mountPath: /etc/skanyxx-kagent-gate, readOnly: true}
             - {name: tmp, mountPath: /tmp}
       volumes:
         - name: config
           configMap:
-            name: kagent-gate
+            name: skanyxx-kagent-gate
         - name: jwks
           secret:
             secretName: {{ $secret }}

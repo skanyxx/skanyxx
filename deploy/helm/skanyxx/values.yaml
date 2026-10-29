@@ -338,7 +338,7 @@ ax:
       existingSecret: ""             # BYO signing key: a Secret with key `token-key` (32+ characters); empty = generated, kept
 
 # The kagent gate (D520-D523, docs/design/a2a-security.md). kagent 0.10.2 authenticates nobody: whoever reaches its
-# controller names the user and may create agents. With the bundled kagent, an Envoy (`kagent-gate`) stands in front of
+# controller names the user and may create agents. With the bundled kagent, an Envoy (`skanyxx-kagent-gate`) stands in front of
 # it, and the NetworkPolicies let only the gate reach the controller:
 #   - Skanyxx calls the gate on 8084 with a short-lived HS256 token it signs per request (KAgent:Auth:Mode=signed);
 #     the gate refuses a request without a valid one (401), drops any X-User-Id and `?user_id=` the caller sent and
@@ -361,7 +361,7 @@ kagentGate:
   # BYO signing key (GitOps): a Secret with `token-key` (48+ alphanumerics) and `jwks.json`, the same key as a JWKS:
   #   k=$(printf %s "$KEY" | base64 | tr '+/' '-_' | tr -d '=\n')
   #   printf '{"keys":[{"kty":"oct","alg":"HS256","k":"%s"}]}' "$k"
-  # Empty: the chart generates one and keeps it (Secret kagent-gate).
+  # Empty: the chart generates one and keeps it (Secret skanyxx-kagent-gate).
   existingSecret: ""
   # The controller paths kagent's agent pods may call through the gate (a path and everything under it). The default is
   # what kagent's ADK needs for chat; /api/memories (kagent's own memory), /api/langgraph, /api/crewai and
@@ -370,6 +370,13 @@ kagentGate:
   resources:
     requests: {cpu: 20m, memory: 32Mi}
     limits: {memory: 128Mi}
+
+# D528: a ValidatingAdmissionPolicy on kagent Agents in the release namespace (Kubernetes 1.30+): no Agent named like
+# one of this release's objects or kagent-*, wearing the pod labels the NetworkPolicies trust (app, kagent,
+# app.kubernetes.io/*), running as another ServiceAccount, or reading one of this release's Secrets. It holds whoever
+# writes the Agent (Skanyxx, Argo CD, kubectl). Cluster-scoped objects named <release>-agent-guard (bundled kagent only).
+agentGuard:
+  enabled: true
 
 # Bundled Postgres (D053): one StatefulSet, separate roles/databases for identity (skanyxx_identity), memory+tickets
 # (skanyxx) and kagent (kagent). Off = BYO: set skanyxx.database.existingSecret and kagent's database (see below).
@@ -538,12 +545,12 @@ kagent:
     # call the API). Empty: kagent creates one per agent, with the token mounted.
     agentDeployment:
       serviceAccountName: kagent-agent
-    # D520: kagent builds the agents' KAGENT_URL from this name (http://<name>.<ns>:8083); `kagent-gate` is the
+    # D520: kagent builds the agents' KAGENT_URL from this name (http://<name>.<ns>:8083); `skanyxx-kagent-gate` is the
     # umbrella's Service: the gate's agent listener when kagentGate is on, the controller itself when off. The chart
     # refuses a controller.env without it. Keep this entry when you add your own.
     env:
       - name: KAGENT_CONTROLLER_NAME
-        value: kagent-gate
+        value: skanyxx-kagent-gate
     resources:
       requests:
         cpu: 50m

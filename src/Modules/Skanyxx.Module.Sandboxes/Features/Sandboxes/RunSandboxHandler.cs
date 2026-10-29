@@ -1,3 +1,4 @@
+using Grpc.Core;
 using MediatR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -71,11 +72,33 @@ internal sealed class RunSandboxHandler(
             }
         }
 
-        var saved = await ax.UpdateSandboxAsync(AxMapper.ToAxTask(command.Name, command.UserId!, agentId,
-            command.Image, command.Command, command.Env, command.Workspaces, ResourcePolicy.Apply(command.Resources, options.Value),
-            existing?.Spec?.Suspend ?? false, access), ct);
-        // Not the caller's token: a client gone now must not leave a demoted maker's sandbox running.
-        if (!await MayRunAsync(command.UserId!, CancellationToken.None))
+        AxTask saved;
+        try
+        {
+            saved = await ax.UpdateSandboxAsync(AxMapper.ToAxTask(command.Name, command.UserId!, agentId,
+                command.Image, command.Command, command.Env, command.Workspaces, ResourcePolicy.Apply(command.Resources, options.Value),
+                existing?.Spec?.Suspend ?? false, access), ct);
+        }
+        catch (Exception) when (ct.IsCancellationRequested)
+        {
+            // The client went away, but AX may have created it anyway: a demoted maker's sandbox must not survive that.
+            if (!await MayRunAsync(command.UserId!, CancellationToken.None))
+                await UndoAsync(command.Name, agentId);
+            throw;
+        }
+        // Not the caller's token: a client gone now must not leave a demoted maker's sandbox running. A check that
+        // cannot answer fails closed.
+        bool mayRun;
+        try
+        {
+            mayRun = await MayRunAsync(command.UserId!, CancellationToken.None);
+        }
+        catch
+        {
+            await UndoAsync(command.Name, agentId);
+            throw;
+        }
+        if (!mayRun)
             return await UndoAsync(command.Name, agentId);
         var sandbox = AxMapper.ToSandbox(saved);
         return existing is null ? Outcome<Sandbox>.Accepted(sandbox) : Outcome<Sandbox>.Ok(sandbox);
@@ -88,8 +111,20 @@ internal sealed class RunSandboxHandler(
     private async Task<Outcome<Sandbox>> UndoAsync(string name, string agentId)
     {
         logger.LogWarning("Sandbox {Sandbox} was started as its maker lost the right to run sandboxes; stopping it.", name);
-        await memory.RevokeAsync(agentId, CancellationToken.None);
-        await ax.DeleteSandboxAsync(name, CancellationToken.None);
+        // The running workload first; the token is revoked even when the delete fails.
+        try
+        {
+            await ax.DeleteSandboxAsync(name, CancellationToken.None);
+        }
+        catch (RpcException ex) when (ex.StatusCode == StatusCode.NotFound)
+        {
+            // Never created, or already gone: stopped is what was wanted.
+        }
+        finally
+        {
+            if (await memory.RevokeAsync(agentId, CancellationToken.None) is { } refused)
+                logger.LogWarning("The memory token of sandbox {Sandbox} could not be revoked: {Reason}", name, refused.Message);
+        }
         return NoLongerRuns;
     }
 

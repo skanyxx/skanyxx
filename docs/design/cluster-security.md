@@ -9,9 +9,9 @@ Checked by `scripts/helm/validate.sh` (C1–C6, plus D137/D138/D148/D188/D194 ch
 
 ```
  browser ──https──> ingress controller ──8080 (allow-listed paths, never /mcp)──> Skanyxx ──5432/9000/3000/6379──> stores
- Skanyxx ──8084, signed HS256 token per request──> kagent-gate ──8083, X-User-Id = token sub──> kagent controller
+ Skanyxx ──8084, signed HS256 token per request──> skanyxx-kagent-gate ──8083, X-User-Id = token sub──> kagent controller
  kagent controller ──8080 A2A (no auth)──> agent pods
- agent pods ──8083, agent paths only (sessions, tasks)──> kagent-gate
+ agent pods ──8083, agent paths only (sessions, tasks)──> skanyxx-kagent-gate
  agent pods ──8080 A2A──> declared a2aPeers only
  agent pods ──8081 /mcp/memory (agent secret)──> Skanyxx;   agent pods ──443 minus clusterCidrs──> model provider
  Skanyxx ── grpc 8080 (no auth) ──> ax-server ─> Redis/Dragonfly;  ax-controller ── TLS + SA token ──> Substrate
@@ -69,7 +69,7 @@ kagent's own pods get the same baseline from its global defaults.
 | Skanyxx | `http`: `ingressNamespaces` (+`ingressPodLabels`) while ingress is on, `httpFrom`<br>`mcp`: kagent controller, agent pods, `mcpFrom`<br>`sandbox-mcp`: WorkerPool ns | DNS; kagent gate 8084 (controller 8083 with the gate off); Postgres, MinIO, Gitea, Dragonfly; ax-server (or `ax.namespace`); internet minus `clusterCidrs` on `skanyxxEgress.internetPorts` (443/465/587); `skanyxxEgress.extra` |
 | kagent gate | 8084: Skanyxx<br>8083: agent pods | DNS; controller 8083 |
 | kagent controller | 8083 only: the gate (Skanyxx and agent pods with the gate off), kagent UI if `ui.replicas > 0`, `controllerFrom` | open (Kubernetes API), or `controllerEgress` (D229) |
-| Agent pods | controller on `a2aPorts` (8080); `a2aPeers` callers | DNS; the `kagent-gate` Service 8083; Skanyxx `mcp`; `modelEgress`; `a2aPeers` callees |
+| Agent pods | controller on `a2aPorts` (8080); `a2aPeers` callers | DNS; the `skanyxx-kagent-gate` Service 8083; Skanyxx `mcp`; `modelEgress`; `a2aPeers` callees |
 | Postgres | Skanyxx, kagent controller | DNS |
 | MinIO, Gitea | Skanyxx | DNS |
 | Dragonfly | Skanyxx, ax-server/ax-controller (or `ax.namespace`) | DNS |
@@ -101,13 +101,17 @@ kagent's own pods get the same baseline from its global defaults.
 
 - **Agent pods can call the session and task API as any user** (the gate's agent port checks paths, not callers, D522).
   An LLM-driven agent can no longer list or create agents, ModelConfigs or tool servers, or call other agents through
-  the controller. It can still read or append to another user's session by id. Closing this needs verified agent
+  the controller. For a user id it knows, it can still list, read, append to, update and delete that user's sessions
+  and mint share tokens for them (D529). Closing this needs verified agent
   identity: kagent's projected token checked against the cluster's JWKS, a per-agent ServiceAccount, or a mesh.
 - **The kagent controller can read every Secret in the release namespace.** That includes Skanyxx's DB credentials, the
   sandbox token key and the kagent gate's signing key. Moving Skanyxx's Secrets to another namespace would need a split install.
 - **The controller's egress is open** unless `controllerEgress` is on (D229).
 - **ax-server and Substrate's atenet-router have no caller auth.** ax-server is fenced to Skanyxx; the router is
   Substrate's responsibility.
+- **Pod labels are the policies' identity.** The agent guard (D528) stops an Agent CR from wearing Skanyxx's, the
+  gate's or another agent's labels. Rights to create plain Pods or Deployments in the namespace must stay with the
+  release's operators.
 - **Correctness depends on the CNI enforcing NetworkPolicy.** kindnet, Calico and Cilium do; flannel alone does not.
 - **Partly live-tested.** The gate and the kagent/agent/Skanyxx policies ran on a throwaway kind cluster with stand-in
   pods (`scripts/helm/gate-kind-test.sh`, D520). The store, AX and sandbox rules are template-validated only.

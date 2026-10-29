@@ -20,31 +20,14 @@ public static class ApiGuardExtensions
     public const int MinIPv6Prefix = 112;
 
     /// <summary>
-    /// A range that overlaps the IPv4-mapped space (<c>::ffff:0:0/96</c>) is judged as IPv4, whatever its base: Kestrel
-    /// binds dual-mode, so every IPv4 peer arrives as <c>::ffff:a.b.c.d</c>, and <c>::/80</c> would trust them all.
+    /// A range that overlaps the IPv4-mapped space (<c>::ffff:0:0/96</c>) is judged as IPv4: Kestrel binds dual-mode, so
+    /// every IPv4 peer arrives as <c>::ffff:a.b.c.d</c>, and <c>::/80</c> would trust them all. Every IPv6 range of /96 or
+    /// broader is under the floor anyway, and a narrower one overlaps the mapped space only when its base is mapped.
     /// </summary>
     public static bool TooBroad(System.Net.IPNetwork network) =>
         network.BaseAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? network.PrefixLength < MinIPv4Prefix
-        : OverlapsIPv4Mapped(network) ? network.PrefixLength < 96 + MinIPv4Prefix
+        : network.BaseAddress.IsIPv4MappedToIPv6 ? network.PrefixLength < 96 + MinIPv4Prefix
         : network.PrefixLength < MinIPv6Prefix;
-
-    // Bit by bit: IPNetwork.Contains maps an IPv4-mapped address to IPv4 first, so fd00::/112 "contains" ::ffff:0:0.
-    private static bool OverlapsIPv4Mapped(System.Net.IPNetwork network)
-    {
-        if (network.BaseAddress.IsIPv4MappedToIPv6)
-            return true;
-        if (network.PrefixLength > 96)
-            return false;
-        var mapped = System.Net.IPAddress.Parse("::ffff:0:0").GetAddressBytes();
-        var bytes = network.BaseAddress.GetAddressBytes();
-        for (var bit = 0; bit < network.PrefixLength; bit++)
-        {
-            var mask = 0x80 >> (bit % 8);
-            if ((mapped[bit / 8] & mask) != (bytes[bit / 8] & mask))
-                return false;
-        }
-        return true;
-    }
 
     public static IServiceCollection AddSkanyxxApiGuards(this IServiceCollection services, IConfiguration configuration)
     {

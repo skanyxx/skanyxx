@@ -60,7 +60,8 @@ public sealed class KAgentTokenTests
     public async Task AModulesOwnClient_IsSignedToo_FromItsXUserId()
     {
         var (_, kagent, http) = Build(Signed());
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"{KAgentUrl}/api/a2a/skanyxx/seed/?keep=1");
+        // An empty ?user_id= names nobody: kagent would read the header next, and so does the token (review L3).
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{KAgentUrl}/api/a2a/skanyxx/seed/?user_id=&keep=1");
         request.Headers.Add("X-User-Id", "skanyxx-investigate");
 
         using var _ = await http.CreateClient("investigate").SendAsync(request, TestContext.Current.CancellationToken);
@@ -100,6 +101,7 @@ public sealed class KAgentTokenTests
     [InlineData("signed", null, "60", "needs KAgent:Auth:TokenKey")]
     [InlineData("signed", "too-short", "60", "needs KAgent:Auth:TokenKey")]
     [InlineData("signed", Key, "301", "TokenSeconds must be 10-300")]
+    [InlineData("signed", Key, "9", "TokenSeconds must be 10-300")]
     [InlineData("bearer", Key, "60", "KAgent:Auth:Mode must be none or signed")]
     public void ASignedModeThatCannotWork_StopsStartup(string mode, string? key, string seconds, string error)
     {
@@ -125,8 +127,8 @@ public sealed class KAgentTokenTests
         var services = new ServiceCollection().AddLogging();
         services.AddKAgentHttpClient(configuration);
         services.ConfigureHttpClientDefaults(http => http.ConfigurePrimaryHttpMessageHandler(() => recorder));
-        var provider = services.BuildServiceProvider();
-        var http = provider.GetRequiredService<IHttpClientFactory>();
+        // Not disposed: the factory's handlers outlive this method with the test, and hold nothing but the recorder.
+        var http = services.BuildServiceProvider().GetRequiredService<IHttpClientFactory>();
         return (new KAgentApiClient(http.CreateClient(KAgentApiClient.HttpClientName), configuration, NullLogger<KAgentApiClient>.Instance), recorder, http);
     }
 

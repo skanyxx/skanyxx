@@ -32,10 +32,11 @@ kagent will not start.
 
 WARNING: kagentGate.enabled=false: Skanyxx and the agent pods call kagent's controller directly, without a token, and
 whoever reaches it names the user and may create agents (D101). Only the NetworkPolicy fences it. Turn the gate back on.
-{{- else if and .Values.kagent.enabled (not .Values.networkPolicy.enabled) }}
+{{- end }}
+{{- if and .Values.kagent.enabled (not .Values.networkPolicy.enabled) }}
 
-WARNING: networkPolicy.enabled=false: the kagent gate checks Skanyxx's tokens, but any pod can call kagent's controller
-(and agent pods) directly, past it. Keep the NetworkPolicies on.
+WARNING: networkPolicy.enabled=false: any pod can call kagent's controller (and agent pods) directly, past the kagent
+gate and its tokens. Keep the NetworkPolicies on.
 {{- end }}
 
 {{- if and .Values.networkPolicy.enabled (not .Values.kagent.enabled) (not .Values.networkPolicy.mcpFrom) }}

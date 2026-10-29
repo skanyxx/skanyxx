@@ -1,4 +1,4 @@
-# A2A and kagent authentication (D520-D523)
+# A2A and kagent authentication (D520-D523, D528, D529)
 
 How Skanyxx, kagent's controller and the agent pods authenticate each other inside one install, what the engine
 offers, and what is still open. The pod-level fence is in [`cluster-security.md`](cluster-security.md).
@@ -22,15 +22,16 @@ offers, and what is still open. The pod-level fence is in [`cluster-security.md`
 ## The design
 
 ```
- Skanyxx ──8084, Bearer HS256 (sub = person)──> kagent-gate ──8083, X-User-Id = sub──> kagent controller ──8080──> agent pods
- agent pods ──8083 (agent paths only)─────────> kagent-gate ─────────────────────────┘          agent ──8080──> declared peer
+ Skanyxx ──8084, Bearer HS256 (sub = person)──> skanyxx-kagent-gate ──8083, X-User-Id = sub──> kagent controller ──8080──> agent pods
+ agent pods ──8083 (agent paths only)─────────> skanyxx-kagent-gate ─────────────────────────┘          agent ──8080──> declared peer
  agent pods ──8081 /mcp/memory, per-agent bearer secret (D083)──> Skanyxx
 ```
 
 1. **Gate (D520).**
-   - What it is: an Envoy Deployment `kagent-gate` (distroless, pinned by digest). The NetworkPolicy lets only the gate
+   - What it is: an Envoy Deployment `skanyxx-kagent-gate` (distroless, pinned by digest). The gate's objects carry a
+     `skanyxx-` name, which Skanyxx reserves for itself, because kagent overwrites any object named like an Agent (D528). The NetworkPolicy lets only the gate
      reach the controller's 8083.
-   - The Service `kagent-gate` exposes two listeners:
+   - The Service `skanyxx-kagent-gate` exposes two listeners:
      - **8084**, for Skanyxx only;
      - **8083**, for the agent pods only.
 2. **Signed per-request token (D521).**
@@ -49,10 +50,10 @@ offers, and what is still open. The pod-level fence is in [`cluster-security.md`
        `user_id`;
      - header names with `_`;
      - escaped slashes.
-   - It drops `X-User-Id` and `X-Agent-Name`, sets `X-User-Id` from `sub`, and never forwards the token. Only
-     `/health` is anonymous.
+   - It drops `X-User-Id` and `X-Agent-Name`, sets `X-User-Id` from `sub`, and never forwards the token. The token is
+     read from the `Authorization` header only, never from `?access_token=`. Only `/health` is anonymous.
 3. **Agents on an allow-list (D522).**
-   - The umbrella sets `KAGENT_CONTROLLER_NAME=kagent-gate` on the controller. It is the only input to the agents'
+   - The umbrella sets `KAGENT_CONTROLLER_NAME=skanyxx-kagent-gate` on the controller. It is the only input to the agents'
      `KAGENT_URL`, and kagent uses it nowhere else (checked in 0.10.2's source). The agents therefore call the gate's
      8083.
    - That listener forwards `kagentGate.agentPaths`. The default is `/api/sessions` and `/api/tasks`. The schema enum
@@ -64,11 +65,23 @@ offers, and what is still open. The pod-level fence is in [`cluster-security.md`
      `networkPolicy.a2aPeers` lists it (`{from, to: [...]}`).
    - Each entry renders an egress policy for the caller and an ingress policy for the callees, on
      `controllerEgress.a2aPorts`.
-   - The identity is the pod label `kagent=<agent>`, which kagent sets from the Agent CR. Agent CRs are written only
-     by Skanyxx, through the gate, and by kagent itself.
+   - The identity is the pod label `kagent=<agent>`, which kagent sets from the Agent's name; an Agent's own
+     `deployment.labels` cannot override it.
+   - Every NetworkPolicy here trusts pod labels. Anyone who can write an Agent CR (Skanyxx through the gate, Argo CD
+     from the agents repo, `kubectl`) could otherwise put any label on its pods. The agent guard (step 6) refuses that
+     (D529 corrects D523's "only Skanyxx and kagent write Agents").
 5. **Memory MCP:** unchanged. Each agent has its own bearer secret on the mcp port (D083), and `X-User-Id` is read only
    with `actsForUsers` (D084). Sandboxes use a signed token on their own listener (D190).
-6. **Secrets:** the signing key exists only in the Kubernetes Secret `kagent-gate`. It holds `token-key` (Skanyxx's env
+6. **Agent guard (D528, `agentGuard.enabled`, on by default; Kubernetes 1.30+):** a ValidatingAdmissionPolicy bound
+   to the release namespace. It refuses an Agent that:
+   - is named like one of this release's objects or Secrets, or `kagent` / `kagent-*` (kagent would take that object
+     over: security review H1);
+   - sets `app`, `kagent` or `app.kubernetes.io/*` in `deployment.labels` (the NetworkPolicies' pod identities);
+   - runs as a ServiceAccount other than the agents' own (kagent's controller SA reads every Secret);
+   - mounts or reads one of this release's Secrets through `deployment.volumes`, `env` or `envFrom`.
+
+   It applies to declarative and BYO Agents alike, whoever writes them.
+7. **Secrets:** the signing key exists only in the Kubernetes Secret `skanyxx-kagent-gate`. It holds `token-key` (Skanyxx's env
    `KAgent__Auth__TokenKey`) and `jwks.json` (mounted into Envoy). The key is generated once and kept (D139), and it
    never reaches a log, an API response or the UI.
 
@@ -90,6 +103,9 @@ kagentGate:
   agentPaths: [/api/sessions, /api/tasks]
   resources: {requests: {cpu: 20m, memory: 32Mi}, limits: {memory: 128Mi}}
 
+agentGuard:
+  enabled: true                       # the Agent admission policy (D528)
+
 networkPolicy:
   a2aPeers:                           # agents used as tools: caller -> callees, Agent names in the release namespace
     - {from: ticket-planner, to: [ticket-reviewer, ticket-qa]}
@@ -97,23 +113,26 @@ networkPolicy:
 kagent:
   controller:
     env:                              # required; add your own entries next to it
-      - {name: KAGENT_CONTROLLER_NAME, value: kagent-gate}
+      - {name: KAGENT_CONTROLLER_NAME, value: skanyxx-kagent-gate}
 ```
 
 What the chart renders and refuses:
 
 - **Renders:**
-  - the `kagent-gate` Deployment, ConfigMap (the Envoy config), Service, Secret and NetworkPolicy;
-  - the Skanyxx env `KAgent__IngressUrl=http://kagent-gate.<ns>.svc:8084`, `KAgent__Auth__Mode=signed`,
+  - the `skanyxx-kagent-gate` Deployment, ConfigMap (the Envoy config), Service, Secret and NetworkPolicy;
+  - the Skanyxx env `KAgent__IngressUrl=http://skanyxx-kagent-gate.<ns>.svc:8084`, `KAgent__Auth__Mode=signed`,
     `KAgent__Auth__TokenSeconds` and `KAgent__Auth__TokenKey` (from the Secret);
   - the controller's ingress from the gate only, and the agents' and Skanyxx's egress to the gate only.
+- **Renders too:** the cluster-scoped `<release>-agent-guard` ValidatingAdmissionPolicy and its binding (bundled kagent
+  only).
 - **Refuses:**
-  - a `kagent.controller.env` without `KAGENT_CONTROLLER_NAME=kagent-gate`;
+  - a `kagent.controller.env` without `KAGENT_CONTROLLER_NAME=skanyxx-kagent-gate`;
+  - an `a2aPeers` caller listed twice;
   - an `agentPaths` entry outside the enum (`/api/agents`, `/api/a2a`, `/`);
   - a `tokenSeconds` over 300;
   - a non-sha256 digest;
   - an `a2aPeers` entry that is not a DNS label or has no callee.
-- **Off** (`kagentGate.enabled=false`): the `kagent-gate` Service selects the controller, so the agents keep working,
+- **Off** (`kagentGate.enabled=false`): the `skanyxx-kagent-gate` Service selects the controller, so the agents keep working,
   and Skanyxx sends no token. NOTES warns. With `networkPolicy.enabled=false` NOTES warns that the gate can be
   bypassed.
 - **BYO kagent** (`kagent.enabled=false`): no gate is rendered. Fence your own controller.
@@ -131,18 +150,23 @@ talks to an unsecured kagent on `localhost:8083` exactly as before. `Mode=signed
 | Token claims, signature and lifetime; every kagent call signed for its user, with no `user_id` or `X-User-Id`; a module's own client signed from its `X-User-Id`; another origin untouched; mode none unchanged; bad settings stop startup | `tests/Skanyxx.Host.Tests/KAgentTokenTests.cs` |
 | The rendered Envoy config in Docker against an echo upstream: 33 cases, including the forged and encoded `user_id` and the agent-path escapes | `scripts/helm/gate-test.sh` |
 | Render checks (gate, env, JWKS = key, Envoy rules, policies, off switch, peers) and 9 refusals | `scripts/helm/validate.sh` |
-| The chart's policies and gate on a throwaway kind cluster: 17 who-may-call-whom checks | `scripts/helm/gate-kind-test.sh` |
+| The chart's policies, gate and agent guard on a throwaway kind cluster: 17 who-may-call-whom checks and 13 admission cases (server dry run) | `scripts/helm/gate-kind-test.sh` |
 
 ## Still open
 
 - **The agents' listener authenticates nobody.** Any agent pod can use `/api/sessions` and `/api/tasks` with any
-  `X-User-Id`, and so read or append to another user's session by id.
+  `X-User-Id`. For a user id it knows, it can list, read, append to, update and delete that user's sessions, and mint
+  share tokens for them (security review L1).
   - Why it stays open: agents send only kagent's projected token, and verifying it needs the cluster's JWKS (API
     server access) or kagent authz.
   - What would close it: Envoy `jwt_authn` with the service-account issuer, or a mesh.
 - **Agent pods share one ServiceAccount** (`kagent-agent`), so even a verified kagent token would not say *which*
   agent is calling. Per-agent identity needs a per-agent SA.
-- **kagent's controller can read every Secret in the namespace**, including `kagent-gate`'s key, so a compromised
+- **Pod labels are the NetworkPolicies' identity.** The agent guard holds Agent CRs. Anyone with rights to create plain
+  Pods or Deployments in the namespace can still wear any label; keep those rights to the release's operators.
+- **Keys are read at start.** Skanyxx and Envoy read the key only when they start, and `helm template`-based GitOps
+  draws a new key on every render. Use `kagentGate.existingSecret` there, and restart both after a rotation.
+- **kagent's controller can read every Secret in the namespace**, including `skanyxx-kagent-gate`'s key, so a compromised
   controller can mint tokens (D136; it already controls every agent).
 - **No mTLS.** A token sniffed on the pod network is valid for its remaining lifetime (60 s by default), for its one
   user. A mesh, or kagent TLS, would close this.

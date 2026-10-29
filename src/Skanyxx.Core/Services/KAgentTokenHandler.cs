@@ -21,9 +21,10 @@ public sealed class KAgentTokenHandler(KAgentToken token, Uri kagent) : Delegati
         if (request.RequestUri is { } uri && Uri.Compare(uri, kagent, UriComponents.SchemeAndServer, UriFormat.Unescaped, StringComparison.OrdinalIgnoreCase) == 0)
         {
             var pairs = uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries);
-            var named = pairs.Where(p => p.Split('=')[0] == UserIdKey).Select(p => Uri.UnescapeDataString(p[(p.IndexOf('=') + 1)..])).FirstOrDefault();
+            var named = pairs.Select(p => p.Split('=', 2)).Where(kv => kv[0] == UserIdKey)
+                .Select(kv => Uri.UnescapeDataString(kv.ElementAtOrDefault(1) ?? "")).FirstOrDefault(u => u.Length > 0);
             var user = named ?? (request.Headers.TryGetValues(UserIdHeader, out var values) ? values.First() : ServiceUser);
-            request.RequestUri = new UriBuilder(uri) { Query = string.Join('&', pairs.Where(p => p.Split('=')[0] != UserIdKey)) }.Uri;
+            request.RequestUri = new UriBuilder(uri) { Query = string.Join('&', pairs.Where(p => p.Split('=', 2)[0] != UserIdKey)) }.Uri;
             request.Headers.Remove(UserIdHeader);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token.Issue(user));
         }

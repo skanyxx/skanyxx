@@ -95,7 +95,7 @@ spec:
     - to:
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: kagent-gate
+              app.kubernetes.io/name: skanyxx-kagent-gate
               app.kubernetes.io/instance: {{ .Release.Name }}
       ports:
         - port: 8084
@@ -201,7 +201,7 @@ spec:
         {{- if $gate }}
         - podSelector:
             matchLabels:
-              app.kubernetes.io/name: kagent-gate
+              app.kubernetes.io/name: skanyxx-kagent-gate
               app.kubernetes.io/instance: {{ .Release.Name }}
         {{- else }}
         - podSelector:
@@ -283,7 +283,7 @@ spec:
 ---
 # kagent's agent pods (labelled app=kagent, kagent=<agent> by its controller): A2A (no auth of its own) only from the
 # controller on controllerEgress.a2aPorts (Chat goes through it), and from networkPolicy.a2aPeers (below). Out (D148):
-# the kagent-gate Service's agent port (the gate's agent listener, or the controller with the gate off), Skanyxx's mcp
+# the skanyxx-kagent-gate Service's agent port (the gate's agent listener, or the controller with the gate off), Skanyxx's mcp
 # port (never its UI/API), DNS (default-deny), the model provider, and networkPolicy.modelEgress.extra.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -313,7 +313,7 @@ spec:
         - podSelector:
             matchLabels:
               {{- if $gate }}
-              app.kubernetes.io/name: kagent-gate
+              app.kubernetes.io/name: skanyxx-kagent-gate
               app.kubernetes.io/instance: {{ .Release.Name }}
               {{- else }}
               app.kubernetes.io/name: kagent
@@ -356,13 +356,13 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: kagent-gate
+  name: skanyxx-kagent-gate
   labels:
     {{- include "skanyxx.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: kagent-gate
+      app.kubernetes.io/name: skanyxx-kagent-gate
       app.kubernetes.io/instance: {{ .Release.Name }}
   policyTypes: [Ingress, Egress]
   ingress:
@@ -395,7 +395,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: kagent-a2a-{{ .from }}
+  name: kagent-a2a-out-{{ .from }}
   labels:
     {{- include "skanyxx.labels" $ | nindent 4 }}
 spec:
@@ -419,7 +419,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: kagent-a2a-{{ .from }}-in
+  name: kagent-a2a-in-{{ .from }}
   labels:
     {{- include "skanyxx.labels" $ | nindent 4 }}
 spec:

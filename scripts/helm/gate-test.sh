@@ -18,12 +18,12 @@ die() { echo "FAIL: $*"; docker logs "$GATE" 2>&1 | tail -20; exit 1; }
 helm dependency build "$CHART" >/dev/null
 helm template skanyxx "$CHART" --namespace skanyxx >"$WORK/render.yaml"
 doc() { awk -v k="$1" -v n="$2" 'BEGIN{RS="\n---"} $0 ~ "\nkind: " k "\n" && $0 ~ "\n  name: " n "\n" {print}' "$WORK/render.yaml"; }
-doc ConfigMap kagent-gate | sed -n '/envoy.yaml: |/,$p' | sed '1d; s/^    //' \
+doc ConfigMap skanyxx-kagent-gate | sed -n '/envoy.yaml: |/,$p' | sed '1d; s/^    //' \
   | sed "s/kagent-controller.skanyxx.svc/$ECHO/" >"$WORK/envoy.yaml"
-doc Secret kagent-gate | awk '/^  jwks.json: /{print $2}' | base64 -d >"$WORK/jwks.json"
-doc Secret kagent-gate | awk '/^  token-key: /{print $2}' | base64 -d >"$WORK/token-key"
+doc Secret skanyxx-kagent-gate | awk '/^  jwks.json: /{print $2}' | base64 -d >"$WORK/jwks.json"
+doc Secret skanyxx-kagent-gate | awk '/^  token-key: /{print $2}' | base64 -d >"$WORK/token-key"
 chmod 600 "$WORK/token-key"
-IMAGE=$(doc Deployment kagent-gate | awk '/image: /{gsub(/"/, "", $2); print $2; exit}')
+IMAGE=$(doc Deployment skanyxx-kagent-gate | awk '/image: /{gsub(/"/, "", $2); print $2; exit}')
 [[ -s $WORK/envoy.yaml && -s $WORK/jwks.json && -s $WORK/token-key && -n $IMAGE ]] || die "the render has no gate"
 
 cat >"$WORK/echo.py" <<'EOF'
@@ -38,12 +38,12 @@ class Echo(http.server.BaseHTTPRequestHandler):
 http.server.ThreadingHTTPServer(("0.0.0.0", 8083), Echo).serve_forever()
 EOF
 chmod 644 "$WORK/echo.py" "$WORK/envoy.yaml" "$WORK/jwks.json"
-docker run --rm -v "$WORK/envoy.yaml:/etc/envoy/envoy.yaml:ro" -v "$WORK/jwks.json:/etc/kagent-gate/jwks.json:ro" "$IMAGE" \
+docker run --rm -v "$WORK/envoy.yaml:/etc/envoy/envoy.yaml:ro" -v "$WORK/jwks.json:/etc/skanyxx-kagent-gate/jwks.json:ro" "$IMAGE" \
   --mode validate -c /etc/envoy/envoy.yaml >"$WORK/validate.txt" 2>&1 || { cat "$WORK/validate.txt"; die "Envoy refuses the rendered config"; }
 docker network create "$NET" >/dev/null
 docker run -d --name "$ECHO" --network "$NET" -v "$WORK/echo.py:/echo.py:ro" python:3.13-alpine python /echo.py >/dev/null
 docker run -d --name "$GATE" --network "$NET" --read-only --cap-drop ALL --security-opt no-new-privileges -p 127.0.0.1::8083 -p 127.0.0.1::8084 \
-  -v "$WORK/envoy.yaml:/etc/envoy/envoy.yaml:ro" -v "$WORK/jwks.json:/etc/kagent-gate/jwks.json:ro" "$IMAGE" \
+  -v "$WORK/envoy.yaml:/etc/envoy/envoy.yaml:ro" -v "$WORK/jwks.json:/etc/skanyxx-kagent-gate/jwks.json:ro" "$IMAGE" \
   -c /etc/envoy/envoy.yaml --log-level warn >/dev/null
 AGENTS=http://$(docker port "$GATE" 8083 | head -1)
 SKANYXX=http://$(docker port "$GATE" 8084 | head -1)
@@ -88,6 +88,7 @@ expect 401 "no expiry" -H "Authorization: Bearer $(token '{"iss":"skanyxx","aud"
 expect 401 "lives longer than 300 s" -H "Authorization: Bearer $(token '{"iss":"skanyxx","aud":"kagent-gate","sub":"a","iat":"now","exp":"now+3600"}')" "$SKANYXX/api/agents"
 expect 403 "another audience" -H "Authorization: Bearer $(token '{"iss":"skanyxx","aud":"memory","sub":"a","iat":"now","exp":"now+60"}')" "$SKANYXX/api/agents"
 expect 401 "another issuer" -H "Authorization: Bearer $(token '{"iss":"kagent","aud":"kagent-gate","sub":"a","iat":"now","exp":"now+60"}')" "$SKANYXX/api/agents"
+expect 401 "a valid token in ?access_token= (header only)" "$SKANYXX/api/agents?access_token=$(token "$GOOD")"
 expect 401 "a token in X-User-Id alone (no bearer)" -H 'X-User-Id: ana@acme.example' "$SKANYXX/api/sessions"
 expect 200 "kagent's /health without a token" "$SKANYXX/health"
 expect 200 "a valid token" -H "Authorization: Bearer $(token "$GOOD")" -H 'X-User-Id: mallory@acme.example' -H 'X-Agent-Name: forged' "$SKANYXX/api/agents"

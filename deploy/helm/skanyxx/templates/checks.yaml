@@ -13,10 +13,18 @@
      gate, and (with the gate on) be refused there by the NetworkPolicy. */ -}}
 {{- $named := false }}
 {{- range (dig "controller" "env" list .Values.kagent) }}
-{{- if and (eq (.name | default "") "KAGENT_CONTROLLER_NAME") (eq (.value | default "") "kagent-gate") }}{{ $named = true }}{{ end }}
+{{- if and (eq (.name | default "") "KAGENT_CONTROLLER_NAME") (eq (.value | default "") "skanyxx-kagent-gate") }}{{ $named = true }}{{ end }}
 {{- end }}
 {{- if not $named }}
-{{- fail "kagent.controller.env must keep {name: KAGENT_CONTROLLER_NAME, value: kagent-gate}: kagent points its agents at that Service (the kagent gate, D520). Add your own entries next to it." }}
+{{- fail "kagent.controller.env must keep {name: KAGENT_CONTROLLER_NAME, value: skanyxx-kagent-gate}: kagent points its agents at that Service (the kagent gate, D520). Add your own entries next to it." }}
+{{- end }}
+{{- /* D523: one entry per caller; two would render the same policy names and one would silently replace the other. */ -}}
+{{- $callers := list }}
+{{- range .Values.networkPolicy.a2aPeers }}
+{{- if has .from $callers }}
+{{- fail (printf "networkPolicy.a2aPeers names %s twice: list all its callees in one entry" .from) }}
+{{- end }}
+{{- $callers = append $callers .from }}
 {{- end }}
 {{- /* D142 (verifier G4): with providers set, kagent's chart renders default-model-config and Helm would own the owner's model. */ -}}
 {{- if .Values.kagent.providers }}
@@ -53,7 +61,8 @@
      /24 or /112 (D525). An IPv4-mapped range is an IPv4 one: ::ffff:10.42.0.0/112 is a /16 (Kestrel sees IPv4 peers so). */ -}}
 {{- range .Values.skanyxx.trustedProxies }}
 {{- $parts := splitList "/" (lower .) }}
-{{- if and (regexMatch "^(((0{1,4}:){1,4}|:):|(0{1,4}:){5})ffff:" (first $parts)) (lt (int (last $parts)) 120) }}
+{{- /* Best effort (zero groups, then ffff): startup (ApiGuardExtensions.TooBroad) decides on the parsed address. */}}
+{{- if and (regexMatch "^[0:]*:ffff:" (first $parts)) (lt (int (last $parts)) 120) }}
 {{- fail (printf "skanyxx.trustedProxies %s is an IPv4-mapped range broader than an IPv4 /24 (/120 here): list the ingress controller pods" .) }}
 {{- end }}
 {{- end }}

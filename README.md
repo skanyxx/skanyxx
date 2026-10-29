@@ -201,11 +201,13 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   60 min). Either drop the query from the access-log format for `/Invite` and `/ResetPassword` (ingress-nginx:
   `log-format-upstream` with `$uri` instead of `$request`), or treat the access logs as secret as the database.
 - **The kagent gate (`kagentGate`, on by default, D520-D523; [`a2a-security.md`](docs/design/a2a-security.md)):** kagent
-  authenticates nobody, so an Envoy (`kagent-gate`) stands in front of its controller and only the gate may reach it.
-  Skanyxx signs every call with a short-lived HS256 token (`KAgent:Auth:Mode=signed`, key in the Secret `kagent-gate`)
+  authenticates nobody, so an Envoy (`skanyxx-kagent-gate`) stands in front of its controller and only the gate may reach it.
+  Skanyxx signs every call with a short-lived HS256 token (`KAgent:Auth:Mode=signed`, key in the Secret `skanyxx-kagent-gate`)
   and the gate names the user from it, refusing a call without one (401) and any `?user_id=`; kagent's agent pods are
-  pointed at the gate (`kagent.controller.env` `KAGENT_CONTROLLER_NAME=kagent-gate`, required) and may call only
+  pointed at the gate (`kagent.controller.env` `KAGENT_CONTROLLER_NAME=skanyxx-kagent-gate`, required) and may call only
   `kagentGate.agentPaths` (sessions, tasks). Agent-to-agent A2A is refused unless listed in `networkPolicy.a2aPeers`.
+  An admission policy (`agentGuard`, D528, Kubernetes 1.30+) refuses Agents named like the release's objects, wearing
+  its pod labels, running as another ServiceAccount or reading its Secrets.
   A local Host keeps `KAgent:Auth:Mode=none` (the default) against an unsecured kagent on localhost:8083.
   `scripts/helm/gate-test.sh` (Docker) and `scripts/helm/gate-kind-test.sh` (a throwaway kind cluster) check it live.
 - **Network:** the namespace is **default-deny** (`networkPolicy.enabled`, D137): a pod no policy names gets nothing in

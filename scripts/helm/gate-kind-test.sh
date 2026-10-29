@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # D520-D523 on a live cluster: creates a throwaway kind cluster (kindnet enforces NetworkPolicy), applies the chart's
-# NetworkPolicies and kagent gate as rendered, with echo pods standing in for kagent's controller, two agents and
+# NetworkPolicies, kagent gate and Agent admission policy (D528, with kagent's CRDs) as rendered, with echo pods standing in for kagent's controller, two agents and
 # Skanyxx (same labels), and walks the who-may-call-whom matrix. Deletes the cluster at the end. Needs kind, kubectl,
 # helm, docker, python3. The cluster's kubeconfig is a temp file: the user's kubeconfig and current context are untouched.
 set -euo pipefail
@@ -21,10 +21,10 @@ helm dependency build "$CHART" >/dev/null
 helm template skanyxx "$CHART" --namespace "$NS" \
   --set-json 'networkPolicy.a2aPeers=[{"from":"agent-a","to":["agent-b"]}]' >"$WORK/render.yaml"
 # The chart's policies and gate objects only: no store, no Skanyxx image, no kagent.
-awk 'BEGIN{RS="\n---"} /\nkind: NetworkPolicy\n/ || (/\n  name: kagent-gate\n/ && /\nkind: (ConfigMap|Secret|Deployment|Service)\n/) {sub(/^---/, ""); print "---" $0}' \
+awk 'BEGIN{RS="\n---"} /\nkind: (NetworkPolicy|CustomResourceDefinition|ValidatingAdmissionPolicy|ValidatingAdmissionPolicyBinding)\n/ || (/\n  name: skanyxx-kagent-gate\n/ && /\nkind: (ConfigMap|Secret|Deployment|Service)\n/) {sub(/^---/, ""); print "---" $0}' \
   "$WORK/render.yaml" >"$WORK/apply.yaml"
-GATE_IMAGE=$(awk 'BEGIN{RS="\n---"} /\nkind: Deployment\n/ && /\n  name: kagent-gate\n/ {print}' "$WORK/render.yaml" | awk '/image: /{gsub(/"/, "", $2); print $2; exit}')
-awk 'BEGIN{RS="\n---"} /\nkind: Secret\n/ && /\n  name: kagent-gate\n/ {print}' "$WORK/render.yaml" | awk '/^  token-key: /{print $2}' | base64 -d >"$WORK/token-key"
+GATE_IMAGE=$(awk 'BEGIN{RS="\n---"} /\nkind: Deployment\n/ && /\n  name: skanyxx-kagent-gate\n/ {print}' "$WORK/render.yaml" | awk '/image: /{gsub(/"/, "", $2); print $2; exit}')
+awk 'BEGIN{RS="\n---"} /\nkind: Secret\n/ && /\n  name: skanyxx-kagent-gate\n/ {print}' "$WORK/render.yaml" | awk '/^  token-key: /{print $2}' | base64 -d >"$WORK/token-key"
 chmod 600 "$WORK/token-key"
 
 kind create cluster --name "$CLUSTER" --kubeconfig "$WORK/kubeconfig" --wait 120s >/dev/null 2>&1
@@ -79,9 +79,9 @@ EOF
   pod intruder 8080 '"stand-in": intruder'
 } >"$WORK/pods.yaml"
 k apply -f "$WORK/pods.yaml" >/dev/null
-k apply -f "$WORK/apply.yaml" >/dev/null
+k apply --server-side -f "$WORK/apply.yaml" >/dev/null
 k wait --for=condition=Ready pod --all --timeout=180s >/dev/null
-k rollout status deployment/kagent-gate --timeout=120s >/dev/null
+k rollout status deployment/skanyxx-kagent-gate --timeout=120s >/dev/null
 
 TOKEN=$(python3 - "$WORK/token-key" <<'EOF'
 import base64, hashlib, hmac, json, sys, time
@@ -106,7 +106,7 @@ expect() { # expect <want> <why> <from> <url> [bearer]
   [[ $got == "$1" ]] || die "$2: $got, want $1"
   checks=$((checks + 1)); echo "ok: $2 ($got)"
 }
-G=http://kagent-gate.$NS.svc
+G=http://skanyxx-kagent-gate.$NS.svc
 C=http://kagent-controller.$NS.svc:8083
 expect 401 "Skanyxx -> gate without a token" skanyxx "$G:8084/api/agents"
 expect 200 "Skanyxx -> gate with a token" skanyxx "$G:8084/api/agents" "$TOKEN"
@@ -129,4 +129,39 @@ r = json.load(urllib.request.urlopen(urllib.request.Request(sys.argv[1], headers
 assert r["x-user-id"] == "ana@acme.example" and not r["authorization"], r' "$G:8084/api/sessions" "$TOKEN" \
   || die "the controller did not see the token's user, or saw the token"
 echo "ok: the controller sees the token's sub as X-User-Id and no token"
+
+# D528: the Agent admission policy, by server-side dry run (nothing is created).
+agent() { # agent <name> [deployment block, indented 6] [byo]
+  local kind=${3:-declarative}
+  printf 'apiVersion: kagent.dev/v1alpha2\nkind: Agent\nmetadata: {name: %s, namespace: %s}\nspec:\n' "$1" "$NS"
+  if [[ $kind == byo ]]; then printf '  type: BYO\n  byo:\n    deployment:\n      image: example.com/agent:1\n'
+  else printf '  type: Declarative\n  description: e2e-test\n  declarative:\n    modelConfig: default-model-config\n    systemMessage: hi\n'
+    [[ -n ${2:-} ]] && printf '    deployment:\n'; fi
+  [[ -n ${2:-} ]] && printf '%s\n' "$2"
+  return 0
+}
+admit() { # admit <allowed|denied> <why> <yaml>
+  local out got
+  if out=$(printf '%s' "$3" | k apply --dry-run=server -f - 2>&1); then got=allowed; else got=denied; fi
+  [[ $got == "$1" ]] || die "$2: $got, want $1 ($out)"
+  [[ $got == allowed ]] || grep -q 'ValidatingAdmissionPolicy' <<<"$out" || die "$2: refused, but not by the policy ($out)"
+  checks=$((checks + 1)); echo "ok: agent guard: $2 ($got)"
+}
+for _ in $(seq 1 30); do
+  printf '%s' "$(agent kagent-probe)" | k apply --dry-run=server -f - 2>&1 | grep -q ValidatingAdmissionPolicy && break; sleep 2
+done
+admit allowed "a plain Agent" "$(agent e2e-test-ok)"
+admit allowed "its own labels and the agents' ServiceAccount" "$(agent e2e-test-ok '      labels: {team: payments}
+      serviceAccountName: kagent-agent')"
+admit denied "named like the gate (review H1)" "$(agent skanyxx-kagent-gate)"
+admit denied "named like kagent's controller" "$(agent kagent-controller)"
+admit denied "named like Skanyxx" "$(agent skanyxx)"
+admit denied "wearing the gate's pod label" "$(agent e2e-test-x '      labels: {app.kubernetes.io/name: skanyxx-kagent-gate}')"
+admit denied "wearing Skanyxx's pod label" "$(agent e2e-test-x '      labels: {app.kubernetes.io/name: skanyxx, app.kubernetes.io/instance: skanyxx}')"
+admit denied "claiming another agent's peer label" "$(agent e2e-test-x '      labels: {kagent: agent-a}')"
+admit denied "running as kagent's controller ServiceAccount" "$(agent e2e-test-x '      serviceAccountName: kagent-controller')"
+admit denied "mounting the gate's key" "$(agent e2e-test-x '      volumes: [{name: k, secret: {secretName: skanyxx-kagent-gate}}]')"
+admit denied "reading Skanyxx's database Secret" "$(agent e2e-test-x '      env: [{name: DB, valueFrom: {secretKeyRef: {name: skanyxx-skanyxx-db, key: x}}}]')"
+admit denied "envFrom the bootstrap Secret" "$(agent e2e-test-x '      envFrom: [{secretRef: {name: skanyxx}}]')"
+admit denied "a BYO agent wearing the gate's label" "$(agent e2e-test-x '      labels: {app.kubernetes.io/name: skanyxx-kagent-gate}' byo)"
 echo "ok: kagent gate on kind ($CLUSTER, $(kubectl version -o json | python3 -c 'import json,sys; print(json.load(sys.stdin)["serverVersion"]["gitVersion"])')), $((checks + 1)) checks"
