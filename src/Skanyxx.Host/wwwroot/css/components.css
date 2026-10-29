@@ -675,3 +675,27 @@ fieldset.field > legend { padding: 0; margin-bottom: var(--space-1); }
 .w-narrow { max-width: 320px; }
 /* A list's loading, empty or error state fills the whole grid it stands in for. */
 :is(.card-grid, .tile-grid, .stat-grid) > :is(.empty-state, .error-state, .skeleton-rows) { grid-column: 1 / -1; }
+
+/* ---------- Studio delivery (D360–D365): template gallery, change timeline, locked paid tools ---------- */
+.timeline { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-2); }
+.timeline-step {
+  display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; overflow-wrap: anywhere;
+  padding: var(--space-2); border-radius: var(--radius-sm); background: var(--surface-2); border-top: 3px solid var(--border);
+  font-size: var(--text-xs); color: var(--text-2);
+}
+.timeline-step strong { color: var(--text); font-size: var(--text-sm); }
+.timeline-state { font-weight: var(--weight-semibold); }
+.timeline-step[data-state="done"] { border-top-color: var(--success); }
+.timeline-step[data-state="done"] .timeline-state { color: var(--success); }
+.timeline-step[data-state="active"] { border-top-color: var(--accent-solid); }
+.timeline-step[data-state="failed"] { border-top-color: var(--danger); background: var(--danger-tint); }
+.timeline-step[data-state="failed"] .timeline-state { color: var(--danger); }
+.timeline-step:is([data-state="waiting"], [data-state="skipped"]) { color: var(--text-3); }
+@media (max-width: 640px) { .timeline { grid-template-columns: minmax(0, 1fr); } }
+.change { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+.change:last-child { border-bottom: 0; }
+.change-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); align-items: baseline; }
+.check-runs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-1); font-size: var(--text-sm); }
+.is-locked { opacity: 0.7; }
+.lock-note { color: var(--text-2); font-size: var(--text-sm); }
+.yaml-preview { max-height: 360px; overflow: auto; }

@@ -23,6 +23,10 @@ public sealed class StudioModel(IMediator mediator) : PageModel
     [BindProperty(SupportsGet = true)]
     public string? Edit { get; set; }
 
+    /// <summary>A gallery template the form starts from (D360).</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? Template { get; set; }
+
     [BindProperty] public string? Name { get; set; }
     [BindProperty] public string? Description { get; set; }
     [BindProperty] public string? ModelConfig { get; set; }
@@ -45,10 +49,21 @@ public sealed class StudioModel(IMediator mediator) : PageModel
     public StudioOverview? Overview { get; private set; }
     public StudioFormOptions? Options { get; private set; }
     public ProposalDetail? Detail { get; private set; }
+    public IReadOnlyList<StudioTemplate> Templates { get; private set; } = [];
+    public IReadOnlyList<StudioChange> Changes { get; private set; } = [];
     public StudioUser Me => StudioUser.From(User);
 
+    /// <summary>Builders propose; supervisors and the owner may also apply at once (D366).</summary>
+    public bool CanCompose => Me.CanPropose || Me.CanMerge;
+
     [TempData] public string? Message { get; set; }
+
+    /// <summary>Said once on this render only (not kept for the next request, unlike <see cref="Message"/>).</summary>
+    public string? Notice { get; private set; }
     public string? Error { get; private set; }
+
+    /// <summary>Every reason the form was refused, one per line, in plain words (D361).</summary>
+    public IReadOnlyList<string> Problems { get; private set; } = [];
 
     public async Task OnGetAsync(CancellationToken ct)
     {
@@ -59,7 +74,40 @@ public sealed class StudioModel(IMediator mediator) : PageModel
             else
                 Fail(edit);
         }
+        else if (!string.IsNullOrEmpty(Template))
+        {
+            await LoadTemplatesAsync(ct);
+            switch (Templates.FirstOrDefault(t => t.Id == Template))
+            {
+                case null:
+                    Fail("No such template.", StatusCodes.Status404NotFound);
+                    break;
+                case { Locked: true } locked:
+                    Fail($"{locked.Title} uses cloud tools, a paid feature that is not turned on. The owner turns it on with Skanyxx:Licence:CloudTools.",
+                        StatusCodes.Status403Forbidden);
+                    break;
+                case { } template:
+                    Fill(template.Draft);
+                    Notice = $"Started from the template \"{template.Title}\". Rename it, check each part, then save.";
+                    break;
+            }
+        }
         await LoadAsync(ct);
+    }
+
+    /// <summary>Supervisor or owner: one pull request, opened and merged now (D366).</summary>
+    public async Task<IActionResult> OnPostApplyAsync(CancellationToken ct)
+    {
+        var outcome = await Validated(() => mediator.Send(new ApplyAgentCommand(Me, Draft().Normalized()), ct));
+        if (outcome is { Value: { } result } && outcome.Status is OutcomeStatus.Ok or OutcomeStatus.Accepted or OutcomeStatus.Created)
+        {
+            Message = result.Message;
+            return outcome.Status == OutcomeStatus.Created ? RedirectToPage(null, new { pr = result.Number }) : RedirectToPage(null, new { pr = (int?)null });
+        }
+        if (outcome is not null)
+            Fail(outcome);
+        await LoadAsync(ct);
+        return Page();
     }
 
     public async Task<IActionResult> OnPostProposeAsync(CancellationToken ct)
@@ -77,6 +125,9 @@ public sealed class StudioModel(IMediator mediator) : PageModel
     }
 
     public Task<IActionResult> OnPostMergeAsync(CancellationToken ct) => ActAsync(() => mediator.Send(new MergeProposalCommand(Me, Pr ?? 0), ct), ct);
+
+    /// <summary>Owner: the CI workflow into the agent repo (D362).</summary>
+    public Task<IActionResult> OnPostInstallCiAsync(CancellationToken ct) => ActAsync(() => mediator.Send(new InstallCiCommand(Me), ct), ct);
 
     public Task<IActionResult> OnPostCloseAsync(CancellationToken ct) => ActAsync(() => mediator.Send(new CloseProposalCommand(Me, Pr ?? 0), ct), ct);
 
@@ -112,6 +163,9 @@ public sealed class StudioModel(IMediator mediator) : PageModel
 
     public bool Ticked(List<string> list, string value) => list.Contains(value);
 
+    /// <summary>A paid cloud tool server while the licence is off: shown, never selectable (D364).</summary>
+    public bool Locked(string server) => Options is { CloudToolsLicensed: false } o && o.PaidServers.Contains(server);
+
     /// <summary>Merge and close end the proposal: success goes back to the list (post/redirect/get).</summary>
     private async Task<IActionResult> ActAsync(Func<Task<Outcome<StudioResult>>> send, CancellationToken ct)
     {
@@ -127,8 +181,15 @@ public sealed class StudioModel(IMediator mediator) : PageModel
         return Page();
     }
 
+    private async Task LoadTemplatesAsync(CancellationToken ct)
+    {
+        if (Templates.Count == 0 && (await mediator.Send(new StudioTemplatesQuery(Me), ct)).Value is { } templates)
+            Templates = templates;
+    }
+
     private async Task LoadAsync(CancellationToken ct)
     {
+        await LoadTemplatesAsync(ct);
         var overview = await mediator.Send(new StudioOverviewQuery(Me), ct);
         Overview = overview.Value;
         if (Overview is null)
@@ -139,6 +200,13 @@ public sealed class StudioModel(IMediator mediator) : PageModel
             Options = options.Value;
             if (Options is null)
                 Fail(options);
+        }
+        if (Overview is { RepoProblem: null })
+        {
+            var changes = await mediator.Send(new StudioChangesQuery(Me), ct);
+            Changes = changes.Value ?? [];
+            if (changes.Value is null)
+                Fail(changes);
         }
         if (Pr is > 0 && Overview is { RepoProblem: null })
         {
@@ -191,7 +259,8 @@ public sealed class StudioModel(IMediator mediator) : PageModel
         }
         catch (ValidationException ex)
         {
-            Fail(string.Join(" ", ex.Errors.Select(e => e.ErrorMessage).Distinct()), StatusCodes.Status400BadRequest);
+            Problems = [.. ex.Errors.Select(e => e.ErrorMessage).Distinct()];
+            Fail("The form needs a few changes before it can be saved.", StatusCodes.Status400BadRequest);
             return default;
         }
     }

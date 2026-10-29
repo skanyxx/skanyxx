@@ -74,6 +74,19 @@ public sealed class FakeGitea : IAsyncDisposable
 
     public bool Down { get; set; }
 
+    /// <summary>Commit id → the statuses CI reported on it, newest first (Gitea's combined status, D362).</summary>
+    public ConcurrentDictionary<string, List<JsonObject>> Statuses { get; } = new();
+
+    /// <summary>CI reports on a commit, as Gitea Actions would.</summary>
+    public void Report(string sha, string context, string status, string? url = null) =>
+        Statuses.AddOrUpdate(sha, _ => [Status(context, status, url)], (_, list) => { list.Insert(0, Status(context, status, url)); return list; });
+
+    /// <summary>The head commit of a pull request (kept after its branch is deleted on merge).</summary>
+    public string HeadOf(int number, string repo = "skanyxx/skanyxx-agents") => Heads[$"{repo}:{Pulls.First(p => p.Number == number).Head}"];
+
+    private static JsonObject Status(string context, string status, string? url) =>
+        new() { ["context"] = context, ["status"] = status, ["description"] = $"{context} {status}", ["target_url"] = url };
+
     public bool MoveHeadOnMerge { get; set; }
 
     public int Port => new Uri(_app.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.First()).Port;
@@ -256,9 +269,15 @@ public sealed class FakeGitea : IAsyncDisposable
                 return Results.Json(PullJson($"{owner}/{repo}", pull), statusCode: 201);
             }
         });
-        app.MapGet("/api/v1/repos/{owner}/{repo}/pulls", (string owner, string repo, int? page, int? limit) =>
-            Results.Json(new JsonArray([.. Pulls.Where(p => p.Open).Skip(((page ?? 1) - 1) * (limit ?? 50)).Take(limit ?? 50)
+        app.MapGet("/api/v1/repos/{owner}/{repo}/pulls", (string owner, string repo, int? page, int? limit, string? state) =>
+            Results.Json(new JsonArray([.. (state == "closed" ? Pulls.Where(p => !p.Open).OrderByDescending(p => p.Number) : Pulls.Where(p => p.Open).AsEnumerable())
+                .Skip(((page ?? 1) - 1) * (limit ?? 50)).Take(limit ?? 50)
                 .Select(p => (JsonNode)PullJson($"{owner}/{repo}", p))])));
+        app.MapGet("/api/v1/repos/{owner}/{repo}/commits/{sha}/status", (string sha) =>
+        {
+            var list = Statuses.TryGetValue(sha, out var s) ? s.Select(x => (JsonNode)x.DeepClone()).ToList() : [];
+            return Results.Json(new JsonObject { ["sha"] = sha, ["state"] = list.Count == 0 ? "" : "pending", ["total_count"] = list.Count, ["statuses"] = new JsonArray([.. list]) });
+        });
         app.MapGet("/api/v1/repos/{owner}/{repo}/pulls/{number:int}", (string owner, string repo, int number) =>
             Pulls.FirstOrDefault(p => p.Number == number) is { } pull ? Results.Json(PullJson($"{owner}/{repo}", pull)) : NotFound());
         app.MapGet("/api/v1/repos/{owner}/{repo}/pulls/{number:int}/files", (string owner, string repo, int number) =>
@@ -339,6 +358,7 @@ public sealed class FakeGitea : IAsyncDisposable
         ["state"] = pull.Open ? "open" : "closed",
         ["merged"] = pull.Merged,
         ["mergeable"] = pull.Open,
+        ["html_url"] = $"{BaseUrl}/{repo}/pulls/{pull.Number}",
         ["base"] = new JsonObject { ["ref"] = pull.Base },
         ["head"] = new JsonObject { ["ref"] = pull.Head, ["sha"] = Heads.GetValueOrDefault($"{repo}:{pull.Head}") ?? "" }
     };

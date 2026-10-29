@@ -33,9 +33,16 @@ internal sealed class ProposalQueryHandler(
                     .Where(a => a.Namespace == options.Value.Namespace && a.Name == name && a.Labels.GetValueOrDefault(StudioNames.PreviewLabel) == pull.Number.ToString())
                     .Select(a => new PreviewAgent(a.Namespace, a.Name, a.Ready)).FirstOrDefault();
             }
+            var checks = await repo.ChecksAsync(pull.HeadSha, ct);
             return Outcome<ProposalDetail>.Ok(new ProposalDetail(
                 new ProposalSummary(pull.Number, pull.Title, inspected.Agent, ProposalTrailer.ProposedBy(pull.Body), pull.HeadSha, pull.Mergeable, inspected.Plugin),
-                inspected.Files, inspected.Problems, inspected.NeedsOwner, preview) { Notes = inspected.Notes });
+                inspected.Files, inspected.Problems, inspected.NeedsOwner, preview)
+            {
+                Notes = inspected.Notes,
+                Url = pull.Url,
+                Checks = checks,
+                Steps = ChangeTimeline.Build(ChangeStatus.Open, checks, null, options.Value.RequireChecks)
+            });
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {

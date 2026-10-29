@@ -14,7 +14,8 @@ namespace Skanyxx.Module.Agents.Studio.Features;
 /// and every plugin server merged in main (P7) — and the scopes.
 /// </summary>
 internal sealed class StudioFormOptionsHandler(
-    KAgentApiClient kagent, StudioReconciler reconciler, IMediator mediator, IOptions<StudioOptions> options, ILogger<StudioFormOptionsHandler> logger)
+    KAgentApiClient kagent, StudioReconciler reconciler, IMediator mediator, IOptions<StudioOptions> options, IOptions<LicenceOptions> licence,
+    ILogger<StudioFormOptionsHandler> logger)
     : IRequestHandler<StudioFormOptionsQuery, Outcome<StudioFormOptions>>
 {
     public async Task<Outcome<StudioFormOptions>> Handle(StudioFormOptionsQuery query, CancellationToken ct)
@@ -40,7 +41,11 @@ internal sealed class StudioFormOptionsHandler(
         var teams = (await mediator.Send(new ListTeamsQuery(), ct)).Value ?? [];
         var departments = (await mediator.Send(new ListDepartmentsQuery(), ct)).Value ?? [];
         return Outcome<StudioFormOptions>.Ok(new StudioFormOptions(models, servers,
-            ["company", .. teams.Select(t => $"team:{t.Slug}"), .. departments.Select(d => $"department:{d.Slug}")]));
+            ["company", .. teams.Select(t => $"team:{t.Slug}"), .. departments.Select(d => $"department:{d.Slug}")])
+        {
+            PaidServers = [.. servers.Select(s => s.Server).Where(s => Definition.CloudToolRules.IsPaid(s, options.Value))],
+            CloudToolsLicensed = licence.Value.CloudTools
+        });
     }
 
     /// <summary>The repo guard's refusal is the studio page's to show; the form then offers the allow-list alone.</summary>

@@ -1,3 +1,5 @@
+using Skanyxx.Core.Platform.Studio;
+
 namespace Skanyxx.Module.Agents.Studio.Git;
 
 /// <summary>
@@ -54,6 +56,12 @@ internal interface IAgentRepo
 
     /// <summary>Merges only if the branch is still at <paramref name="headSha"/> (what was validated).</summary>
     Task<MergeOutcome> MergeAsync(int number, string headSha, string title, string message, CancellationToken ct);
+
+    /// <summary>The most recently updated closed pull requests (merged or not), newest first, at most <paramref name="limit"/> (D365).</summary>
+    Task<IReadOnlyList<RepoPull>> RecentClosedPullsAsync(int limit, CancellationToken ct);
+
+    /// <summary>The CI checks git holds for a commit (its combined commit status, D362); none when no CI reported.</summary>
+    Task<ChangeChecks> ChecksAsync(string sha, CancellationToken ct);
 
     /// <summary>Closes without merging and deletes its branch.</summary>
     Task CloseAsync(RepoPull pull, CancellationToken ct);

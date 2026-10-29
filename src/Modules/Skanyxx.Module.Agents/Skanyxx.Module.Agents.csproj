@@ -15,6 +15,8 @@
   <!-- The built-in plugin catalog (a Claude Code marketplace), read by CatalogPluginSource. -->
   <ItemGroup>
     <EmbeddedResource Include="Plugins/Catalog/**/*" LogicalName="catalog/%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- The agent repo's CI workflow (D362): one file, shown on /Studio and committed for operators. -->
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)../../../docs/templates/agents-repo/validate-agents.yaml" LogicalName="studio/validate-agents.yaml" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Skanyxx.Host.Tests" />

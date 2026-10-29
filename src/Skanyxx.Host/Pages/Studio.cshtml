@@ -1,22 +1,41 @@
 @page
 @model StudioModel
+@using Skanyxx.Core.Platform.Studio
 @{
     ViewData["Title"] = "Studio";
     var me = Model.Me;
 }
-<page-header description="Propose agents for review. Nothing is live until a supervisor merges it; Skanyxx then applies it to kagent.">
-    @if (me.CanPropose && Model.Overview is { RepoProblem: null } && Model.Options is not null)
+<page-header description="Start from a template, fill in a short form, and save. Builders open a pull request for review; supervisors and the owner can apply directly. Every change shows its checks and deployment.">
+    @if (Model.CanCompose && Model.Overview is { RepoProblem: null } && Model.Options is not null)
     {
         <a class="btn btn-primary" href="#compose"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>Compose an agent</a>
     }
 </page-header>
 @if (Model.Error is not null)
 {
-    <alert tone="error">@Model.Error</alert>
+    <alert tone="error" title="@(Model.Problems.Count > 0 ? Model.Error : null)">
+        @if (Model.Problems.Count > 0)
+        {
+            <ul data-problems>
+                @foreach (var problem in Model.Problems)
+                {
+                    <li>@problem</li>
+                }
+            </ul>
+        }
+        else
+        {
+            @Model.Error
+        }
+    </alert>
 }
 @if (Model.Message is not null)
 {
     <alert tone="success">@Model.Message</alert>
+}
+@if (Model.Notice is not null)
+{
+    <alert tone="info">@Model.Notice</alert>
 }
 @if (Model.Overview?.RepoProblem is { } problem)
 {
@@ -54,7 +73,36 @@
             <dl class="kv">
                 <dt>Agent</dt><dd><code>@s.Agent</code></dd>
                 <dt>Version</dt><dd><code>@s.HeadSha[..Math.Min(12, s.HeadSha.Length)]</code></dd>
+                @if (detail.Url.Length > 0)
+                {
+                    <dt>Pull request</dt><dd><a href="@detail.Url" target="_blank" rel="noopener noreferrer" data-pr-link>Open #@s.Number in git</a></dd>
+                }
+                <dt>Checks</dt>
+                <dd>
+                    <status-badge status="@CheckWord(detail.Checks.State)" label="@CheckLabel(detail.Checks.State)" />
+                    @if (detail.Checks.Runs.Count > 0)
+                    {
+                        <ul class="check-runs mt-1" data-checks>
+                            @foreach (var run in detail.Checks.Runs)
+                            {
+                                <li>
+                                    <status-badge status="@CheckWord(run.State)" label="@CheckLabel(run.State)" />
+                                    @if (run.Url is not null)
+                                    {
+                                        <a href="@run.Url" target="_blank" rel="noopener noreferrer">@run.Name</a>
+                                    }
+                                    else
+                                    {
+                                        @run.Name
+                                    }
+                                    <span class="text-muted">@run.Description</span>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </dd>
             </dl>
+            <partial name="_ChangeTimeline" model="detail.Steps" />
             @if (detail.Problems.Count > 0)
             {
                 <alert tone="error" title="Cannot be merged">@string.Join(" ", detail.Problems)</alert>
@@ -150,6 +198,56 @@
         </div>
     </section>
 
+    <section class="section" aria-labelledby="changes-title">
+        <div class="section-header">
+            <div>
+                <h2 class="section-title" id="changes-title">Changes and deployments</h2>
+                <p class="section-description">Each change: draft, pull request, checks, merge, deployment to kagent.</p>
+            </div>
+        </div>
+        <div class="card card-flush" data-changes>
+            @if (Model.Changes.Count == 0)
+            {
+                <empty-state icon="i-inbox" title="No changes yet" compact="true">
+                    <p>Changes appear here once a form is saved.</p>
+                </empty-state>
+            }
+            @foreach (var c in Model.Changes)
+            {
+                <article class="change" data-change="@c.Number" aria-labelledby="change-@c.Number">
+                    <div class="change-head">
+                        <div>
+                            <h3 class="tile-title" id="change-@c.Number">
+                                @if (c.Status == ChangeStatus.Open)
+                                {
+                                    <a asp-page="/Studio" asp-route-pr="@c.Number" asp-fragment="proposal">#@c.Number @c.Title</a>
+                                }
+                                else
+                                {
+                                    <span>#@c.Number @c.Title</span>
+                                }
+                            </h3>
+                            <p class="tile-sub">@(c.Agent is null ? "" : c.Agent) · proposed by @(c.ProposedBy == me.UserId ? "you" : c.ProposedBy ?? "someone in git")</p>
+                        </div>
+                        <span class="badges">
+                            <status-badge status="@(c.Status == ChangeStatus.Open ? "pending" : c.Status == ChangeStatus.Merged ? "merged" : "neutral")" label="@c.Status.ToString().ToLowerInvariant()" />
+                            <status-badge status="@CheckWord(c.Checks.State)" label="@("checks: " + CheckLabel(c.Checks.State))" />
+                            @if (c.Deploy is { } d)
+                            {
+                                <status-badge status="@DeployWord(d.State)" label="@DeployLabel(d)" />
+                            }
+                            @if (c.Url.Length > 0)
+                            {
+                                <a class="btn btn-secondary btn-sm" href="@c.Url" target="_blank" rel="noopener noreferrer" data-pr-link>Pull request</a>
+                            }
+                        </span>
+                    </div>
+                    <partial name="_ChangeTimeline" model="c.Steps" />
+                </article>
+            }
+        </div>
+    </section>
+
     <section class="section" aria-labelledby="main-title">
         <div class="section-header"><h2 class="section-title" id="main-title">Agents in the repository</h2></div>
         <div class="card card-flush">
@@ -172,9 +270,9 @@
                                     <td>@a.Description</td>
                                     <td><status-badge status="@(a.Live ? "live" : "pending")" label="@(a.Live ? "live (merged)" : "not yet applied")" /></td>
                                     <td>
-                                        @if (me.CanPropose)
+                                        @if (Model.CanCompose)
                                         {
-                                            <div class="row-actions"><a class="btn btn-secondary btn-sm" asp-page="/Studio" asp-route-edit="@a.Name" asp-fragment="compose">Propose a change</a></div>
+                                            <div class="row-actions"><a class="btn btn-secondary btn-sm" asp-page="/Studio" asp-route-edit="@a.Name" asp-fragment="compose">@(me.CanMerge ? "Change" : "Propose a change")</a></div>
                                         }
                                     </td>
                                 </tr>
@@ -186,26 +284,68 @@
         </div>
     </section>
 
-    @if (me.CanPropose && Model.Options is { } options)
+    @if (Model.CanCompose && Model.Options is { } options)
     {
-        <section class="section" aria-labelledby="factory-title">
+        <section class="section" aria-labelledby="templates-title">
             <div class="section-header">
                 <div>
-                    <h2 class="section-title" id="factory-title">Describe an agent</h2>
-                    <p class="section-description">The factory drafts the form below from your words. It creates nothing.</p>
+                    <h2 class="section-title" id="templates-title">Start from a template</h2>
+                    <p class="section-description">Pick the role closest to what you need; the form below is filled in for you to adjust. No YAML needed.</p>
                 </div>
             </div>
-            <form method="post" asp-page-handler="Factory" class="toolbar" data-once>
-                <input name="FactoryRequest" maxlength="4000" placeholder="e.g. a refund helper that answers from company memory" autocomplete="off" aria-label="Describe the agent" class="flex-1" />
-                <button type="submit" class="btn btn-secondary">Draft</button>
-            </form>
+            <div class="card-grid" data-templates>
+                @foreach (var t in Model.Templates)
+                {
+                    <article class="card tile@(t.Locked ? " is-locked" : "")" data-template="@t.Id" aria-labelledby="template-@t.Id">
+                        <div class="tile-head">
+                            <div>
+                                <h3 class="tile-title" id="template-@t.Id">@t.Title</h3>
+                                <p class="tile-sub">@t.Role</p>
+                            </div>
+                            @if (t.CloudTools)
+                            {
+                                <status-badge tone="warning" label="@(t.Locked ? "Paid · locked" : "Paid · cloud tools")" />
+                            }
+                        </div>
+                        <p class="text-secondary text-sm">@t.Summary</p>
+                        <div class="tile-actions">
+                            @if (t.Locked)
+                            {
+                                <p class="lock-note" data-locked>Cloud tools are a paid feature. The owner turns them on (Skanyxx:Licence:CloudTools).</p>
+                            }
+                            else
+                            {
+                                <a class="btn btn-secondary btn-sm" asp-page="/Studio" asp-route-template="@t.Id" asp-fragment="compose">Use this template</a>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
         </section>
+
+        @if (me.CanPropose)
+        {
+            <section class="section" aria-labelledby="factory-title">
+                <div class="section-header">
+                    <div>
+                        <h2 class="section-title" id="factory-title">Describe an agent</h2>
+                        <p class="section-description">The factory drafts the form below from your words. It creates nothing.</p>
+                    </div>
+                </div>
+                <form method="post" asp-page-handler="Factory" class="toolbar" data-once>
+                    <input name="FactoryRequest" maxlength="4000" placeholder="e.g. a refund helper that answers from company memory" autocomplete="off" aria-label="Describe the agent" class="flex-1" />
+                    <button type="submit" class="btn btn-secondary">Draft</button>
+                </form>
+            </section>
+        }
 
         <section class="section" aria-labelledby="compose-title">
             <form method="post" asp-page-handler="Propose" class="form" id="compose" data-once>
                 <div>
                     <h2 class="section-title" id="compose-title">@(string.IsNullOrEmpty(Model.Edit) ? "Compose an agent" : $"Change {Model.Edit}")</h2>
-                    <p class="section-description">Saving opens a pull request; a supervisor reviews and merges it.</p>
+                    <p class="section-description">@(me.CanMerge
+                        ? "Apply now opens a pull request and merges it at once (you may merge). Propose leaves it for review."
+                        : "Saving opens a pull request; a supervisor reviews and merges it.")</p>
                 </div>
                 <div class="field">
                     <label asp-for="Name">Name</label>
@@ -239,13 +379,23 @@
                     }
                     @foreach (var server in options.McpServers)
                     {
-                        <div class="subcard">
+                        var paid = options.PaidServers.Contains(server.Server);
+                        var locked = Model.Locked(server.Server);
+                        <div class="subcard@(locked ? " is-locked" : "")" data-server="@server.Server">
                             <code>@server.Server</code>
+                            @if (paid)
+                            {
+                                <status-badge tone="warning" label="@(locked ? "Paid · locked" : "Paid · cloud tools")" />
+                            }
+                            @if (locked)
+                            {
+                                <p class="lock-note" data-locked>Calls a cloud provider's API. Cloud tools are a paid feature that is not turned on; the owner turns it on with Skanyxx:Licence:CloudTools.</p>
+                            }
                             <div class="checks">
                                 @foreach (var tool in server.Tools)
                                 {
                                     var value = $"{server.Server}/{tool}";
-                                    <label class="check"><input type="checkbox" name="Tools" value="@value" checked="@Model.Ticked(Model.Tools, value)" /> @tool</label>
+                                    <label class="check"><input type="checkbox" name="Tools" value="@value" checked="@Model.Ticked(Model.Tools, value)" disabled="@locked" /> @tool</label>
                                 }
                             </div>
                         </div>
@@ -285,11 +435,146 @@
                         </div>
                     </div>
                 </details>
-                <div class="form-actions"><button type="submit" class="btn btn-primary">Propose (opens a pull request)</button></div>
+                <details class="details-admin" id="yamlPreview">
+                    <summary>Show the YAML (optional)</summary>
+                    <p class="field-hint">What saving puts in git, checked with the same rules. You never need to edit it.</p>
+                    <button type="button" class="btn btn-secondary btn-sm" id="yamlRefresh">Check and show YAML</button>
+                    <div id="yamlProblems" aria-live="polite"></div>
+                    <pre class="text-block mt-1 yaml-preview" id="yamlAgent" hidden></pre>
+                    <pre class="text-block mt-1 yaml-preview" id="yamlGrants" hidden></pre>
+                </details>
+                <div class="form-actions">
+                    @if (me.CanMerge)
+                    {
+                        <button type="submit" class="btn btn-primary" asp-page-handler="Apply" data-apply>Apply now (merge directly)</button>
+                    }
+                    @if (me.CanPropose)
+                    {
+                        <button type="submit" class="btn @(me.CanMerge ? "btn-secondary" : "btn-primary")" data-propose>Propose (opens a pull request)</button>
+                    }
+                </div>
             </form>
         </section>
     }
 }
+
+<section class="section" aria-labelledby="ci-title">
+    <details class="details-admin" id="ciTemplate">
+        <summary id="ci-title">CI for the agent repo: the workflow file</summary>
+        <p class="field-hint">Commit it as <code>.gitea/workflows/validate-agents.yaml</code> (or <code>.github/workflows/</code>). It checks each agent folder with the rules a merge applies; its result shows as "Checks" on every change. The setup guide above has the steps (CI token, Argo CD, licence).</p>
+        @if (me.IsOwner && Model.Overview is { RepoProblem: null })
+        {
+            <form method="post" asp-page-handler="InstallCi" class="mt-1" data-once
+                  data-confirm="Skanyxx opens one pull request with only this workflow file and merges it into the agent repo." data-confirm-title="Add CI to the agent repo?" data-confirm-action="Add">
+                <button type="submit" class="btn btn-secondary btn-sm" data-install-ci>Add CI to the agent repo</button>
+            </form>
+        }
+        <div class="setup-command"><code id="ciTemplateText" data-ci-template>Loading…</code><copy-button target="#ciTemplateText" label="Copy" /></div>
+    </details>
+</section>
+
+@functions {
+    private static string CheckWord(CheckState state) => state switch
+    {
+        CheckState.Passed => "succeeded",
+        CheckState.Failed => "failed",
+        CheckState.Pending => "pending",
+        _ => "neutral"
+    };
+
+    private static string CheckLabel(CheckState state) => state switch
+    {
+        CheckState.Passed => "passed",
+        CheckState.Failed => "failed",
+        CheckState.Pending => "running",
+        _ => "no CI"
+    };
+
+    private static string DeployWord(DeployState state) => state switch
+    {
+        DeployState.Healthy => "healthy",
+        DeployState.Failed => "failed",
+        DeployState.Suspended => "suspended",
+        DeployState.Unknown => "unknown",
+        _ => "pending"
+    };
+
+    private static string DeployLabel(DeployStatus d) => d.State switch
+    {
+        DeployState.Healthy => $"deployed · {d.Source}",
+        DeployState.Syncing => $"syncing · {d.Source}",
+        DeployState.Waiting => $"waiting · {d.Source}",
+        DeployState.Failed => $"deploy failed · {d.Source}",
+        DeployState.Suspended => "suspended",
+        _ => $"deploy unknown · {d.Source}"
+    };
+}
+
+<script>
+    (() => {
+        const ci = document.getElementById('ciTemplate');
+        ci?.addEventListener('toggle', async () => {
+            const target = document.getElementById('ciTemplateText');
+            if (!ci.open || target.dataset.loaded) return;
+            try {
+                const response = await fetch('/api/studio/ci-template', { headers: { Accept: 'text/yaml' } });
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                target.textContent = await response.text();
+                target.dataset.loaded = '1';
+            } catch (error) {
+                target.textContent = `The workflow could not be loaded (${error.message}).`;
+            }
+        });
+
+        const compose = document.getElementById('compose');
+        const refresh = document.getElementById('yamlRefresh');
+        refresh?.addEventListener('click', async () => {
+            const data = new FormData(compose);
+            const tools = {};
+            for (const value of data.getAll('Tools')) {
+                const [server, tool] = value.split('/', 2);
+                (tools[server] ??= []).push(tool);
+            }
+            const search = data.getAll('Search'), upsert = data.getAll('Upsert');
+            const scopes = [...new Set([...search, ...upsert])];
+            const ttl = parseInt(data.get('TtlDays'), 10);
+            const draft = {
+                name: data.get('Name') ?? '', description: data.get('Description') ?? '', modelConfig: data.get('ModelConfig') ?? '',
+                instructions: data.get('Instructions') ?? '', skills: (data.get('Skills') ?? '').split('\n'),
+                mcpTools: Object.entries(tools).map(([server, list]) => ({ server, tools: list })),
+                grants: scopes.map(scope => ({ scope, search: search.includes(scope), upsert: upsert.includes(scope) })),
+                memoryTtlDays: Number.isNaN(ttl) ? null : ttl
+            };
+            const problems = document.getElementById('yamlProblems');
+            problems.replaceChildren();
+            try {
+                const preview = await skx.busy(refresh, skx.api('POST', '/api/studio/manifest', draft));
+                for (const [id, text] of [['yamlAgent', preview.agentYaml], ['yamlGrants', preview.grantsYaml]]) {
+                    const pre = document.getElementById(id);
+                    pre.textContent = text;
+                    pre.hidden = false;
+                }
+                const box = document.createElement('div');
+                box.className = `alert alert-${preview.problems.length ? 'error' : 'success'} mt-1`;
+                box.setAttribute('role', 'status');
+                if (preview.problems.length) {
+                    const list = document.createElement('ul');
+                    for (const problem of preview.problems) {
+                        const li = document.createElement('li');
+                        li.textContent = problem;
+                        list.appendChild(li);
+                    }
+                    box.append('Fix these before saving:', list);
+                } else {
+                    box.textContent = 'Looks good: this can be saved.';
+                }
+                problems.appendChild(box);
+            } catch (error) {
+                skx.toast(error.message, { tone: 'error' });
+            }
+        });
+    })();
+</script>
 
 <script>
     (() => {

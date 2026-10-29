@@ -9,14 +9,14 @@ using Skanyxx.Module.Agents.Studio.Reconcile;
 
 namespace Skanyxx.Module.Agents.Studio.Features;
 
-/// <summary>An agent in main as the form to edit it; a plugin's agent is edited through its plugin (D222).</summary>
+/// <summary>An agent in main as the form to edit it (builders propose, supervisors also apply, D366); a plugin's agent is edited through its plugin (D222).</summary>
 internal sealed class EditDraftHandler(
     IAgentRepo repo, StudioReconciler reconciler, PluginRepoReader plugins, IOptions<StudioOptions> options, ILogger<EditDraftHandler> logger)
     : IRequestHandler<EditDraftQuery, Outcome<AgentDraft>>
 {
     public async Task<Outcome<AgentDraft>> Handle(EditDraftQuery query, CancellationToken ct)
     {
-        if (!query.User.CanPropose && !query.FromAgentsPage)
+        if (!query.User.CanPropose && !query.User.CanMerge && !query.FromAgentsPage)
             return Outcome<AgentDraft>.Forbidden(StudioFailure.NotBuilder);
         if (!options.Value.Configured)
             return StudioFailure.Conflict<AgentDraft>(StudioFailure.NotConfigured);

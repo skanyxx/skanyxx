@@ -10,4 +10,13 @@ public sealed record ProposalDetail(
 {
     /// <summary>What the reviewer should know that does not stop the merge (e.g. a server whose stored values stay with its old host).</summary>
     public IReadOnlyList<string> Notes { get; init; } = [];
+
+    /// <summary>The pull request in git (D365).</summary>
+    public string Url { get; init; } = "";
+
+    /// <summary>CI checks of the head commit (D362).</summary>
+    public ChangeChecks Checks { get; init; } = ChangeChecks.None;
+
+    /// <summary>Draft → pull request → checks → merged → deployed (D365).</summary>
+    public IReadOnlyList<ChangeStep> Steps { get; init; } = [];
 }

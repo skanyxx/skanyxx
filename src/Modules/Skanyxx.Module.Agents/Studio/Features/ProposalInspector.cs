@@ -21,7 +21,7 @@ namespace Skanyxx.Module.Agents.Studio.Features;
 /// owns changes only through its plugin. The head must not move while it is read (m7).
 /// </summary>
 internal sealed class ProposalInspector(
-    IAgentRepo repo, StudioReconciler reconciler, PluginRepoReader plugins, PluginLoader loader, IOptions<StudioOptions> options)
+    IAgentRepo repo, StudioReconciler reconciler, PluginRepoReader plugins, PluginLoader loader, DraftProblems draftProblems, IOptions<StudioOptions> options)
 {
     private StudioOptions Options => options.Value;
 
@@ -54,6 +54,9 @@ internal sealed class ProposalInspector(
                 problems.Add(StudioFailure.PluginOwned(agent, owner));
             var (head, headProblems) = await reconciler.ReadAgentAsync(agent, pull.HeadSha, mainTree.ServerPlugins, [], ct);
             problems.AddRange(headProblems);
+            // D364, D361: paid cloud tools need the licence at merge too, and a credential never merges into git.
+            if (head is not null)
+                problems.AddRange(draftProblems.Licensing(head));
             var (main, _) = await reconciler.ReadAgentAsync(agent, Options.Git.Branch, mainTree.ServerPlugins, [], ct);
             var principal = await reconciler.PrincipalAsync(agent, ct);
             if (principal.Taken)

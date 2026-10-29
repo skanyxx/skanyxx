@@ -6,6 +6,8 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY global.json ./
 COPY src/ src/
+# The agent repo's CI template is embedded in the agents module (D362).
+COPY docs/templates/ docs/templates/
 # Each module copies its dll + deps.json into src/Skanyxx.Host/modules/ after build (CopyToModules), as the release
 # workflow relies on (each finds it from its own folder, $(MSBuildThisFileDirectory)). Tests are not built. NuGet
 # packages live in a BuildKit cache, so a source change does not download them again (the repo has no

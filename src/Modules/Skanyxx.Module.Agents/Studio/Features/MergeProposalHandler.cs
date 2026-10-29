@@ -56,6 +56,15 @@ internal sealed class MergeProposalHandler(
                     : StudioFailure.PluginNeedsOwner);
             }
 
+            // D367: with CI required, only a head whose checks passed merges (a push after them moves the head).
+            if (options.Value.RequireChecks && await repo.ChecksAsync(pull.HeadSha, ct) is { State: not CheckState.Passed } checks)
+                return StudioFailure.Conflict<StudioResult>(checks.State switch
+                {
+                    CheckState.Failed => "Its checks failed; fix the proposal (or CI) first. A merge needs passing checks (Studio:RequireChecks).",
+                    CheckState.Pending => "Its checks are still running; merge once they pass (Studio:RequireChecks).",
+                    _ => "No CI has reported on it yet; merge once its checks pass (Studio:RequireChecks)."
+                }, "checks");
+
             switch (await MergeAsync(pull, user))
             {
                 case MergeOutcome.HeadMoved:

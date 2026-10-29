@@ -51,6 +51,19 @@ public sealed class StudioOptions
     /// <summary>How long a merge, preview or factory call waits for a running reconcile pass (D120) before giving up.</summary>
     public int LockWaitSeconds { get; set; } = 20;
 
+    /// <summary>
+    /// RemoteMCPServers (names in <see cref="Namespace"/>) whose tools call a cloud provider's API (D364): shown as paid,
+    /// and refused on a proposal or a merge unless <see cref="LicenceOptions.CloudTools"/> is on.
+    /// </summary>
+    public List<string> CloudToolServers { get; set; } = [];
+
+    /// <summary>A merge waits for the head commit's CI checks to pass (D367); off by default (no CI configured).</summary>
+    public bool RequireChecks { get; set; }
+
+    public ArgoOptions Argo { get; set; } = new();
+
+    public CiOptions Ci { get; set; } = new();
+
     /// <summary>A plugin proposal changes at most this many files (P8): git lists only the first 50 changed files of a pull request.</summary>
     public const int MaxPluginFiles = 48;
 
