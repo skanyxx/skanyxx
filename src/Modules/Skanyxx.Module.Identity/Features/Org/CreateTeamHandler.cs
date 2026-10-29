@@ -9,7 +9,7 @@ using Skanyxx.Module.Identity.Data;
 
 namespace Skanyxx.Module.Identity.Features.Org;
 
-/// <summary>Into an existing department (nothing is deleted, so it stays). A taken slug is a 409, as for departments.</summary>
+/// <summary>Into an existing department. A taken slug is a 409, as for departments.</summary>
 internal sealed class CreateTeamHandler(
     AccountsDbContext db, IdentityAudit audit, ClientAddress client, TimeProvider time, ILogger<CreateTeamHandler> logger)
     : IRequestHandler<CreateTeamCommand, Outcome<TeamDto>>
@@ -20,6 +20,9 @@ internal sealed class CreateTeamHandler(
             return Outcome<TeamDto>.NotFound($"No department '{command.Department}'.");
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await RetiredSlugs.LockAsync(db, RetiredOrgSlug.Team, command.Slug, ct);
+        if (await RetiredSlugs.IsRetiredAsync(db, RetiredOrgSlug.Team, command.Slug, ct))
+            return Outcome<TeamDto>.Conflict(null, RetiredSlugs.Refusal(RetiredOrgSlug.Team, command.Slug));
         var created = await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO identity_org_teams ("Slug", "Name", "DepartmentSlug", "CreatedBy", "CreatedUtc")
             VALUES ({command.Slug}, {command.Name}, {command.Department}, {command.ActorId}, {time.GetUtcNow()}) ON CONFLICT ("Slug") DO NOTHING

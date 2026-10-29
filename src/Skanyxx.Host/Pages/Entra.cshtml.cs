@@ -13,7 +13,7 @@ namespace Skanyxx.Host.Pages;
 /// The owner's Microsoft Entra ID sign-in settings (D027): tenant, client, client secret (write-only: the page shows
 /// only whether one is set and never renders it back) and the group → roles/teams map. The same command as
 /// <c>PUT api/identity/entra/settings</c>; a save applies to the next sign-in without a restart. Has no route while the
-/// install's switch is off (<see cref="EntraSwitch"/>, D272; Program.cs).
+/// install's switch is off (<see cref="EntraSwitch"/>, D272; <see cref="Navigation.EntraPageGate"/>).
 /// </summary>
 [Authorize(Roles = SkanyxxRoles.Owner)]
 public sealed class EntraModel(IMediator mediator) : PageModel

@@ -6,7 +6,7 @@ using Skanyxx.Core.Platform.Identity;
 
 namespace Skanyxx.Module.Identity.Endpoints;
 
-internal sealed class GetEntraSettingsEndpoint(IMediator mediator, IOptions<IdentityModuleOptions> options) : EndpointWithoutRequest
+internal sealed class GetEntraSettingsEndpoint(IMediator mediator, IOptionsMonitor<IdentityModuleOptions> options) : EndpointWithoutRequest
 {
     public override void Configure()
     {
@@ -17,7 +17,7 @@ internal sealed class GetEntraSettingsEndpoint(IMediator mediator, IOptions<Iden
 
     public override async Task HandleAsync(CancellationToken ct)
     {
-        if (!options.Value.EntraAvailable)
+        if (!options.CurrentValue.EntraAvailable)
             await Send.NotFoundAsync(ct);
         else
             await Send.ResultAsync((await mediator.Send(new GetEntraSettingsQuery(), ct)).ToHttp(s => s));

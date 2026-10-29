@@ -12,7 +12,9 @@ using OpenTelemetry.Trace;
 using Serilog;
 using Serilog.Formatting.Compact;
 using Skanyxx.Core.Platform;
-using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Core.Platform.Settings;
+using Skanyxx.Host.Diagnostics;
+using Skanyxx.Host.Navigation;
 using Skanyxx.Host.Setup;
 
 // `open` / `url`: the launchers' verbs, which open Skanyxx:RemoteUrl and exit without starting a host (D234).
@@ -50,6 +52,9 @@ public partial class Program
         var builder = WebApplication.CreateBuilder(args);
         HostFilteringGuard.EnsureAllowedHosts(builder.Configuration, builder.Environment);
 
+        // The Debug page's recent warnings, errors and request timings (D353).
+        var debugLog = new DebugLog();
+        builder.Services.AddSingleton(debugLog);
         builder.Host.UseSerilog((context, logger) => logger
             .MinimumLevel.Information()
             .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
@@ -60,7 +65,8 @@ public partial class Program
             .MinimumLevel.Override("Microsoft.Extensions.Diagnostics.HealthChecks", Serilog.Events.LogEventLevel.Fatal)
             .ReadFrom.Configuration(context.Configuration)
             .Enrich.FromLogContext()
-            .WriteTo.Console(new RenderedCompactJsonFormatter()));
+            .WriteTo.Console(new RenderedCompactJsonFormatter())
+            .WriteTo.Sink(debugLog));
 
         // Remote mode (D201): the desktop launcher. Nothing below runs — no database, no modules, no sign-in.
         if (HostModes.Read(builder.Configuration) == HostMode.Remote)
@@ -78,12 +84,10 @@ public partial class Program
             telemetry.UseOtlpExporter();
 
         // Add services to the container.
-        builder.Services.AddRazorPages(options =>
-        {
-            // D272: with Microsoft sign-in off for this install, /Entra has no route at all (404 for everyone).
-            if (!EntraSwitch.IsOn(builder.Configuration))
-                options.Conventions.AddPageRouteModelConvention("/Entra", page => page.Selectors.Clear());
-        });
+        // The owner's saved installation settings, on top of every other configuration source (D350).
+        builder.Services.AddInstallationSettings(builder.Configuration);
+
+        builder.Services.AddRazorPages();
         var mvcBuilder = builder.Services.AddControllers();
         builder.Services.AddEndpointsApiExplorer();
         builder.Services.AddHttpClient();
@@ -217,6 +221,8 @@ public partial class Program
 
         app.UseRouting();
         app.UseCors();
+        // D272/D352: /Entra does not exist while Microsoft sign-in is off.
+        app.UseEntraPageGate();
 
         app.UseAuthentication();
         app.UseAuthorization();

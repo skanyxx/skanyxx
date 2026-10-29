@@ -12,4 +12,8 @@ public sealed class BrowseLibraryRequest
     [QueryParam] public string? Origin { get; set; }
     [QueryParam] public string? Agent { get; set; }
     [QueryParam] public int Offset { get; set; }
+    [QueryParam] public string? Owner { get; set; }
+    [QueryParam] public DateOnly? From { get; set; }
+    [QueryParam] public DateOnly? To { get; set; }
+    [QueryParam] public string? Sort { get; set; }
 }

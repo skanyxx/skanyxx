@@ -1,18 +1,58 @@
 @page
 @model DebugModel
+@using Skanyxx.Core.Platform
 @{
     ViewData["Title"] = "Debug";
+    var up = Model.Uptime;
 }
-<page-header description="The owner's diagnostics: what this install runs, and whether each part it depends on answers." />
+<page-header description="The owner's diagnostics: what this Host runs, whether each part it depends on answers, and what went wrong since it started. Read-only." />
+@await Component.InvokeAsync("SetupGuide", new { id = "debug" })
 @await Component.InvokeAsync("SetupGuide", new { id = "dragonfly" })
 
-<div class="card">
-    <dl class="kv">
-        <dt>Version</dt><dd><code>@Model.Version</code></dd>
-        <dt>Host mode</dt><dd><code>@Model.Mode</code></dd>
-        <dt>Overall</dt><dd><status-badge status="@Model.Health.Status.ToString()" /></dd>
-    </dl>
-</div>
+<section class="section" aria-labelledby="build-title">
+    <div class="section-header"><h2 class="section-title" id="build-title">Build</h2></div>
+    <div class="card">
+        <dl class="kv">
+            <dt>Version</dt><dd><code>@Model.Version</code></dd>
+            <dt>Runtime</dt><dd>@Model.Runtime</dd>
+            <dt>Platform</dt><dd>@Model.Platform</dd>
+            <dt>Environment</dt><dd><code>@Model.Environment</code></dd>
+            <dt>Host mode</dt><dd><code>@Model.Mode</code></dd>
+            <dt>Started</dt><dd>@Model.StartedUtc.ToString("yyyy-MM-dd HH:mm:ss 'UTC'")</dd>
+            <dt>Uptime</dt><dd data-uptime>@((int)up.TotalDays)d @up.Hours h @up.Minutes min</dd>
+            <dt>Overall health</dt><dd><status-badge status="@Model.Health.Status.ToString()" /></dd>
+        </dl>
+    </div>
+</section>
+
+<section class="section" aria-labelledby="connectivity-title">
+    <div class="section-header">
+        <div>
+            <h2 class="section-title" id="connectivity-title">Connectivity</h2>
+            <p class="section-description">Checked now, each bounded by a timeout. "not configured" is a feature that is off on this install.</p>
+        </div>
+    </div>
+    <div class="card card-flush">
+        <div class="table-container">
+            <table class="table table-stack" data-connectivity>
+                <thead>
+                    <tr><th scope="col">Dependency</th><th scope="col">Status</th><th scope="col">Detail</th><th scope="col" class="num">Took</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var c in Model.Connections)
+                    {
+                        <tr>
+                            <td>@c.Name</td>
+                            <td><status-badge status="@c.Status" /></td>
+                            <td>@c.Detail</td>
+                            <td class="num">@(c.Milliseconds is { } ms ? $"{ms} ms" : "")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
 
 <section class="section" aria-labelledby="health-title">
     <div class="section-header"><h2 class="section-title" id="health-title">Health checks</h2></div>
@@ -34,7 +74,7 @@
                             <tr>
                                 <td>@name</td>
                                 <td><status-badge status="@entry.Status.ToString()" /></td>
-                                <td>@(entry.Description ?? entry.Exception?.Message)</td>
+                                <td>@SecretText.Redact(entry.Description ?? entry.Exception?.Message ?? "")</td>
                                 <td class="num">@((int)entry.Duration.TotalMilliseconds) ms</td>
                             </tr>
                         }
@@ -71,4 +111,114 @@
             </table>
         </div>
     </div>
+</section>
+
+<section class="section" aria-labelledby="errors-title">
+    <div class="section-header">
+        <div>
+            <h2 class="section-title" id="errors-title">Recent warnings and errors</h2>
+            <p class="section-description">The last @Skanyxx.Host.Diagnostics.DebugLog.MaxLines on this replica since it started, newest first, redacted. Older ones are in the pod's logs.</p>
+        </div>
+    </div>
+    <div class="card card-flush">
+        @if (Model.Lines.Count == 0)
+        {
+            <empty-state icon="i-check-circle" title="No warnings or errors since start" compact="true" />
+        }
+        else
+        {
+            <div class="table-container">
+                <table class="table table-stack" data-log>
+                    <thead>
+                        <tr><th scope="col">When (UTC)</th><th scope="col">Level</th><th scope="col">Source</th><th scope="col">Message</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var line in Model.Lines)
+                        {
+                            <tr>
+                                <td>@line.At.UtcDateTime.ToString("HH:mm:ss")</td>
+                                <td><status-badge label="@line.Level" tone="@(line.Level is "Warning" ? "warning" : "danger")" /></td>
+                                <td><code>@line.Source</code></td>
+                                <td>@line.Message @if (line.Exception is not null) { <span class="table-cell-sub">@line.Exception</span> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="section" aria-labelledby="timing-title">
+    <div class="section-header">
+        <div>
+            <h2 class="section-title" id="timing-title">Request timing</h2>
+            <p class="section-description">The slowest paths by p95 over the last @Model.RequestSamples requests on this replica.</p>
+        </div>
+    </div>
+    <div class="card card-flush">
+        @if (Model.Timings.Count == 0)
+        {
+            <empty-state icon="i-chart" title="No requests recorded yet" compact="true" />
+        }
+        else
+        {
+            <div class="table-container">
+                <table class="table table-stack" data-timing>
+                    <thead>
+                        <tr><th scope="col">Request</th><th scope="col" class="num">Count</th><th scope="col" class="num">Median</th><th scope="col" class="num">p95</th><th scope="col" class="num">Max</th><th scope="col" class="num">5xx</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var t in Model.Timings)
+                        {
+                            <tr>
+                                <td><code>@t.Method @t.Path</code></td>
+                                <td class="num">@t.Count</td>
+                                <td class="num">@t.MedianMs.ToString("0.0") ms</td>
+                                <td class="num">@t.P95Ms.ToString("0.0") ms</td>
+                                <td class="num">@t.MaxMs.ToString("0.0") ms</td>
+                                <td class="num">@t.Errors</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</section>
+
+<section class="section" aria-labelledby="config-title">
+    <div class="section-header">
+        <div>
+            <h2 class="section-title" id="config-title">Configuration</h2>
+            <p class="section-description">Sources in precedence order (a later one wins), then Skanyxx's own keys with the source that supplied each. Secrets and connection strings show as [redacted].</p>
+        </div>
+    </div>
+    <div class="card card-flush">
+        <div class="table-container">
+            <table class="table table-stack" data-config-sources>
+                <thead><tr><th scope="col">#</th><th scope="col">Source</th><th scope="col" class="num">Keys</th></tr></thead>
+                <tbody>
+                    @for (var i = 0; i < Model.Sources.Count; i++)
+                    {
+                        <tr><td>@(i + 1)</td><td><code>@Model.Sources[i].Name</code></td><td class="num">@Model.Sources[i].Keys</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <details class="card mt-2">
+        <summary>@Model.Settings.Count configuration values</summary>
+        <div class="table-container">
+            <table class="table table-stack" data-config>
+                <thead><tr><th scope="col">Key</th><th scope="col">Value</th><th scope="col">Source</th></tr></thead>
+                <tbody>
+                    @foreach (var row in Model.Settings)
+                    {
+                        <tr><td><code>@row.Key</code></td><td><code>@row.Value</code></td><td class="text-muted text-sm">@row.Source</td></tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </details>
 </section>

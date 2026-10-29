@@ -225,8 +225,14 @@ namespace Skanyxx.Module.Memory.Data.Migrations
 
                     NpgsqlIndexBuilderExtensions.HasMethod(b.HasIndex("Tickets"), "GIN");
 
+                    b.HasIndex("UpdatedAt");
+
+                    b.HasIndex("Who");
+
                     b.HasIndex("Scope", "Key")
                         .IsUnique();
+
+                    b.HasIndex("Scope", "UpdatedAt");
 
                     b.ToTable("memory_cards", null, t =>
                         {

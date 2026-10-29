@@ -699,3 +699,11 @@ fieldset.field > legend { padding: 0; margin-bottom: var(--space-1); }
 .is-locked { opacity: 0.7; }
 .lock-note { color: var(--text-2); font-size: var(--text-sm); }
 .yaml-preview { max-height: 360px; overflow: auto; }
+
+/* A destructive form below the safe ones (Org deletes): set apart by a rule, never a colour of its own. */
+.danger-zone { border-top: 1px solid var(--border); padding-top: var(--space-3); margin-top: var(--space-3); }
+
+/* Library filters and pager (D355). */
+a.chip { text-decoration: none; }
+.pager-links { display: inline-flex; gap: var(--space-2); }
+.library-filters { max-width: none; }

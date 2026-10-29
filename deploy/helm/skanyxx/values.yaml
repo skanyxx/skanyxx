@@ -156,6 +156,7 @@ ingress:
     - /Dashboard
     - /Analytics
     - /Investigate
+    - /Settings
     - /ResetPassword
     - /ForgotPassword
     - /AccessDenied

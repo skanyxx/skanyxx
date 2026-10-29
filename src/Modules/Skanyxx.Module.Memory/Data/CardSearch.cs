@@ -54,7 +54,7 @@ public sealed partial class CardSearch(MemoryDbContext db, SearchCache cache)
         FROM memory_cards c, q
         WHERE {{LibraryFilter}}
           AND c.search @@ q.query{1}
-        ORDER BY ts_rank(c.search, q.query) DESC, c.updated_at DESC, c.scope, c.key
+        ORDER BY {3}
         LIMIT @Limit{2}
         """;
 
@@ -62,9 +62,30 @@ public sealed partial class CardSearch(MemoryDbContext db, SearchCache cache)
         {{LibraryColumns}}
         FROM memory_cards c
         WHERE {{LibraryFilter}}{0}
-        ORDER BY c.updated_at DESC, c.scope, c.key
+        ORDER BY {3}
         LIMIT @Limit{2}
         """;
+
+    // D355: the facet counts, one row per type, with every filter but the type (the total is their sum, or the
+    // filtered type's row). Same predicates as the page, so the count can never disagree with what paging reaches.
+    private const string LibraryTextCountSql = $$"""
+        WITH q AS (SELECT {0} AS query)
+        SELECT c.type AS Type, count(*)::int AS Count
+        FROM memory_cards c, q
+        WHERE {{LibraryFilter}}
+          AND c.search @@ q.query{1}
+        GROUP BY c.type
+        """;
+
+    private const string LibraryListCountSql = $$"""
+        SELECT c.type AS Type, count(*)::int AS Count
+        FROM memory_cards c
+        WHERE {{LibraryFilter}}{0}
+        GROUP BY c.type
+        """;
+
+    // Every order ends in (scope, key), unique, so pages never overlap or skip a card between equal values.
+    private const string Newest = "c.updated_at DESC, c.scope, c.key";
 
     /// <summary>
     /// Each OR-ed term costs an index probe per lexeme, so the query is split the way Postgres would split it
@@ -136,29 +157,68 @@ public sealed partial class CardSearch(MemoryDbContext db, SearchCache cache)
         {
             Scopes = scopes.Exact.ToArray(), AllOrg = scopes.AllTeamsAndDepartments, Limit = limit, filter.Offset
         });
-        var predicates = Filters(filter, parameters);
+        var predicates = Filters(filter, parameters, withType: true);
         // Only a later page says OFFSET, so the first page keeps the plan it always had.
         var paging = filter.Offset > 0 ? " OFFSET @Offset" : "";
         if (string.IsNullOrWhiteSpace(text))
-            return (string.Format(LibraryListSql, predicates, null, paging), parameters);
+            return (string.Format(LibraryListSql, predicates, null, paging, Order(filter.Sort, text: false)), parameters);
 
         var terms = Terms(text);
-        return terms.Length == 0 ? null : (string.Format(LibraryTextSql, TsQuery(terms, parameters), predicates, paging), parameters);
+        return terms.Length == 0
+            ? null
+            : (string.Format(LibraryTextSql, TsQuery(terms, parameters), predicates, paging, Order(filter.Sort, text: true)), parameters);
     }
 
-    private static string Filters(LibraryFilter filter, DynamicParameters parameters)
+    /// <summary>The facet-count statement for the same text and filters (type left out); null when the text has no word.</summary>
+    internal static (string Text, DynamicParameters Parameters)? LibraryCountCommand(string? text, SearchScopes scopes, LibraryFilter? filter = null)
+    {
+        filter ??= Core.Platform.Memory.LibraryFilter.None;
+        var parameters = new DynamicParameters(new { Scopes = scopes.Exact.ToArray(), AllOrg = scopes.AllTeamsAndDepartments });
+        var predicates = Filters(filter, parameters, withType: false);
+        if (string.IsNullOrWhiteSpace(text))
+            return (string.Format(LibraryListCountSql, predicates), parameters);
+        var terms = Terms(text);
+        return terms.Length == 0 ? null : (string.Format(LibraryTextCountSql, TsQuery(terms, parameters), predicates), parameters);
+    }
+
+    /// <summary>Matching cards per type (D355), over the same scopes, text and filters as <see cref="LibraryAsync"/> minus the type.</summary>
+    public async Task<IReadOnlyDictionary<string, int>> LibraryCountsAsync(
+        string? text, SearchScopes scopes, CancellationToken ct, LibraryFilter? filter = null)
+    {
+        if ((scopes.Exact.Count == 0 && !scopes.AllTeamsAndDepartments) || LibraryCountCommand(text, scopes, filter) is not { } sql)
+            return new Dictionary<string, int>();
+        var rows = await db.Database.GetDbConnection().QueryAsync<(string Type, int Count)>(
+            new CommandDefinition(sql.Text, sql.Parameters, cancellationToken: ct));
+        return rows.ToDictionary(r => r.Type, r => r.Count);
+    }
+
+    private static string Order(string? sort, bool text) => sort switch
+    {
+        "oldest" => "c.updated_at ASC, c.scope, c.key",
+        "what" => "c.what, c.scope, c.key",
+        "newest" => Newest,
+        _ when text => "ts_rank(c.search, q.query) DESC, " + Newest,
+        _ => Newest
+    };
+
+    private static string Filters(LibraryFilter filter, DynamicParameters parameters, bool withType)
     {
         var sql = new StringBuilder();
         Add(filter.Ticket, "c.tickets @> ARRAY[@Ticket]::text[]", "Ticket");
         Add(filter.Keyword, "c.keywords @> ARRAY[@Keyword]::text[]", "Keyword");
-        Add(filter.Type, "c.type = @Type", "Type");
+        if (withType)
+            Add(filter.Type, "c.type = @Type", "Type");
         Add(filter.Origin, "c.origin = @Origin", "Origin");
         Add(filter.Agent, "c.agent_id = @Agent", "Agent");
+        Add(filter.Owner, "c.who = @Owner", "Owner");
+        Add(filter.From?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), "c.updated_at >= @From", "From");
+        // To is an inclusive day: everything before the next midnight.
+        Add(filter.To?.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc), "c.updated_at < @To", "To");
         return sql.ToString();
 
-        void Add(string? value, string predicate, string name)
+        void Add(object? value, string predicate, string name)
         {
-            if (string.IsNullOrEmpty(value))
+            if (value is null or "")
                 return;
             parameters.Add(name, value);
             sql.Append("\n  AND ").Append(predicate);

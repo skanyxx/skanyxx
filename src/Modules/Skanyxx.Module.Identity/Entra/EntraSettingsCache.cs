@@ -18,7 +18,7 @@ namespace Skanyxx.Module.Identity.Entra;
 /// restart (A3). The cache stores a lazy entry before building it, so removing it after publishing leaves no stale entry.
 /// </summary>
 internal sealed class EntraSettingsCache(
-    IDataProtectionProvider protection, IOptionsMonitorCache<OpenIdConnectOptions> options, IOptions<IdentityModuleOptions> identity,
+    IDataProtectionProvider protection, IOptionsMonitorCache<OpenIdConnectOptions> options, IOptionsMonitor<IdentityModuleOptions> identity,
     ILogger<EntraSettingsCache> logger)
 {
     private const string SecretPurpose = "Skanyxx.Identity.Entra.ClientSecret";
@@ -27,7 +27,7 @@ internal sealed class EntraSettingsCache(
     private EntraConfig _current = EntraConfig.Disabled;
 
     /// <summary>Disabled while the install's switch is off (D272): no sign-in, link or re-check uses the saved settings.</summary>
-    public EntraConfig Current => identity.Value.EntraAvailable ? Volatile.Read(ref _current) : EntraConfig.Disabled;
+    public EntraConfig Current => identity.CurrentValue.EntraAvailable ? Volatile.Read(ref _current) : EntraConfig.Disabled;
 
     public string Protect(string secret) => Protector.Protect(secret);
 

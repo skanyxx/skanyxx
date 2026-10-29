@@ -26,5 +26,10 @@ internal sealed class BrowseLibraryValidator : AbstractValidator<BrowseLibraryQu
         RuleFor(q => q.Filter!.Agent).Must(Scope.IsValidId).When(q => !string.IsNullOrEmpty(q.Filter?.Agent))
             .WithMessage("Invalid agent id.");
         RuleFor(q => q.Filter!.Offset).InclusiveBetween(0, LibraryFilter.MaxOffset).When(q => q.Filter is not null);
+        RuleFor(q => q.Filter!.Owner).MaximumLength(300).NoNulCharacters().When(q => !string.IsNullOrEmpty(q.Filter?.Owner));
+        RuleFor(q => q.Filter!.Sort).Must(LibraryFilter.Sorts.Contains).When(q => !string.IsNullOrEmpty(q.Filter?.Sort))
+            .WithMessage($"Sort must be one of: {string.Join(", ", LibraryFilter.Sorts)}.");
+        RuleFor(q => q.Filter).Must(f => f!.From <= f.To).When(q => q.Filter?.From is not null && q.Filter.To is not null)
+            .WithMessage("From must be on or before To.");
     }
 }

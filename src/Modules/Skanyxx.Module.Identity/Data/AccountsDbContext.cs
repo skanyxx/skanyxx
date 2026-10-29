@@ -48,6 +48,10 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
 
     public DbSet<OrganizationPreference> OrganizationPreferences => Set<OrganizationPreference>();
 
+    public DbSet<InstallationSettingRow> InstallationSettings => Set<InstallationSettingRow>();
+
+    public DbSet<RetiredOrgSlug> RetiredOrgSlugs => Set<RetiredOrgSlug>();
+
     /// <summary>The memory scope id shape (its CHECK constraint), so every slug is a valid <c>team:</c>/<c>department:</c> scope.</summary>
     private const string SlugCheck = "~ '^[a-z0-9][a-z0-9._@-]{0,127}$'";
 
@@ -146,7 +150,7 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
             team.Property(t => t.Slug).HasMaxLength(128);
             team.Property(t => t.Name).HasMaxLength(100);
             team.Property(t => t.CreatedBy).HasMaxLength(450);
-            // Nothing is deleted in this slice; Restrict keeps a department from vanishing under its teams if that changes.
+            // Restrict: a department is deleted only once its teams have moved out (D351).
             team.HasOne<OrgDepartment>().WithMany().HasForeignKey(t => t.DepartmentSlug).OnDelete(DeleteBehavior.Restrict);
         });
         builder.Entity<OrgTeamMember>(member =>
@@ -191,6 +195,23 @@ public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> option
             preference.Property(p => p.Id).ValueGeneratedNever();
             preference.Property(p => p.Json).HasColumnType("jsonb");
             preference.Property(p => p.UpdatedBy).HasMaxLength(450);
+        });
+
+        builder.Entity<InstallationSettingRow>(setting =>
+        {
+            setting.ToTable("identity_installation_settings");
+            setting.HasKey(s => s.Key);
+            setting.Property(s => s.Key).HasMaxLength(64);
+            setting.Property(s => s.Value).HasMaxLength(4000);
+            setting.Property(s => s.UpdatedBy).HasMaxLength(450);
+        });
+        builder.Entity<RetiredOrgSlug>(retired =>
+        {
+            retired.ToTable("identity_org_retired_slugs");
+            retired.HasKey(r => new { r.Kind, r.Slug });
+            retired.Property(r => r.Kind).HasMaxLength(16);
+            retired.Property(r => r.Slug).HasMaxLength(128);
+            retired.Property(r => r.RetiredBy).HasMaxLength(450);
         });
 
         // Fixed ids and stamps: seed data must be identical on every model build.

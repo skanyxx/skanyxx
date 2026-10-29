@@ -9,7 +9,7 @@ namespace Skanyxx.Host.Navigation;
 
 /// <summary>
 /// Every panel, grouped by what people come to do: Work (everyone, by role) and Admin (running the installation).
-/// A panel whose page is not in this build (Dashboard, Investigate, Analytics, Settings until they are rebuilt) has no
+/// A panel whose page is not in this build (Investigate until it is built) has no
 /// address, so it is left out until the page exists. A person's pins and order rearrange only what their roles already
 /// allow: a stored key for a panel they cannot use is ignored.
 /// </summary>

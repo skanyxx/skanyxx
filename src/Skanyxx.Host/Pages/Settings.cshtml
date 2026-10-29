@@ -1,0 +1,131 @@
+@page
+@model SettingsModel
+@using Skanyxx.Core.Platform.Settings
+@using Skanyxx.Core.Platform.Preferences
+@{
+    ViewData["Title"] = "Settings";
+    var landingLabels = new Dictionary<string, string> { ["auto"] = "Chat (built-in)" };
+    foreach (var item in Skanyxx.Host.Navigation.NavCatalog.Items)
+        landingLabels[item.Key] = item.Label;
+
+    async Task Field(InstallationSetting s)
+    {
+        var id = "set-" + s.Key.Replace('.', '-');
+        var value = Model.Value(s.Key);
+        switch (s.Kind)
+        {
+            case SettingKind.Bool:
+                var locked = s.Key == InstallationSettings.CloudTools && !Model.CloudToolsLicensed;
+                <div class="field" data-setting="@s.Key">
+                    <label class="check" for="@id">
+                        <input type="checkbox" id="@id" name="@s.Key" value="true" checked="@(value == "true")" disabled="@locked" aria-describedby="@id-hint" />
+                        @s.Label
+                        @if (s.Key == InstallationSettings.CloudTools)
+                        {
+                            <status-badge label="@(Model.CloudToolsLicensed ? "licensed" : "paid feature")" tone="@(Model.CloudToolsLicensed ? "success" : "warning")" />
+                        }
+                    </label>
+                    <p class="field-hint" id="@id-hint">@s.Hint Takes effect: @s.TakesEffect</p>
+                </div>
+                break;
+            case SettingKind.Choice:
+                <field for="@id" label="@s.Label" hint="@($"{s.Hint} Takes effect: {s.TakesEffect}")">
+                    <select id="@id" name="@s.Key">
+                        @foreach (var choice in s.Choices!)
+                        {
+                            <option value="@choice" selected="@(value == choice)">@(landingLabels.GetValueOrDefault(choice) ?? choice)</option>
+                        }
+                    </select>
+                </field>
+                break;
+            case SettingKind.Number:
+                <field for="@id" label="@s.Label" hint="@($"{s.Hint} Takes effect: {s.TakesEffect}")">
+                    <input id="@id" name="@s.Key" type="number" inputmode="numeric" min="@s.Min" max="@s.Max" value="@value" required />
+                </field>
+                break;
+            default:
+                <field for="@id" label="@s.Label" hint="@($"{s.Hint} Takes effect: {s.TakesEffect}")">
+                    <input id="@id" name="@s.Key" value="@value" maxlength="@s.MaxLength" autocomplete="off" />
+                </field>
+                break;
+        }
+    }
+
+    async Task Section(string name, string description)
+    {
+        var id = "section-" + name.ToLowerInvariant().Replace("-", "");
+        <section class="section" aria-labelledby="@id">
+            <div class="section-header">
+                <div>
+                    <h2 class="section-title" id="@id">@name</h2>
+                    <p class="section-description">@description</p>
+                </div>
+            </div>
+            <form method="post" class="card form" data-once>
+                <input type="hidden" name="section" value="@name" />
+                <div class="form-row">
+                    @foreach (var s in InstallationSettings.All.Where(s => s.Section == name))
+                    {
+                        await Field(s);
+                    }
+                </div>
+                @if (name == InstallationSettings.SignIn)
+                {
+                    <p class="field-hint">
+                        @if (Model.EntraOn)
+                        {
+                            <text>On. Tenant, client and the group map are on the <a href="/Entra#redirectUri">Microsoft sign-in page</a>.</text>
+                        }
+                        else
+                        {
+                            <text>Off: the Microsoft sign-in page appears once this is saved on.</text>
+                        }
+                        Invites and passwords keep working either way.
+                    </p>
+                }
+                @if (name == InstallationSettings.Features && !Model.CloudToolsLicensed)
+                {
+                    <p class="field-hint">Cloud tools needs a licence that includes it. Ask your Skanyxx contact; once it is installed (<code>Skanyxx:Licence:CloudTools</code>) the switch unlocks.</p>
+                }
+                <div class="form-actions"><button type="submit" class="btn btn-primary">Save @name.ToLowerInvariant()</button></div>
+            </form>
+        </section>
+    }
+}
+<page-header description="Installation-wide choices for everyone on this install. Every change is audited, and none needs a restart unless it says so." />
+@await Component.InvokeAsync("SetupGuide", new { id = "settings" })
+@if (Model.Error is not null)
+{
+    <alert tone="error">@Model.Error</alert>
+}
+@if (Model.Message is not null)
+{
+    <alert tone="success">@Model.Message</alert>
+}
+
+@{ await Section(InstallationSettings.General, "The installation's name, the theme people start with, and where each role lands after sign-in. A person's own choices on their Account page win."); }
+@{ await Section(InstallationSettings.SignIn, "How people sign in besides invites and passwords."); }
+
+<section class="section" aria-labelledby="section-sandboxes">
+    <div class="section-header">
+        <div>
+            <h2 class="section-title" id="section-sandboxes">Sandboxes</h2>
+            <p class="section-description">Read-only here: sandboxes are deployment configuration, so changing them is a deploy and a restart.</p>
+        </div>
+        <status-badge label="@(Model.Sandboxes.Ready ? "on" : "off")" tone="@(Model.Sandboxes.Ready ? "success" : "neutral")" />
+    </div>
+    <div class="card">
+        <dl class="kv" data-sandboxes>
+            <dt>Module loaded</dt><dd>@(Model.Sandboxes.ModuleLoaded ? "yes" : "no")</dd>
+            <dt>Sandboxes:Enabled</dt><dd>@(Model.Sandboxes.Enabled ? "true" : "false")</dd>
+            <dt>Sandboxes:Address</dt><dd>@(Model.Sandboxes.AddressSet ? "set" : "not set")</dd>
+            <dt>Sandboxes:AllowedImages</dt><dd>@Model.Sandboxes.AllowedImages prefix(es)</dd>
+            <dt>Sandboxes:NetworkIsolationConfirmed</dt><dd>@(Model.Sandboxes.NetworkConfirmed ? "true" : "false")</dd>
+        </dl>
+        <p class="field-hint mt-2">The exact steps, with a copy-to-agent prompt, are in the guide below.</p>
+    </div>
+    @await Component.InvokeAsync("SetupGuide", new { id = "sandboxes" })
+</section>
+
+@{ await Section(InstallationSettings.Features, "Optional features. Paid ones unlock with the licence."); }
+@{ await Section(InstallationSettings.Retention, "How long history is kept before it is deleted for good."); }
