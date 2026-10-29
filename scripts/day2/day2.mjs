@@ -31,12 +31,14 @@ check('people: supervisor, builder and employee invited and signed in', supervis
 // ---------------------------------------------------------------- knowledge base
 if (STAGES.includes('kb')) {
   const cards = [
-    { key: 'e2e-test-refund-policy', type: 'fact', what: 'Refund window of E2E Corp',
-      why: 'Support answers refund questions from this card.',
+    // memory_search returns a card's what and why, not its body: the facts an agent must answer go there; the body is
+    // the document behind it (see the known gap below).
+    { key: 'e2e-test-refund-policy', type: 'fact', what: `E2E Corp refund window: ${REFUND_DAYS} days from purchase`,
+      why: `Support answers refund questions from this card; after ${REFUND_DAYS} days only store credit.`,
       body: `E2E Corp accepts refunds within ${REFUND_DAYS} days of purchase. After ${REFUND_DAYS} days only a store credit is offered.`,
       keywords: ['refund', 'e2e-test'] },
-    { key: 'e2e-test-escalation', type: 'procedure', what: 'How support escalates a refund exception',
-      why: 'The escalation path for refunds outside the window.',
+    { key: 'e2e-test-escalation', type: 'procedure', what: `Refund exception escalation: code word ${CODE_WORD} in the ticket's first line`,
+      why: 'The escalation path for refunds outside the window (details in the document).',
       body: `# Escalation (document)\n\n1. Open a ticket in the Refunds queue.\n2. Write the code word ${CODE_WORD} in the first line.\n3. The support supervisor approves or declines within one business day.`,
       keywords: ['refund', 'escalation', 'e2e-test'] },
   ];
@@ -47,6 +49,9 @@ if (STAGES.includes('kb')) {
     const version = current.status === 200 ? current.json.version : 0;
     const r = await call('PUT', `/api/memory/cards/company/${card.key}`, { token: supervisor, body: { ...card, version, key: undefined } });
     check(`kb: supervisor writes company/${card.key} (v${version} → v${r.json?.version})`, [200, 201].includes(r.status), `HTTP ${r.status}`);
+    // An earlier clean marked it stale; an upsert keeps the status.
+    if (r.json?.status === 'stale')
+      await call('POST', `/api/memory/cards/company/${card.key}/status`, { token: supervisor, body: { version: r.json.version, status: 'published' } });
   }
   const lib = await call('GET', '/api/memory/library?q=refund', { token: employee });
   const keys = JSON.stringify(lib.json ?? {});
@@ -174,8 +179,12 @@ if (STAGES.includes('chat')) {
     `HTTP ${t1.status}: ${a1.replace(/\s+/g, ' ').slice(0, 220)}`);
   const conversation = t1.json?.conversationId;
   const t2 = await ask('Who approves the exception, and how fast?', conversation);
+  const a2 = t2.json?.message?.content ?? '';
   check('chat: a second turn continues the same conversation', t2.status === 200 && t2.json?.conversationId === conversation,
-    `HTTP ${t2.status}: ${(t2.json?.message?.content ?? '').replace(/\s+/g, ' ').slice(0, 160)}`);
+    `HTTP ${t2.status}: ${a2.replace(/\s+/g, ' ').slice(0, 160)}`);
+  // Known gap (reported, not a check): only the document (card body) says "one business day"; memory_search never
+  // returns bodies, so an agent cannot know it.
+  note(`KNOWN GAP card bodies: the document's "one business day" ${/one business day/i.test(a2) ? 'reached' : 'did not reach'} the agent`);
   const history = await call('GET', '/api/chat/conversations', { token: employee });
   const entries = Array.isArray(history.json) ? history.json : history.json?.conversations ?? history.json?.items ?? [];
   check('history: the conversation is in the employee\'s history', history.status === 200 && JSON.stringify(entries).includes(conversation), `HTTP ${history.status}, ${entries.length} conversations`);
