@@ -40,7 +40,7 @@
 {{- fail "ax.sandboxes.namespace must be the Substrate WorkerPool's namespace, never the release namespace: sandboxes there would be admitted by every policy that trusts this namespace (Skanyxx's UI/API port, kagent's controller)" }}
 {{- end }}
 {{- end }}
-{{- /* D390: the trusted proxies come from skanyxx.trustedProxies only, which the schema holds to CIDRs (D397: no broader than /16 or /48). */ -}}
+{{- /* D390: the trusted proxies come from skanyxx.trustedProxies only, which the schema holds to CIDRs (D397/D399: no broader than /24 or /120). */ -}}
 {{- range .Values.skanyxx.extraEnv }}
 {{- if hasPrefix "skanyxx__trustedproxies" (lower (replace ":" "__" (.name | default ""))) }}
 {{- fail (printf "skanyxx.extraEnv may not set %s: use skanyxx.trustedProxies (CIDRs of the ingress controller pods)" .name) }}

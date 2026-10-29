@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -10,16 +11,36 @@ namespace Skanyxx.Core.Platform;
 /// <summary>Origin allow-list (guarded routes, and unsafe methods everywhere) and per-client rate limits on the guarded routes, credential posts and invite links.</summary>
 public static class ApiGuardExtensions
 {
-    /// <summary>The broadest Skanyxx:TrustedProxies range startup accepts (D397); the Helm schema holds the same line.</summary>
-    public const int MinIPv4Prefix = 16;
+    /// <summary>
+    /// The broadest Skanyxx:TrustedProxies range startup accepts (D397, narrowed in D399): a /16 is already a whole k3s
+    /// pod network. The Helm schema holds the same line.
+    /// </summary>
+    public const int MinIPv4Prefix = 24;
 
     /// <inheritdoc cref="MinIPv4Prefix"/>
-    public const int MinIPv6Prefix = 48;
+    public const int MinIPv6Prefix = 120;
 
-    /// <summary>An IPv4-mapped range (<c>::ffff:a.b.c.d/n</c>) is an IPv4 one: its first 96 bits are fixed.</summary>
-    public static bool TooBroad(System.Net.IPNetwork network) =>
-        network.PrefixLength < (network.BaseAddress.IsIPv4MappedToIPv6 ? 96 + MinIPv4Prefix
-            : network.BaseAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 ? MinIPv6Prefix : MinIPv4Prefix);
+    private const int MappedPrefix = 96;
+
+    private static readonly UInt128 MappedBits = (UInt128)0xFFFF << 32;
+
+    /// <summary>
+    /// Kestrel binds dual-mode, so IPv4 peers arrive as <c>::ffff:a.b.c.d</c> and are matched against IPv6 ranges too: a
+    /// range inside <c>::ffff:0:0/96</c> is judged as the IPv4 range it is, and any other range reaching into it is
+    /// refused. The overlap is worked out on the bits: <see cref="System.Net.IPNetwork.Contains"/> special-cases
+    /// IPv4-mapped addresses (it says <c>fd00:7::/120</c> holds <c>::ffff:0:0</c>), so it cannot answer this.
+    /// </summary>
+    public static bool TooBroad(System.Net.IPNetwork network)
+    {
+        if (network.BaseAddress.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            return network.PrefixLength < MinIPv4Prefix;
+        var shared = Math.Min(network.PrefixLength, MappedPrefix);
+        var bits = BinaryPrimitives.ReadUInt128BigEndian(network.BaseAddress.GetAddressBytes());
+        if (shared > 0 && (bits ^ MappedBits) >> (128 - shared) != 0)
+            return network.PrefixLength < MinIPv6Prefix;
+        return network.PrefixLength < MappedPrefix
+            || TooBroad(new System.Net.IPNetwork(network.BaseAddress.MapToIPv4(), network.PrefixLength - MappedPrefix));
+    }
 
     public static IServiceCollection AddSkanyxxApiGuards(this IServiceCollection services, IConfiguration configuration)
     {
@@ -36,7 +57,7 @@ public static class ApiGuardExtensions
                 "Skanyxx:TrustedProxies must be CIDRs: the ingress controller's own pod IPs, e.g. 10.42.3.17/32, never the whole pod network.")
             // D397: a range that wide is a pod network, not the ingress pods; any pod in it could name itself any client.
             .Validate(o => o.TrustedProxies.All(p => System.Net.IPNetwork.TryParse(p, out var n) && !TooBroad(n)),
-                $"Skanyxx:TrustedProxies may not be broader than /{MinIPv4Prefix} (IPv4) or /{MinIPv6Prefix} (IPv6): list the ingress controller pods, not the pod network.")
+                $"Skanyxx:TrustedProxies may not be broader than /{MinIPv4Prefix} (IPv4) or /{MinIPv6Prefix} (IPv6), and an IPv6 range may reach into ::ffff:0:0/96 only as an IPv4-mapped range held to the IPv4 floor: list the ingress controller pods, not the pod network.")
             .ValidateOnStart();
         // D390: behind a trusted proxy the client is the last X-Forwarded-For hop it added.
         services.AddOptions<ForwardedHeadersOptions>().Configure<IOptions<SkanyxxOptions>>((forwarded, skanyxx) =>

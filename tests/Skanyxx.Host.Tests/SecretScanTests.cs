@@ -289,6 +289,23 @@ public sealed class SecretScanTests
         Assert.Contains("\"value\":\"debug\"", line);
     }
 
+    /// <summary>Security review nit: a credential-named key is blanked whole whatever its JSON kind, not recursed into.</summary>
+    [Theory]
+    [InlineData("""{"apiKey":["hunter2-long"],"note":"ok"}""")]
+    [InlineData("""{"password":{"v":"x"},"note":"ok"}""")]
+    [InlineData("""[{"name":"DB_PASSWORD","value":{"plain":"x"}},{"note":"ok"}]""")]
+    public void RedactJson_BlanksACredentialNamedValue_WhateverItsKind(string json)
+    {
+        var line = SecretScan.RedactJson(System.Text.Json.Nodes.JsonNode.Parse(json));
+
+        Assert.DoesNotContain("hunter2", line);
+        Assert.DoesNotContain("\"x\"", line);
+        Assert.DoesNotContain("\"v\"", line);
+        Assert.DoesNotContain("plain", line);
+        Assert.Contains($":\"{SecretScan.Redacted}\"", line);
+        Assert.Contains("\"note\":\"ok\"", line);
+    }
+
     [Theory]
     [InlineData("\"password\": \"hunter2,more\"", "more")]
     [InlineData("{\\\"apiKey\\\": \\\"abc, def\\\"}", "def")]

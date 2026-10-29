@@ -105,27 +105,37 @@ public sealed class RateLimitTests(PostgresFixture fixture)
         Assert.Contains("Skanyxx:TrustedProxies must be CIDRs", ex.ToString(), StringComparison.Ordinal);
     }
 
-    /// <summary>D397: a range as wide as a pod network would let any pod in it name itself any client.</summary>
+    /// <summary>D397/D399: a range as wide as a pod network would let any pod in it name itself any client.</summary>
     [Fact]
-    public async Task ATrustedProxyRangeBroaderThanASlash16_StopsStartup()
+    public async Task ATrustedProxyRangeBroaderThanASlash24_StopsStartup()
     {
         var ex = await Assert.ThrowsAnyAsync<Exception>(() =>
-            HostApp.StartAsync(fixture.ConnectionString, s => s["Skanyxx:TrustedProxies:0"] = "0.0.0.0/0"));
+            HostApp.StartAsync(fixture.ConnectionString, s => s["Skanyxx:TrustedProxies:0"] = "10.42.0.0/16"));
 
-        Assert.Contains("Skanyxx:TrustedProxies may not be broader than /16 (IPv4) or /48 (IPv6)", ex.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Skanyxx:TrustedProxies may not be broader than /24 (IPv4) or /120 (IPv6)", ex.ToString(), StringComparison.Ordinal);
     }
 
     [Theory]
     [InlineData("0.0.0.0/0", true)]
     [InlineData("10.0.0.0/8", true)]
-    [InlineData("10.42.0.0/15", true)]
-    [InlineData("10.42.0.0/16", false)]
+    [InlineData("10.42.0.0/16", true)] // k3s's whole default pod network
+    [InlineData("10.42.3.0/23", true)]
+    [InlineData("10.42.3.0/24", false)]
     [InlineData("10.42.3.17/32", false)]
     [InlineData("::/0", true)]
-    [InlineData("fd00::/47", true)]
-    [InlineData("fd00:7::/48", false)]
+    [InlineData("fd00:7::/48", true)]
+    [InlineData("fd00:7::/119", true)]
+    [InlineData("fd00:7::/120", false)]
+    [InlineData("fd00:7::5/128", false)]
+    // D399: an IPv6 range reaching into the IPv4-mapped block trusts IPv4 peers, which a dual-mode socket hands over as ::ffff:a.b.c.d.
+    [InlineData("::/80", true)]
+    [InlineData("::/64", true)]
+    [InlineData("::fffe:0:0/95", true)]
+    [InlineData("::ffff:0:0/96", true)]
     [InlineData("::ffff:10.0.0.0/104", true)]
-    [InlineData("::ffff:10.42.0.0/112", false)]
+    [InlineData("::ffff:10.42.0.0/112", true)]
+    [InlineData("::ffff:10.42.3.0/120", false)]
+    [InlineData("::ffff:10.42.3.17/128", false)]
     public void TrustedProxyBreadth(string cidr, bool tooBroad) =>
         Assert.Equal(tooBroad, ApiGuardExtensions.TooBroad(System.Net.IPNetwork.Parse(cidr)));
 }

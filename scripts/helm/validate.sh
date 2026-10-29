@@ -289,9 +289,10 @@ helm template skanyxx "$CHART" --namespace skanyxx --set 'skanyxx.trustedProxies
 grep -A1 'name: Skanyxx__TrustedProxies__0$' "$WORK/tp.yaml" | grep -q 'value: "10.244.7.17/32"' && grep -A1 'name: Skanyxx__TrustedProxies__1$' "$WORK/tp.yaml" | grep -q 'value: "fd00:7::5/128"' \
   || die "skanyxx.trustedProxies is not rendered as Skanyxx__TrustedProxies__<i> (D390)"
 if grep -q 'Skanyxx__TrustedProxies' "$WORK/default.yaml"; then die "default: Skanyxx__TrustedProxies is set (must stay empty unless configured)"; fi
-# D397: a /16 and a /48 are the broadest ranges accepted, and NOTES says ingress-nginx's use-forwarded-headers stays false.
-helm template skanyxx "$CHART" --namespace skanyxx --set 'skanyxx.trustedProxies={10.42.0.0/16,fd00:7::/48}' >/dev/null \
-  || die "skanyxx.trustedProxies refuses a /16 or a /48 (D397)"
+# D397/D399: a /24, a /120 and an IPv4-mapped /120 are the broadest ranges accepted, and NOTES says ingress-nginx's
+# use-forwarded-headers stays false.
+helm template skanyxx "$CHART" --namespace skanyxx --set 'skanyxx.trustedProxies={10.42.3.0/24,fd00:7::/120,::ffff:10.42.3.0/120}' >/dev/null \
+  || die "skanyxx.trustedProxies refuses a /24, a /120 or an IPv4-mapped /120 (D399)"
 KUBECONFIG=/dev/null helm install skanyxx "$CHART" --namespace skanyxx --set 'skanyxx.trustedProxies={10.244.7.17/32}' \
   --dry-run=client >"$WORK/tp-notes.txt" 2>&1 || { cat "$WORK/tp-notes.txt"; exit 1; }
 grep -q "use-forwarded-headers at false" "$WORK/tp-notes.txt" || die "NOTES does not say ingress-nginx's use-forwarded-headers must stay false (D397)"
@@ -309,9 +310,14 @@ refuse() {
 ING=(--set ingress.enabled=true --set 'ingress.hosts[0]=x.example.com')
 refuse "extraEnv setting TrustedProxies (D390)" "skanyxx.extraEnv may not set Skanyxx__TrustedProxies__0" --set-json 'skanyxx.extraEnv=[{"name":"Skanyxx__TrustedProxies__0","value":"0.0.0.0/0"}]'
 refuse "a trustedProxies entry that is not a CIDR (D390)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=ingress-nginx'
-refuse "a trustedProxies range broader than /16 (D397)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=10.0.0.0/8'
+refuse "a trustedProxies range broader than /24 (D397)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=10.0.0.0/8'
 refuse "trustedProxies 0.0.0.0/0 (D397)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=0.0.0.0/0'
-refuse "an IPv6 trustedProxies range broader than /48 (D397)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=fd00::/8'
+refuse "trustedProxies 10.42.0.0/16, k3s's whole pod network (D399)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=10.42.0.0/16'
+refuse "an IPv6 trustedProxies range broader than /120 (D397)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=fd00::/8'
+refuse "trustedProxies ::/80, which holds every IPv4-mapped peer (D399)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=::/80'
+refuse "trustedProxies ::/64 (D399)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=::/64'
+refuse "trustedProxies ::fffe:0:0/95, reaching into ::ffff:0:0/96 (D399)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=::fffe:0:0/95'
+refuse "an IPv4-mapped trustedProxies range broader than /24 (D399)" "at '/skanyxx/trustedProxies/0'" --set-string 'skanyxx.trustedProxies[0]=::ffff:10.42.0.0/112'
 refuse "an extraEnvFrom prefix that sets TrustedProxies (D397)" "skanyxx.extraEnvFrom may not use the prefix Skanyxx__TrustedProxies__" --set-json 'skanyxx.extraEnvFrom=[{"prefix":"Skanyxx__TrustedProxies__","configMapRef":{"name":"x"}}]'
 refuse "an extraEnvFrom prefix leading into TrustedProxies (D397)" "skanyxx.extraEnvFrom may not use the prefix Skanyxx__" --set-json 'skanyxx.extraEnvFrom=[{"prefix":"Skanyxx__","configMapRef":{"name":"x"}}]'
 refuse "an /MCP ingress path" "ingress path /MCP would publish" "${ING[@]}" --set 'ingress.prefixPaths[0]=/MCP'

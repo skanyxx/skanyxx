@@ -1,10 +1,12 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Skanyxx.Core.Platform;
 
 namespace Skanyxx.Host.Tests;
@@ -14,8 +16,9 @@ namespace Skanyxx.Host.Tests;
 /// this build maps — enumerated from the running host's endpoints, so a new one cannot be missed — and each is refused
 /// (401, 403, or the 404 of nothing there) unless <see cref="BelowSupervisor"/> lets that role write it. D394: every API
 /// read the same way against <see cref="ReadsBelowSupervisor"/>, and a route with a parameter must be refused by its roles
-/// (401/403): a made-up id is a 404 from any handler, which says nothing about a real one. Razor page form posts are not
-/// API routes: the page's own roles and antiforgery guard them.
+/// (401/403): a made-up id is a 404 from any handler, which says nothing about a real one. D400: an allow-listed route with
+/// a parameter is probed with a real id of another person's resource instead. Razor page form posts are not API routes:
+/// the page's own roles and antiforgery guard them.
 /// </summary>
 [Collection(HostCollection.Name)]
 public sealed partial class RoleMatrixTests(PostgresFixture fixture)
@@ -148,6 +151,21 @@ public sealed partial class RoleMatrixTests(PostgresFixture fixture)
         ["GET api/investigate/runs/{id}/report.pdf"] = (Builders, "only a run the caller may see; else 404 (WorkflowAccess, D371)"),
     };
 
+    /// <summary>
+    /// The allow-listed routes with a parameter whose resource belongs to no person, so there is no other person's id to
+    /// try: <see cref="AnAllowListedIdRoute_RefusesAnotherPersonsResource"/> probes every other one.
+    /// </summary>
+    private static readonly Dictionary<string, string> NobodysOwn = new()
+    {
+        ["GET api/chat/agents/{namespace}/{name}"] = "an agent of the chat catalog, the same for everyone who may chat with it",
+        ["GET api/agents/{namespace}/{name}"] = "an agent of the catalog; what a role sees of it is AgentAccess's, not ownership",
+        ["GET api/studio/agents/{name}/draft"] = "an agent in main, the company's, which any builder may propose to change",
+        ["GET api/studio/proposals/{number}"] = "every open proposal is every builder's to review, as GET api/studio lists them",
+        ["POST api/studio/proposals/{number}/preview"] = "any builder may preview any open proposal, without MCP tools (D392)",
+        ["POST api/studio/proposals/{number}/chat"] = "any builder may try any open proposal's preview, without MCP tools (D392)",
+        ["POST api/plugins/{name}/uninstall"] = "an installed plugin is the company's; uninstalling opens a pull request a supervisor merges",
+    };
+
     private static readonly HashSet<string> Writes = ["POST", "PUT", "PATCH", "DELETE"];
     private static readonly HashSet<string> Reads = ["GET"];
 
@@ -168,6 +186,193 @@ public sealed partial class RoleMatrixTests(PostgresFixture fixture)
 
         Assert.All(BelowSupervisor.Keys, k => Assert.Contains(k, writes));
         Assert.All(ReadsBelowSupervisor.Keys, k => Assert.Contains(k, reads));
+    }
+
+    /// <summary>
+    /// D400 (security review Minor 3): an allow-listed route with a parameter is let in by its roles, so only the handler
+    /// keeps one person off another's resource. Each is called as every allow-listed role below supervisor with a real id
+    /// of a supervisor's run, workflow, conversation, session, file, card or proposal, and must answer 403 or 404; a list
+    /// filtered to what the caller may read may answer 200, without the supervisor's item in it. Reads go first and
+    /// deletes last, so a write that wrongly lands cannot hide a later probe's answer behind a 404.
+    /// </summary>
+    [Fact]
+    public async Task AnAllowListedIdRoute_RefusesAnotherPersonsResource()
+    {
+        await using var kagent = await FakeKAgent.StartAsync();
+        await using var git = await FakeGitea.StartAsync();
+        var database = await fixture.NewDatabaseAsync();
+        await using var host = await HostApp.StartAsync(database, s =>
+        {
+            s["Skanyxx:RateLimit:PermitLimit"] = "100000";
+            s["KAgent:BaseUrl"] = "127.0.0.1";
+            s["KAgent:Port"] = kagent.Port.ToString();
+            s["Studio:Git:BaseUrl"] = git.BaseUrl;
+            s["Studio:Git:Token"] = FakeGitea.Token;
+            s["Studio:ReconcileSeconds"] = "3600";
+        });
+        var owner = await host.OwnerAsync();
+        var (supervisor, supervisorId) = await TestPeople.InviteAsync(host, owner, "ids-supervisor@skanyxx.example", SkanyxxRoles.Supervisor);
+        var people = new Dictionary<string, (HttpClient Client, string Id)>
+        {
+            [SkanyxxRoles.Employee] = await TestPeople.InviteAsync(host, owner, "ids-employee@skanyxx.example", SkanyxxRoles.Employee),
+            [SkanyxxRoles.Builder] = await TestPeople.InviteAsync(host, owner, "ids-builder@skanyxx.example", SkanyxxRoles.Builder)
+        };
+        // A team both callers write to, so a lift's target is theirs and only its source can refuse it.
+        var ct = TestContext.Current.CancellationToken;
+        Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/identity/org/departments", new { slug = "probes", name = "Probes" }, ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.Created, (await owner.PostAsJsonAsync("/api/identity/org/teams", new { slug = "probes", name = "Probes", department = "probes" }, ct)).StatusCode);
+        foreach (var (_, id) in people.Values)
+            Assert.Equal(HttpStatusCode.OK, (await owner.PutAsync($"/api/identity/org/teams/probes/members/{id}", null, ct)).StatusCode);
+        await WaitForStudioAsync(kagent);
+        var probes = IdProbes(await SeedAsync(database, git, supervisor, supervisorId));
+
+        var idRoutes = BelowSupervisor.Concat(ReadsBelowSupervisor).Where(r => Parameter().IsMatch(r.Key)).ToList();
+        Assert.Equal(idRoutes.Select(r => r.Key).Order(StringComparer.Ordinal),
+            probes.Keys.Concat(NobodysOwn.Keys).Order(StringComparer.Ordinal));
+        // The seeds are real: the supervisor is let through to each of them (a stored body then meets the missing object store).
+        foreach (var (key, probe) in probes.Where(p => p.Key.StartsWith("GET ", StringComparison.Ordinal)))
+        {
+            using var own = await supervisor.SendAsync(probe.Request(key, supervisorId), TestContext.Current.CancellationToken);
+            Assert.True(own.IsSuccessStatusCode || (key.EndsWith("/body", StringComparison.Ordinal) && own.StatusCode == HttpStatusCode.BadGateway),
+                $"{key} as its supervisor: {(int)own.StatusCode}");
+        }
+
+        var problems = new List<string>();
+        foreach (var (key, roles) in idRoutes.Where(r => probes.ContainsKey(r.Key)).Select(r => (r.Key, r.Value.Roles))
+            .OrderBy(r => r.Key.Split(' ')[0] switch { "GET" => 0, "DELETE" => 2, _ => 1 }).ThenBy(r => r.Key, StringComparer.Ordinal))
+            foreach (var role in roles)
+            {
+                var (client, id) = people[role];
+                var probe = probes[key];
+                using var response = await client.SendAsync(probe.Request(key, id), TestContext.Current.CancellationToken);
+                var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+                var refused = response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.NotFound
+                    || (probe.Hidden is { } hidden && response.IsSuccessStatusCode && !body.Contains(hidden, StringComparison.Ordinal));
+                if (!refused)
+                    problems.Add($"{key} as {role}: {(int)response.StatusCode}");
+            }
+
+        Assert.True(problems.Count == 0, "Another person's resource reachable below supervisor:\n" + string.Join("\n", problems));
+    }
+
+    private sealed record Seeded(string Conversation, string File, string Card, int CardVersion, string Workflow, string Run, int Pull, string Ticket);
+
+    /// <summary>
+    /// One request per allow-listed id route, on the supervisor's resource. <see cref="Body"/> is what the caller would
+    /// send for their own (a valid body, so a refusal is the rules' and not validation's 400), given the caller's id.
+    /// </summary>
+    private sealed record IdProbe(string Path, Func<string, object>? Body = null, string? Hidden = null)
+    {
+        public HttpRequestMessage Request(string key, string callerId)
+        {
+            var method = key.Split(' ')[0];
+            var request = new HttpRequestMessage(new HttpMethod(method), Path);
+            if (Body is not null)
+                request.Content = JsonContent.Create(Body(callerId));
+            else if (method is not ("GET" or "DELETE"))
+                request.Content = JsonContent.Create(new { });
+            return request;
+        }
+    }
+
+    private static Dictionary<string, IdProbe> IdProbes(Seeded s)
+    {
+        var card = $"/api/memory/cards/{s.Card}";
+        object Steps() => new object[] { new { id = "s1", title = "Ask", kind = "agent", agent = "kagent/seed", prompt = "{{input}}", steps = Array.Empty<object>() } };
+        return new()
+        {
+            ["GET api/chat/conversations/{id}"] = new($"/api/chat/conversations/{s.Conversation}"),
+            ["PATCH api/chat/conversations/{id}"] = new($"/api/chat/conversations/{s.Conversation}", _ => new { title = "taken" }),
+            ["DELETE api/chat/conversations/{id}"] = new($"/api/chat/conversations/{s.Conversation}"),
+            ["GET api/chat/sessions/{id}"] = new($"/api/chat/sessions/{s.Conversation}"),
+            ["PUT api/chat/sessions/{id}/scope"] = new($"/api/chat/sessions/{s.Conversation}/scope", id => new { scope = $"personal:{id}" }),
+            ["PUT api/chat/sessions/{id}/tickets"] = new($"/api/chat/sessions/{s.Conversation}/tickets", _ => new { ticketKeys = new[] { "DEMO-2" } }),
+            ["DELETE api/chat/sessions/{id}"] = new($"/api/chat/sessions/{s.Conversation}"),
+            ["GET api/chat/tickets/{key}"] = new($"/api/chat/tickets/{s.Ticket}", Hidden: s.Conversation),
+            ["GET api/chat/files/{id}"] = new($"/api/chat/files/{s.File}"),
+            ["DELETE api/chat/files/{id}"] = new($"/api/chat/files/{s.File}"),
+            ["GET api/memory/cards/{scope}/{key}"] = new(card),
+            ["GET api/memory/cards/{scope}/{key}/body"] = new($"{card}/body"),
+            ["GET api/memory/cards/{scope}/{key}/history"] = new($"{card}/history"),
+            ["PUT api/memory/cards/{scope}/{key}"] = new(card, _ => new { version = s.CardVersion, type = "decision", what = "Taken over", why = "Probe" }),
+            ["POST api/memory/cards/{scope}/{key}/lift"] = new($"{card}/lift", _ => new { targetScope = "team:probes" }),
+            ["POST api/memory/cards/{scope}/{key}/rename"] = new($"{card}/rename", _ => new { newKey = "taken-over", version = s.CardVersion }),
+            ["POST api/memory/cards/{scope}/{key}/status"] = new($"{card}/status", _ => new { version = s.CardVersion, status = "stale" }),
+            ["POST api/studio/proposals/{number}/close"] = new($"/api/studio/proposals/{s.Pull}/close"),
+            ["GET api/investigate/workflows/{id}"] = new($"/api/investigate/workflows/{s.Workflow}"),
+            ["PUT api/investigate/workflows/{id}"] = new($"/api/investigate/workflows/{s.Workflow}", _ => new { name = "Taken", steps = Steps() }),
+            ["POST api/investigate/workflows/{id}/duplicate"] = new($"/api/investigate/workflows/{s.Workflow}/duplicate"),
+            ["DELETE api/investigate/workflows/{id}"] = new($"/api/investigate/workflows/{s.Workflow}"),
+            ["GET api/investigate/runs/{id}"] = new($"/api/investigate/runs/{s.Run}"),
+            ["GET api/investigate/runs/{id}/report.json"] = new($"/api/investigate/runs/{s.Run}/report.json"),
+            ["GET api/investigate/runs/{id}/report.pdf"] = new($"/api/investigate/runs/{s.Run}/report.pdf"),
+            ["POST api/investigate/runs/{id}/cancel"] = new($"/api/investigate/runs/{s.Run}/cancel"),
+            ["POST api/investigate/runs/{id}/rerun"] = new($"/api/investigate/runs/{s.Run}/rerun"),
+        };
+    }
+
+    /// <summary>The supervisor's own resources, made through the API as the supervisor would.</summary>
+    private static async Task<Seeded> SeedAsync(string database, FakeGitea git, HttpClient supervisor, string supervisorId)
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var chat = await supervisor.PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "A private question" }, ct);
+        Assert.Equal(HttpStatusCode.OK, chat.StatusCode);
+        var conversation = (await chat.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("conversationId").GetString()!;
+        Assert.Equal(HttpStatusCode.OK, (await supervisor.PutAsJsonAsync($"/api/chat/sessions/{conversation}/tickets", new { ticketKeys = new[] { "DEMO-1" } }, ct)).StatusCode);
+
+        using var form = new MultipartFormDataContent();
+        var bytes = new ByteArrayContent("Private notes"u8.ToArray());
+        bytes.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+        form.Add(bytes, "file", "notes.txt");
+        var upload = await supervisor.PostAsync("/api/chat/files", form, ct);
+        Assert.Equal(HttpStatusCode.Created, upload.StatusCode);
+        var file = (await upload.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetString()!;
+
+        var card = $"personal:{supervisorId}/private-card";
+        var written = await supervisor.PutAsJsonAsync($"/api/memory/cards/{card}", new { version = 0, type = "decision", what = "A private note", why = "Mine" }, ct);
+        Assert.Equal(HttpStatusCode.Created, written.StatusCode);
+        var cardVersion = (await written.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("version").GetInt32();
+        // A body only has a route of its own once it lives in the object store, as LibraryPageTests stores one.
+        await using (var db = new NpgsqlConnection(database))
+        {
+            await db.OpenAsync(ct);
+            await using var stored = new NpgsqlCommand(
+                "UPDATE memory_cards SET body = 'The excerpt', source = 's3://skanyxx-memory/cards/sha256/" + new string('a', 64) + "' WHERE key = 'private-card'", db);
+            Assert.Equal(1, await stored.ExecuteNonQueryAsync(ct));
+        }
+
+        var created = await supervisor.PostAsJsonAsync("/api/investigate/workflows", new
+        {
+            name = "Private",
+            steps = new object[] { new { id = "s1", title = "Ask", kind = "agent", agent = "kagent/seed", prompt = "{{input}}", steps = Array.Empty<object>() } }
+        }, ct);
+        Assert.Equal(HttpStatusCode.Created, created.StatusCode);
+        var workflow = (await created.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetString()!;
+        var started = await supervisor.PostAsJsonAsync("/api/investigate/runs", new { workflowId = workflow, input = "why?" }, ct);
+        Assert.Equal(HttpStatusCode.Accepted, started.StatusCode);
+        var run = (await started.Content.ReadFromJsonAsync<JsonElement>(ct)).GetProperty("id").GetString()!;
+        var until = DateTime.UtcNow.AddSeconds(30);
+        while ((await supervisor.GetFromJsonAsync<JsonElement>($"/api/investigate/runs/{run}", ct)).GetProperty("state").GetString() is "queued" or "running")
+        {
+            Assert.True(DateTime.UtcNow < until, "the supervisor's run did not finish");
+            await Task.Delay(100, ct);
+        }
+
+        var pull = git.OpenPull("studio/private", "Private proposal", $"Agent: private\nProposed-by: {supervisorId}\n\nMine.");
+        Assert.Contains((await supervisor.GetFromJsonAsync<JsonElement>("/api/studio", ct)).GetProperty("open").EnumerateArray(),
+            p => p.GetProperty("number").GetInt32() == pull);
+        return new Seeded(conversation, file, card, cardVersion, workflow, run, pull, "DEMO-1");
+    }
+
+    /// <summary>The studio sets its repo up on its first pass; a proposal opened before that would not be found.</summary>
+    private static async Task WaitForStudioAsync(FakeKAgent kagent)
+    {
+        var until = DateTime.UtcNow.AddSeconds(20);
+        while (!kagent.AgentObjects.ContainsKey("kagent/skanyxx-factory"))
+        {
+            Assert.True(DateTime.UtcNow < until, "the studio's first pass did not finish");
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
     }
 
     /// <summary>

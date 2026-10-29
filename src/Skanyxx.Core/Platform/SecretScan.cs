@@ -204,7 +204,7 @@ public static class SecretScan
     private static JsonNode? RedactNode(JsonNode? node) => node switch
     {
         JsonObject o => new JsonObject(o.Select(p => KeyValuePair.Create(p.Key,
-            p.Value is JsonValue && (IsCredentialName(p.Key) || (p.Key == "value" && NamesACredential(o)))
+            p.Value is not null && (IsCredentialName(p.Key) || (p.Key == "value" && NamesACredential(o)))
                 ? JsonValue.Create(Redacted)
                 : RedactNode(p.Value)))),
         JsonArray a => new JsonArray(a.Select(RedactNode).ToArray()),

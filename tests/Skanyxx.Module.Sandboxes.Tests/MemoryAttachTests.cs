@@ -47,6 +47,25 @@ public sealed class MemoryAttachTests : SandboxesTestBase
         Assert.DoesNotContain(app.Logs.Entries, e => e.Message.Contains("skx_sbx_"));
     }
 
+    /// <summary>D398: a sandbox taken away because its maker was demoted mid-create loses its memory token with it.</summary>
+    [Fact]
+    public async Task ADemotion_LandingWhileAxCreatesTheSandbox_RevokesItsToken()
+    {
+        Ax.SeedWorkspace("repo-ws", FakeMemoryTokens.Url);
+        await using var app = await MemoryAppAsync();
+        Ax.HoldUpdates = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var run = RunAsync("fix-42", app: app, body: Bind("repo-ws"));
+        await Ax.UpdateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        app.Standing.Roles[SandboxesApp.User] = [];
+        Ax.HoldUpdates.SetResult();
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await run).StatusCode);
+        var issued = Assert.Single(_memory.Issued);
+        Assert.Equal(issued.AgentId, Assert.Single(_memory.Revoked));
+        Assert.Equal("Terminating", Ax.Stored("fix-42")!.Status.Phase);
+    }
+
     [Theory]
     [InlineData("plain-ws")]
     [InlineData("missing-ws")]

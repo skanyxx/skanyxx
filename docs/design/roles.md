@@ -71,7 +71,8 @@ handler runs: a made-up id is a 404 from any handler and proves nothing.
 Losing supervisor, or being disabled, stops the person's active sandboxes and cancels their unfinished ticket runs.
 Being disabled, or left below builder, cancels their Investigate runs (D395). Work picked up later asks identity again
 (`IPersonStanding`): each ticket stage, each Investigate run and step, and a sandbox start, so a request let in just
-before the role was saved away still stops. An open sandbox watch is not cut; it ends within `Sandboxes:WatchSeconds`.
+before the role was saved away still stops. A sandbox start asks both before AX creates it and after, and deletes the
+sandbox if the role went meanwhile (D398). An open sandbox watch is not cut; it ends within `Sandboxes:WatchSeconds`.
 
 Memory's credential check on cards (D391) catches accidents and is not a control: a secret split across fields or
 lines, encoded (non-PEM base64, hex, percent), written without a separator, or short passes it (D397).

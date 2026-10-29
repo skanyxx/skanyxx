@@ -61,6 +61,26 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
         Assert.Empty(Ax.Updates);
     }
 
+    /// <summary>
+    /// D398: the revocation sweep lists AX without the sandbox lock, so a demotion that commits while AX is creating the
+    /// sandbox is missed by it. The run asks identity again once AX answers and takes the sandbox away.
+    /// </summary>
+    [Fact]
+    public async Task ADemotion_LandingWhileAxCreatesTheSandbox_StopsIt()
+    {
+        Ax.HoldUpdates = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var run = RunAsync("fix-42");
+        await Ax.UpdateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        App.Standing.Roles[SandboxesApp.User] = [SkanyxxRoles.Builder];
+        Ax.HoldUpdates.SetResult();
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await run).StatusCode);
+        Assert.Single(Ax.Updates);
+        Assert.Equal(1, Ax.DeleteCalls);
+        Assert.Equal("Terminating", Ax.Stored("fix-42")!.Status.Phase);
+    }
+
     [Fact]
     public async Task AnotherUser_CannotOverwriteTheSandbox()
     {

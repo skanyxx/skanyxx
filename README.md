@@ -622,8 +622,10 @@ always works" rule of `docs/design/identity.md` (D081, D082).
   host usually owns a whole /64); behind a proxy that is the proxy's address, so everyone shares one window, unless
   `Skanyxx:TrustedProxies` (Helm `skanyxx.trustedProxies`) lists the proxy as CIDRs: then the client is the last
   `X-Forwarded-For` hop that proxy added (one hop, D390). List the ingress controller pod IPs only, never the pod network:
-  any pod inside the range could name itself any client. A value that is not a CIDR, or a range broader than /16
-  (IPv4) or /48 (IPv6), stops startup (D397; the Helm schema refuses the same, and `skanyxx.extraEnvFrom` may not use a
+  any pod inside the range could name itself any client. A value that is not a CIDR, or a range broader than /24
+  (IPv4) or /120 (IPv6), stops startup (D397, D399; an IPv6 range that reaches into the IPv4-mapped `::ffff:0:0/96` is
+  judged as the IPv4 range it maps to, or refused when it is not inside that block, since Kestrel hands IPv4 peers over
+  as `::ffff:a.b.c.d`; the Helm schema refuses the same, and `skanyxx.extraEnvFrom` may not use a
   prefix that sets it). Keep ingress-nginx's `use-forwarded-headers` at `false` (its default): with it on, the
   controller passes on the client's own `X-Forwarded-For`, and the hop Skanyxx reads becomes the client's choice.
 - Unauthenticated API calls get `401` ProblemDetails (never a redirect); pages redirect to `/Login`. A signed-in person
