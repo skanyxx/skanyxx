@@ -1,0 +1,44 @@
+# Argo CD for the Skanyxx agent repo (D363, D541): Argo syncs each merged agents/<name>/agent.yaml into kagent's
+# namespace and Skanyxx reads this Application's status for "Deployed" on /Studio.
+# Replace the three placeholders: REPO_URL (the agent repo as Argo reaches it), NAMESPACE (kagent's namespace, the
+# chart's release namespace) and, if you renamed it, the Application name (Studio:Argo:Application).
+#
+# Why this shape:
+# - only agent.yaml: grants.yaml is Skanyxx's (memory), plugins/ are applied by Skanyxx with their secrets;
+# - ignoreDifferences on labels: Skanyxx's reconciler sets skanyxx.dev/* labels (merged, managed-by) Argo must keep;
+# - no prune: an agent leaving main is removed by Skanyxx under its removal brake (D119), never by a sync;
+# - no selfHeal: the owner's emergency stop (D121) takes a suspended agent out of kagent and a self-heal would put it
+#   straight back. A later commit to main re-creates it; Skanyxx adopts what this Application created (D541) and
+#   keeps a suspended agent out again.
+# Also needed (scripts/day1/day1.sh does all of it): a repository Secret with a read-only git token, a read-only Argo
+# account for Skanyxx (`p, skanyxx, applications, get, default/skanyxx-agents, allow`) and a health check for
+# kagent.dev/Agent in argocd-cm (argocd-agent-health.lua next to this file), without which Argo never says Healthy.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: skanyxx-agents
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: REPO_URL
+    targetRevision: main
+    # The repo root, not agents/: a fresh repo has no agents/ yet and Argo would report "path does not exist".
+    path: .
+    directory:
+      recurse: true
+      include: "agents/*/agent.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: NAMESPACE
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+    syncOptions:
+      - CreateNamespace=false
+  ignoreDifferences:
+    - group: kagent.dev
+      kind: Agent
+      jsonPointers:
+        - /metadata/labels

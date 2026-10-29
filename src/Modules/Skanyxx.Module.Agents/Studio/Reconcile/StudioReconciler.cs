@@ -481,7 +481,7 @@ internal sealed class StudioReconciler(
     public async Task EnsureNotForeignAsync(string name, CancellationToken ct)
     {
         if (await kagent.GetAgentObjectAsync(Ns, name, ct) is { } existing
-            && KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy)
+            && KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy && !ArgoCreated(existing, name))
             throw new StudioApplyException($"kagent already runs an agent named '{name}' that the studio does not manage; choose another name.");
     }
 
@@ -521,6 +521,17 @@ internal sealed class StudioReconciler(
         {
             await kagent.CreateAgentAsync(agent, ct);
             logger.LogWarning("Studio created the kagent agent {Namespace}/{Agent}", Ns, name);
+        }
+        else if (ArgoCreated(existing, name))
+        {
+            // kagent sets labels only at creation: adopt by re-creating it labelled, keeping Argo's tracking id.
+            agent["metadata"]!["annotations"] = new JsonObject
+            {
+                [KAgentObjects.ArgoTrackingAnnotation] = existing["metadata"]!["annotations"]![KAgentObjects.ArgoTrackingAnnotation]!.DeepClone()
+            };
+            await kagent.DeleteAgentAsync(Ns, name, ct);
+            await kagent.CreateAgentAsync(agent, ct);
+            logger.LogWarning("Studio adopted the kagent agent {Namespace}/{Agent} that Argo CD created from main", Ns, name);
         }
         else if (KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy)
             throw new StudioApplyException($"kagent already runs an agent named '{name}' that the studio does not manage.");
@@ -583,13 +594,17 @@ internal sealed class StudioReconciler(
     {
         if (await kagent.GetAgentObjectAsync(Ns, agentId, ct) is { } existing)
         {
-            if (KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy)
+            if (KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy && !ArgoCreated(existing, agentId))
                 return;
             await kagent.DeleteAgentAsync(Ns, agentId, ct);
             logger.LogWarning("Studio removed the kagent agent {Namespace}/{Agent}", Ns, agentId);
         }
         await kagent.DeleteRemoteMcpServerAsync(Ns, StudioNames.MemoryServer(agentId), ct);
     }
+
+    /// <summary>Created by the studio's own Argo CD Application from main (D541); never when Argo is not configured.</summary>
+    private bool ArgoCreated(JsonObject agent, string name) =>
+        _options.Argo.Configured && KAgentObjects.CreatedByArgo(agent, _options.Argo.Application, Ns, name);
 
     /// <summary>A plugin's server, never an allow-listed one of the owner's (a stray file by that name changes nothing for it).</summary>
     private bool IsPluginServer(string server, IReadOnlyDictionary<string, string> pluginServers) =>

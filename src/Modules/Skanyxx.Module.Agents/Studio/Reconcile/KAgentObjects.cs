@@ -9,6 +9,19 @@ namespace Skanyxx.Module.Agents.Studio.Reconcile;
 /// <summary>The kagent objects the reconciler sends (research/kagent-agent-api.md).</summary>
 internal static class KAgentObjects
 {
+    /// <summary>Argo CD's resource tracking (annotation, its default since 3.0): <c>&lt;app&gt;:&lt;group&gt;/&lt;kind&gt;:&lt;ns&gt;/&lt;name&gt;</c>.</summary>
+    public const string ArgoTrackingAnnotation = "argocd.argoproj.io/tracking-id";
+
+    /// <summary>
+    /// D541: an Agent the studio's own Argo CD Application (<paramref name="application"/>) created from main's
+    /// <c>agents/&lt;name&gt;/agent.yaml</c> before the reconciler did (a restore, or a sync that re-creates a suspended
+    /// agent): Argo's tracking id names exactly it, and no Skanyxx label claims it for anything else (a direct agent).
+    /// </summary>
+    public static bool CreatedByArgo(JsonObject agent, string application, string ns, string name) =>
+        Label(agent, StudioNames.ManagedByLabel) is null
+        && agent["metadata"]?["annotations"]?[ArgoTrackingAnnotation] is JsonValue id && id.TryGetValue<string>(out var tracking)
+        && tracking == $"{application}:kagent.dev/Agent:{ns}/{name}";
+
     public static JsonObject WithLabels(JsonObject agent, params (string Key, string Value)[] labels)
     {
         var labelled = (JsonObject)agent.DeepClone();
