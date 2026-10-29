@@ -124,11 +124,28 @@ public sealed class UiBehaviourTests
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(60));
         await socket.ConnectAsync(new Uri(socketUrl!), timeout.Token);
+
+        // Headless Chrome opens about:blank and then navigates to the page, so an evaluate sent in between dies with
+        // its context ("Execution context was destroyed"). The expression only waits for the page's own promise, so
+        // it is sent again into the context that replaced it; a page that keeps navigating away still fails.
+        for (var id = 1; ; id++)
+        {
+            var reply = await SendAsync(socket, id, expression, timeout.Token);
+            if (reply.TryGetProperty("result", out var outer) && outer.GetProperty("result").TryGetProperty("value", out var value))
+                return value.GetString()!;
+            if (id >= 5 || !(reply.TryGetProperty("error", out var error)
+                             && error.GetProperty("message").GetString() == "Execution context was destroyed."))
+                throw new InvalidOperationException($"the page did not answer: {reply}");
+        }
+    }
+
+    private static async Task<JsonElement> SendAsync(ClientWebSocket socket, int id, string expression, CancellationToken ct)
+    {
         var request = JsonSerializer.SerializeToUtf8Bytes(new
         {
-            id = 1, method = "Runtime.evaluate", @params = new { expression, awaitPromise = true, returnByValue = true }
+            id, method = "Runtime.evaluate", @params = new { expression, awaitPromise = true, returnByValue = true }
         });
-        await socket.SendAsync(request, WebSocketMessageType.Text, endOfMessage: true, timeout.Token);
+        await socket.SendAsync(request, WebSocketMessageType.Text, endOfMessage: true, ct);
 
         var buffer = new byte[64 * 1024];
         while (true)
@@ -137,15 +154,13 @@ public sealed class UiBehaviourTests
             WebSocketReceiveResult received;
             do
             {
-                received = await socket.ReceiveAsync(buffer, timeout.Token);
+                received = await socket.ReceiveAsync(buffer, ct);
                 message.Write(buffer, 0, received.Count);
             }
             while (!received.EndOfMessage);
             var reply = JsonDocument.Parse(Encoding.UTF8.GetString(message.ToArray())).RootElement;
-            if (reply.TryGetProperty("id", out var id) && id.GetInt32() == 1)
-                return reply.TryGetProperty("result", out var outer) && outer.GetProperty("result").TryGetProperty("value", out var value)
-                    ? value.GetString()!
-                    : throw new InvalidOperationException($"the page did not answer: {reply}");
+            if (reply.TryGetProperty("id", out var replyId) && replyId.GetInt32() == id)
+                return reply;
         }
     }
 }

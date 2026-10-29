@@ -506,18 +506,11 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         var owner = await _host.OwnerAsync();
         const int imageLimit = 4 * 1024 * 1024; // the default; text is 4 KB here, so the cap is the image limit, not the 20 MB ceiling
 
-        HttpStatusCode? overCap;
-        try
-        {
-            overCap = (await UploadAsync(owner, "huge.txt", new byte[imageLimit + 128 * 1024])).StatusCode;
-        }
-        catch (HttpRequestException)
-        {
-            overCap = null; // Kestrel answered 413 on the declared length and closed the connection before the body was sent
-        }
+        // Only the first 64 KB of the body is sent: the answer has to come without the rest, from the declared length.
+        var overCap = await DeclaredUploadAsync(owner, imageLimit + 128 * 1024, sent: 64 * 1024);
         var overText = await UploadAsync(owner, "big.txt", Encoding.UTF8.GetBytes(new string('a', 64 * 1024)));
 
-        Assert.True(overCap is null or HttpStatusCode.RequestEntityTooLarge, $"over the cap: {overCap}");
+        Assert.StartsWith("HTTP/1.1 413 ", overCap);
         Assert.Equal(HttpStatusCode.BadRequest, overText.StatusCode);
         Assert.Contains("Text files may be up to 4 KB", await overText.Content.ReadAsStringAsync(Ct));
         Assert.DoesNotContain("UTF-8", await overText.Content.ReadAsStringAsync(Ct)); // refused on its size, never read for its content
@@ -618,6 +611,36 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         file.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
         form.Add(file, "file", name);
         return await client.PostAsync("/api/chat/files", form, Ct);
+    }
+
+    /// <summary>
+    /// A multipart upload that declares <paramref name="length"/> bytes but sends only <paramref name="sent"/> of them, over a
+    /// raw socket (HttpClient would keep writing the rest and lose the answer to the reset that follows it). Returns
+    /// the answer's head.
+    /// </summary>
+    private async Task<string> DeclaredUploadAsync(HttpClient client, int length, int sent)
+    {
+        const string boundary = "skx-boundary";
+        using var tcp = new System.Net.Sockets.TcpClient();
+        await tcp.ConnectAsync(_host.BaseAddress.Host, _host.BaseAddress.Port, Ct);
+        var stream = tcp.GetStream();
+        var head = new StringBuilder()
+            .Append($"POST /api/chat/files HTTP/1.1\r\nHost: {_host.BaseAddress.Authority}\r\n")
+            .Append($"Authorization: {client.DefaultRequestHeaders.Authorization}\r\n")
+            .Append($"Content-Type: multipart/form-data; boundary={boundary}\r\nContent-Length: {length}\r\n\r\n")
+            .Append($"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"huge.txt\"\r\n")
+            .Append("Content-Type: application/octet-stream\r\n\r\n");
+        await stream.WriteAsync(Encoding.ASCII.GetBytes(head.ToString()), Ct);
+        await stream.WriteAsync(new byte[sent], Ct);
+
+        // A server that waited for the rest would never answer: that is a failure, not a hang.
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        var answer = new StringBuilder();
+        var buffer = new byte[4096];
+        while (!answer.ToString().Contains("\r\n\r\n") && await stream.ReadAsync(buffer, timeout.Token) is > 0 and var read)
+            answer.Append(Encoding.ASCII.GetString(buffer, 0, read));
+        return answer.ToString();
     }
 
     private async Task<Browser> SignedInBrowserAsync()
