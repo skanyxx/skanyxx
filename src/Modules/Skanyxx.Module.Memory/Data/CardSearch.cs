@@ -31,7 +31,7 @@ public sealed partial class CardSearch(MemoryDbContext db, SearchCache cache)
                c.what AS What, c.why AS Why, c.who AS Who, c.updated_at AS UpdatedAt, c.tickets AS Tickets
         FROM memory_cards c, q
         WHERE c.status = 'published' AND (c.scope = ANY(@Scopes) OR (@AllOrg AND c.scope ~ '^(team|department):'))
-          AND (c.search @@ q.query OR c.tickets && @Tickets OR c.keywords && @Words)
+          AND (c.search @@ q.query OR c.tickets && @Tickets OR c.keywords && @Words){1}
         ORDER BY (c.tickets && @Tickets) DESC, ts_rank(c.search, q.query) DESC NULLS LAST, c.updated_at DESC
         LIMIT @Limit
         """;
@@ -103,8 +103,9 @@ public sealed partial class CardSearch(MemoryDbContext db, SearchCache cache)
             .ToArray();
 
     /// <param name="tickets">Ticket keys known to be relevant, besides any <paramref name="query"/> mentions.</param>
+    /// <param name="withChats">False leaves out the cards extracted from chats (<see cref="CardOrigin.Chat"/>, D500).</param>
     public async Task<IReadOnlyList<CardHit>> SearchAsync(
-        string query, SearchScopes scopes, int limit, CancellationToken ct, IReadOnlyList<string>? tickets = null)
+        string query, SearchScopes scopes, int limit, CancellationToken ct, IReadOnlyList<string>? tickets = null, bool withChats = true)
     {
         var terms = Terms(query);
         string[] keys = [.. CardTickets.FindIn(query, MaxTickets).Concat(tickets ?? []).Distinct().Take(MaxTickets)];
@@ -114,7 +115,8 @@ public sealed partial class CardSearch(MemoryDbContext db, SearchCache cache)
         // Oversight's scope set is "every team and department", which no key can name; it is never cached.
         return scopes.AllTeamsAndDepartments
             ? await QueryAsync()
-            : await cache.GetOrSearchAsync(scopes.Exact, string.Join(' ', terms), keys, limit, QueryAsync);
+            // Terms are joined by spaces, so a line break cannot be part of one: the two kinds of search never share an entry.
+            : await cache.GetOrSearchAsync(scopes.Exact, string.Join(' ', terms) + (withChats ? "" : "\nwithout chats"), keys, limit, QueryAsync);
 
         async Task<IReadOnlyList<CardHit>> QueryAsync()
         {
@@ -125,7 +127,7 @@ public sealed partial class CardSearch(MemoryDbContext db, SearchCache cache)
             });
             var tsquery = terms.Length == 0 ? "NULL::tsquery" : TsQuery(terms, parameters);
             var rows = await db.Database.GetDbConnection().QueryAsync<CardRow>(
-                new CommandDefinition(string.Format(Sql, tsquery), parameters, cancellationToken: ct));
+                new CommandDefinition(string.Format(Sql, tsquery, withChats ? "" : " AND c.origin <> 'chat'"), parameters, cancellationToken: ct));
             return rows.Select(r => r.ToHit()).ToList();
         }
     }

@@ -13,7 +13,7 @@ using Skanyxx.Module.ChatContext.Extraction;
 namespace Skanyxx.Module.ChatContext.Context;
 
 /// <summary>
-/// Chat's <see cref="IChatContext"/> (D260–D265). Before a new conversation: the answer cache, then related sessions
+/// Chat's <see cref="IChatContext"/> (D260–D265). Before a new conversation: the answer cache (D502), then related sessions
 /// (<see cref="SessionSearch.RelatedAsync"/>, readable only). Cards are memory's part (<c>IRelatedMemory</c>, D302).
 /// After every turn: the index row, through <see cref="IChatExtractor"/>.
 /// </summary>
@@ -32,7 +32,7 @@ internal sealed class ChatContextService(
             if (cache.On)
             {
                 cacheKey = await cache.KeyAsync(me, start.AgentRef, start.AgentRevision, start.TicketKeys, start.Message);
-                if (!start.NoCache && cacheKey is not null && await cache.GetAsync(cacheKey) is { } hit)
+                if (!start.NoCache && cacheKey is not null && await cache.GetAsync(cacheKey) is { } hit && await StillOneTurnAsync(me, hit, ct))
                 {
                     await cache.RecordHitAsync(me, (start.Message.Length + hit.Content.Length) / RelatedBlock.CharsPerToken);
                     return ChatPreparation.None with { Cached = Answer(hit) };
@@ -103,6 +103,14 @@ internal sealed class ChatContextService(
         if (done.IsFirst && done.CacheKey is { } key)
             await cache.SetAsync(key, new CachedAnswer(done.SessionId, done.Reply, now));
     }
+
+    /// <summary>
+    /// D502: a hit reopens the conversation it came from, so it is served only while that conversation is still just this
+    /// question and its answer. One that went on would open on its later turns, and a new chat would show another
+    /// question's answer; the agent is asked again instead, and the new conversation replaces the kept answer.
+    /// </summary>
+    private async Task<bool> StillOneTurnAsync(string userId, CachedAnswer hit, CancellationToken ct) =>
+        await db.Sessions.AsNoTracking().AnyAsync(s => s.Id == hit.ConversationId && s.UserId == userId && s.Turns == 1, ct);
 
     /// <summary>The first line of what the person asked, folded and cut.</summary>
     internal static string Title(string message)

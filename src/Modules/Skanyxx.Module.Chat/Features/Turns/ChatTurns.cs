@@ -103,7 +103,7 @@ internal sealed class ChatTurns(
             throw;
         }
         return Outcome<TurnStart>.Ok(new TurnStart(agent, agentRef, sessionId, isNew, title, prepared, memory,
-            prepared.Context + memory.Block + turnFiles.Block + command.Message, turnFiles.Images, admission));
+            PromptBlocks.Prompt(prepared.Context + memory.Block, turnFiles.Block, command.Message), turnFiles.Images, admission));
     }
 
     /// <summary>

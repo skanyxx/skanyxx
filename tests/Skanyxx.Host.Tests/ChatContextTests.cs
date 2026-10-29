@@ -68,6 +68,43 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("Thanks", LastMessageSent());
     }
 
+    /// <summary>
+    /// Answer drift (D500–D503): a new "two plus two" chat was given the "three plus three" chat, as related work and as
+    /// its memory card, and a small model answered the earlier question. A new chat on other words goes to kagent bare.
+    /// </summary>
+    [Fact]
+    public async Task ANewChat_IsNotGivenAnEarlierChatThatSharesOneWord()
+    {
+        var owner = await _host.OwnerAsync();
+        _kagent.Answer = "Three plus three is six.";
+        var first = await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "what is three plus three" });
+
+        _kagent.Answer = "Two plus two is four.";
+        var second = await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "what is two plus two" });
+
+        Assert.NotEqual(first.GetProperty("conversationId").GetString(), second.GetProperty("conversationId").GetString());
+        Assert.Equal("what is two plus two", LastMessageSent());
+        Assert.Empty(second.GetProperty("relatedSessions").EnumerateArray());
+        Assert.Empty(second.GetProperty("memoryCards").EnumerateArray());
+        Assert.Equal("Two plus two is four.", second.GetProperty("message").GetProperty("content").GetString());
+    }
+
+    /// <summary>D503: with related work in front, the person's own message is announced, and a reopened chat shows it bare.</summary>
+    [Fact]
+    public async Task RelatedWork_IsFollowedByTheNewMessageMarker_AndReopenedWithoutIt()
+    {
+        var owner = await _host.OwnerAsync();
+        await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "Why are EU refunds slow?", ticketKeys = new[] { "SDB-58" } });
+
+        var second = await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "Continue SDB-58", ticketKeys = new[] { "SDB-58" } });
+
+        Assert.EndsWith("[End of related prior work]\n\n[The person's new message. Answer this one:]\nContinue SDB-58", LastMessageSent());
+        var view = await owner.GetFromJsonAsync<JsonElement>(
+            $"/api/chat/conversations/{second.GetProperty("conversationId").GetString()}", TestContext.Current.CancellationToken);
+        var asked = view.GetProperty("items").EnumerateArray().First(i => i.GetProperty("kind").GetString() == "user");
+        Assert.Equal("Continue SDB-58", asked.GetProperty("text").GetString());
+    }
+
     [Fact]
     public async Task AnotherPerson_IsGivenNothingOfAPrivateChat_AndSeesOnlyTheirOwnHistory()
     {
