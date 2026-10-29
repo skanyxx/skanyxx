@@ -16,7 +16,7 @@ internal sealed class BrowseLibraryEndpoint(IMediator mediator) : Endpoint<Brows
 
     public override async Task HandleAsync(BrowseLibraryRequest req, CancellationToken ct)
     {
-        var filter = new LibraryFilter(req.Ticket, req.Keyword, req.Type, req.Origin, req.Agent, req.Offset);
+        var filter = new LibraryFilter(req.Ticket, req.Keyword, req.Type, req.Origin, req.Agent, req.Offset, req.Owner, req.From, req.To, req.Sort);
         var outcome = await mediator.Send(new BrowseLibraryQuery(LibraryUser.From(User), req.Q, req.Scope, filter), ct);
         await Send.ResultAsync(outcome.ToHttp());
     }

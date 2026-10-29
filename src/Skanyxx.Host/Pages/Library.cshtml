@@ -3,7 +3,10 @@
 @using Skanyxx.Core.Platform.Memory
 @{
     ViewData["Title"] = "Library";
-    var searching = !string.IsNullOrWhiteSpace(Model.Q) || !string.IsNullOrEmpty(Model.Filter);
+    var searching = Model.Filtered;
+    var shelf = Model.Shelf;
+    var types = new[] { "decision", "fact", "procedure", "open" };
+    var sortLabels = new Dictionary<string, string> { ["relevance"] = "Best match", ["newest"] = "Newest first", ["oldest"] = "Oldest first", ["what"] = "Title A–Z" };
 }
 <page-header description="Company knowledge as cards: what was decided and why. You see company cards, your own, and your teams' and departments'." />
 @if (Model.Error is not null && Model.ShelfLoaded)
@@ -18,24 +21,82 @@
 @await Component.InvokeAsync("SetupGuide", new { id = "library" })
 @await Component.InvokeAsync("SetupGuide", new { id = "memory" })
 
-<form method="get" class="toolbar" role="search">
-    <div class="search">
-        <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg>
-        <input type="search" name="q" value="@Model.Q" placeholder="Search, e.g. refund window" maxlength="@CardFormat.MaxQueryLength" aria-label="Search" autocomplete="off" />
-    </div>
-    <select name="filter" aria-label="Scope">
-        <option value="">All scopes I can read</option>
-        @foreach (var scope in Model.Shelf.Scopes)
+<form method="get" class="card form library-filters" role="search" aria-label="Filter the library">
+    <div class="toolbar">
+        <div class="search">
+            <svg class="icon" aria-hidden="true" focusable="false"><use href="#i-search"/></svg>
+            <input type="search" name="q" value="@Model.Q" placeholder="Search, e.g. refund window" maxlength="@CardFormat.MaxQueryLength" aria-label="Search" autocomplete="off" />
+        </div>
+        <button type="submit" class="btn btn-primary">Search</button>
+        @if (searching)
         {
-            <option value="@scope" selected="@(scope == Model.Filter)">@Model.ScopeLabel(scope)</option>
+            <a class="btn btn-ghost" asp-page="/Library" asp-route-sort="@Model.Sort">Clear filters</a>
         }
-    </select>
-    <button type="submit" class="btn btn-primary">Search</button>
-    @if (searching)
-    {
-        <a class="btn btn-ghost" asp-page="/Library">Clear</a>
-    }
+    </div>
+    <div class="form-row">
+        <field for="lib-scope" label="Scope or team">
+            <select id="lib-scope" name="filter">
+                <option value="">All scopes I can read</option>
+                @foreach (var scope in shelf.Scopes)
+                {
+                    <option value="@scope" selected="@(scope == Model.Filter)">@Model.ScopeLabel(scope)</option>
+                }
+            </select>
+        </field>
+        <field for="lib-type" label="Type">
+            <select id="lib-type" name="type">
+                <option value="">Any type</option>
+                @foreach (var type in types)
+                {
+                    <option value="@type" selected="@(type == Model.Type)">@type</option>
+                }
+            </select>
+        </field>
+        <field for="lib-tag" label="Tag">
+            <input id="lib-tag" name="tag" value="@Model.Tag" placeholder="e.g. refunds" maxlength="64" autocomplete="off" />
+        </field>
+        <field for="lib-owner" label="Last written by">
+            <select id="lib-owner" name="owner">
+                <option value="">Anyone</option>
+                <option value="@Model.MyId" selected="@(Model.Owner is not null && Model.Owner == Model.MyId)">Me</option>
+                @if (!string.IsNullOrEmpty(Model.Owner) && Model.Owner != Model.MyId)
+                {
+                    <option value="@Model.Owner" selected>@Model.Owner</option>
+                }
+            </select>
+        </field>
+        <field for="lib-from" label="Updated from">
+            <input id="lib-from" name="from" type="date" value="@Model.From?.ToString("yyyy-MM-dd")" />
+        </field>
+        <field for="lib-to" label="Updated to">
+            <input id="lib-to" name="to" type="date" value="@Model.To?.ToString("yyyy-MM-dd")" />
+        </field>
+        <field for="lib-sort" label="Sort">
+            <select id="lib-sort" name="sort">
+                @foreach (var (value, label) in sortLabels)
+                {
+                    <option value="@value" selected="@((Model.Sort ?? "relevance") == value)">@label</option>
+                }
+            </select>
+        </field>
+    </div>
+    <div class="form-actions"><button type="submit" class="btn btn-secondary">Apply filters</button></div>
 </form>
+
+@if (Model.ShelfLoaded)
+{
+    <div class="chips mt-2" role="group" aria-label="Filter by type" data-type-counts>
+        <a class="chip" asp-page="/Library" asp-all-route-data="@Model.ListState(("type", null))" aria-current="@(string.IsNullOrEmpty(Model.Type) ? "true" : null)">
+            All <span class="chip-count">@((shelf.TypeCounts ?? new Dictionary<string, int>()).Values.Sum())</span>
+        </a>
+        @foreach (var type in types)
+        {
+            <a class="chip" asp-page="/Library" asp-all-route-data="@Model.ListState(("type", type))" aria-current="@(Model.Type == type ? "true" : null)" data-type="@type">
+                @type <span class="chip-count">@(shelf.TypeCounts?.GetValueOrDefault(type) ?? 0)</span>
+            </a>
+        }
+    </div>
+}
 
 @if (!Model.ShelfLoaded)
 {
@@ -48,8 +109,8 @@ else if (Model.Shelf.Cards.Count == 0)
     <div class="card">
         @if (searching)
         {
-            <empty-state icon="i-search" title="@(string.IsNullOrWhiteSpace(Model.Q) ? "No cards in this scope" : $"Nothing matches “{Model.Q}”")">
-                <p>Try other words or another scope.</p>
+            <empty-state icon="i-search" title="@(string.IsNullOrWhiteSpace(Model.Q) ? "No cards match these filters" : $"Nothing matches “{Model.Q}”")">
+                <p>Try other words, another scope or fewer filters.</p>
                 <div class="empty-state-actions"><a class="btn btn-secondary" asp-page="/Library">Clear search</a></div>
             </empty-state>
         }
@@ -75,8 +136,7 @@ else
                         var open = Model.Opened?.Card is { } o && o.Scope == entry.Scope && o.Key == entry.Key;
                         <tr class="@(open ? "is-selected" : null)">
                             <td>
-                                <a asp-page="/Library" asp-route-scope="@entry.Scope" asp-route-key="@entry.Key"
-                                   asp-route-q="@Model.Q" asp-route-filter="@Model.Filter">@entry.What</a>
+                                <a asp-page="/Library" asp-all-route-data="@Model.ListState()" asp-route-scope="@entry.Scope" asp-route-key="@entry.Key">@entry.What</a>
                                 <span class="table-cell-sub clamp-2">@entry.Why</span>
                             </td>
                             <td><code>@entry.Key</code></td>
@@ -88,17 +148,26 @@ else
                                     <status-badge status="@entry.Status" />
                                 }
                             </td>
-                            <td>@Model.WhoLabel(entry.Who)</td>
+                            <td><a asp-page="/Library" asp-all-route-data="@Model.ListState(("owner", entry.Who))" title="Only cards last written by @Model.WhoLabel(entry.Who)">@Model.WhoLabel(entry.Who)</a></td>
                             <td class="nowrap"><time data-relative datetime="@entry.UpdatedAt.ToString("O")" title="@entry.UpdatedAt.ToString("u")">@entry.UpdatedAt.ToString("yyyy-MM-dd")</time></td>
                         </tr>
                     }
                 </tbody>
             </table>
         </div>
-        @if (Model.Shelf.Cards.Count == LibraryShelf.Limit)
-        {
-            <div class="table-footer">Showing the first @LibraryShelf.Limit; narrow the search to see others.</div>
-        }
+        <nav class="table-footer pager" aria-label="Pages" data-pager>
+            <span data-range>@(shelf.Offset + 1)–@(shelf.Offset + shelf.Cards.Count) of @shelf.Total.ToString("N0")</span>
+            <span class="pager-links">
+                @if (shelf.Offset > 0)
+                {
+                    <a class="btn btn-secondary btn-sm" rel="prev" asp-page="/Library" asp-all-route-data="@Model.ListState(("offset", Math.Max(0, shelf.Offset - LibraryShelf.Limit).ToString()))">Previous</a>
+                }
+                @if (shelf.HasMore && shelf.Offset + LibraryShelf.Limit <= LibraryFilter.MaxOffset)
+                {
+                    <a class="btn btn-secondary btn-sm" rel="next" asp-page="/Library" asp-all-route-data="@Model.ListState(("offset", (shelf.Offset + LibraryShelf.Limit).ToString()))">Next</a>
+                }
+            </span>
+        </nav>
     </div>
 }
 
@@ -117,7 +186,7 @@ else
                     }
                 </p>
             </div>
-            <a class="btn btn-ghost btn-icon" asp-page="/Library" asp-route-q="@Model.Q" asp-route-filter="@Model.Filter" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></a>
+            <a class="btn btn-ghost btn-icon" asp-page="/Library" asp-all-route-data="@Model.ListState()" aria-label="Close"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-x"/></svg></a>
         </div>
         <div class="dialog-body">
             <section>
@@ -164,7 +233,7 @@ else
                         @foreach (var target in opened.LiftTargets)
                         {
                             <form method="post" asp-page-handler="Lift" asp-route-scope="@card.Scope" asp-route-key="@card.Key"
-                                  asp-route-q="@Model.Q" asp-route-filter="@Model.Filter"
+                                  asp-all-route-data="@Model.ListState()"
                                   data-confirm="Everyone who reads @Model.ScopeLabel(target) will see the copy. The original stays where it is."
                                   data-confirm-title="Lift a copy to @Model.ScopeLabel(target)?" data-confirm-action="Lift">
                                 <input type="hidden" name="target" value="@target" />
@@ -179,7 +248,7 @@ else
                 <section>
                     <h3 class="section-title mb-1">Rename the key</h3>
                     <form method="post" asp-page-handler="Rename" asp-route-scope="@card.Scope" asp-route-key="@card.Key"
-                          asp-route-q="@Model.Q" asp-route-filter="@Model.Filter" class="inline-form">
+                          asp-all-route-data="@Model.ListState()" class="inline-form">
                         <input type="hidden" name="version" value="@card.Version" />
                         <input name="newKey" value="@card.Key" required maxlength="@CardFormat.MaxKeyLength" pattern="@CardFormat.KeyPattern" aria-label="New key" autocomplete="off" />
                         <button type="submit" class="btn btn-secondary" data-rename="@card.Key">Rename key</button>

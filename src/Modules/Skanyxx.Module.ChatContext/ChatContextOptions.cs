@@ -33,6 +33,13 @@ public sealed class ChatContextOptions
     [Range(1, 1_000)]
     public int MaxPoolSize { get; set; } = 20;
 
+    /// <summary>
+    /// D350: indexed sessions not updated for this many days are deleted (owner: Settings → Retention). 0 keeps them.
+    /// The transcripts are kagent's and follow its own TTL.
+    /// </summary>
+    [Range(0, 3650)]
+    public int SessionRetentionDays { get; set; }
+
     public AnswerCacheOptions AnswerCache { get; set; } = new();
 
     /// <summary>Same pool split as memory's and tickets': a module-suffixed Application Name.</summary>

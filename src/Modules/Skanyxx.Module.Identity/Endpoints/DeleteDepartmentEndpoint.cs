@@ -1,0 +1,28 @@
+using FastEndpoints;
+using MediatR;
+using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Identity;
+
+namespace Skanyxx.Module.Identity.Endpoints;
+
+/// <summary><c>DELETE org/departments/{slug}?to=&lt;department&gt;</c>: 409 while it has teams and no <c>to</c> (D351).</summary>
+internal sealed class DeleteDepartmentEndpoint(IMediator mediator) : Endpoint<DeleteOrgRequest>
+{
+    public override void Configure()
+    {
+        Delete("org/departments/{slug}");
+        Group<IdentityGroup>();
+        Roles(SkanyxxRoles.Owner);
+    }
+
+    public override async Task HandleAsync(DeleteOrgRequest req, CancellationToken ct)
+    {
+        var outcome = await mediator.Send(new DeleteDepartmentCommand(Caller.UserId(User)!, req.Slug, Blank(req.To)), ct);
+        if (outcome.Status == OutcomeStatus.Ok)
+            await Send.NoContentAsync(ct);
+        else
+            await Send.ResultAsync(outcome.ToHttp());
+    }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
+}

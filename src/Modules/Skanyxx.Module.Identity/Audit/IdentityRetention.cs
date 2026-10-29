@@ -15,7 +15,7 @@ namespace Skanyxx.Module.Identity.Audit;
 /// What it removed is itself an audit row, so the trail shows its own gaps.
 /// </summary>
 internal sealed class IdentityRetention(
-    IServiceScopeFactory scopes, IOptions<IdentityModuleOptions> options, TimeProvider time, ILogger<IdentityRetention> logger) : BackgroundService
+    IServiceScopeFactory scopes, IOptionsMonitor<IdentityModuleOptions> options, TimeProvider time, ILogger<IdentityRetention> logger) : BackgroundService
 {
     public static readonly TimeSpan Interval = TimeSpan.FromHours(6);
 
@@ -47,7 +47,8 @@ internal sealed class IdentityRetention(
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AccountsDbContext>();
         var now = time.GetUtcNow();
-        var cutoff = now.AddDays(-options.Value.AuditRetentionDays);
+        var days = options.CurrentValue.AuditRetentionDays; // the Settings page may change it between runs (D350)
+        var cutoff = now.AddDays(-days);
         var dayAgo = now.AddDays(-1);
 
         var audit = await InBatchesAsync(() => db.Audit.Where(a => a.AtUtc < cutoff).OrderBy(a => a.Id).Take(BatchSize).ExecuteDeleteAsync(ct));
@@ -58,7 +59,7 @@ internal sealed class IdentityRetention(
         // After the batches, not with them: each batch commits on its own, so a purge cut short still leaves its row next time.
         if (audit + invites > 0)
             await scope.ServiceProvider.GetRequiredService<IdentityAudit>().WriteAsync(AuditActions.RetentionPurged, null, null,
-                new { olderThan = cutoff, auditRows = audit, invites, retentionDays = options.Value.AuditRetentionDays }, ct);
+                new { olderThan = cutoff, auditRows = audit, invites, retentionDays = days }, ct);
 
         if (audit + invites + resets > 0)
             logger.LogInformation("Identity retention removed {Audit} audit rows and {Invites} invites older than {Cutoff}, and {Resets} expired reset links",

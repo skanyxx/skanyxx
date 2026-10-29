@@ -10,7 +10,7 @@ using Skanyxx.Module.Identity.Data;
 namespace Skanyxx.Module.Identity.Features.Org;
 
 /// <summary>
-/// A taken slug is a 409: slugs are unique per kind and, with nothing ever deleted, never reused. <c>ON CONFLICT
+/// A taken slug is a 409: slugs are unique per kind and never reused: a deleted one is retired (D351). <c>ON CONFLICT
 /// ("Slug") DO NOTHING</c> rather than catching the unique violation, which EF would log at Error for an expected answer;
 /// the target is named so a future unique index (on the name, say) fails loudly instead of posing as a taken slug.
 /// </summary>
@@ -20,6 +20,9 @@ internal sealed class CreateDepartmentHandler(
 {
     public async Task<Outcome<DepartmentDto>> Handle(CreateDepartmentCommand command, CancellationToken ct)
     {
+        if (await RetiredSlugs.IsRetiredAsync(db, RetiredOrgSlug.Department, command.Slug, ct))
+            return Outcome<DepartmentDto>.Conflict(null, RetiredSlugs.Refusal(RetiredOrgSlug.Department, command.Slug));
+
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var created = await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO identity_org_departments ("Slug", "Name", "CreatedBy", "CreatedUtc")

@@ -395,6 +395,30 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.InstallationSettingRow", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("UpdatedBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("UpdatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("identity_installation_settings", (string)null);
+                });
+
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.Invite", b =>
                 {
                     b.Property<string>("Id")
@@ -657,6 +681,29 @@ namespace Skanyxx.Module.Identity.Data.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("identity_refresh_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("Skanyxx.Module.Identity.Data.RetiredOrgSlug", b =>
+                {
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Slug")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<string>("RetiredBy")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("RetiredUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Kind", "Slug");
+
+                    b.ToTable("identity_org_retired_slugs", (string)null);
                 });
 
             modelBuilder.Entity("Skanyxx.Module.Identity.Data.UserPreference", b =>

@@ -17,12 +17,12 @@ namespace Skanyxx.Module.Identity.Entra;
 /// issued in that window would outlive the off → on stamp rotation (D15, QA-3 L2). With the install's switch off (D272)
 /// Microsoft sign-in does not exist, so the password works whatever the row says.
 /// </summary>
-internal sealed class EntraPasswordRule(AccountsDbContext db, UserManager<IdentityUser> users, IOptions<IdentityModuleOptions> options)
+internal sealed class EntraPasswordRule(AccountsDbContext db, UserManager<IdentityUser> users, IOptionsMonitor<IdentityModuleOptions> options)
 {
     public const string Message = "This account signs in with Microsoft.";
 
     public async Task<bool> RefusesAsync(IdentityUser user, CancellationToken ct) =>
-        options.Value.EntraAvailable
+        options.CurrentValue.EntraAvailable
         && await db.EntraSettings.AnyAsync(s => s.Id == EntraSettings.SingletonId && s.Enabled, ct)
         && await db.UserLogins.AnyAsync(l => l.UserId == user.Id && l.LoginProvider == EntraScheme.Name, ct)
         && !await users.IsInRoleAsync(user, SkanyxxRoles.Owner);

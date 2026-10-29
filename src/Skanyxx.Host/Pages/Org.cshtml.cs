@@ -10,8 +10,9 @@ using Skanyxx.Core.Platform.Identity;
 namespace Skanyxx.Host.Pages;
 
 /// <summary>
-/// The owner's org tree (D055): departments, their teams and each team's members. The same commands as
-/// <c>api/identity/org</c>. Memory's team and department scopes key on these slugs, which never change.
+/// The owner's org tree (D055, D351): create, rename, move and delete departments and teams, and each team's members.
+/// The same commands as <c>api/identity/org</c>. Memory's team and department scopes key on these slugs, which never
+/// change and are never reused after a delete.
 /// </summary>
 [Authorize(Roles = SkanyxxRoles.Owner)]
 public sealed class OrgModel(IMediator mediator) : PageModel
@@ -61,6 +62,16 @@ public sealed class OrgModel(IMediator mediator) : PageModel
     public async Task<IActionResult> OnPostRemoveMemberAsync(string? slug, string? userId, CancellationToken ct) =>
         await RunAsync(async () => Report(await mediator.Send(new SetTeamMemberCommand(Actor, slug ?? "", userId ?? "", Member: false), ct),
             "Member removed."), ct);
+
+    public async Task<IActionResult> OnPostDeleteTeamAsync(string? slug, string? to, CancellationToken ct) =>
+        await RunAsync(async () => Report(await mediator.Send(new DeleteTeamCommand(Actor, slug ?? "", Blank(to)), ct),
+            "Team deleted."), ct);
+
+    public async Task<IActionResult> OnPostDeleteDepartmentAsync(string? slug, string? to, CancellationToken ct) =>
+        await RunAsync(async () => Report(await mediator.Send(new DeleteDepartmentCommand(Actor, slug ?? "", Blank(to)), ct),
+            "Department deleted."), ct);
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value;
 
     private string Actor => Caller.UserId(User)!;
 

@@ -9,6 +9,7 @@ public static class SetupGuides
     [
         ModelGuide.Guide, ChatGuide.Guide, MemoryGuide.Guide, LibraryGuide.Guide, StudioGuide.Guide, PluginsGuide.Guide,
         ToolServersGuide.Guide, SandboxesGuide.Guide, EmailGuide.Guide, EntraGuide.Guide, DragonflyGuide.Guide,
+        SettingsGuide.Guide, OrgGuide.Guide, DebugGuide.Guide,
     ];
 
     public static SetupGuide? Find(string id) => All.FirstOrDefault(g => g.Id == id);

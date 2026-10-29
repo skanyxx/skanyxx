@@ -24,6 +24,7 @@ using Skanyxx.Module.Identity.Passwords;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Module.Identity.Data;
 using Skanyxx.Module.Identity.Entra;
+using Skanyxx.Module.Identity.Features.Settings;
 using Skanyxx.Module.Identity.Org;
 
 namespace Skanyxx.Module.Identity;
@@ -99,6 +100,8 @@ public sealed class IdentityModule : IModule
         services.AddHttpContextAccessor();
         services.AddSingleton<IAuthorizationHandler, OwnerRouteRefusals>();
         services.AddScoped<IOrgMembership, OrgMembershipReader>();
+        services.AddSingleton<InstallationSettingsRefresher>();
+        services.AddHostedService(sp => sp.GetRequiredService<InstallationSettingsRefresher>());
         AddEmailAndAudit(services);
         AddEntraSignIn(services);
 

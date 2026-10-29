@@ -57,6 +57,10 @@ internal sealed class CardConfiguration : IEntityTypeConfiguration<Card>
         card.HasIndex(c => c.Search).HasMethod("GIN");
         card.HasIndex(c => c.Tickets).HasMethod("GIN");
         card.HasIndex(c => c.Keywords).HasMethod("GIN");
+        // D355: the library pages newest first within the readable scopes, and filters by owner (last writer).
+        card.HasIndex(c => new { c.Scope, c.UpdatedAt });
+        card.HasIndex(c => c.UpdatedAt);
+        card.HasIndex(c => c.Who);
         card.HasOne<Card>().WithMany().HasForeignKey(c => c.LiftedFromId).OnDelete(DeleteBehavior.SetNull);
     }
 

@@ -32,6 +32,8 @@ internal sealed class BrowseLibraryHandler(CardSearch search, AccessPolicy acces
         }
 
         var cards = await search.LibraryAsync(query.Text, within, LibraryShelf.Limit, ct, query.Filter);
-        return Outcome<LibraryShelf>.Ok(new LibraryShelf(scopes, cards));
+        var counts = await search.LibraryCountsAsync(query.Text, within, ct, query.Filter);
+        var total = string.IsNullOrEmpty(query.Filter?.Type) ? counts.Values.Sum() : counts.GetValueOrDefault(query.Filter.Type);
+        return Outcome<LibraryShelf>.Ok(new LibraryShelf(scopes, cards, total, counts, query.Filter?.Offset ?? 0));
     }
 }

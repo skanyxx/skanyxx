@@ -22,6 +22,8 @@
     var displayName = User.FindFirst(SkanyxxClaims.DisplayName)?.Value ?? User.Identity?.Name ?? "";
     var initials = string.Concat(displayName.Split([' ', '.', '@'], StringSplitOptions.RemoveEmptyEntries).Take(2).Select(w => char.ToUpperInvariant(w[0])));
     var roles = User.FindAll(ClaimTypes.Role).Select(c => c.Value).Order().ToList();
+    // D350: the owner names the installation on the Settings page.
+    var installationName = Configuration["Skanyxx:InstallationName"] is { Length: > 0 } named ? named : null;
 }
 <!DOCTYPE html>
 <html lang="en"
@@ -40,7 +42,7 @@
     <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>@title - Skanyxx</title>
+    <title>@title - @(installationName ?? "Skanyxx")</title>
     <link rel="manifest" href="/manifest.json" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
     <link rel="stylesheet" href="~/css/tokens.css" asp-append-version="true" />
@@ -60,7 +62,7 @@
                     <span class="sidebar-logo-icon" aria-hidden="true">S</span>
                     <div>
                         <div class="sidebar-logo-text">Skanyxx</div>
-                        <div class="sidebar-subtitle">Agent Workspace</div>
+                        <div class="sidebar-subtitle">@(installationName ?? "Agent Workspace")</div>
                     </div>
                 </a>
             </div>

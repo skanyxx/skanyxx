@@ -10,6 +10,7 @@
     }
     <button type="button" class="btn btn-primary" data-dialog-open="new-department"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-plus"/></svg>New department</button>
 </page-header>
+@await Component.InvokeAsync("SetupGuide", new { id = "org" })
 @if (Model.Error is not null)
 {
     <alert tone="error">@Model.Error</alert>
@@ -99,6 +100,32 @@
                 <button type="submit" class="btn btn-primary">Rename</button>
             </div>
         </form>
+        @{ var otherDepartments = Model.Departments.Where(d => d.Slug != department.Slug).ToList(); }
+        <form method="post" asp-page-handler="DeleteDepartment" asp-route-slug="@department.Slug" class="dialog-body form danger-zone"
+              data-confirm="@(teams.Count == 0 ? $"{department.Name} is deleted. Its slug is never used again." : $"Its {teams.Count} team(s) and their members move to the department you chose. The slug is never used again.")"
+              data-confirm-title="Delete @department.Name?" data-confirm-action="Delete department" data-danger>
+            <h3 class="section-title">Delete department</h3>
+            @if (teams.Count > 0 && otherDepartments.Count == 0)
+            {
+                <p class="field-hint">It has @teams.Count team(s). Create another department to move them to, or delete its teams first.</p>
+            }
+            else
+            {
+                @if (teams.Count > 0)
+                {
+                    <div class="field">
+                        <label for="dept-move-@department.Slug">Move its @teams.Count team(s) to</label>
+                        <select id="dept-move-@department.Slug" name="to" required>
+                            @foreach (var d in otherDepartments)
+                            {
+                                <option value="@d.Slug">@d.Name</option>
+                            }
+                        </select>
+                    </div>
+                }
+                <div class="form-actions"><button type="submit" class="btn btn-danger">Delete department</button></div>
+            }
+        </form>
     </dialog>
 }
 
@@ -180,6 +207,33 @@
                     </div>
                 </form>
             }
+
+            @{ var otherTeams = Model.Teams.Where(t => t.Slug != team.Slug).ToList(); }
+            <form method="post" asp-page-handler="DeleteTeam" asp-route-slug="@team.Slug" class="form danger-zone"
+                  data-confirm="@(team.Members.Count == 0 ? $"{team.Name} is deleted. Its slug is never used again." : $"Its {team.Members.Count} member(s) move to the team you chose. The slug is never used again.")"
+                  data-confirm-title="Delete @team.Name?" data-confirm-action="Delete team" data-danger>
+                <h3 class="section-title">Delete team</h3>
+                @if (team.Members.Count > 0 && otherTeams.Count == 0)
+                {
+                    <p class="field-hint">It has @team.Members.Count member(s). Remove them first, or create another team to move them to.</p>
+                }
+                else
+                {
+                    @if (team.Members.Count > 0)
+                    {
+                        <div class="field">
+                            <label for="team-move-@team.Slug">Move its @team.Members.Count member(s) to</label>
+                            <select id="team-move-@team.Slug" name="to" required>
+                                @foreach (var t in otherTeams)
+                                {
+                                    <option value="@t.Slug">@t.Name (@t.Department)</option>
+                                }
+                            </select>
+                        </div>
+                    }
+                    <div class="form-actions"><button type="submit" class="btn btn-danger">Delete team</button></div>
+                }
+            </form>
         </div>
     </dialog>
 }
@@ -238,4 +292,4 @@
     </dialog>
 }
 
-<p class="field-hint mt-4">A disabled person stays in their teams but cannot sign in; enabling them restores their team access.</p>
+<p class="field-hint mt-4">A disabled person stays in their teams but cannot sign in; enabling them restores their team access. A deleted team's or department's cards stay in memory under its old scope, readable by the owner and supervisors.</p>

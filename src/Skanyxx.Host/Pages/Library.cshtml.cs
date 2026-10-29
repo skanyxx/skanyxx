@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
+using Microsoft.AspNetCore.Routing;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Memory;
 
@@ -12,7 +13,7 @@ namespace Skanyxx.Host.Pages;
 /// The library (D009, D048): any signed-in person searches and opens the cards they may read, lifts a published one into
 /// a higher scope they may write, and renames a key where they may write (D038). Every rule is the memory module's
 /// (its <c>AccessPolicy</c>, through the same commands as <c>api/memory/cards</c>); this page only shows what it answers.
-/// No folder tree.
+/// Filtering, sorting, counts and paging are the server's (D355), with the whole state in the URL. No folder tree.
 /// </summary>
 public sealed class LibraryModel(IMediator mediator) : PageModel
 {
@@ -20,9 +21,33 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
     [BindProperty(SupportsGet = true)]
     public string? Q { get; set; }
 
-    /// <summary>One scope to look in; empty means every scope this person may read.</summary>
+    /// <summary>One scope to look in (a team, a department, …); empty means every scope this person may read.</summary>
     [BindProperty(SupportsGet = true)]
     public string? Filter { get; set; }
+
+    // D355: the rest of the list's state, all in the URL so a filtered page can be bookmarked, shared and reloaded.
+    [BindProperty(SupportsGet = true)]
+    public string? Type { get; set; }
+
+    /// <summary>A card keyword (memory's tags).</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? Tag { get; set; }
+
+    /// <summary>The card's last writer (<c>who</c>).</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? Owner { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public DateOnly? From { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public DateOnly? To { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public string? Sort { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public int Offset { get; set; }
 
     public LibraryShelf Shelf { get; private set; } = new([], []);
 
@@ -44,6 +69,31 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
     public string ScopeLabel(string scope) => scope == $"personal:{Me}" ? "personal (you)" : scope;
 
     public string WhoLabel(string who) => who == Me ? "you" : who;
+
+    public string? MyId => Me;
+
+    public bool Filtered =>
+        !string.IsNullOrWhiteSpace(Q) || !string.IsNullOrEmpty(Filter) || !string.IsNullOrEmpty(Type) || !string.IsNullOrEmpty(Tag)
+        || !string.IsNullOrEmpty(Owner) || From is not null || To is not null;
+
+    /// <summary>
+    /// The list's state as route values, for every link and form that should come back to the same list; each change
+    /// given in <paramref name="change"/> replaces one value (null drops it). Any filter change starts at the first page.
+    /// </summary>
+    public Dictionary<string, string> ListState(params (string Key, string? Value)[] change)
+    {
+        var state = new Dictionary<string, string?>
+        {
+            ["q"] = Q, ["filter"] = Filter, ["type"] = Type, ["tag"] = Tag, ["owner"] = Owner,
+            ["from"] = From?.ToString("yyyy-MM-dd"), ["to"] = To?.ToString("yyyy-MM-dd"), ["sort"] = Sort,
+            ["offset"] = Offset > 0 ? Offset.ToString() : null
+        };
+        if (change.Length > 0 && change.All(c => c.Key != "offset"))
+            state["offset"] = null;
+        foreach (var (key, value) in change)
+            state[key] = value;
+        return state.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value!);
+    }
 
     public async Task OnGetAsync(string? scope, string? key, CancellationToken ct)
     {
@@ -72,7 +122,10 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
         if (outcome is { Value: { } card } && outcome.Status == success)
         {
             Message = message(card);
-            return RedirectToPage(null, null, new { scope = card.Scope, key = card.Key, q = Q, filter = Filter }, "card");
+            var route = new RouteValueDictionary { ["scope"] = card.Scope, ["key"] = card.Key };
+            foreach (var (name, value) in ListState())
+                route[name] = value;
+            return RedirectToPage(null, null, route, "card");
         }
 
         if (outcome is not null)
@@ -96,7 +149,8 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
 
     private async Task BrowseAsync(CancellationToken ct)
     {
-        var shelf = await ValidatedAsync(() => mediator.Send(new BrowseLibraryQuery(LibraryUser.From(User), Q?.Trim(), Filter), ct));
+        var filter = new LibraryFilter(Keyword: Blank(Tag), Type: Blank(Type), Offset: Offset, Owner: Blank(Owner), From: From, To: To, Sort: Blank(Sort));
+        var shelf = await ValidatedAsync(() => mediator.Send(new BrowseLibraryQuery(LibraryUser.From(User), Q?.Trim(), Filter, filter), ct));
         if (shelf?.Value is { } value)
         {
             Shelf = value;
@@ -105,6 +159,8 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
         else if (shelf is not null)
             Fail(shelf);
     }
+
+    private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private void Fail<T>(Outcome<T> outcome) => Fail(outcome.Message, outcome.Status.HttpStatus());
 

@@ -34,6 +34,8 @@ internal static class AuditActions
     public const string TeamMoved = "org.team_moved";
     public const string MemberAdded = "org.member_added";
     public const string MemberRemoved = "org.member_removed";
+    public const string TeamDeleted = "org.team_deleted";
+    public const string DepartmentDeleted = "org.department_deleted";
 
     public const string EntraSettingsSaved = "entra.settings_saved";
     public const string EntraAccountCreated = "entra.account_created";
@@ -48,6 +50,8 @@ internal static class AuditActions
     public const string OwnerRouteRefused = "route.owner_refused";
 
     public const string OrganizationPreferencesSaved = "org.preferences_saved";
+
+    public const string SettingChanged = "settings.changed";
 
     public const string RetentionPurged = "audit.retention_purged";
     public const string Exported = "audit.exported";

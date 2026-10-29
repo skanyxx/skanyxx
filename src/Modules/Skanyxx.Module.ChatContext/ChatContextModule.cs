@@ -46,6 +46,8 @@ public sealed class ChatContextModule : IModule
         services.TryAddSingleton(TimeProvider.System);
 
         services.AddScoped<SessionSearch>();
+        services.AddSingleton<SessionRetention>();
+        services.AddHostedService(sp => sp.GetRequiredService<SessionRetention>());
         services.AddScoped<SessionAccess>();
         // The deterministic one also reads a new chat's first message (tickets, categories), whatever extracts turns.
         services.AddSingleton<DeterministicExtractor>();

@@ -35,11 +35,12 @@ public sealed class ArchitectureTests
         Assert.DoesNotContain(Module.GetTypes(), t => t.BaseType is { IsGenericType: true } b
             && b.GetGenericTypeDefinition() == typeof(FastEndpoints.Validator<>));
 
-    /// <summary>The module's own requests and the contracts it handles for the Host (Core.Platform.Identity and .Preferences).</summary>
+    /// <summary>The module's own requests and the contracts it handles for the Host (Core.Platform.Identity, .Preferences and .Settings).</summary>
     [Fact]
     public void EveryRequest_HasExactlyOneValidator()
     {
-        var requests = Module.GetTypes().Concat(typeof(SignInCommand).Assembly.GetTypes().Where(t => t.Namespace == typeof(SignInCommand).Namespace || t.Namespace == typeof(GetPreferencesQuery).Namespace))
+        var requests = Module.GetTypes().Concat(typeof(SignInCommand).Assembly.GetTypes().Where(t => t.Namespace == typeof(SignInCommand).Namespace || t.Namespace == typeof(GetPreferencesQuery).Namespace
+                || t.Namespace == typeof(Skanyxx.Core.Platform.Settings.GetInstallationSettingsQuery).Namespace))
             .Where(t => !t.IsAbstract && t.GetInterfaces().Any(i => i.IsGenericType && i.GetGenericTypeDefinition() == typeof(IRequest<>)))
             .ToList();
         var validated = Module.GetTypes()
@@ -49,7 +50,7 @@ public sealed class ArchitectureTests
             .Select(i => i.GetGenericArguments()[0])
             .ToList();
 
-        Assert.Equal(45, requests.Count); // the five preferences requests (design system) and the five audit explorer ones (D314)
+        Assert.Equal(49, requests.Count); // + the five preferences requests (design system), five audit explorer ones (D314), two org deletes (D351) and two settings (D350)
         foreach (var request in requests)
             Assert.True(validated.Count(v => v == request) == 1, $"{request.Name} must have exactly one validator.");
     }

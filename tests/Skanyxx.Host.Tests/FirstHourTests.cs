@@ -60,7 +60,8 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
 
         Assert.Equal(HttpStatusCode.Created, saved.StatusCode);
         Assert.True((await saved.Content.ReadFromJsonAsync<JsonElement>(TestContext.Current.CancellationToken)).GetProperty("isDefault").GetBoolean());
-        Assert.Equal("/Chat", (await _owner.GetAsync("/")).Headers.Location?.OriginalString);
+        // D350: once the model works, the owner lands on the Dashboard (Settings → General → landing page per role).
+        Assert.Equal("/Dashboard", (await _owner.GetAsync("/")).Headers.Location?.OriginalString);
         var create = Assert.Single(_kagent.CallsTo("POST", "/api/modelconfigs"));
         Assert.Equal("kagent/default-model-config", create.Body!["ref"]!.GetValue<string>());
         Assert.Null(create.Body["apiKey"]);

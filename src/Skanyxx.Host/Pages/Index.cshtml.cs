@@ -5,6 +5,7 @@ using Microsoft.Extensions.Configuration;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Preferences;
 using Skanyxx.Core.Platform.Runtime;
+using Skanyxx.Core.Platform.Settings;
 using Skanyxx.Host.Navigation;
 
 namespace Skanyxx.Host.Pages;
@@ -12,8 +13,9 @@ namespace Skanyxx.Host.Pages;
 /// <summary>
 /// Home is Chat with the seed (D5, D017). The owner goes to the model step instead while the default model
 /// (KAgent:ModelConfig) does not exist or kagent has not accepted it (or kagent cannot say), because Chat cannot answer
-/// before it is. Otherwise a person's chosen landing page wins, but only a panel their roles let them open: a stored
-/// choice never opens a page the nav would not show them.
+/// before it is. Otherwise a person's chosen landing page wins (their own, else the organization default), then the
+/// Settings page's landing for their highest role (D350: owner and supervisor land on Dashboard by default), but only a
+/// panel their roles let them open: a stored choice never opens a page the nav would not show them.
 /// </summary>
 public sealed class IndexModel(IMediator mediator, IConfiguration configuration) : PageModel
 {
@@ -22,9 +24,16 @@ public sealed class IndexModel(IMediator mediator, IConfiguration configuration)
         if (Caller.IsOwner(User) && (await mediator.Send(new DefaultModelQuery(), ct)).Value is not { Accepted: true })
             return LocalRedirect("/Model");
         if (Caller.UserId(User) is { } userId
-            && (await mediator.Send(new GetPreferencesQuery(userId), ct)).Value?.Effective.Landing is { } landing and not "auto"
+            && (await mediator.Send(new GetPreferencesQuery(userId), ct)).Value?.Effective.Landing is { } chosen
+            && (chosen == "auto" ? RoleLanding() : chosen) is { } landing and not "auto"
             && NavCatalog.LinksFor(User, configuration, Url, "/Index").FirstOrDefault(l => l.Item.Key == landing) is { } link)
             return LocalRedirect(link.Href);
         return LocalRedirect("/Chat");
     }
+
+    private string? RoleLanding() =>
+        InstallationSettings.LandingRoles.FirstOrDefault(User.IsInRole) is { } role
+        && InstallationSettings.Find(InstallationSettings.LandingKey(role)) is { } setting
+            ? configuration[setting.ConfigKey!] ?? setting.Default
+            : null;
 }
