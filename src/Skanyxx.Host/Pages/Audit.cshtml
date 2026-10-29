@@ -293,6 +293,9 @@
             data.entries.forEach(appendRow);
             page.next = data.next;
             $('more').hidden = !data.next;
+        }, function (err) {
+            // A page of a superseded query fails quietly: its error is not the current query's.
+            if (gen === generation) throw err;
         }).finally(function () { if (gen === generation) page.loading = false; });
     }
 

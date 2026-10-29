@@ -575,7 +575,6 @@
 /* A card that opens something: the whole card is the target, with a visible hover and focus. */
 .tile { display: flex; flex-direction: column; gap: var(--space-2); cursor: pointer; transition: border-color var(--dur-fast) var(--ease-out); }
 .tile:hover { border-color: var(--border-strong); }
-.tile:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 .tile-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--space-2); }
 .tile-title { font-weight: var(--weight-semibold); overflow-wrap: anywhere; }
 .tile-sub { color: var(--text-3); font-size: var(--text-xs); overflow-wrap: anywhere; }

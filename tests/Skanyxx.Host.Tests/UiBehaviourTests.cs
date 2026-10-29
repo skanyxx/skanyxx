@@ -10,8 +10,9 @@ namespace Skanyxx.Host.Tests;
 /// ui.js's declarative hooks in a real browser: Cancel or Escape on a confirm sends nothing, a confirmed or data-once form
 /// goes once (and again after a back/forward restore), and skx.ask answers only for its submit button, also after an
 /// earlier save (the Audit "Save view" bug). Ui/ui-behaviour.html runs the real ui.js in headless Chrome, read over the
-/// DevTools protocol (no test dependency added); skipped when this machine has no Chrome or Chromium (CHROME_PATH
-/// names one explicitly).
+/// DevTools protocol (no test dependency added). Skipped when this machine has no Chrome or Chromium (CHROME_PATH
+/// names one explicitly); a Chrome that is there but cannot start fails the test with what it printed, since a broken
+/// browser on a runner that has one should be seen, not skipped.
 /// </summary>
 public sealed class UiBehaviourTests
 {
@@ -43,15 +44,19 @@ public sealed class UiBehaviourTests
             foreach (var arg in new[]
                      {
                          "--headless=new", "--disable-gpu", "--no-first-run", "--no-default-browser-check", "--allow-file-access-from-files",
-                         "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", $"--user-data-dir={profile}", new Uri(page).AbsoluteUri
+                         "--remote-debugging-address=127.0.0.1", "--remote-debugging-port=0", $"--user-data-dir={profile}"
                      })
                 start.ArgumentList.Add(arg);
+            // Chrome's sandbox refuses to start as root, and CI containers often lack the kernel support it needs.
+            if (OperatingSystem.IsLinux() && (Environment.UserName == "root" || Environment.GetEnvironmentVariable("CI") is not null))
+                start.ArgumentList.Add("--no-sandbox");
+            start.ArgumentList.Add(new Uri(page).AbsoluteUri);
             browser = Process.Start(start)!;
-            _ = browser.StandardError.ReadToEndAsync(Ct);
+            var stderr = browser.StandardError.ReadToEndAsync(Ct);
             _ = browser.StandardOutput.ReadToEndAsync(Ct);
 
             // The page may still be loading when the socket opens: wait for its promise to exist, then for it.
-            var json = await EvaluateAsync(await PortAsync(profile),
+            var json = await EvaluateAsync(await PortAsync(profile, browser, stderr),
                 "new Promise(r => { const t = () => window.uiBehaviour ? r(window.uiBehaviour) : setTimeout(t, 50); t(); })");
             var result = JsonDocument.Parse(json).RootElement;
             Assert.False(result.TryGetProperty("error", out var error), error.ToString());
@@ -65,7 +70,8 @@ public sealed class UiBehaviourTests
                 await browser.WaitForExitAsync(CancellationToken.None);
             }
             browser?.Dispose();
-            try { dir.Delete(recursive: true); } catch (IOException) { /* Chrome may still hold its profile for a moment */ }
+            try { dir.Delete(recursive: true); }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* Chrome may still hold its profile for a moment */ }
         }
     }
 
@@ -87,11 +93,13 @@ public sealed class UiBehaviourTests
     }
 
     /// <summary>Chrome writes the port it chose (port 0) into the profile.</summary>
-    private static async Task<int> PortAsync(string profile)
+    private static async Task<int> PortAsync(string profile, Process browser, Task<string> stderr)
     {
         var file = System.IO.Path.Combine(profile, "DevToolsActivePort");
         for (var waited = 0; waited < 30_000; waited += 100)
         {
+            if (browser.HasExited)
+                Assert.Fail($"Chrome exited ({browser.ExitCode}) before it opened its DevTools port:\n{await stderr}");
             if (File.Exists(file) && (await File.ReadAllLinesAsync(file, Ct)) is [var port, ..] && int.TryParse(port, out var number))
                 return number;
             await Task.Delay(100, Ct);
