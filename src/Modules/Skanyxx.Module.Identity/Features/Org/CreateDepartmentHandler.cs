@@ -20,10 +20,10 @@ internal sealed class CreateDepartmentHandler(
 {
     public async Task<Outcome<DepartmentDto>> Handle(CreateDepartmentCommand command, CancellationToken ct)
     {
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await RetiredSlugs.LockAsync(db, RetiredOrgSlug.Department, command.Slug, ct);
         if (await RetiredSlugs.IsRetiredAsync(db, RetiredOrgSlug.Department, command.Slug, ct))
             return Outcome<DepartmentDto>.Conflict(null, RetiredSlugs.Refusal(RetiredOrgSlug.Department, command.Slug));
-
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var created = await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO identity_org_departments ("Slug", "Name", "CreatedBy", "CreatedUtc")
             VALUES ({command.Slug}, {command.Name}, {command.ActorId}, {time.GetUtcNow()}) ON CONFLICT ("Slug") DO NOTHING

@@ -19,10 +19,10 @@ internal sealed class CreateTeamHandler(
         if (!await db.Departments.AnyAsync(d => d.Slug == command.Department, ct))
             return Outcome<TeamDto>.NotFound($"No department '{command.Department}'.");
 
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        await RetiredSlugs.LockAsync(db, RetiredOrgSlug.Team, command.Slug, ct);
         if (await RetiredSlugs.IsRetiredAsync(db, RetiredOrgSlug.Team, command.Slug, ct))
             return Outcome<TeamDto>.Conflict(null, RetiredSlugs.Refusal(RetiredOrgSlug.Team, command.Slug));
-
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
         var created = await db.Database.ExecuteSqlInterpolatedAsync($"""
             INSERT INTO identity_org_teams ("Slug", "Name", "DepartmentSlug", "CreatedBy", "CreatedUtc")
             VALUES ({command.Slug}, {command.Name}, {command.Department}, {command.ActorId}, {time.GetUtcNow()}) ON CONFLICT ("Slug") DO NOTHING

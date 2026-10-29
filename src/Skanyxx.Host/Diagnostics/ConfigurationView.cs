@@ -58,6 +58,6 @@ public static partial class ConfigurationView
         return keys;
     }
 
-    [GeneratedRegex("password|passwd|pwd|secret|token|key|credential|certificate|pfx", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("pass|pwd|secret|token|key|credential|certificate|pfx|pat\b|auth|cookie|private|signing", RegexOptions.IgnoreCase)]
     private static partial Regex SecretName();
 }

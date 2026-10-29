@@ -23,20 +23,23 @@ internal sealed class DeleteDepartmentHandler(
             return Outcome<int>.Conflict(0, "Choose a different department to move the teams to.");
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        var exists = (await db.Database.SqlQuery<string>(
-            $"""SELECT "Slug" AS "Value" FROM identity_org_departments WHERE "Slug" = {command.Slug} FOR UPDATE""").ToListAsync(ct)).Count > 0;
-        if (!exists)
+        await RetiredSlugs.LockAsync(db, RetiredOrgSlug.Department, command.Slug, ct);
+        // Both rows in slug order, so two deletes moving teams into each other's department cannot deadlock.
+        var locked = await db.Database.SqlQuery<string>($"""
+            SELECT "Slug" AS "Value" FROM identity_org_departments WHERE "Slug" = {command.Slug} OR "Slug" = {command.MoveTeamsTo} ORDER BY "Slug" FOR UPDATE
+            """).ToListAsync(ct);
+        if (!locked.Contains(command.Slug))
             return Outcome<int>.NotFound($"No department '{command.Slug}'.");
 
-        var teams = await db.Teams.Where(t => t.DepartmentSlug == command.Slug).OrderBy(t => t.Slug).Select(t => t.Slug).ToListAsync(ct);
+        var teams = await db.Database.SqlQuery<string>($"""
+            SELECT "Slug" AS "Value" FROM identity_org_teams WHERE "DepartmentSlug" = {command.Slug} ORDER BY "Slug" FOR UPDATE
+            """).ToListAsync(ct);
         if (teams.Count > 0 && command.MoveTeamsTo is null)
             return Outcome<int>.Conflict(teams.Count,
                 $"The department has {teams.Count} team(s). Choose a department to move them to, or delete them first.", "has_teams");
         if (command.MoveTeamsTo is { } target)
         {
-            var targetExists = (await db.Database.SqlQuery<string>(
-                $"""SELECT "Slug" AS "Value" FROM identity_org_departments WHERE "Slug" = {target} FOR SHARE""").ToListAsync(ct)).Count > 0;
-            if (!targetExists)
+            if (!locked.Contains(target))
                 return Outcome<int>.NotFound($"No department '{target}'.");
             await db.Teams.Where(t => t.DepartmentSlug == command.Slug)
                 .ExecuteUpdateAsync(s => s.SetProperty(t => t.DepartmentSlug, target), ct);

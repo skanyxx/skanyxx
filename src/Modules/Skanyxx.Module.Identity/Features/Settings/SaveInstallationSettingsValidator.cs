@@ -13,7 +13,9 @@ internal sealed class SaveInstallationSettingsValidator : AbstractValidator<Save
         {
             if (InstallationSettings.Find(pair.Key) is not { } setting)
                 context.AddFailure("values", $"Unknown setting '{pair.Key}'.");
-            else if (InstallationSettings.Problem(setting, pair.Value ?? "") is { } problem)
+            else if (pair.Value is null)
+                context.AddFailure(pair.Key, $"{setting.Label}: a value is required.");
+            else if (InstallationSettings.Problem(setting, pair.Value) is { } problem)
                 context.AddFailure(pair.Key, problem);
         });
     }

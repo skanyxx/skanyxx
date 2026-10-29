@@ -6,6 +6,13 @@ namespace Skanyxx.Module.Identity.Features.Org;
 /// <summary>Slugs of deleted departments and teams (D351): retired in the delete's transaction, refused at create.</summary>
 internal static class RetiredSlugs
 {
+    /// <summary>
+    /// Serializes create and delete of one slug (transaction-scoped), so a create cannot slip between a delete and its
+    /// retirement and take over the old memory scope.
+    /// </summary>
+    public static Task LockAsync(AccountsDbContext db, string kind, string slug, CancellationToken ct) =>
+        db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock(hashtext({"identity.org:" + kind + ":" + slug}))", ct);
+
     public static Task<bool> IsRetiredAsync(AccountsDbContext db, string kind, string slug, CancellationToken ct) =>
         db.RetiredOrgSlugs.AnyAsync(r => r.Kind == kind && r.Slug == slug, ct);
 

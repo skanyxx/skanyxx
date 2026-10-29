@@ -24,10 +24,14 @@ internal sealed class DeleteTeamHandler(
             return Outcome<int>.Conflict(0, "Choose a different team to move the members to.");
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        var department = (await db.Database.SqlQuery<string>(
-            $"""SELECT "DepartmentSlug" AS "Value" FROM identity_org_teams WHERE "Slug" = {command.Slug} FOR UPDATE""").ToListAsync(ct)).SingleOrDefault();
-        if (department is null)
+        await RetiredSlugs.LockAsync(db, RetiredOrgSlug.Team, command.Slug, ct);
+        // Both rows in slug order, so two deletes moving members into each other's team cannot deadlock.
+        var locked = await db.Database.SqlQuery<string>($"""
+            SELECT "Slug" AS "Value" FROM identity_org_teams WHERE "Slug" = {command.Slug} OR "Slug" = {command.ReassignTo} ORDER BY "Slug" FOR UPDATE
+            """).ToListAsync(ct);
+        if (!locked.Contains(command.Slug))
             return Outcome<int>.NotFound($"No team '{command.Slug}'.");
+        var department = await db.Teams.Where(t => t.Slug == command.Slug).Select(t => t.DepartmentSlug).SingleAsync(ct);
         if (await db.EntraGroups.AnyAsync(g => g.Teams.Contains(command.Slug), ct))
             return Outcome<int>.Conflict(0, "A Microsoft (Entra) group maps to this team. Remove it from the group mapping first.");
 
@@ -37,15 +41,15 @@ internal sealed class DeleteTeamHandler(
                 $"The team has {members.Count} member(s). Choose a team to move them to, or remove them first.", "has_members");
         if (command.ReassignTo is { } target)
         {
-            var exists = (await db.Database.SqlQuery<string>(
-                $"""SELECT "Slug" AS "Value" FROM identity_org_teams WHERE "Slug" = {target} FOR SHARE""").ToListAsync(ct)).Count > 0;
-            if (!exists)
+            if (!locked.Contains(target))
                 return Outcome<int>.NotFound($"No team '{target}'.");
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 INSERT INTO identity_org_team_members ("TeamSlug", "UserId", "AddedBy", "AddedUtc")
                 SELECT {target}, "UserId", {command.ActorId}, {time.GetUtcNow()} FROM identity_org_team_members WHERE "TeamSlug" = {command.Slug}
                 ON CONFLICT ("TeamSlug", "UserId") DO NOTHING
                 """, ct);
+            foreach (var member in members)
+                await audit.WriteAsync(AuditActions.MemberAdded, command.ActorId, member, new { team = target, from = command.Slug }, ct);
         }
 
         await db.TeamMembers.Where(m => m.TeamSlug == command.Slug).ExecuteDeleteAsync(ct);

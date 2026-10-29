@@ -13,7 +13,7 @@ public static class DragonflyProbe
 {
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(3);
 
-    public static async Task<Connectivity> CheckAsync(string name, string? configuration, CancellationToken ct)
+    public static async Task<Connectivity> CheckAsync(string name, string? configuration)
     {
         if (string.IsNullOrWhiteSpace(configuration))
             return new(name, "not configured", null, null);
@@ -22,12 +22,14 @@ public static class DragonflyProbe
         {
             var options = ConfigurationOptions.Parse(configuration);
             options.AbortOnConnectFail = true;
-            options.ConnectTimeout = (int)Timeout.TotalMilliseconds;
-            await using var connection = await ConnectionMultiplexer.ConnectAsync(options).WaitAsync(Timeout, ct);
-            await connection.GetDatabase().PingAsync().WaitAsync(Timeout, ct);
+            // The client's own timeouts bound it: no WaitAsync, which would leave a late connection undisposed.
+            options.ConnectTimeout = options.AsyncTimeout = options.SyncTimeout = (int)Timeout.TotalMilliseconds;
+            options.ConnectRetry = 0;
+            await using var connection = await ConnectionMultiplexer.ConnectAsync(options);
+            await connection.GetDatabase().PingAsync();
             return new(name, "Healthy", "PING answered", (int)watch.ElapsedMilliseconds);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        catch (Exception ex)
         {
             return new(name, "Unhealthy", $"{ex.GetType().Name}: {SecretText.Redact(ex.Message)}", (int)watch.ElapsedMilliseconds);
         }

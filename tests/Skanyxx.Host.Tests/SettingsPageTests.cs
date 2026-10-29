@@ -109,6 +109,8 @@ public sealed class SettingsPageTests(PostgresFixture fixture) : IAsyncLifetime
         var retention = await api.PutAsJsonAsync("/api/identity/settings",
             new { values = new Dictionary<string, string> { ["retention.auditDays"] = "90", ["retention.chatDays"] = "30" } }, Ct);
         var outOfRange = await api.PutAsJsonAsync("/api/identity/settings", new { values = new Dictionary<string, string> { ["retention.auditDays"] = "0" } }, Ct);
+        var nullValue = await api.PutAsync("/api/identity/settings",
+            new StringContent("""{"values":{"general.installationName":null}}""", System.Text.Encoding.UTF8, "application/json"), Ct);
         var unknown = await api.PutAsJsonAsync("/api/identity/settings", new { values = new Dictionary<string, string> { ["nope"] = "1" } }, Ct);
         var values = await api.GetFromJsonAsync<JsonElement>("/api/identity/settings", Ct);
         var preferences = await api.GetFromJsonAsync<JsonElement>("/api/me/preferences", Ct);
@@ -120,6 +122,7 @@ public sealed class SettingsPageTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, retention.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, outOfRange.StatusCode);
         Assert.Equal(HttpStatusCode.BadRequest, unknown.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, nullValue.StatusCode);
         Assert.Equal("90", values.GetProperty("retention.auditDays").GetString());
         Assert.Equal("teal", values.GetProperty("general.defaultTheme").GetString());
         Assert.Equal("teal", preferences.GetProperty("effective").GetProperty("theme").GetString()); // the organization's default

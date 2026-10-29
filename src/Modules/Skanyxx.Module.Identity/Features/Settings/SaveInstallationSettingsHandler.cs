@@ -28,6 +28,9 @@ internal sealed class SaveInstallationSettingsHandler(
             return Outcome<IReadOnlyList<string>>.Conflict([], "Cloud tools is a paid feature that this install's licence does not include.", "unlicensed");
 
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        // One save at a time across replicas: the compare, the write and the audit's "old" all see the latest commit.
+        await db.Database.ExecuteSqlRawAsync("SELECT pg_advisory_xact_lock(hashtext('identity.installation_settings'))", ct);
+        await db.Database.ExecuteSqlRawAsync("""SELECT 1 FROM identity_organization_preferences FOR UPDATE""", ct);
         var current = await EffectiveSettings.ReadAsync(db, configuration, ct);
         var changed = new List<string>();
         foreach (var (key, value) in command.Values.OrderBy(v => v.Key, StringComparer.Ordinal))

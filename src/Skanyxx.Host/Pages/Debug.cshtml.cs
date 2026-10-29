@@ -59,15 +59,15 @@ public sealed class DebugModel(
 
     public async Task OnGetAsync(CancellationToken ct)
     {
-        var dragonfly = DragonflyProbe.CheckAsync("Dragonfly (memory)", configuration["Memory:Dragonfly:Configuration"], ct);
         Health = await health.CheckHealthAsync(ct);
+        var dragonfly = await DragonflyProbe.CheckAsync("Dragonfly (memory)", configuration["Memory:Dragonfly:Configuration"]);
         Connections =
         [
             From(KAgentHealthCheck.Name, "kagent"),
             From(DashboardChecks.Sandboxes, "AX (sandboxes)"),
             .. Health.Entries.Where(e => e.Key.EndsWith(DashboardChecks.PostgresSuffix, StringComparison.Ordinal))
                 .OrderBy(e => e.Key).Select(e => From(e.Key, $"Postgres ({e.Key[..^DashboardChecks.PostgresSuffix.Length]})")),
-            await dragonfly,
+            dragonfly,
             From(DashboardChecks.AnswerCache, "Dragonfly (answer cache)"),
         ];
     }
