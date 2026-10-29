@@ -1706,3 +1706,16 @@ a 401 whatever it names; and a sandbox token is a 401 on every other port.
 - **Known exposure:** AX stores env in plaintext (its Redis, task metadata), so the token is as private as AX's env —
   both are fenced from sandboxes by the NetworkPolicies above ("Deployment prerequisites"). Anyone who can `get pods`
   in the WorkerPool namespace, or read AX tasks, can read it: treat RBAC on that namespace as access to sandbox memory.
+
+## Day 0/1/2 scripted runs (customer scenario)
+
+Requirements §5 as repeatable runs on a throwaway cluster (D542): `scripts/day0` (install the umbrella on kind
+`skx-day0` or an explicit `--context`, then smoke it), `scripts/day1` (git, CI runner, Argo CD, model providers),
+`scripts/day2` (people, knowledge base, an agent from a template through PR → CI → merge → Argo CD → kagent, chat and
+history, RBAC, cleanup). `scripts/e2e/studio-cicd.sh` runs the Studio CI/CD path alone; `scripts/e2e/run-all.sh --down`
+runs everything and removes it again. Each folder has a README; state and generated credentials stay in
+`~/.config/skanyxx-e2e/<target>` (0600), never printed.
+
+```bash
+LOGDIR=/tmp/skx-e2e scripts/e2e/run-all.sh --down          # needs Docker (OrbStack or Docker Desktop), kind, helm, node
+```

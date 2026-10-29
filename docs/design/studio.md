@@ -91,3 +91,30 @@ and delete them straight through kagent's controller API, no PR. A studio agent 
 are labelled `skanyxx.dev/managed-by: skanyxx-agents` (the reconciler leaves them alone) and `merged` (in Chat, D253).
 A name a direct agent holds cannot later be merged from the studio (the reconciler never takes over an agent it did
 not create).
+
+## CI/CD end to end (as built 2026-10-29, D541–D543)
+
+The owner's flow (2026-10-28) — template → repo → pull request → approval → CI/CD → kagent — exists in code and is
+proven by `scripts/e2e/studio-cicd.sh` (and Day 2) on a kind cluster with a real Gitea, Gitea Actions runner and
+Argo CD 3.5.6:
+
+```
+GET api/studio/templates (builder) → POST api/studio/proposals → skanyxx-agents PR (agents/<name>/{agent,grants}.yaml)
+  → Gitea Actions: .gitea/workflows/validate-agents.yaml (installed by the owner, POST api/studio/ci/install)
+    → POST api/studio/ci/validate (Studio:Ci:Token) → commit status "validate-agents / validate (pull_request)"
+  → supervisor POST …/merge (409 until checks pass with Studio:RequireChecks) → reconciler applies at once
+  → Argo CD Application skanyxx-agents syncs agents/*/agent.yaml (tracks the same Agent) → kagent Ready
+  → GET api/studio/changes: Draft → PR → Checks → Merged → Deployed, deploy status from Argo CD (D363)
+```
+
+| Piece | Where |
+|---|---|
+| CI workflow | `docs/templates/agents-repo/validate-agents.yaml` (embedded, committed by "Add CI to the agent repo") |
+| Argo Application + Agent health check | `docs/templates/agents-repo/argocd-application.yaml`, `argocd-agent-health.lua` (D541) |
+| Argo read-only account | `p, skanyxx, applications, get, skanyxx-agents/skanyxx-agents, allow` in the AppProject `skanyxx-agents` (kagent Agents in one namespace from this repo only); its token is `Studio:Argo:Token` |
+| Who deploys | the reconciler on merge (always); Argo tracks and re-syncs the same file. An Agent Argo creates first is adopted (D541) |
+
+Not built: a Helm chart per agent in the repo (the repo holds kagent Agent YAML, which is what both the reconciler and
+Argo apply), Argo sync triggering from Skanyxx (it only reads), removing an agent from the UI (D115; the e2e cleanup
+removes the folder by a pull request in git and the owner confirms the pass). Studio agent edits on the Agents page
+stay read-only (open owner question: block vs write back as a PR).
