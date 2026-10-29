@@ -47,7 +47,9 @@ it always prints fresh values.
 {{- end -}}
 
 {{- define "skanyxx.kagentUrl" -}}
-{{- if .Values.kagent.enabled -}}
+{{- if and .Values.kagent.enabled .Values.kagentGate.enabled -}}
+{{- printf "http://kagent-gate.%s.svc:8084" .Release.Namespace -}}
+{{- else if .Values.kagent.enabled -}}
 {{- printf "http://kagent-controller.%s.svc:8083" .Release.Namespace -}}
 {{- else -}}
 {{- required "kagent.enabled=false needs skanyxx.kagent.url (the kagent controller Skanyxx calls)" .Values.skanyxx.kagent.url -}}
@@ -183,4 +185,14 @@ key: password
 {{/* The Secret holding the sandbox token signing key (key `token-key`). */}}
 {{- define "skanyxx.sandboxTokenSecret" -}}
 {{- default (printf "%s-sandbox-token" (include "skanyxx.fullname" .)) .Values.ax.sandboxes.memory.existingSecret -}}
+{{- end -}}
+
+{{/* D520: the gate is on (bundled kagent only). Renders "true" or nothing. */}}
+{{- define "skanyxx.kagentGate" -}}
+{{- if and .Values.kagent.enabled .Values.kagentGate.enabled -}}true{{- end -}}
+{{- end -}}
+
+{{/* The Secret with the gate's signing key: `token-key` (Skanyxx signs with it) and `jwks.json` (the gate verifies with it). */}}
+{{- define "skanyxx.kagentGateSecret" -}}
+{{- default "kagent-gate" .Values.kagentGate.existingSecret -}}
 {{- end -}}

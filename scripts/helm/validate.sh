@@ -130,11 +130,16 @@ helm template skanyxx "$CHART" --namespace skanyxx --set ingress.enabled=true --
 sk=$(netpol skanyxx "$WORK/http.yaml")
 grep -A3 'kubernetes.io/metadata.name: ingress-nginx' <<<"$sk" | grep -q 'podSelector:' || die "ingressPodLabels does not narrow the ingress namespace to its pods"
 grep -A8 'kubernetes.io/metadata.name: monitoring' <<<"$sk" | grep -q -- '- port: http$' || die "networkPolicy.httpFrom is not admitted on the UI/API port"
-# C2: Skanyxx's egress is DNS, the bundled kagent controller (8083) and stores, the internet minus clusterCidrs on
-# internetPorts, and extra; never open unless skanyxxEgress.enabled=false. BYO kagent/Postgres need extra.
+# C2: Skanyxx's egress is DNS, the bundled kagent's gate (8084; the controller on 8083 with the gate off, D520) and
+# stores, the internet minus clusterCidrs on internetPorts, and extra; never open unless skanyxxEgress.enabled=false.
+# BYO kagent/Postgres need extra.
+helm template skanyxx "$CHART" --namespace skanyxx --set kagentGate.enabled=false >"$WORK/nogate.yaml"
 sk=$(netpol skanyxx "$WORK/default.yaml")
 if grep -q -- '- {}' <<<"$sk"; then die "Skanyxx egress is open by default"; fi
-sed -n '/egress:/,$p' <<<"$sk" | grep -A6 'app.kubernetes.io/component: controller' | grep -q 'port: 8083' || die "Skanyxx cannot reach kagent's controller API"
+sed -n '/egress:/,$p' <<<"$sk" | grep -A6 'app.kubernetes.io/name: kagent-gate' | grep -q 'port: 8084' || die "Skanyxx cannot reach the kagent gate"
+if sed -n '/egress:/,$p' <<<"$sk" | grep -q 'app.kubernetes.io/component: controller'; then die "Skanyxx may call kagent's controller past the gate"; fi
+netpol skanyxx "$WORK/nogate.yaml" | sed -n '/egress:/,$p' | grep -A6 'app.kubernetes.io/component: controller' | grep -q 'port: 8083' \
+  || die "gate off: Skanyxx cannot reach kagent's controller API"
 for store in postgres:postgres minio:s3 gitea:http dragonfly:6379; do
   sed -n '/egress:/,$p' <<<"$sk" | grep -A5 "app.kubernetes.io/name: ${store%%:*}$" | grep -q -- "- port: ${store#*:}$" || die "Skanyxx cannot reach ${store%%:*}"
 done
@@ -146,10 +151,14 @@ netpol skanyxx "$WORK/ax-install-values.yaml" | sed -n '/egress:/,$p' | grep -A4
 netpol skanyxx "$WORK/ax-values.yaml" | sed -n '/egress:/,$p' | grep -q 'kubernetes.io/metadata.name: ax-system' || die "ax: Skanyxx cannot reach ax.namespace"
 helm template skanyxx "$CHART" --namespace skanyxx --set networkPolicy.skanyxxEgress.enabled=false >"$WORK/open.yaml"
 netpol skanyxx "$WORK/open.yaml" | grep -q -- '- {}' || die "skanyxxEgress.enabled=false does not open Skanyxx's egress"
-# C3: kagent's controller API (no auth, D101) answers Skanyxx and the agent pods on 8083 only (+ its UI when it runs).
+# C3: kagent's controller API (no auth, D101) answers the gate only (D520), or with the gate off Skanyxx and the agent
+# pods, on 8083 only (+ its UI when it runs).
 ctrl=$(netpol kagent-controller "$WORK/default.yaml")
 if sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -q 'podSelector: {}'; then die "kagent's controller admits every pod in the namespace"; fi
-sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -q 'app.kubernetes.io/name: skanyxx' || die "kagent's controller does not admit Skanyxx"
+sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -q 'app.kubernetes.io/name: kagent-gate' || die "kagent's controller does not admit the gate"
+if sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -q 'app.kubernetes.io/name: skanyxx\|app: kagent$'; then die "kagent's controller admits Skanyxx or the agents past the gate"; fi
+nctrl=$(netpol kagent-controller "$WORK/nogate.yaml" | sed -n '/ingress:/,/egress:/p')
+grep -q 'app.kubernetes.io/name: skanyxx' <<<"$nctrl" && grep -q 'app: kagent$' <<<"$nctrl" || die "gate off: kagent's controller does not admit Skanyxx and the agents"
 [[ $(sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -c -- '- port:') == 1 ]] && sed -n '/ingress:/,/egress:/p' <<<"$ctrl" | grep -q -- '- port: 8083' \
   || die "kagent's controller admits more than its API port"
 if grep -q 'component: ui' <<<"$ctrl"; then die "kagent's UI (0 replicas) is admitted to the controller"; fi
@@ -158,7 +167,9 @@ netpol kagent-controller "$WORK/ui.yaml" | grep -q 'component: ui' || die "kagen
 # C4: agent pods answer the controller on a2aPorts only, and send to the controller's API port only.
 agents=$(netpol kagent-agents "$WORK/default.yaml")
 sed -n '/ingress:/,/egress:/p' <<<"$agents" | grep -q -- '- port: 8080' || die "agent pods' A2A ingress is not limited to a2aPorts"
-sed -n '/egress:/,$p' <<<"$agents" | grep -A6 'component: controller' | grep -q 'port: 8083' || die "agent egress to the controller is not its API port only"
+sed -n '/egress:/,$p' <<<"$agents" | grep -A6 'name: kagent-gate' | grep -q 'port: 8083' || die "agent egress to the gate is not its agent port only"
+if sed -n '/egress:/,$p' <<<"$agents" | grep -q 'component: controller'; then die "agent pods may call kagent's controller past the gate"; fi
+netpol kagent-agents "$WORK/nogate.yaml" | sed -n '/egress:/,$p' | grep -A6 'component: controller' | grep -q 'port: 8083' || die "gate off: agent egress to the controller is not its API port only"
 # C5: no workload of ours mounts a Kubernetes API token; only kagent's controller (and its 0-replica UI) may. Agent pods
 # run as kagent-agent (no token). The only RBAC is kagent's namespaced getter/writer.
 for f in default byo-values ax-install-values; do
@@ -296,6 +307,50 @@ helm template skanyxx "$CHART" --namespace skanyxx --set 'skanyxx.trustedProxies
 KUBECONFIG=/dev/null helm install skanyxx "$CHART" --namespace skanyxx --set 'skanyxx.trustedProxies={10.244.7.17/32}' \
   --dry-run=client >"$WORK/tp-notes.txt" 2>&1 || { cat "$WORK/tp-notes.txt"; exit 1; }
 grep -q "use-forwarded-headers at false" "$WORK/tp-notes.txt" || die "NOTES does not say ingress-nginx's use-forwarded-headers must stay false (D397)"
+# D520-D523: the kagent gate. On by default: Skanyxx signs every call (Auth=signed, key from the gate's Secret) and calls
+# the gate's 8084; the agents are pointed at the gate (KAGENT_CONTROLLER_NAME); Envoy requires the token, forwards no
+# token, drops X-User-Id / X-Agent-Name, refuses ?user_id= and lets the agents through on agentPaths only. The live
+# behaviour is scripts/helm/gate-test.sh (Docker).
+D=$WORK/default.yaml
+doc() { awk -v k="$1" -v n="$2" 'BEGIN{RS="\n---"} $0 ~ "\nkind: " k "\n" && $0 ~ "\n  name: " n "\n" {print}' "$3"; }
+doc Deployment kagent-gate "$D" | grep -q 'image: "docker.io/envoyproxy/envoy:distroless-v[0-9.]*@sha256:' || die "gate: no Envoy Deployment pinned by digest"
+svc=$(doc Service kagent-gate "$D")
+grep -q 'app.kubernetes.io/name: kagent-gate' <<<"$svc" && grep -q 'port: 8083' <<<"$svc" && grep -q 'port: 8084' <<<"$svc" || die "gate: the kagent-gate Service does not select the gate on 8083 + 8084"
+grep -A1 'name: KAgent__IngressUrl' "$D" | grep -q 'value: "http://kagent-gate.skanyxx.svc:8084"' || die "gate: Skanyxx does not call the gate"
+grep -A1 'name: KAgent__Auth__Mode' "$D" | grep -q 'value: signed' || die "gate: Skanyxx does not sign its kagent calls"
+grep -A1 'name: KAgent__Auth__TokenKey' "$D" | grep -q 'secretKeyRef: {name: kagent-gate, key: token-key}' || die "gate: the signing key is not from the gate's Secret"
+grep -A1 'name: KAGENT_CONTROLLER_NAME' "$D" | grep -q 'value: kagent-gate' || die "gate: kagent's agents are not pointed at the gate"
+doc Secret kagent-gate "$D" | grep -q '^  jwks.json: ' || die "gate: no generated JWKS"
+jwks=$(doc Secret kagent-gate "$D" | awk '/^  jwks.json: /{print $2}' | base64 -d)
+key=$(doc Secret kagent-gate "$D" | awk '/^  token-key: /{print $2}' | base64 -d)
+[[ $jwks == "{\"keys\":[{\"kty\":\"oct\",\"alg\":\"HS256\",\"k\":\"$(printf %s "$key" | base64 | tr '+/' '-_' | tr -d '=\n')\"}]}" ]] \
+  || die "gate: the JWKS does not hold the token key"
+unset key jwks
+envoy=$(doc ConfigMap kagent-gate "$D")
+for want in 'requires: {provider_name: skanyxx}' 'forward: false' 'require_expiration: true' 'max_lifetime: 300s' 'audiences: [kagent-gate]' \
+    '- remove: x-user-id' 'claim_to_headers: [{header_name: x-user-id, claim_name: sub}]' '(user_id|' \
+    'match: {path_separated_prefix: /api/sessions}' 'match: {path_separated_prefix: /api/tasks}' 'not an agent path' \
+    'headers_with_underscores_action: REJECT_REQUEST' 'path_with_escaped_slashes_action: REJECT_REQUEST'; do
+  grep -qF -- "$want" <<<"$envoy" || die "gate: the Envoy config lacks '$want'"
+done
+[[ $(grep -c 'path_separated_prefix' <<<"$envoy") == 2 ]] || die "gate: the agents may reach more than the default agentPaths"
+gnp=$(netpol kagent-gate "$D")
+sed -n '/ingress:/,/egress:/p' <<<"$gnp" | grep -B6 'port: 8084' | grep -q 'app.kubernetes.io/name: skanyxx' || die "gate: 8084 does not admit Skanyxx"
+sed -n '/ingress:/,/egress:/p' <<<"$gnp" | grep -B8 'port: 8083' | grep -q 'app: kagent' || die "gate: 8083 does not admit the agents"
+sed -n '/egress:/,$p' <<<"$gnp" | grep -q 'component: controller' || die "gate: it cannot reach the controller"
+# Off (explicitly): no gate, no token, the Service is the controller (agents keep their URL), and NOTES says so.
+if doc Deployment kagent-gate "$WORK/nogate.yaml" | grep -q .; then die "gate off: the gate still runs"; fi
+if grep -q 'KAgent__Auth__' "$WORK/nogate.yaml"; then die "gate off: Skanyxx still signs"; fi
+doc Service kagent-gate "$WORK/nogate.yaml" | grep -q 'app.kubernetes.io/component: controller' || die "gate off: kagent-gate does not point at the controller"
+KUBECONFIG=/dev/null helm install skanyxx "$CHART" --namespace skanyxx --set kagentGate.enabled=false --dry-run=client >"$WORK/nogate-notes.txt" 2>&1 \
+  || { cat "$WORK/nogate-notes.txt"; exit 1; }
+grep -q 'kagentGate.enabled=false' "$WORK/nogate-notes.txt" || die "gate off: NOTES does not warn"
+# a2aPeers: each entry lets one agent reach the listed ones on a2aPorts, both ways fenced.
+helm template skanyxx "$CHART" --namespace skanyxx --set-json 'networkPolicy.a2aPeers=[{"from":"ticket-planner","to":["ticket-reviewer","ticket-qa"]}]' >"$WORK/peers.yaml"
+out=$(netpol kagent-a2a-ticket-planner "$WORK/peers.yaml"); in=$(netpol kagent-a2a-ticket-planner-in "$WORK/peers.yaml")
+grep -q 'kagent: ticket-planner' <<<"$out" && grep -q 'values: \["ticket-reviewer","ticket-qa"\]' <<<"$out" && grep -q 'port: 8080' <<<"$out" || die "a2aPeers: the caller's egress is not its callees on a2aPorts"
+grep -q 'values: \["ticket-reviewer","ticket-qa"\]' <<<"$in" && grep -q 'kagent: ticket-planner' <<<"$in" || die "a2aPeers: the callees do not admit the caller"
+if netpol kagent-a2a "$D" | grep -q .; then die "a2aPeers: agent-to-agent policies by default"; fi
 # Each of these must be refused by the chart (template fail or values.schema.json), FOR the expected reason: the
 # second argument is a substring of the error (a schema path or the fail text), so a case refused by something
 # unrelated (a typo in the ci values, another check) fails the script instead of counting.
@@ -378,5 +433,14 @@ refuse "controllerEgress.kubeApiPorts empty (would open every port)" "at '/netwo
 refuse "kagent's trusted-proxy auth mode (unverified JWT; ignores Skanyxx's X-User-Id)" "at '/kagent/controller/auth/mode'" --set kagent.controller.auth.mode=trusted-proxy
 refuse "Skanyxx egress fenced with BYO kagent/Postgres and no extra rule (would cut them off)" "networkPolicy.skanyxxEgress admits only the bundled" -f "$CHART/ci/byo-values.yaml" --set networkPolicy.skanyxxEgress.extra=null
 refuse "skanyxxEgress.internetPorts empty (would open every port)" "at '/networkPolicy/skanyxxEgress/internetPorts'" --set-json 'networkPolicy.skanyxxEgress.internetPorts=[]'
+refuse "kagent.controller.env without KAGENT_CONTROLLER_NAME (agents would go past the gate, D520)" "kagent.controller.env must keep {name: KAGENT_CONTROLLER_NAME, value: kagent-gate}" --set-json 'kagent.controller.env=[{"name":"FOO","value":"bar"}]'
+refuse "KAGENT_CONTROLLER_NAME pointing at the controller itself" "kagent.controller.env must keep" --set-json 'kagent.controller.env=[{"name":"KAGENT_CONTROLLER_NAME","value":"kagent-controller"}]'
+refuse "agentPaths opening agent CRUD to agents (D522)" "at '/kagentGate/agentPaths/0'" --set-json 'kagentGate.agentPaths=["/api/agents"]'
+refuse "agentPaths opening A2A to any agent" "at '/kagentGate/agentPaths/0'" --set-json 'kagentGate.agentPaths=["/api/a2a"]'
+refuse "agentPaths opening everything" "at '/kagentGate/agentPaths/0'" --set-json 'kagentGate.agentPaths=["/"]'
+refuse "a gate token lifetime over 300 s (the gate refuses longer ones)" "at '/kagentGate/tokenSeconds'" --set kagentGate.tokenSeconds=301
+refuse "a gate image digest that is not sha256" "at '/kagentGate/image/digest'" --set kagentGate.image.digest=latest
+refuse "an a2aPeers name that is not an Agent name" "at '/networkPolicy/a2aPeers/0/from'" --set-json 'networkPolicy.a2aPeers=[{"from":"Bad Name","to":["x"]}]'
+refuse "an a2aPeers entry with no callee" "at '/networkPolicy/a2aPeers/0/to'" --set-json 'networkPolicy.a2aPeers=[{"from":"a","to":[]}]'
 refuse "a sandbox token lifetime over 720 hours" "tokenHours': maximum: got 721, want 720" "${AXV[@]}" --set ax.sandboxes.memory.tokenHours=721
-echo "ok: lint + kubeconform -strict for default, byo, ax, ax-install, appliance; /mcp, ModelConfig, RBAC, keep, default-deny, mcpFrom, agent egress, clusterCidrs, controller egress, Skanyxx ingress/egress, kagent controller + agent ingress, no API tokens, pod security baseline, object store and AX (address, Dragonfly/external/own Redis with password + maxmemory, ax-server/controller policies, sandbox fence kept + DNS peer, sandbox memory listener) checks hold; $refusals refusals, each for its expected reason"
+echo "ok: lint + kubeconform -strict for default, byo, ax, ax-install, appliance; /mcp, ModelConfig, RBAC, keep, default-deny, mcpFrom, agent egress, clusterCidrs, controller egress, Skanyxx ingress/egress, kagent controller + agent ingress, no API tokens, pod security baseline, object store and AX (address, Dragonfly/external/own Redis with password + maxmemory, ax-server/controller policies, sandbox fence kept + DNS peer, sandbox memory listener), kagent gate (token, agents pointed at it, Envoy rules, policies, off switch) and a2aPeers checks hold; $refusals refusals, each for its expected reason"

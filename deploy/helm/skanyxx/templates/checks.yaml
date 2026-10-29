@@ -9,6 +9,15 @@
 {{- fail "kagent.controller.watchNamespaces must include the release namespace (or stay unset: it follows kagent.rbac.namespaces)" }}
 {{- end }}
 {{- end }}
+{{- /* D520: the agents find "the controller" by this name; without it they would call kagent-controller directly, past the
+     gate, and (with the gate on) be refused there by the NetworkPolicy. */ -}}
+{{- $named := false }}
+{{- range (dig "controller" "env" list .Values.kagent) }}
+{{- if and (eq (.name | default "") "KAGENT_CONTROLLER_NAME") (eq (.value | default "") "kagent-gate") }}{{ $named = true }}{{ end }}
+{{- end }}
+{{- if not $named }}
+{{- fail "kagent.controller.env must keep {name: KAGENT_CONTROLLER_NAME, value: kagent-gate}: kagent points its agents at that Service (the kagent gate, D520). Add your own entries next to it." }}
+{{- end }}
 {{- /* D142 (verifier G4): with providers set, kagent's chart renders default-model-config and Helm would own the owner's model. */ -}}
 {{- if .Values.kagent.providers }}
 {{- fail "kagent.providers must stay false: the chart would then own default-model-config and every upgrade would overwrite the model the owner saved in /Model (D099, D131). Set the model in Skanyxx's /Model." }}

@@ -1,6 +1,7 @@
 {{- if .Values.networkPolicy.enabled }}
 {{- $skanyxx := dict "ctx" . "name" "skanyxx" }}
 {{- $np := .Values.networkPolicy }}
+{{- $gate := include "skanyxx.kagentGate" . }}
 # D137: the namespace is default-deny. Every pod here (kagent's agent pods included, whatever the controller creates)
 # refuses all traffic and sends nothing but DNS, unless one of the policies below allows more (policies add up).
 apiVersion: networking.k8s.io/v1
@@ -89,7 +90,16 @@ spec:
     {{- end }}
   egress:
     {{- if $se.enabled }}
-    {{- if .Values.kagent.enabled }}
+    {{- if $gate }}
+    # kagent's controller API (agents, ModelConfigs, RemoteMCPServers, A2A) through the gate, with a signed token (D520).
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kagent-gate
+              app.kubernetes.io/instance: {{ .Release.Name }}
+      ports:
+        - port: 8084
+    {{- else if .Values.kagent.enabled }}
     # kagent's controller API (agents, ModelConfigs, RemoteMCPServers, A2A): Skanyxx is its one product caller.
     - to:
         - podSelector:
@@ -166,9 +176,10 @@ spec:
 {{- end }}
 {{- if .Values.kagent.enabled }}
 ---
-# kagent 0.10.2 authenticates nobody (D101): whoever reaches its API (8083) names the user. It answers Skanyxx, the
-# agent pods (session/task storage, agent-to-agent A2A), kagent's own UI only while kagent.ui.replicas > 0, and
-# networkPolicy.controllerFrom — nothing else in the namespace (cluster-security.md). It connects to every
+# kagent 0.10.2 authenticates nobody (D101): whoever reaches its API (8083) names the user. With the gate on (D520) it
+# answers the gate only, which checks Skanyxx's token and the agents' paths; off, Skanyxx and the agent pods (session and
+# task storage). Plus kagent's own UI only while kagent.ui.replicas > 0, and networkPolicy.controllerFrom — nothing else
+# in the namespace (cluster-security.md). It connects to every
 # plugin MCP server with its header values (tool discovery), so networkPolicy.controllerEgress fences it (D229): DNS
 # (default-deny), the Kubernetes API, Postgres, Skanyxx's mcp port, the agent pods' A2A port, the internet minus
 # clusterCidrs on 443, and controllerEgress.extra. Off by default, egress stays open: the API's address differs per
@@ -187,6 +198,12 @@ spec:
   policyTypes: [Ingress, Egress]
   ingress:
     - from:
+        {{- if $gate }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kagent-gate
+              app.kubernetes.io/instance: {{ .Release.Name }}
+        {{- else }}
         - podSelector:
             matchLabels:
               {{- include "skanyxx.selectorLabels" $skanyxx | nindent 14 }}
@@ -195,6 +212,7 @@ spec:
               app: kagent
             matchExpressions:
               - {key: kagent, operator: Exists}
+        {{- end }}
         {{- if gt (int (dig "ui" "replicas" 1 .Values.kagent)) 0 }}
         - podSelector:
             matchLabels:
@@ -264,7 +282,8 @@ spec:
     {{- end }}
 ---
 # kagent's agent pods (labelled app=kagent, kagent=<agent> by its controller): A2A (no auth of its own) only from the
-# controller on controllerEgress.a2aPorts (Chat goes through it). Out (D148): kagent's controller API, Skanyxx's mcp
+# controller on controllerEgress.a2aPorts (Chat goes through it), and from networkPolicy.a2aPeers (below). Out (D148):
+# the kagent-gate Service's agent port (the gate's agent listener, or the controller with the gate off), Skanyxx's mcp
 # port (never its UI/API), DNS (default-deny), the model provider, and networkPolicy.modelEgress.extra.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -293,8 +312,13 @@ spec:
     - to:
         - podSelector:
             matchLabels:
+              {{- if $gate }}
+              app.kubernetes.io/name: kagent-gate
+              app.kubernetes.io/instance: {{ .Release.Name }}
+              {{- else }}
               app.kubernetes.io/name: kagent
               app.kubernetes.io/component: controller
+              {{- end }}
       ports:
         - port: 8083
     - to:
@@ -325,6 +349,97 @@ spec:
     {{- with $np.modelEgress.extra }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
+{{- if $gate }}
+---
+# D520: the gate answers Skanyxx on 8084 (token required) and the agent pods on 8083 (agent paths only); it sends to
+# kagent's controller API and DNS only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kagent-gate
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: kagent-gate
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "skanyxx.selectorLabels" $skanyxx | nindent 14 }}
+      ports:
+        - port: 8084
+    - from:
+        - podSelector:
+            matchLabels:
+              app: kagent
+            matchExpressions:
+              - {key: kagent, operator: Exists}
+      ports:
+        - port: 8083
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: kagent
+              app.kubernetes.io/component: controller
+      ports:
+        - port: 8083
+{{- end }}
+{{- range $np.a2aPeers }}
+---
+# D523: {{ .from }} may call {{ join ", " .to }} over A2A (agents as tools); kagent's ADK goes pod to pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kagent-a2a-{{ .from }}
+  labels:
+    {{- include "skanyxx.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: kagent
+      kagent: {{ .from }}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: kagent
+            matchExpressions:
+              - {key: kagent, operator: In, values: {{ toJson .to }}}
+      ports:
+        {{- range $ce.a2aPorts }}
+        - port: {{ . }}
+        {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: kagent-a2a-{{ .from }}-in
+  labels:
+    {{- include "skanyxx.labels" $ | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: kagent
+    matchExpressions:
+      - {key: kagent, operator: In, values: {{ toJson .to }}}
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: kagent
+              kagent: {{ .from }}
+      ports:
+        {{- range $ce.a2aPorts }}
+        - port: {{ . }}
+        {{- end }}
+{{- end }}
 {{- end }}
 {{- range $store := list (dict "name" "postgres" "on" .Values.postgresql.enabled "port" "postgres" "kagent" true)
                          (dict "name" "minio" "on" .Values.minio.enabled "port" "s3" "kagent" false)
