@@ -12,6 +12,7 @@ using Skanyxx.Module.Agents.Plugins;
 using Skanyxx.Module.Agents.Plugins.Features;
 using Skanyxx.Module.Agents.Plugins.Sources;
 using Skanyxx.Module.Agents.Studio;
+using Skanyxx.Module.Agents.Studio.Deploy;
 using Skanyxx.Module.Agents.Studio.Features;
 using Skanyxx.Module.Agents.Studio.Git;
 using Skanyxx.Module.Agents.Studio.Plugins;
@@ -62,6 +63,20 @@ public class AgentsModule : IModule
                 .AddCheck<StudioGitHealthCheck>(DashboardChecks.StudioGit, tags: [HealthEndpoint.DiagnosticsTag])
                 .AddCheck<StudioReconcileHealthCheck>(DashboardChecks.StudioReconciler, tags: [HealthEndpoint.DiagnosticsTag]);
         services.AddSingleton<ProposalInspector>();
+        services.AddOptions<LicenceOptions>().Bind(configuration.GetSection(LicenceOptions.Section));
+        services.AddSingleton<DraftProblems>();
+        // Argo CD's read of the agent repo's Application (D363); the token rides in the default header, never a URL or a log.
+        services.AddHttpClient(DeployStatusReader.ArgoClientName, (sp, client) =>
+        {
+            var argo = sp.GetRequiredService<IOptions<StudioOptions>>().Value.Argo;
+            if (!string.IsNullOrWhiteSpace(argo.BaseUrl))
+                client.BaseAddress = new Uri(argo.BaseUrl.TrimEnd('/') + "/");
+            client.Timeout = Timeout.InfiniteTimeSpan;
+            client.DefaultRequestHeaders.Add("Accept", "application/json");
+            if (!string.IsNullOrWhiteSpace(argo.Token))
+                client.DefaultRequestHeaders.TryAddWithoutValidation("Authorization", $"Bearer {argo.Token}");
+        });
+        services.AddSingleton<DeployStatusReader>();
         services.AddSingleton<StudioChat>();
 
         services.AddOptions<PluginsOptions>().Bind(configuration.GetSection(PluginsOptions.Section));

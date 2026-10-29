@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform.Memory;
+using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Reconcile;
 
 namespace Skanyxx.Module.Agents.Studio.Git;
@@ -179,6 +180,16 @@ internal sealed class GiteaAgentRepo(IHttpClientFactory clients, IOptions<Studio
         }
     }
 
+    public async Task<IReadOnlyList<RepoPull>> RecentClosedPullsAsync(int limit, CancellationToken ct) =>
+        [.. (await SendAsync(HttpMethod.Get, $"{RepoPath}/pulls?state=closed&sort=recentupdate&page=1&limit={Math.Clamp(limit, 1, PageSize)}", null, ct) as JsonArray ?? [])
+            .Select(Pull).Take(limit)];
+
+    /// <summary>Gitea's and GitHub's combined status of a commit share one path and shape (<c>statuses[]</c>).</summary>
+    public async Task<ChangeChecks> ChecksAsync(string sha, CancellationToken ct) =>
+        sha.Length == 0
+            ? ChangeChecks.None
+            : CheckStatusMap.From(await SendAsync(HttpMethod.Get, $"{RepoPath}/commits/{Uri.EscapeDataString(sha)}/status", null, ct, HttpStatusCode.NotFound));
+
     public async Task CloseAsync(RepoPull pull, CancellationToken ct)
     {
         await SendAsync(HttpMethod.Patch, $"{RepoPath}/pulls/{pull.Number}", new JsonObject { ["state"] = "closed" }, ct);
@@ -201,7 +212,10 @@ internal sealed class GiteaAgentRepo(IHttpClientFactory clients, IOptions<Studio
         Text(pull["head"]?["sha"]) ?? "",
         Text(pull["state"]) == "open",
         Bool(pull["merged"]) == true,
-        Bool(pull["mergeable"]) == true);
+        Bool(pull["mergeable"]) == true) { Url = WebUrl(Text(pull["html_url"])) };
+
+    private static string WebUrl(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" ? uri.ToString() : "";
 
     private static string? Text(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) ? text : null;
 

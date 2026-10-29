@@ -1,0 +1,21 @@
+@using Skanyxx.Core.Platform.Studio
+@model IReadOnlyList<ChangeStep>
+@* A change's timeline (D365): draft → pull request opened → checks → merged → deployed. The state is spelled out, not only coloured. *@
+<ol class="timeline" aria-label="Progress of this change" data-timeline>
+    @foreach (var step in Model)
+    {
+        var state = step.State.ToString().ToLowerInvariant();
+        <li class="timeline-step" data-state="@state" data-step="@step.Name">
+            <strong>@step.Name</strong>
+            <span class="timeline-state">@(step.State switch
+            {
+                StepState.Done => "Done",
+                StepState.Active => "In progress",
+                StepState.Failed => "Failed",
+                StepState.Waiting => "Waiting",
+                _ => "Skipped"
+            })</span>
+            <span>@step.Detail</span>
+        </li>
+    }
+</ol>

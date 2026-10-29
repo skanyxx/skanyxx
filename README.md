@@ -1142,7 +1142,19 @@ in the agent repo `skanyxx-agents` carries them; only a supervisor's merge makes
 - **Config:** `Studio:Git:BaseUrl`, `Studio:Git:Token` (the one git account's token; never logged or returned),
   `Studio:Git:User` (`skanyxx-bot`), `Studio:Git:Owner`/`Repo`/`Branch`, `Studio:Namespace` (`kagent`),
   `Studio:MemoryMcpUrl`, `Studio:McpServers`, `Studio:ReconcileSeconds`, `Studio:FactoryModelConfig`,
-  `Studio:SkillRegistries`, `Studio:MaxRemovalsPerPass`, `Studio:MaxOpenProposalsPerBuilder`, `Studio:LockWaitSeconds`.
+  `Studio:SkillRegistries`, `Studio:MaxRemovalsPerPass`, `Studio:MaxOpenProposalsPerBuilder`, `Studio:LockWaitSeconds`,
+  `Studio:CloudToolServers`, `Studio:RequireChecks`, `Studio:Ci:Token` (CI's bearer; never logged or returned),
+  `Studio:Ci:WorkflowPath`, `Studio:Argo:BaseUrl`/`Token`/`Application`/`TimeoutSeconds`, `Skanyxx:Licence:CloudTools`.
+- **Delivery for non-coders (D360–D368).** A template gallery (support, research, ops, data, cloud-ops) fills the guided
+  form; refusals are listed in plain words and "Show the YAML" previews the two files (`POST api/studio/manifest`).
+  Supervisors and the owner **Apply now** (`POST api/studio/apply`: one pull request, merged by them through the same
+  gate); builders and employees propose. "Changes and deployments" (`GET api/studio/changes`) shows each change's
+  timeline — draft, pull request (linked), CI checks, merged, deployed — with deploy status from Argo CD when
+  `Studio:Argo:BaseUrl`/`Token`/`Application` are set, else from the reconciler and kagent. CI: the workflow
+  `docs/templates/agents-repo/validate-agents.yaml` (Gitea or GitHub Actions; the owner commits it with "Add CI to the
+  agent repo", `POST api/studio/ci/install`) posts each agent folder to `POST api/studio/ci/validate` with
+  `Authorization: Bearer <Studio:Ci:Token>`, which runs a merge's rules; `Studio:RequireChecks` makes a merge wait for
+  passing checks. Cloud tools (`Studio:CloudToolServers`) are paid: locked unless `Skanyxx:Licence:CloudTools=true`.
 - `/api/agents` only reads: its kubectl writes are gone (Phase 1). Creating, editing or deleting a tool server is the owner's
   (D116, D313). The Host runs no processes and holds no Kubernetes credentials.
 

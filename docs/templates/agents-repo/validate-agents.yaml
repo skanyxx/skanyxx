@@ -1,0 +1,81 @@
+# Skanyxx agent repo CI (D362): every agent folder is checked with the rules a Studio merge applies.
+# Commit it to the agent repo as .gitea/workflows/validate-agents.yaml (Gitea Actions) or
+# .github/workflows/validate-agents.yaml (GitHub Actions); the syntax is the same.
+#
+# The repo needs:
+#   variable SKANYXX_URL       Skanyxx's address as the runner reaches it, e.g. http://skanyxx.skanyxx.svc:8080
+#   secret   SKANYXX_CI_TOKEN  the same value as Skanyxx's Studio:Ci:Token (never in this file, never echoed)
+#
+# Checks: only agents/<name>/agent.yaml + grants.yaml and plugins/** change; each agent folder passes Skanyxx's
+# YAML scan (no anchors or aliases, nesting <= 16, <= 5,000 nodes, one document), the strict shape the Studio form
+# renders, the form's values (allow-listed tools, scopes, skills), the cloud tools licence and a secret scan.
+# Agents a plugin owns are checked by Studio with their plugin at merge, and skipped here.
+name: validate-agents
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Only agent folders and plugins
+        run: |
+          set -eu
+          bad=$(git ls-files | grep -Ev '^(agents/[a-z][a-z0-9-]*/(agent|grants)\.yaml|plugins/.+|README\.md|\.gitea/.+|\.github/.+)$' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::Files outside agents/<name>/{agent,grants}.yaml and plugins/: $bad"
+            exit 1
+          fi
+
+      - name: Studio checks
+        env:
+          SKANYXX_URL: ${{ vars.SKANYXX_URL }}
+          SKANYXX_CI_TOKEN: ${{ secrets.SKANYXX_CI_TOKEN }}
+        run: |
+          set -eu
+          if [ -z "${SKANYXX_URL:-}" ] || [ -z "${SKANYXX_CI_TOKEN:-}" ]; then
+            echo "::error::Set the repo variable SKANYXX_URL and the secret SKANYXX_CI_TOKEN (Studio setup guide)."
+            exit 1
+          fi
+          command -v jq >/dev/null || { sudo apt-get update -qq && sudo apt-get install -y -qq jq; }
+          plugin_agents=$(awk '/^agents:/{f=1;next} /^[^ -]/{f=0} f&&/^- /{print $2}' plugins/*/plugin.yaml 2>/dev/null || true)
+          failed=0
+          for dir in agents/*/; do
+            [ -d "$dir" ] || continue
+            name=$(basename "$dir")
+            if printf '%s\n' "$plugin_agents" | grep -qx "$name"; then
+              echo "$name: a plugin's agent, checked by Studio with its plugin at merge."
+              continue
+            fi
+            if [ ! -f "$dir/agent.yaml" ] || [ ! -f "$dir/grants.yaml" ]; then
+              echo "::error file=$dir::$name needs both agent.yaml and grants.yaml."
+              failed=1
+              continue
+            fi
+            jq -n --arg name "$name" --rawfile agent "$dir/agent.yaml" --rawfile grants "$dir/grants.yaml" \
+              '{name: $name, agentYaml: $agent, grantsYaml: $grants}' > /tmp/body.json
+            code=$(curl -sS -o /tmp/answer.json -w '%{http_code}' -X POST "$SKANYXX_URL/api/studio/ci/validate" \
+              -H "Authorization: Bearer $SKANYXX_CI_TOKEN" -H 'Content-Type: application/json' --data @/tmp/body.json) || code=000
+            if [ "$code" != 200 ]; then
+              echo "::error file=$dir::Skanyxx answered HTTP $code for $name: $(jq -r '.detail // .title // empty' /tmp/answer.json 2>/dev/null | head -c 300)"
+              failed=1
+              continue
+            fi
+            if [ "$(jq -r '.valid' /tmp/answer.json)" = true ]; then
+              echo "$name: valid."
+            else
+              jq -r --arg dir "$dir" '.problems[] | "::error file=\($dir)agent.yaml::\(.)"' /tmp/answer.json
+              failed=1
+            fi
+            jq -r '.notes[]? | "note: \(.)"' /tmp/answer.json
+          done
+          exit $failed

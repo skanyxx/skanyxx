@@ -1,7 +1,8 @@
-# Allow-list: the image is built from global.json and src/ only.
+# Allow-list: the image is built from global.json, src/ and the agent repo CI template (embedded, D362).
 *
 !global.json
 !src/
+!docs/templates/
 **/bin/
 **/obj/
 src/Skanyxx.Host/modules/
