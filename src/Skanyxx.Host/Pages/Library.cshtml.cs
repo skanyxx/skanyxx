@@ -123,6 +123,28 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
             () => mediator.Send(new RenameCardCommand(LibraryUser.From(User), scope ?? "", key ?? "", newKey?.Trim() ?? "", version), ct),
             OutcomeStatus.Ok, card => $"Renamed to {card.Key}.", ct);
 
+    /// <summary>D507: one's own personal card, or any card for the owner (memory decides; this only offers the button).</summary>
+    public bool CanDelete(CardDto card) => card.Scope == $"personal:{Me}" || User.IsInRole(SkanyxxRoles.Owner);
+
+    /// <summary>Success goes back to the list (the card is gone); a refusal renders like the other actions'.</summary>
+    public async Task<IActionResult> OnPostDeleteAsync(string? scope, string? key, int version, CancellationToken ct)
+    {
+        var outcome = await ValidatedAsync(() => mediator.Send(new DeleteCardCommand(LibraryUser.From(User), scope ?? "", key ?? "", version), ct));
+        if (outcome is { Status: OutcomeStatus.Ok, Value: { } card })
+        {
+            Message = $"Deleted {card.Scope}/{card.Key} and its history.";
+            return RedirectToPage(null, null, new RouteValueDictionary(ListState().ToDictionary(kv => kv.Key, kv => (object?)kv.Value)));
+        }
+        if (outcome is not null)
+        {
+            Fail(outcome);
+            if (!string.IsNullOrEmpty(scope) && !string.IsNullOrEmpty(key))
+                Opened = (await mediator.Send(new OpenCardQuery(LibraryUser.From(User), scope, key), ct)).Value;
+        }
+        await BrowseAsync(ct);
+        return Page();
+    }
+
     /// <summary>
     /// Success redirects to the card it produced (post/redirect/get: a refresh re-sends nothing). A refusal renders here
     /// with its status, the card as it is now (if this person may still open it) and the list.

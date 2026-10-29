@@ -75,7 +75,7 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
     public async Task TicketAgentAndOriginFilters_NarrowTheShelf()
     {
         Created(await _miaApi.PutAsJsonAsync($"/api/memory/cards/personal:{_miaId}/sdb-note",
-            new { version = 0, type = "fact", what = "SDB-58 needs a refund form", why = "Seen twice", tickets = new[] { "SDB-58" } }));
+            new { version = 0, type = "fact", what = "SDB-58 needs a refund form", why = "Seen twice", tickets = new[] { "SDB-58" } }, TestContext.Current.CancellationToken));
 
         var ticket = await (await _mia.GetAsync("/Library?ticket=sdb-58")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         var chats = await (await _mia.GetAsync("/Library?origin=chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
@@ -113,6 +113,30 @@ public sealed partial class LibraryPageTests(PostgresFixture fixture) : IAsyncLi
         Assert.DoesNotContain("data-rename", company);
         Assert.DoesNotContain("data-rename", ownerOnTeam); // reads every team, writes none it is not in
         Assert.Contains("data-rename", ownerOnCompany);
+    }
+
+    /// <summary>D507: the Delete button is on one's own personal cards, and on every card for the owner; deleting goes back to the list.</summary>
+    [Fact]
+    public async Task Delete_IsOfferedOnOnesOwnCards_AndTheOwnersEverywhere_AndRemovesTheCard()
+    {
+        var personal = await HtmlAsync(_mia, $"/Library?scope=personal:{_miaId}&key=mia-note");
+        var team = await HtmlAsync(_mia, "/Library?scope=team:billing&key=billing-close");
+        var owner = await SignInAsync(HostApp.OwnerEmail, HostApp.OwnerPassword);
+        var ownerOnCompany = await HtmlAsync(owner, "/Library?scope=company&key=refund-window");
+
+        var refused = await _mia.SubmitAsync("/Library?handler=Delete&scope=team:billing&key=billing-close", new() { ["version"] = "1" }, tokenFrom: "/Library");
+        var deleted = await _mia.SubmitAsync($"/Library?handler=Delete&scope=personal:{_miaId}&key=mia-note", new() { ["version"] = "1" }, tokenFrom: "/Library");
+        var after = await HtmlAsync(_mia, "/Library");
+
+        Assert.Contains("data-delete=\"mia-note\"", personal);
+        Assert.DoesNotContain("data-delete", team);
+        Assert.Contains("data-delete=\"refund-window\"", ownerOnCompany);
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        Assert.Equal(HttpStatusCode.Redirect, deleted.StatusCode);
+        Assert.Equal("/Library", new Uri(_host.BaseAddress, deleted.Headers.Location!).AbsolutePath);
+        Assert.Contains("and its history", after);
+        Assert.DoesNotContain("Mia invoices on Fridays", after);
+        Assert.Contains("Billing closes on the 25th", after);
     }
 
     [Fact]

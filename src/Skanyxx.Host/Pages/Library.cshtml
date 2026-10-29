@@ -270,6 +270,20 @@ else
                     </form>
                 </section>
             }
+            @if (Model.CanDelete(card))
+            {
+                <section>
+                    <h3 class="section-title mb-1">Delete</h3>
+                    <p class="section-description mb-1">The card and every earlier version go for good. Copies lifted from it stay.</p>
+                    <form method="post" asp-page-handler="Delete" asp-route-scope="@card.Scope" asp-route-key="@card.Key"
+                          asp-all-route-data="@Model.ListState()"
+                          data-confirm="@card.Scope/@card.Key and its history are deleted for good." data-confirm-title="Delete this card?"
+                          data-confirm-action="Delete" data-danger>
+                        <input type="hidden" name="version" value="@card.Version" />
+                        <button type="submit" class="btn btn-danger" data-delete="@card.Key">Delete card</button>
+                    </form>
+                </section>
+            }
         </div>
     </dialog>
 }
