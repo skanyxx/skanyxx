@@ -466,6 +466,27 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ADeletedConversation_LeavesTheChatIndex_EvenWhenAFileCannotBeRemoved()
+    {
+        var owner = await _host.OwnerAsync();
+        var id = await FileIdAsync(await UploadAsync(owner, "notes.txt", "Deploy notes"u8.ToArray()));
+        var (events, _) = await StreamAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "Summarise", fileIds = new[] { id } });
+        var conversation = events[0].Data.GetProperty("conversationId").GetString()!;
+        for (var deadline = DateTime.UtcNow.AddSeconds(15); DateTime.UtcNow < deadline && !(await IndexedAsync(owner)).Contains(conversation);)
+            await Task.Delay(50, Ct);
+        Assert.Contains(conversation, await IndexedAsync(owner));
+        // A folder where the bytes were: removing it throws, as a read-only or failing volume would.
+        var bytes = Assert.Single(StoredFiles("*.bin"));
+        File.Delete(bytes);
+        Directory.CreateDirectory(Path.Combine(bytes, "busy"));
+
+        var deleted = await owner.DeleteAsync($"/api/chat/conversations/{conversation}", Ct);
+
+        Assert.Equal(HttpStatusCode.OK, deleted.StatusCode);
+        Assert.DoesNotContain(conversation, await IndexedAsync(owner));
+    }
+
+    [Fact]
     public async Task AFileWhoseBytesAreGone_Is404_NotABrokenDownload()
     {
         var owner = await _host.OwnerAsync();
@@ -577,6 +598,9 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("conversationId").GetString()!;
     }
+
+    private static async Task<List<string>> IndexedAsync(HttpClient client) =>
+        [.. (await client.GetFromJsonAsync<JsonElement>("/api/chat/sessions?mine=true", Ct)).EnumerateArray().Select(s => s.GetProperty("sessionId").GetString()!)];
 
     private string[] StoredFiles(string pattern)
     {

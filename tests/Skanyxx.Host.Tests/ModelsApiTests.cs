@@ -582,6 +582,40 @@ public sealed class ModelsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Empty((await AuditAsync("model.created")).EnumerateArray());
     }
 
+    [Fact]
+    public async Task AFailedDelete_LeavesItsIntentAndAFailureRow()
+    {
+        _kagent.ModelConfigs["kagent/doomed"] = new JsonObject { ["provider"] = "Ollama", ["model"] = "llama3" };
+        _kagent.ModelWriteStatus = 500;
+
+        var response = await _owner.DeleteAsync("/api/models/kagent/doomed", Ct);
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        Assert.Equal("kagent/doomed", Assert.Single((await AuditAsync("model.delete_requested")).EnumerateArray()).GetProperty("targetId").GetString());
+        var failure = Assert.Single((await AuditAsync("model.write_failed")).EnumerateArray());
+        Assert.Equal("delete", failure.GetProperty("details").GetProperty("reason").GetString());
+        Assert.Empty((await AuditAsync("model.deleted")).EnumerateArray());
+    }
+
+    [Fact]
+    public async Task ADeleteRefusedAsInUse_OrAsTheDefault_LeavesNoRow()
+    {
+        _kagent.ModelConfigs["kagent/team"] = new JsonObject { ["provider"] = "Ollama", ["model"] = "llama3" };
+        _kagent.AgentObjects["kagent/helper"] = new JsonObject
+        {
+            ["metadata"] = new JsonObject { ["name"] = "helper", ["namespace"] = "kagent" },
+            ["spec"] = new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject { ["modelConfig"] = "team" } }
+        };
+
+        var inUse = await _owner.DeleteAsync("/api/models/kagent/team", Ct);
+        var theDefault = await _owner.DeleteAsync($"/api/models/{Default}?confirm=true", Ct);
+
+        Assert.Equal(HttpStatusCode.Conflict, inUse.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, theDefault.StatusCode);
+        foreach (var action in new[] { "model.delete_requested", "model.deleted", "model.write_failed" })
+            Assert.Empty((await AuditAsync(action)).EnumerateArray());
+    }
+
     private async Task<JsonElement> AuditAsync(string action) =>
         await _owner.GetFromJsonAsync<JsonElement>($"/api/identity/audit?action={action}", Ct);
 

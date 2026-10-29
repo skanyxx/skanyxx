@@ -22,6 +22,9 @@ public sealed class RebindingTests(PostgresFixture fixture)
     [InlineData("GET", "/api/identity/status")]
     [InlineData("POST", "/api/identity/sign-in")]
     [InlineData("POST", "/mcp/memory")]
+    [InlineData("GET", "/api/dashboard/health")] // D327: the newly guarded prefixes, for every method
+    [InlineData("PUT", "/api/me/preferences")]
+    [InlineData("GET", "/api/toolservers")]
     public async Task ForeignOrigin_Is403Problem(string method, string path)
     {
         var response = await SendAsync(method, path, "http://rebind.attacker.example");
@@ -34,6 +37,14 @@ public sealed class RebindingTests(PostgresFixture fixture)
     public async Task AllowedOrigin_Passes()
     {
         var response = await SendAsync("GET", "/api/tickets/pipelines", HostApp.AllowedOrigin, await fixture.Host.OwnerAsync());
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task NoOrigin_OnANewlyGuardedPrefix_Passes()
+    {
+        var response = await SendAsync("GET", "/api/dashboard/summary", origin: null, await fixture.Host.OwnerAsync());
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
@@ -102,7 +113,7 @@ public sealed class RebindingTests(PostgresFixture fixture)
     private Task<HttpResponseMessage> SendAsync(string method, string path, string? origin, HttpClient? client = null)
     {
         var request = new HttpRequestMessage(new HttpMethod(method), path);
-        if (method is "POST" or "DELETE")
+        if (method is "POST" or "PUT" or "DELETE")
             request.Content = new StringContent("""{"jsonrpc":"2.0","id":1,"method":"tools/list"}""", System.Text.Encoding.UTF8, "application/json");
         if (origin is not null)
             request.Headers.Add("Origin", origin);

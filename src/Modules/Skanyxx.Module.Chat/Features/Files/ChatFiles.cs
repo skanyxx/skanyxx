@@ -55,6 +55,7 @@ internal sealed class ChatFiles(IOptions<ChatOptions> options, IHostEnvironment 
     public Task<StoredChatFile?> SaveAsync(string owner, string name, byte[] bytes, CancellationToken ct) =>
         _locks.RunAsync(owner, async () =>
         {
+            SweepLeftovers(owner);
             var kept = 0;
             foreach (var record in await RecordsAsync(owner, ct))
                 if (record.ConversationId is null && record.CreatedAt < clock.GetUtcNow().AddHours(-_options.UnsentHours))
@@ -72,8 +73,19 @@ internal sealed class ChatFiles(IOptions<ChatOptions> options, IHostEnvironment 
                 text is null ? FileContent.ImageType(extension, bytes)! : "text/plain; charset=utf-8",
                 bytes.Length, text is not null && SecretText.Redact(text) != text, null, clock.GetUtcNow());
             Directory.CreateDirectory(Folder(owner));
-            await File.WriteAllBytesAsync(BytesPath(owner, file.Id), bytes, ct);
-            await WriteRecordAsync(owner, file, ct);
+            // Past the cap check the write is bounded by the kind's limit and finishes even if the caller leaves; a
+            // failure takes its own pieces with it, so nothing outside the cap stays behind.
+            try
+            {
+                await File.WriteAllBytesAsync(BytesPath(owner, file.Id), bytes, CancellationToken.None);
+                await WriteRecordAsync(owner, file, CancellationToken.None);
+            }
+            catch
+            {
+                File.Delete(BytesPath(owner, file.Id));
+                File.Delete(TempPath(owner, file.Id));
+                throw;
+            }
             return (StoredChatFile?)file;
         }, ct);
 
@@ -169,9 +181,24 @@ internal sealed class ChatFiles(IOptions<ChatOptions> options, IHostEnvironment 
         return null;
     }
 
+    /// <summary>
+    /// Under the owner's lock no write is in flight, so a <c>.tmp</c>, or a <c>.bin</c> without its record, is what a
+    /// crash or a pod kill left; neither is counted against the cap, so it goes.
+    /// </summary>
+    private void SweepLeftovers(string owner)
+    {
+        if (!Directory.Exists(Folder(owner)))
+            return;
+        foreach (var path in Directory.EnumerateFiles(Folder(owner), "*.tmp"))
+            File.Delete(path);
+        foreach (var path in Directory.EnumerateFiles(Folder(owner), "*.bin"))
+            if (!File.Exists(Path.ChangeExtension(path, ".json")))
+                File.Delete(path);
+    }
+
     private async Task WriteRecordAsync(string owner, StoredChatFile file, CancellationToken ct)
     {
-        var temporary = Path.Combine(Folder(owner), file.Id + ".tmp");
+        var temporary = TempPath(owner, file.Id);
         await File.WriteAllBytesAsync(temporary, JsonSerializer.SerializeToUtf8Bytes(file, Json), ct);
         File.Move(temporary, RecordPath(owner, file.Id), overwrite: true);
     }
@@ -187,4 +214,6 @@ internal sealed class ChatFiles(IOptions<ChatOptions> options, IHostEnvironment 
     private string BytesPath(string owner, string id) => Path.Combine(Folder(owner), id + ".bin");
 
     private string RecordPath(string owner, string id) => Path.Combine(Folder(owner), id + ".json");
+
+    private string TempPath(string owner, string id) => Path.Combine(Folder(owner), id + ".tmp");
 }
