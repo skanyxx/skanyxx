@@ -96,6 +96,17 @@ public sealed class RelatedContextTests(PostgresFixture postgres) : ChatContextT
         Assert.Equal(["refunds"], refunds.Sessions.Select(s => s.SessionId));
     }
 
+    /// <summary>D501: two forms of one word are one shared word ("refund", "refunds"), not two.</summary>
+    [Fact]
+    public async Task TwoFormsOfOneWord_AreOneSharedWord()
+    {
+        await App.TurnAsync(Ana, "s1", "refund", "Refunds take fourteen days.");
+
+        var prepared = await App.PrepareAsync(Ana, "refunds: is a refund possible");
+
+        Assert.Empty(prepared.Sessions);
+    }
+
     [Fact]
     public async Task TheHeader_SaysEarlierChatsWereOtherQuestions()
     {

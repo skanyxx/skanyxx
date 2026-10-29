@@ -9,7 +9,7 @@ using Skanyxx.Module.Memory.Tests.Infrastructure;
 namespace Skanyxx.Module.Memory.Tests;
 
 /// <summary>
-/// D507: a person deletes their own personal cards (the Library page's command), the owner any card (also over the API);
+/// D507: a person deletes their own personal cards (the Library page's command), the owner shared cards (also over the API);
 /// nobody else, and never a stale version.
 /// </summary>
 public sealed class DeleteCardTests(PostgresFixture postgres) : MemoryTestBase(postgres)
@@ -54,6 +54,11 @@ public sealed class DeleteCardTests(PostgresFixture postgres) : MemoryTestBase(p
         Assert.Equal(OutcomeStatus.Forbidden, await DeleteAsync(People.Person("ana"), "team:billing", "queue", 1));
         Assert.Equal(OutcomeStatus.Forbidden, await DeleteAsync(People.Person(MemoryApp.Supervisor, SkanyxxRoles.Supervisor), "company", "policy", 1));
         Assert.Equal(OutcomeStatus.Forbidden, await DeleteAsync(People.Person("bob"), "personal:ana", "x", 1));
+        // Not even the owner deletes (or, through a 409, reads) another person's personal card.
+        await App.Client("ana").PutCardAsync("personal:ana", "private", what: "Ana's private note");
+        var probe = await App.OwnerClient().DeleteAsync("/api/memory/cards/personal:ana/private?version=999", Ct);
+        Assert.Equal(HttpStatusCode.Forbidden, probe.StatusCode);
+        Assert.DoesNotContain("private note", await probe.Content.ReadAsStringAsync(Ct));
         Assert.Equal(HttpStatusCode.Forbidden, (await App.SupervisorClient().DeleteAsync("/api/memory/cards/company/policy?version=1", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await App.OwnerClient().DeleteAsync("/api/memory/cards/team:billing/queue?version=1", Ct)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await App.OwnerClient().DeleteAsync("/api/memory/cards/company/policy?version=1", Ct)).StatusCode);
@@ -85,7 +90,7 @@ public sealed class DeleteCardTests(PostgresFixture postgres) : MemoryTestBase(p
 
         var refused = await agent.DeleteAsync("/api/memory/cards/personal:ana/note?version=1", Ct);
 
-        Assert.True(refused.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden or HttpStatusCode.BadRequest, refused.StatusCode.ToString());
+        Assert.True(refused.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden, refused.StatusCode.ToString());
         await using var db = Postgres.CreateDbContext();
         Assert.Single(await db.Cards.ToListAsync(Ct));
     }

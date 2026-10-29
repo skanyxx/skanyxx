@@ -21,13 +21,16 @@ internal sealed class EntraOidcEvents(string tenantId, EntraRedirectUri redirect
     /// </summary>
     public override Task MessageReceived(MessageReceivedContext context)
     {
-        if (!context.HttpContext.RequestServices.GetRequiredService<IOptionsMonitor<IdentityModuleOptions>>().CurrentValue.EntraAvailable)
+        if (!Available(context.HttpContext))
         {
             context.Response.StatusCode = StatusCodes.Status404NotFound;
             context.HandleResponse();
         }
         return Task.CompletedTask;
     }
+
+    private static bool Available(HttpContext http) =>
+        http.RequestServices.GetRequiredService<IOptionsMonitor<IdentityModuleOptions>>().CurrentValue.EntraAvailable;
 
     public override Task RedirectToIdentityProvider(RedirectContext context)
     {
@@ -69,6 +72,13 @@ internal sealed class EntraOidcEvents(string tenantId, EntraRedirectUri redirect
     /// </summary>
     public override async Task RemoteFailure(RemoteFailureContext context)
     {
+        // D505: a callback the handler refuses before MessageReceived (no message at all) is not found either.
+        if (!Available(context.HttpContext))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            context.HandleResponse();
+            return;
+        }
         var services = context.HttpContext.RequestServices;
         services.GetRequiredService<ILogger<EntraOidcEvents>>().LogWarning(
             "Microsoft sign-in callback refused from {RemoteIp}: {Reason}", context.HttpContext.Connection.RemoteIpAddress, context.Failure?.Message);

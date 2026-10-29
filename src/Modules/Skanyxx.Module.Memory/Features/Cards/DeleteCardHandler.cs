@@ -12,18 +12,20 @@ namespace Skanyxx.Module.Memory.Features.Cards;
 
 /// <summary>
 /// D507: a card and its version history go for good; a card lifted from it keeps its copy (its link is cleared). Only
-/// the person whose personal scope it is, or the owner for any scope: a shared card is everyone's, so a writer there
-/// marks it stale instead. A stored body's object stays (D182: the app never deletes objects; a lifted copy may share it).
+/// the person whose personal scope it is, or the owner for a shared scope (company, team, department): a shared card is
+/// everyone's, so a writer there marks it stale instead. Nobody else's personal card, not even the owner's to delete:
+/// they may not read it, and the answer (409 with the card, 404) would show it. A stored body's object stays (D182: the app never deletes objects; a lifted copy may share it).
 /// </summary>
 internal sealed class DeleteCardHandler(MemoryDbContext db, SearchCache cache, ClientAddress client, ILogger<DeleteCardHandler> logger)
     : IRequestHandler<DeleteCardCommand, Outcome<CardDto>>
 {
-    public const string Refusal = "Only your own personal cards can be deleted; the owner deletes shared ones. Mark it stale instead.";
+    public const string Refusal = "Only your own personal cards can be deleted, and the owner deletes shared ones. Mark it stale instead.";
 
     public async Task<Outcome<CardDto>> Handle(DeleteCardCommand command, CancellationToken ct)
     {
-        var mine = command.User.UserId is { } me && command.Scope == Scope.Personal(me).ToString();
-        if (!mine && !command.User.IsOwner)
+        var scope = Scope.Parse(command.Scope);
+        var mine = command.User.UserId is { } me && scope == Scope.Personal(me);
+        if (!mine && !(command.User.IsOwner && scope.Level != ScopeLevel.Personal))
             return Outcome<CardDto>.Forbidden(Refusal);
 
         var card = await db.Cards.SingleOrDefaultAsync(c => c.Scope == command.Scope && c.Key == command.Key, ct);

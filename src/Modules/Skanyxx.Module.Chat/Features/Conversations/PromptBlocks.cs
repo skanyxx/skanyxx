@@ -32,13 +32,17 @@ internal static partial class PromptBlocks
 
     public static (string Text, IReadOnlyList<ChatAttachment> Files) Split(string text)
     {
+        var blocks = false;
         foreach (var (start, end) in Context)
         {
             var at = text.StartsWith(start, StringComparison.Ordinal) ? text.IndexOf(end, StringComparison.Ordinal) : -1;
-            if (at >= 0)
-                text = text[(at + end.Length)..].TrimStart();
+            if (at < 0)
+                continue;
+            text = text[(at + end.Length)..].TrimStart();
+            blocks = true;
         }
-        if (text.StartsWith(NewMessage, StringComparison.Ordinal))
+        // Only after a block: a person's own message may start with the marker's words.
+        if (blocks && text.StartsWith(NewMessage, StringComparison.Ordinal))
             text = text[NewMessage.Length..];
         var files = new List<ChatAttachment>();
         while (FileStart().Match(text) is { Success: true } m && text.IndexOf(FileEnd, m.Length, StringComparison.Ordinal) is var end and >= 0)

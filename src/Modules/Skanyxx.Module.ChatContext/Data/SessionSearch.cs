@@ -15,7 +15,8 @@ internal sealed class SessionSearch(ChatContextDbContext db)
     public const int MaxTerms = 24;
 
     /// <summary>
-    /// D501: words a session must share with a new message to count as related without a ticket. One shared word is a
+    /// D501: words (distinct stems: "refund" and "refunds" are one) a session must share with a new message to count as
+    /// related without a ticket. One shared word is a
     /// coincidence ("two plus two" and "three plus three" share "plus"), and its answer steers the model off the question.
     /// </summary>
     public const int MinSharedWords = 2;
@@ -103,7 +104,8 @@ internal sealed class SessionSearch(ChatContextDbContext db)
             ? ($"WITH {linked}", "chat_sessions s, linked", "s.ticket_keys && linked.keys", "0")
             : ($"WITH {linked}, q AS (SELECT {TsQuery(terms, parameters)} AS query)", "chat_sessions s, linked, q",
                 "(s.ticket_keys && linked.keys OR (s.search @@ q.query AND " +
-                "(SELECT count(*) FROM unnest(@Terms) AS t(w) WHERE s.search @@ plainto_tsquery('english', t.w)) >= @MinShared))",
+                "(SELECT count(DISTINCT plainto_tsquery('english', t.w)::text) FROM unnest(@Terms) AS t(w) " +
+                "WHERE s.search @@ plainto_tsquery('english', t.w)) >= @MinShared))",
                 "ts_rank(s.search, q.query)");
         var sql = $"""
             {with}

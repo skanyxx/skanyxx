@@ -135,8 +135,9 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
             () => mediator.Send(new RenameCardCommand(LibraryUser.From(User), scope ?? "", key ?? "", newKey?.Trim() ?? "", version), ct),
             OutcomeStatus.Ok, card => $"Renamed to {card.Key}.", ct);
 
-    /// <summary>D507: one's own personal card, or any card for the owner (memory decides; this only offers the button).</summary>
-    public bool CanDelete(CardDto card) => card.Scope == $"personal:{Me}" || User.IsInRole(SkanyxxRoles.Owner);
+    /// <summary>D507: one's own personal card, or a shared card for the owner (memory decides; this only offers the button).</summary>
+    public bool CanDelete(CardDto card) =>
+        card.Scope == $"personal:{Me}" || (User.IsInRole(SkanyxxRoles.Owner) && !card.Scope.StartsWith("personal:", StringComparison.Ordinal));
 
     /// <summary>Success goes back to the list (the card is gone); a refusal renders like the other actions'.</summary>
     public async Task<IActionResult> OnPostDeleteAsync(string? scope, string? key, int version, CancellationToken ct)

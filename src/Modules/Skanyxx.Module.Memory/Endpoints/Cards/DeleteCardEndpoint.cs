@@ -6,7 +6,7 @@ using Skanyxx.Core.Platform.Memory;
 namespace Skanyxx.Module.Memory.Endpoints.Cards;
 
 /// <summary>
-/// Deletes a card for good (D507). Over the API the owner's only; a person deletes their own personal cards on the Library
+/// Deletes a card for good (D507). Over the API the owner's only (a shared card); a person deletes their own personal cards on the Library
 /// page, which sends the same command (the security stream's role matrix decides whether the API widens).
 /// </summary>
 internal sealed class DeleteCardEndpoint(IMediator mediator) : Endpoint<DeleteCardRequest>
