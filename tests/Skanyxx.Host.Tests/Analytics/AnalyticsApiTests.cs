@@ -146,6 +146,9 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         var html = await analytics.Content.ReadAsStringAsync(Ct);
         Assert.DoesNotContain("href=\"/Dashboard\"", html); // not in the nav either
         Assert.Contains(CostDisclaimer.Text.Replace("'", "&#x27;"), html);
+        // D504: the breakdown's "Est. cost" column carries its own disclaimer, in its section.
+        var breakdown = html.IndexOf("id=\"breakdown\"", StringComparison.Ordinal);
+        Assert.InRange(html.IndexOf(CostDisclaimer.Text.Replace("'", "&#x27;"), breakdown, StringComparison.Ordinal), breakdown, html.IndexOf("</section>", breakdown, StringComparison.Ordinal));
         Assert.DoesNotContain("id=\"export\"", html);
     }
 

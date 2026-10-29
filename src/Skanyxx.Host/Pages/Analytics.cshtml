@@ -47,6 +47,8 @@
     <section class="insights-section card">
         <h2 class="insights-title" id="table-title">Breakdown</h2>
         <div class="table-container"><table id="breakdown" class="sortable"></table></div>
+        @* D504: the breakdown has an "Est. cost" column. *@
+        <partial name="_CostDisclaimer" />
     </section>
 </div>
 @section Styles {
