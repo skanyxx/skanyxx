@@ -12,7 +12,7 @@ namespace Skanyxx.Core.Platform;
 public static class ApiGuardExtensions
 {
     /// <summary>
-    /// The broadest Skanyxx:TrustedProxies range startup accepts (D397, narrowed in D399): a /16 is already a whole k3s
+    /// The broadest Skanyxx:TrustedProxies range startup accepts (D397, narrowed in D399 and D525; /120 kept over /112, D552): a /16 is a whole k3s
     /// pod network. The Helm schema holds the same line.
     /// </summary>
     public const int MinIPv4Prefix = 24;

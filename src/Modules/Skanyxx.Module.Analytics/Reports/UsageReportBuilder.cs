@@ -1,4 +1,5 @@
 using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Data;
 using Skanyxx.Module.Analytics.Scopes;
 
@@ -21,7 +22,8 @@ public sealed class UsageReportBuilder(CostCalculator cost)
             scope.Scope.Kind.ToString().ToLowerInvariant(), scope.Scope.Id, scope.Name, range.From, range.To,
             UsageTotals.Of(rows, cost), previous is null ? null : UsageTotals.Of(previous, cost),
             [.. days.Select(d => d.ToString("yyyy-MM-dd"))],
-            PerDay(rows, days, r => r.TokensIn), PerDay(rows, days, r => r.TokensOut), PerDay(rows, days, r => r.Requests),
+            PerDay(rows, days, r => r.TokensIn), PerDay(rows, days, r => r.TokensOut), PerDay(rows, days, r => r.ClientTokens),
+            PerDay(rows, days, r => r.Requests),
             PerDay(rows, days, r => r.Errors), PerDay(rows, days, r => r.TokensSaved),
             Stacked(rows, days, r => r.Model, r => r.TokensIn + r.TokensOut),
             Stacked(rows, days, r => r.Agent, r => r.TokensIn + r.TokensOut),

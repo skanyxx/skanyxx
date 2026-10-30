@@ -5,6 +5,7 @@ using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Identity;
 using Skanyxx.Core.Platform.Memory;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Investigate.Agents;
 using Skanyxx.Module.Investigate.Audit;
 using Skanyxx.Module.Investigate.Data;
@@ -33,6 +34,7 @@ internal sealed partial class RunExecutor(
     IDbContextFactory<InvestigateDbContext> dbs,
     IInvestigationAgentClient agents,
     IChatQuota quota,
+    ITokenEstimator estimator,
     AgentCheck check,
     StepWriter steps,
     InvestigateAudit audit,
@@ -205,7 +207,7 @@ internal sealed partial class RunExecutor(
             {
                 // Not the run's token: a timed-out or cancelled call was paid for too.
                 if (asked)
-                    await quota.RecordAsync(ChatQuotaUsage.Measure(context.StartedBy, step.Agent!, context.Models[step.Agent!],
+                    await quota.RecordAsync(ChatQuotaUsage.Measure(estimator, context.StartedBy, step.Agent!, context.Models[step.Agent!],
                         context.RunId.ToString(), answer?.Usage ?? ChatUsage.None, prompt, answer?.Text ?? ""), CancellationToken.None);
             }
         }

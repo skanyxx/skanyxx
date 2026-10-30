@@ -1,0 +1,11 @@
+# Day 0 on a throwaway kind cluster (scripts/day0/day0.sh): the umbrella's defaults plus an ingress-nginx Ingress that
+# kind maps to 127.0.0.1:<UI_PORT>. The script sets skanyxx.image.tag and skanyxx.publicUrl (http://localhost:<UI_PORT>:
+# the chart takes clear-text http only for loopback); everything else is the product's default install.
+ingress:
+  enabled: true
+  className: nginx
+  # localhost: this machine's browser and scripts. host.docker.internal: the agent repo's CI jobs (Day 1), which run in
+  # containers and reach this machine's 127.0.0.1 under that name.
+  hosts: [localhost, host.docker.internal]
+  # /health exact, as the appliance publishes it: the smoke reads it through the Ingress.
+  exactPaths: ["/", "/health"]

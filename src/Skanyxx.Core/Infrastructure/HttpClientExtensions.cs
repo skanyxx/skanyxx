@@ -1,3 +1,4 @@
+using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Services;
 
@@ -13,6 +14,14 @@ public static class HttpClientExtensions
     /// </summary>
     public static IServiceCollection AddKAgentHttpClient(this IServiceCollection services, IConfiguration configuration)
     {
+        // D521: behind the kagent gate every call to kagent is signed, whichever client makes it.
+        var kagent = configuration.GetSection("KAgent").Get<KAgentConfig>() ?? new KAgentConfig();
+        if (kagent.Auth.IsSigned())
+        {
+            var token = new KAgentToken(kagent.Auth, TimeProvider.System);
+            var origin = new Uri(kagent.GetFullUrl());
+            services.ConfigureHttpClientDefaults(http => http.AddHttpMessageHandler(() => new KAgentTokenHandler(token, origin)));
+        }
         services.AddHttpClient(KAgentApiClient.HttpClientName, client =>
         {
             client.Timeout = Timeout.InfiniteTimeSpan;

@@ -1,0 +1,69 @@
+{{- if and .Values.kagent.enabled .Values.agentGuard.enabled }}
+{{- $ns := .Release.Namespace }}
+{{- $full := include "skanyxx.fullname" . }}
+{{- /* Every Secret this release names (generated or BYO). */}}
+{{- $secrets := list (include "skanyxx.bootstrapSecret" .) (include "skanyxx.dbSecret" .) (include "skanyxx.kagentGateSecret" .)
+     (include "skanyxx.postgresSecret" .) (include "skanyxx.minioSecret" .) (include "skanyxx.giteaSecret" .)
+     "dragonfly-auth" "kagent-postgres-url" }}
+{{- if include "skanyxx.sandboxMemory" . }}{{ $secrets = append $secrets (include "skanyxx.sandboxTokenSecret" .) }}{{ end }}
+{{- $secrets = $secrets | uniq | compact }}
+{{- /* kagent names an Agent's Deployment, Service and Secret after it, and updates one that already exists whoever owns
+     it: an Agent named like one of ours would take it over (security review H1). */}}
+{{- $names := concat (list $full "skanyxx-kagent-gate") $secrets }}
+{{- range $c := list (list "postgres" .Values.postgresql.enabled) (list "minio" .Values.minio.enabled) (list "gitea" .Values.gitea.enabled)
+     (list "ax-server" .Values.ax.install) (list "ax-controller" .Values.ax.install) (list "ax-redis" (and .Values.ax.install (not .Values.dragonfly.enabled) (not .Values.external.redis.address))) }}
+{{- if last $c }}{{ $names = append $names (include "skanyxx.component" (dict "ctx" $ "name" (first $c))) }}{{ end }}
+{{- end }}
+{{- if .Values.dragonfly.enabled }}{{ $names = append $names "dragonfly" }}{{ end }}
+{{- if include "skanyxx.sandboxMemory" . }}{{ $names = append $names (printf "%s-sandbox-mcp" $full) }}{{ end }}
+{{- $names = $names | uniq }}
+# D528, D530: what an Agent in this namespace may not do, whoever writes it (Skanyxx, Argo CD, kubectl). kagent copies an
+# Agent's deployment settings onto its pods, so an Agent could otherwise wear the gate's or Skanyxx's pod labels (the
+# NetworkPolicies' identities), run as another ServiceAccount (kagent's controller reads every Secret), mount any
+# Secret or host path, add a container or run privileged, or be named like one of this release's objects. Skanyxx
+# itself writes none of the refused fields. Needs Kubernetes 1.30+.
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: {{ .Release.Name }}-agent-guard
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [kagent.dev]
+        apiVersions: ["*"]
+        operations: [CREATE, UPDATE]
+        resources: [agents]
+  validations:
+    - expression: "!(object.metadata.name in {{ toJson $names | replace "\"" "'" }}) && object.metadata.name != 'kagent' && !object.metadata.name.startsWith('kagent-')"
+      message: "An Agent may not be named like one of this release's objects or kagent's own (kagent would take it over)."
+    {{- range list "declarative" "byo" }}
+    {{- $d := printf "object.spec.%s.deployment" . }}
+    {{- $has := printf "has(object.spec.%s) && has(%s)" . $d }}
+    - expression: "!({{ $has }} && has({{ $d }}.labels)) || !{{ $d }}.labels.exists(k, k == 'app' || k == 'kagent' || k.startsWith('app.kubernetes.io/'))"
+      message: "spec.{{ . }}.deployment.labels may not set app, kagent or app.kubernetes.io/* (the NetworkPolicies' pod identities)."
+    - expression: "!({{ $has }} && has({{ $d }}.serviceAccountName)) || {{ $d }}.serviceAccountName == {{ dig "controller" "agentDeployment" "serviceAccountName" "kagent-agent" $.Values.kagent | squote }}"
+      message: "spec.{{ . }}.deployment.serviceAccountName may only be the agents' own ServiceAccount (no API token)."
+    {{- $fields := ternary (list "volumes" "volumeMounts" "envFrom" "extraContainers" "securityContext" "podSecurityContext" "serviceAccountConfig" "imageRegistry") (list "volumes" "volumeMounts" "envFrom" "extraContainers" "securityContext" "podSecurityContext" "serviceAccountConfig") (eq . "declarative") }}
+    - expression: "!({{ $has }}) || !({{ range $i, $f := $fields }}{{ if $i }} || {{ end }}has({{ $d }}.{{ $f }}){{ end }})"
+      message: "spec.{{ . }}.deployment may not set {{ join ", " $fields }}: they mount Secrets or host paths, add containers or raise privileges."
+    - expression: "!({{ $has }} && has({{ $d }}.env)) || !{{ $d }}.env.exists(e, has(e.valueFrom) && has(e.valueFrom.secretKeyRef))"
+      message: "spec.{{ . }}.deployment.env may not read a Secret (model keys come from the ModelConfig, tool credentials from the tool server)."
+    {{- end }}
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: {{ .Release.Name }}-agent-guard
+  labels:
+    {{- include "skanyxx.labels" . | nindent 4 }}
+spec:
+  policyName: {{ .Release.Name }}-agent-guard
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: {{ $ns }}
+{{- end }}

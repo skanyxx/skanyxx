@@ -9,6 +9,7 @@ using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Runtime;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.ChatContext.Access;
 using Skanyxx.Module.ChatContext.Cache;
 using Skanyxx.Module.ChatContext.Context;
@@ -44,6 +45,7 @@ public sealed class ChatContextModule : IModule
             npgsql => npgsql.MigrationsHistoryTable(ChatContextDbContext.MigrationsTable)));
         services.AddHostedService<ChatContextMigrator>();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddTokenUsage(configuration);
 
         services.AddScoped<SessionSearch>();
         services.AddSingleton<SessionRetention>();

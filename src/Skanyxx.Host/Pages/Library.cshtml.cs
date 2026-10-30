@@ -37,6 +37,16 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
     [BindProperty(SupportsGet = true)]
     public string? Owner { get; set; }
 
+    /// <summary>D506: the shelf's other filters (the API has them): a ticket key, the agent that wrote, where a card came from.</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? Ticket { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public string? Agent { get; set; }
+
+    [BindProperty(SupportsGet = true)]
+    public string? Origin { get; set; }
+
     [BindProperty(SupportsGet = true)]
     public DateOnly? From { get; set; }
 
@@ -74,7 +84,8 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
 
     public bool Filtered =>
         !string.IsNullOrWhiteSpace(Q) || !string.IsNullOrEmpty(Filter) || !string.IsNullOrEmpty(Type) || !string.IsNullOrEmpty(Tag)
-        || !string.IsNullOrEmpty(Owner) || From is not null || To is not null;
+        || !string.IsNullOrEmpty(Owner) || !string.IsNullOrEmpty(Ticket) || !string.IsNullOrEmpty(Agent) || !string.IsNullOrEmpty(Origin)
+        || From is not null || To is not null;
 
     /// <summary>
     /// The list's state as route values, for every link and form that should come back to the same list; each change
@@ -85,6 +96,7 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
         var state = new Dictionary<string, string?>
         {
             ["q"] = Q, ["filter"] = Filter, ["type"] = Type, ["tag"] = Tag, ["owner"] = Owner,
+            ["ticket"] = Ticket, ["agent"] = Agent, ["origin"] = Origin,
             ["from"] = From?.ToString("yyyy-MM-dd"), ["to"] = To?.ToString("yyyy-MM-dd"), ["sort"] = Sort,
             ["offset"] = Offset > 0 ? Offset.ToString() : null
         };
@@ -93,6 +105,18 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
         foreach (var (key, value) in change)
             state[key] = value;
         return state.Where(kv => !string.IsNullOrEmpty(kv.Value)).ToDictionary(kv => kv.Key, kv => kv.Value!);
+    }
+
+    /// <summary>
+    /// A card action's route: the card and the list's state. One dictionary, because <c>asp-all-route-data</c> replaces
+    /// the <c>asp-route-*</c> values given next to it (the forms posted without their card, 400).
+    /// </summary>
+    public Dictionary<string, string> CardAction(CardDto card)
+    {
+        var route = ListState();
+        route["scope"] = card.Scope;
+        route["key"] = card.Key;
+        return route;
     }
 
     public async Task OnGetAsync(string? scope, string? key, CancellationToken ct)
@@ -110,6 +134,29 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
         ActAsync(scope, key,
             () => mediator.Send(new RenameCardCommand(LibraryUser.From(User), scope ?? "", key ?? "", newKey?.Trim() ?? "", version), ct),
             OutcomeStatus.Ok, card => $"Renamed to {card.Key}.", ct);
+
+    /// <summary>D507: one's own personal card, or a shared card for the owner (memory decides; this only offers the button).</summary>
+    public bool CanDelete(CardDto card) =>
+        card.Scope == $"personal:{Me}" || (User.IsInRole(SkanyxxRoles.Owner) && !card.Scope.StartsWith("personal:", StringComparison.Ordinal));
+
+    /// <summary>Success goes back to the list (the card is gone); a refusal renders like the other actions'.</summary>
+    public async Task<IActionResult> OnPostDeleteAsync(string? scope, string? key, int version, CancellationToken ct)
+    {
+        var outcome = await ValidatedAsync(() => mediator.Send(new DeleteCardCommand(LibraryUser.From(User), scope ?? "", key ?? "", version), ct));
+        if (outcome is { Status: OutcomeStatus.Ok, Value: { } card })
+        {
+            Message = $"Deleted {card.Scope}/{card.Key} and its history.";
+            return RedirectToPage(null, null, new RouteValueDictionary(ListState().ToDictionary(kv => kv.Key, kv => (object?)kv.Value)));
+        }
+        if (outcome is not null)
+        {
+            Fail(outcome);
+            if (!string.IsNullOrEmpty(scope) && !string.IsNullOrEmpty(key))
+                Opened = (await mediator.Send(new OpenCardQuery(LibraryUser.From(User), scope, key), ct)).Value;
+        }
+        await BrowseAsync(ct);
+        return Page();
+    }
 
     /// <summary>
     /// Success redirects to the card it produced (post/redirect/get: a refresh re-sends nothing). A refusal renders here
@@ -149,7 +196,8 @@ public sealed class LibraryModel(IMediator mediator) : PageModel
 
     private async Task BrowseAsync(CancellationToken ct)
     {
-        var filter = new LibraryFilter(Keyword: Blank(Tag), Type: Blank(Type), Offset: Offset, Owner: Blank(Owner), From: From, To: To, Sort: Blank(Sort));
+        var filter = new LibraryFilter(Ticket: Blank(Ticket)?.ToUpperInvariant(), Keyword: Blank(Tag), Type: Blank(Type), Origin: Blank(Origin),
+            Agent: Blank(Agent), Offset: Offset, Owner: Blank(Owner), From: From, To: To, Sort: Blank(Sort));
         var shelf = await ValidatedAsync(() => mediator.Send(new BrowseLibraryQuery(LibraryUser.From(User), Q?.Trim(), Filter, filter), ct));
         if (shelf?.Value is { } value)
         {

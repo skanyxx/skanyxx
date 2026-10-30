@@ -191,7 +191,7 @@ networkPolicy:
   # Other peers admitted to the UI/API port (an in-cluster uptime probe, a mesh gateway). Nothing in this namespace is.
   httpFrom: []
   # Other peers admitted to the bundled kagent controller's API (8083), e.g. a kagent CLI pod. It authenticates nobody
-  # (D101): whoever reaches it names the user and may create agents.
+  # (D101): whoever reaches it names the user and may create agents, past the gate (kagentGate).
   controllerFrom: []
   # Skanyxx's egress. On: DNS, the bundled kagent controller and stores (Postgres, MinIO, Gitea, Dragonfly), AX (the
   # chart's ax-server, or ax.namespace), the internet minus clusterCidrs on internetPorts (Entra/OIDC, Jira Cloud, git
@@ -244,6 +244,11 @@ networkPolicy:
     kubeApiPorts: [443, 6443]
     a2aPorts: [8080]
     extra: []
+  # Agent-to-agent A2A (an agent used as another's tool, D523): kagent's ADK calls the tool agent's pod directly, so it is
+  # refused unless listed here. Each entry lets the `from` agent's pods reach the `to` agents' pods on
+  # controllerEgress.a2aPorts, and nothing else; names are Agent names in the release namespace, e.g.
+  #   a2aPeers: [{from: ticket-planner, to: [ticket-reviewer]}]
+  a2aPeers: []
 
 # AX Tasks (experimental, D063/D064). D069 (locked 2026-10-08): off by default, off in the appliance, on-by-flag for BYO
 # clusters that already run Agent Substrate. The chart never installs Substrate. Two ways to turn AX on (README "AX Tasks"):
@@ -331,6 +336,47 @@ ax:
       port: 8082                     # container port = Service port: the URL's port is what the listener keys on
       tokenHours: 24                 # Memory:SandboxTokenHours; a longer sandbox gets a new token when its owner re-runs it
       existingSecret: ""             # BYO signing key: a Secret with key `token-key` (32+ characters); empty = generated, kept
+
+# The kagent gate (D520-D523, docs/design/a2a-security.md). kagent 0.10.2 authenticates nobody: whoever reaches its
+# controller names the user and may create agents. With the bundled kagent, an Envoy (`skanyxx-kagent-gate`) stands in front of
+# it, and the NetworkPolicies let only the gate reach the controller:
+#   - Skanyxx calls the gate on 8084 with a short-lived HS256 token it signs per request (KAgent:Auth:Mode=signed);
+#     the gate refuses a request without a valid one (401), drops any X-User-Id and `?user_id=` the caller sent and
+#     names the user from the token instead.
+#   - kagent's agent pods are pointed at the gate's 8083 (kagent.controller.env KAGENT_CONTROLLER_NAME below), where only
+#     `agentPaths` pass (session and task storage); agent CRUD, ModelConfigs, tool servers and A2A are 403 there.
+# Off: Skanyxx and the agents call the controller directly, with no token (the pre-gate fence only). Keep it on.
+kagentGate:
+  enabled: true
+  replicas: 1
+  image:
+    repository: docker.io/envoyproxy/envoy
+    tag: distroless-v1.40.2
+    digest: sha256:09ca6f2140a61ad8df11779a4a30d52b48433d444466328494f9188c9c35eded   # multi-arch index, 2026-10-29
+    pullPolicy: IfNotPresent
+  imagePullSecrets: []
+  # KAgent:Auth:TokenSeconds: the life of each token (10-300; the gate refuses any token longer than 300 s). One is
+  # signed for every request, so it only has to outlive the request's start.
+  tokenSeconds: 60
+  # BYO signing key (GitOps): a Secret with `token-key` (48+ alphanumerics) and `jwks.json`, the same key as a JWKS:
+  #   k=$(printf %s "$KEY" | base64 | tr '+/' '-_' | tr -d '=\n')
+  #   printf '{"keys":[{"kty":"oct","alg":"HS256","k":"%s"}]}' "$k"
+  # Empty: the chart generates one and keeps it (Secret skanyxx-kagent-gate).
+  existingSecret: ""
+  # The controller paths kagent's agent pods may call through the gate (a path and everything under it). The default is
+  # what kagent's ADK needs for chat; /api/memories (kagent's own memory), /api/langgraph, /api/crewai and
+  # /api/a2a-sandboxes (sandbox-mode tool agents) only for agents that use them. Nothing else is accepted.
+  agentPaths: [/api/sessions, /api/tasks]
+  resources:
+    requests: {cpu: 20m, memory: 32Mi}
+    limits: {memory: 128Mi}
+
+# D528: a ValidatingAdmissionPolicy on kagent Agents in the release namespace (Kubernetes 1.30+): no Agent named like
+# one of this release's objects or kagent-*, wearing the pod labels the NetworkPolicies trust (app, kagent,
+# app.kubernetes.io/*), running as another ServiceAccount, or reading one of this release's Secrets. It holds whoever
+# writes the Agent (Skanyxx, Argo CD, kubectl). Cluster-scoped objects named <release>-agent-guard (bundled kagent only).
+agentGuard:
+  enabled: true
 
 # Bundled Postgres (D053): one StatefulSet, separate roles/databases for identity (skanyxx_identity), memory+tickets
 # (skanyxx) and kagent (kagent). Off = BYO: set skanyxx.database.existingSecret and kagent's database (see below).
@@ -499,6 +545,12 @@ kagent:
     # call the API). Empty: kagent creates one per agent, with the token mounted.
     agentDeployment:
       serviceAccountName: kagent-agent
+    # D520: kagent builds the agents' KAGENT_URL from this name (http://<name>.<ns>:8083); `skanyxx-kagent-gate` is the
+    # umbrella's Service: the gate's agent listener when kagentGate is on, the controller itself when off. The chart
+    # refuses a controller.env without it. Keep this entry when you add your own.
+    env:
+      - name: KAGENT_CONTROLLER_NAME
+        value: skanyxx-kagent-gate
     resources:
       requests:
         cpu: 50m

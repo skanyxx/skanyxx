@@ -26,6 +26,6 @@ internal sealed class MyQuotaHandler(IOrgMembership membership, OrgReader orgs, 
         return new MyQuotaDto(month.ToString("yyyy-MM"), QuotaMonth.ResetsOn(month),
             PersonQuotaDto.From(book.For(me, member.Teams, member.Departments), org, book.ApplicableTo(me, member.Teams, member.Departments)),
             [.. requests.Select(r => QuotaRequestDto.From(r, org))], requests.Any(r => r.Status == RequestStatuses.Pending),
-            QuotaPrice.Currency, QuotaCostDisclaimer.Title, QuotaCostDisclaimer.Text);
+            book.Cost.Currency, QuotaCostDisclaimer.Title, QuotaCostDisclaimer.Text);
     }
 }

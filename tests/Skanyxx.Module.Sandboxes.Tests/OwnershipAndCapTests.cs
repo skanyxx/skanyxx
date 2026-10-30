@@ -81,6 +81,26 @@ public sealed class OwnershipAndCapTests : SandboxesTestBase
         Assert.Equal("Terminating", Ax.Stored("fix-42")!.Status.Phase);
     }
 
+    /// <summary>
+    /// D526 (review Minor 1): the demotion commits while AX is creating the sandbox, so the check before the create
+    /// passed and the revocation sweep listed AX before the sandbox existed. The check after the create stops it.
+    /// </summary>
+    [Fact]
+    public async Task ADemotionDuringTheAxCreate_StopsTheNewSandbox()
+    {
+        Ax.HoldUpdates = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var run = RunAsync("fix-42");
+        await Ax.UpdateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        App.Standing.Roles[SandboxesApp.User] = [SkanyxxRoles.Builder];
+        Ax.HoldUpdates.SetResult();
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await run).StatusCode);
+        Assert.Single(Ax.Updates);
+        Assert.Equal(1, Ax.DeleteCalls);
+        Assert.Equal("Terminating", Ax.Stored("fix-42")!.Status.Phase);
+    }
+
     [Fact]
     public async Task AnotherUser_CannotOverwriteTheSandbox()
     {

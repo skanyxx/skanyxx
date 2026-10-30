@@ -130,3 +130,12 @@ later:          same command with a newer bundle = upgrade, same values, data an
 | AX / Substrate | off (D069) |
 
 Not yet (D199): air-gapped install, backups, HA, ACME certificates, the seed agent from the script, an amd64 run.
+
+## Day 0/1/2 scripted (as built 2026-10-29, D542)
+
+The first customer scenario (requirements §5) is three scripts on a cluster of their own:
+`scripts/day0/day0.sh all` (kind `skx-day0` or `--context`, image, ingress-nginx, the umbrella, smoke: health, owner
+bootstrap, kagent through Skanyxx, employee 403), `scripts/day1/day1.sh up` (git, CI runner, Argo CD, models) and
+`scripts/day2/day2.sh run` (people, knowledge base, an agent through Studio CI/CD, chat and history); all of it with
+`scripts/e2e/run-all.sh --down`. Each writes PASS/FAIL lines and `$STATE/<day>-result.json`; a failing day stops the
+run. The first run found D540 (a fresh install answered 502 on every kagent list).

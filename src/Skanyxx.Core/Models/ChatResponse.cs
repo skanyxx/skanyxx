@@ -20,4 +20,7 @@ public class ChatResponse
 
     /// <summary>The tokens kagent reported for this turn (none for a cached answer, or when the runtime reports none).</summary>
     public TokenUsage Usage { get; set; } = TokenUsage.None;
+
+    /// <summary>Skanyxx's own count of what it sent kagent for this turn (D548); never added to <see cref="Usage"/>. 0 for a cached answer.</summary>
+    public long ClientTokens { get; set; }
 }

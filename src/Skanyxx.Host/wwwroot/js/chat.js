@@ -21,6 +21,8 @@
         title: 'New chat',
         items: [],
         usage: { prompt: 0, completion: 0, total: 0 },
+        clientTokens: 0,
+        price: null,
         sessions: [],
         limits: null,
         attachments: [],
@@ -184,6 +186,8 @@
     // ---------- agent details (right panel) ----------
 
     async function loadDetails(agent) {
+        state.price = null;
+        renderCost();
         const body = $('detailsBody');
         body.replaceChildren(h('p', { class: 'muted', text: 'Loading…' }));
         let d;
@@ -194,6 +198,8 @@
             return;
         }
         if (!state.agent || agentKey(state.agent) !== agentKey(agent)) return;
+        state.price = d.price || null;
+        renderCost();
         $('detailsLink').href = d.agentsPageUrl;
         $('detailsLink').hidden = !d.agentsPageUrl;
         const section = (title, ...content) => h('section', { class: 'details-section' }, h('h4', { text: title }), ...content);
@@ -344,12 +350,32 @@
         document.title = `${state.title} - Chat - Skanyxx`;
     }
 
-    function setUsage(usage) {
+    // The model's tokens and what Skanyxx sent are two counters, never added together (D548).
+    function setUsage(usage, clientTokens) {
         state.usage = usage || { prompt: 0, completion: 0, total: 0 };
+        state.clientTokens = clientTokens || 0;
         $('usageChipText').textContent = `${formatTokens(state.usage.total)} tokens`;
+        $('clientTokens').textContent = formatTokens(state.clientTokens);
         $('totalTokens').textContent = formatTokens(state.usage.total);
         $('promptTokens').textContent = formatTokens(state.usage.prompt);
         $('completionTokens').textContent = formatTokens(state.usage.completion);
+        renderCost();
+    }
+
+    // The configured price of the agent's model (Analytics:Prices, D549), input and output apart; n/a without one.
+    function renderCost() {
+        const price = state.price;
+        const cost = $('estCost');
+        if (!price) {
+            cost.textContent = 'n/a';
+            cost.title = 'No price is configured for this agent\'s model';
+            $('costBasis').textContent = 'No price is configured for this agent\'s model, so it shows n/a.';
+            return;
+        }
+        const amount = state.usage.prompt / 1e6 * price.inputPerMillion + state.usage.completion / 1e6 * price.outputPerMillion;
+        cost.textContent = `≈ ${amount.toLocaleString(undefined, { style: 'currency', currency: price.currency, maximumFractionDigits: 4 })}`;
+        cost.title = `${price.model}: ${price.inputPerMillion} in, ${price.outputPerMillion} out per million tokens (${price.currency})`;
+        $('costBasis').textContent = `Estimated from the model's tokens and the configured price for ${price.model}; what Skanyxx sent is not priced.`;
     }
 
     function newChat(push) {
@@ -385,7 +411,7 @@
             }
             state.items = view.items;
             setTitle(view.title);
-            setUsage(view.usage);
+            setUsage(view.usage, view.clientTokens);
             renderItems();
         } catch (e) {
             if (state.conversationId !== id) return;
@@ -674,7 +700,7 @@
             prompt: state.usage.prompt + (done.usage?.prompt || 0),
             completion: state.usage.completion + (done.usage?.completion || 0),
             total: state.usage.total + (done.usage?.total || 0)
-        });
+        }, state.clientTokens + (done.clientTokens || 0));
         renderItems();
         const row = state.sessions.find(s => s.id === state.conversationId);
         if (row) {

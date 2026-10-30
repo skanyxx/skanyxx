@@ -105,10 +105,15 @@ access-control tests that user B never sees or gets injected with user A's priva
 - Admins set token quotas per **user, team, department** and organization.
 - Users see their usage as a **percentage of their quota**. Usage counts the **model-side tokens consumed** (input,
   output, tool and reasoning, as the provider reports them, like `/usage` in Claude), not just client-side counts.
+- Skanyxx also counts **what it sends** (message, added context and cards, files; one shared estimator) and shows it
+  as **"Sent by us"** next to **"Spent by model"** (input and output apart) in Chat, Quotas, the Dashboard and Analytics.
+  The two are never added into one number; only the model's tokens count toward a quota or a cost (D548, D550).
 - Over quota: the request is blocked or limited per policy, and the user can file an **open request to the admin** to
   raise the quota. The admin approves or denies it from the Dashboard or People view.
 - **Cost estimate** per user, team or org, if it can be derived from model pricing. It is always shown with a big
   disclaimer: **"Estimate only. Not accurate. For information only. Your provider's bill is authoritative."**
+  Prices come from one place, configuration `Analytics:Prices` (per million input and output tokens per ModelConfig),
+  for Analytics, the Dashboard, Quotas and Chat alike; the Quotas page shows them read-only (D549).
 *Accept:* quotas are enforced server-side before the model call. Usage is stored per session and per turn. The
 disclaimer appears everywhere cost appears, including exports.
 

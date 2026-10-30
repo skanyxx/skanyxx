@@ -44,7 +44,7 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
         {
             await turns.CachedAsync(command, start, cached);
             yield return ChatStreamEvent.Answer(cached.Message.Content);
-            yield return ChatStreamEvent.Done(start.SessionId, true, ChatUsage.None, cached);
+            yield return ChatStreamEvent.Done(start.SessionId, true, ChatUsage.None, 0, cached);
             yield break;
         }
 
@@ -77,7 +77,7 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
                 yield break;
             }
             await turns.CompleteAsync(command, start, turn.Answer, turn.Usage);
-            yield return ChatStreamEvent.Done(start.SessionId, false, turn.Usage,
+            yield return ChatStreamEvent.Done(start.SessionId, false, turn.Usage, start.ClientTokens,
                 new ChatResponse { RelatedSessions = start.Prepared.Sessions, MemoryCards = start.Memory.Cards });
         }
         finally

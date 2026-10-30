@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using Skanyxx.Core;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform.Chat;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Investigate.Agents;
 using Skanyxx.Module.Investigate.Audit;
 using Skanyxx.Module.Investigate.Data;
@@ -51,6 +52,7 @@ public sealed class InvestigateModule : IModule
         services.AddScoped<RunExecutor>();
         // Unlimited until the quotas module replaces it; registered here too, as Agents and Tickets do, so Investigate runs without Chat.
         services.TryAddScoped<IChatQuota, UnlimitedChatQuota>();
+        services.AddTokenUsage(configuration);
         services.AddScoped<InvestigateAudit>();
         services.AddScoped<OrgTeams>();
         services.AddScoped<AgentCheck>();

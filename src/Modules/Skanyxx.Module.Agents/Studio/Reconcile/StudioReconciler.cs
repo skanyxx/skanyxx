@@ -507,8 +507,15 @@ internal sealed class StudioReconciler(
             return false;
         }
         await ApplyMemoryAsync(draft.Name, draft.Grants, actor, principal, servers, ct);
-        await PutAgentAsync(KAgentObjects.WithLabels(AgentManifest.Agent(draft, Ns),
-            (StudioNames.MergedLabel, "true"), (StudioNames.ManagedByLabel, StudioNames.ManagedBy)), ct);
+        var agent = KAgentObjects.WithLabels(AgentManifest.Agent(draft, Ns),
+            (StudioNames.MergedLabel, "true"), (StudioNames.ManagedByLabel, StudioNames.ManagedBy));
+        // D546: Argo CD finds the merged agent under its tracking id and compares it with main; it never applies it.
+        if (_options.Argo.Configured)
+            agent["metadata"]!["annotations"] = new JsonObject
+            {
+                [KAgentObjects.ArgoTrackingAnnotation] = KAgentObjects.ArgoTrackingId(_options.Argo.Application, Ns, draft.Name)
+            };
+        await PutAgentAsync(agent, ct);
         return true;
     }
 
@@ -524,6 +531,14 @@ internal sealed class StudioReconciler(
         }
         else if (KAgentObjects.Label(existing, StudioNames.ManagedByLabel) != StudioNames.ManagedBy)
             throw new StudioApplyException($"kagent already runs an agent named '{name}' that the studio does not manage.");
+        else if (KAgentObjects.Annotation(agent, KAgentObjects.ArgoTrackingAnnotation) is { } tracking
+                 && KAgentObjects.Annotation(existing, KAgentObjects.ArgoTrackingAnnotation) != tracking)
+        {
+            // kagent keeps metadata from creation only: an agent merged before Argo was configured is re-created once.
+            await kagent.DeleteAgentAsync(Ns, name, ct);
+            await kagent.CreateAgentAsync(agent, ct);
+            logger.LogWarning("Studio re-created the kagent agent {Namespace}/{Agent} with its Argo CD tracking id", Ns, name);
+        }
         else if (!KAgentObjects.SpecMatches(existing, agent))
         {
             await kagent.UpdateAgentAsync(agent, ct);

@@ -53,33 +53,6 @@ namespace Skanyxx.Module.Quotas.Data.Migrations
                     b.ToTable("quota_limits", (string)null);
                 });
 
-            modelBuilder.Entity("Skanyxx.Module.Quotas.Data.QuotaPrice", b =>
-                {
-                    b.Property<string>("Model")
-                        .HasMaxLength(320)
-                        .HasColumnType("character varying(320)")
-                        .HasColumnName("model");
-
-                    b.Property<decimal>("PricePer1K")
-                        .HasPrecision(18, 6)
-                        .HasColumnType("numeric(18,6)")
-                        .HasColumnName("price_per_1k");
-
-                    b.Property<DateTimeOffset>("SetAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("set_at");
-
-                    b.Property<string>("SetBy")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("character varying(450)")
-                        .HasColumnName("set_by");
-
-                    b.HasKey("Model");
-
-                    b.ToTable("quota_prices", (string)null);
-                });
-
             modelBuilder.Entity("Skanyxx.Module.Quotas.Data.QuotaRequest", b =>
                 {
                     b.Property<long>("Id")
@@ -156,9 +129,17 @@ namespace Skanyxx.Module.Quotas.Data.Migrations
                         .HasColumnType("character varying(320)")
                         .HasColumnName("model");
 
+                    b.Property<long>("ClientTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("client_tokens");
+
                     b.Property<long>("CompletionTokens")
                         .HasColumnType("bigint")
                         .HasColumnName("completion_tokens");
+
+                    b.Property<long>("EstimatedCompletionTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("estimated_completion_tokens");
 
                     b.Property<long>("EstimatedTokens")
                         .HasColumnType("bigint")

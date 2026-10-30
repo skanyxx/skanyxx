@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform.ChatContext;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.ChatContext.Access;
 using Skanyxx.Module.ChatContext.Cache;
 using Skanyxx.Module.ChatContext.Data;
@@ -13,13 +14,13 @@ using Skanyxx.Module.ChatContext.Extraction;
 namespace Skanyxx.Module.ChatContext.Context;
 
 /// <summary>
-/// Chat's <see cref="IChatContext"/> (D260–D265). Before a new conversation: the answer cache, then related sessions
+/// Chat's <see cref="IChatContext"/> (D260–D265). Before a new conversation: the answer cache (D502), then related sessions
 /// (<see cref="SessionSearch.RelatedAsync"/>, readable only). Cards are memory's part (<c>IRelatedMemory</c>, D302).
 /// After every turn: the index row, through <see cref="IChatExtractor"/>.
 /// </summary>
 internal sealed class ChatContextService(
     ChatContextDbContext db, SessionSearch search, SessionAccess access, IChatExtractor extractor, DeterministicExtractor probe, AnswerCache cache,
-    IOptions<ChatContextOptions> options, TimeProvider clock, ILogger<ChatContextService> logger) : IChatContext
+    IOptions<ChatContextOptions> options, ITokenEstimator estimator, TimeProvider clock, ILogger<ChatContextService> logger) : IChatContext
 {
     public const int MaxTitle = 80;
 
@@ -32,9 +33,9 @@ internal sealed class ChatContextService(
             if (cache.On)
             {
                 cacheKey = await cache.KeyAsync(me, start.AgentRef, start.AgentRevision, start.TicketKeys, start.Message);
-                if (!start.NoCache && cacheKey is not null && await cache.GetAsync(cacheKey) is { } hit)
+                if (!start.NoCache && cacheKey is not null && await cache.GetAsync(cacheKey) is { } hit && await StillOneTurnAsync(me, hit, ct))
                 {
-                    await cache.RecordHitAsync(me, (start.Message.Length + hit.Content.Length) / RelatedBlock.CharsPerToken);
+                    await cache.RecordHitAsync(me, estimator.Count(start.Message + hit.Content));
                     return ChatPreparation.None with { Cached = Answer(hit) };
                 }
             }
@@ -48,7 +49,7 @@ internal sealed class ChatContextService(
             var tickets = start.TicketKeys.Union(asked.TicketKeys).ToList();
             var readable = await access.ReadableAsync(start.Reader, ct);
             var sessions = await search.RelatedAsync(readable, start.Message, tickets, asked.Categories, settings.MaxRelatedSessions, ct);
-            var block = RelatedBlock.Build(sessions, settings.RelatedTokenBudget);
+            var block = RelatedBlock.Build(sessions, settings.RelatedTokenBudget, estimator);
             if (block.Text.Length > 0)
                 logger.LogInformation("Related work for {UserId}: {Sessions} sessions, ~{Tokens} tokens",
                     me, block.Sessions.Count, block.EstimatedTokens);
@@ -103,6 +104,14 @@ internal sealed class ChatContextService(
         if (done.IsFirst && done.CacheKey is { } key)
             await cache.SetAsync(key, new CachedAnswer(done.SessionId, done.Reply, now));
     }
+
+    /// <summary>
+    /// D502: a hit reopens the conversation it came from, so it is served only while that conversation is still just this
+    /// question and its answer. One that went on would open on its later turns, and a new chat would show another
+    /// question's answer; the agent is asked again instead, and the new conversation replaces the kept answer.
+    /// </summary>
+    private async Task<bool> StillOneTurnAsync(string userId, CachedAnswer hit, CancellationToken ct) =>
+        await db.Sessions.AsNoTracking().AnyAsync(s => s.Id == hit.ConversationId && s.UserId == userId && s.Turns == 1, ct);
 
     /// <summary>The first line of what the person asked, folded and cut.</summary>
     internal static string Title(string message)

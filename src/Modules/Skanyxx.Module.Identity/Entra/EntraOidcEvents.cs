@@ -1,18 +1,37 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.OpenIdConnect;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform;
 
 namespace Skanyxx.Module.Identity.Entra;
 
 /// <summary>
-/// The three places the Microsoft sign-in needs more than the handler's defaults: the registered redirect URI, the
-/// tenant pin and account key, and a failed callback.
+/// The places the Microsoft sign-in needs more than the handler's defaults: the switch (D505), the registered redirect
+/// URI, the tenant pin and account key, and a failed callback.
 /// </summary>
 internal sealed class EntraOidcEvents(string tenantId, EntraRedirectUri redirect) : OpenIdConnectEvents
 {
+    /// <summary>
+    /// D505: with the install's switch off (D272) the callback path does not exist either: 404, as for any other missing
+    /// route, before the handler reads a state or writes an audit row.
+    /// </summary>
+    public override Task MessageReceived(MessageReceivedContext context)
+    {
+        if (!Available(context.HttpContext))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            context.HandleResponse();
+        }
+        return Task.CompletedTask;
+    }
+
+    private static bool Available(HttpContext http) =>
+        http.RequestServices.GetRequiredService<IOptionsMonitor<IdentityModuleOptions>>().CurrentValue.EntraAvailable;
+
     public override Task RedirectToIdentityProvider(RedirectContext context)
     {
         if (redirect.Callback is { } callback)
@@ -53,6 +72,13 @@ internal sealed class EntraOidcEvents(string tenantId, EntraRedirectUri redirect
     /// </summary>
     public override async Task RemoteFailure(RemoteFailureContext context)
     {
+        // D505: a callback the handler refuses before MessageReceived (no message at all) is not found either.
+        if (!Available(context.HttpContext))
+        {
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+            context.HandleResponse();
+            return;
+        }
         var services = context.HttpContext.RequestServices;
         services.GetRequiredService<ILogger<EntraOidcEvents>>().LogWarning(
             "Microsoft sign-in callback refused from {RemoteIp}: {Reason}", context.HttpContext.Connection.RemoteIpAddress, context.Failure?.Message);

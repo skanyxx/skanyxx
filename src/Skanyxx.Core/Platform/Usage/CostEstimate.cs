@@ -1,5 +1,6 @@
 using Skanyxx.Core.Platform.Analytics;
-namespace Skanyxx.Module.Analytics.Reports;
+
+namespace Skanyxx.Core.Platform.Usage;
 
 /// <summary>
 /// <paramref name="Amount"/> covers only the models with a price (<paramref name="Priced"/> false when none had one, and

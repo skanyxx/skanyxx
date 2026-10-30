@@ -121,6 +121,24 @@ public sealed class AnswerCacheTests(PostgresFixture postgres) : ChatContextTest
         Assert.Null((await App.PrepareAsync(Ana, Question)).Cached);
     }
 
+    /// <summary>
+    /// D502 (answer drift): a hit reopens its conversation. Once that conversation went on, it would open on a later
+    /// question's answer, so the agent is asked again and the new conversation is the one kept.
+    /// </summary>
+    [Fact]
+    public async Task AConversationThatWentOn_IsNotServed_AndTheNewOneReplacesIt()
+    {
+        await AskedAndAnsweredAsync(Ana, "s1");
+        await App.TurnAsync(Ana, "s1", "and what is three plus three", "Six.", first: false);
+
+        var again = await App.PrepareAsync(Ana, Question);
+        Assert.Null(again.Cached);
+        Assert.NotNull(again.CacheKey);
+        await App.TurnAsync(Ana, "s2", Question, "Fourteen days.", cacheKey: again.CacheKey);
+
+        Assert.Equal("s2", (await App.PrepareAsync(Ana, Question)).Cached!.ConversationId);
+    }
+
     [Fact]
     public async Task ACacheThatIsDown_IsAMiss_AndChatGoesOn()
     {

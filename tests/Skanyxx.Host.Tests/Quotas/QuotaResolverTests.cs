@@ -68,11 +68,23 @@ public sealed class QuotaResolverTests
     public void Percent_IsOfTheEffectiveLimit_AndPassesAHundredWhenOver()
     {
         var quota = new EffectiveQuota(200, new ScopeLimit(QuotaScopes.User, "ann", 200), 0);
-        var over = new PersonQuota("ann", quota, 120, 30, 150, 3, 1, null, []);
+        var over = new PersonQuota("ann", quota, 120, 30, 150, 3, 1, null, [], ClientTokens: 0);
 
         Assert.Equal(300, over.Used);
         Assert.Equal(150, over.Percent);
         Assert.True(over.Over);
-        Assert.Null(new PersonQuota("ann", EffectiveQuota.Unlimited, 1, 1, 0, 1, 0, null, []).Percent);
+        Assert.Null(new PersonQuota("ann", EffectiveQuota.Unlimited, 1, 1, 0, 1, 0, null, [], ClientTokens: 0).Percent);
+    }
+
+    [Fact]
+    public void WhatSkanyxxSent_NeverCountsAgainstTheLimit()
+    {
+        // D550: the limit, the percentage and "over" are the model's tokens only, however much Skanyxx counted sending.
+        var quota = new EffectiveQuota(200, new ScopeLimit(QuotaScopes.User, "ann", 200), 0);
+        var under = new PersonQuota("ann", quota, 80, 20, 0, 2, 0, null, [], ClientTokens: 1_000_000);
+
+        Assert.Equal(100, under.Used);
+        Assert.Equal(50, under.Percent);
+        Assert.False(under.Over);
     }
 }

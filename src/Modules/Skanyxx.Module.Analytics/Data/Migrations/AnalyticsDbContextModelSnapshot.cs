@@ -51,6 +51,10 @@ namespace Skanyxx.Module.Analytics.Data.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("chats");
 
+                    b.Property<long>("ClientTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("client_tokens");
+
                     b.Property<long>("Errors")
                         .HasColumnType("bigint")
                         .HasColumnName("errors");

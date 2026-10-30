@@ -200,17 +200,27 @@ scripts/helm/validate.sh                           # helm lint + kubeconform -st
   access logs). Anyone who can read those logs holds a live invite or reset link until it is used or expires (7 days /
   60 min). Either drop the query from the access-log format for `/Invite` and `/ResetPassword` (ingress-nginx:
   `log-format-upstream` with `$uri` instead of `$request`), or treat the access logs as secret as the database.
+- **The kagent gate (`kagentGate`, on by default, D520-D523; [`a2a-security.md`](docs/design/a2a-security.md)):** kagent
+  authenticates nobody, so an Envoy (`skanyxx-kagent-gate`) stands in front of its controller and only the gate may reach it.
+  Skanyxx signs every call with a short-lived HS256 token (`KAgent:Auth:Mode=signed`, key in the Secret `skanyxx-kagent-gate`)
+  and the gate names the user from it, refusing a call without one (401) and any `?user_id=`; kagent's agent pods are
+  pointed at the gate (`kagent.controller.env` `KAGENT_CONTROLLER_NAME=skanyxx-kagent-gate`, required) and may call only
+  `kagentGate.agentPaths` (sessions, tasks). Agent-to-agent A2A is refused unless listed in `networkPolicy.a2aPeers`.
+  An admission policy (`agentGuard`, D528, Kubernetes 1.30+) refuses Agents named like the release's objects, wearing
+  its pod labels, running as another ServiceAccount or reading its Secrets.
+  A local Host keeps `KAgent:Auth:Mode=none` (the default) against an unsecured kagent on localhost:8083.
+  `scripts/helm/gate-test.sh` (Docker) and `scripts/helm/gate-kind-test.sh` (a throwaway kind cluster) check it live.
 - **Network:** the namespace is **default-deny** (`networkPolicy.enabled`, D137): a pod no policy names gets nothing in
   and only DNS out. Skanyxx's UI/API port answers its namespace and, with the ingress on,
   `networkPolicy.ingressNamespaces` (`ingress-nginx`); its mcp port only kagent's controller and agent pods (plus
-  `networkPolicy.mcpFrom`); kagent's controller its namespace; agent pods only the controller (A2A); Postgres, MinIO, Gitea and Dragonfly only Skanyxx
+  `networkPolicy.mcpFrom`); kagent's controller the gate (Skanyxx and the agents with `kagentGate.enabled=false`); agent pods only the controller (A2A) and their `a2aPeers`; Postgres, MinIO, Gitea and Dragonfly only Skanyxx
   (+ kagent → Postgres, + Dragonfly → AX: the chart's `ax-server`/`ax-controller` with `ax.install`, else `ax.namespace`). Egress: Skanyxx anywhere
   (Jira, Entra); kagent's controller anywhere (the Kubernetes API) unless **`networkPolicy.controllerEgress.enabled`**
   (off by default, D229): then DNS, `controllerEgress.kubeApiCidrs` on `kubeApiPorts` (443, 6443; required, the chart
   refuses it without: `kubectl get endpoints kubernetes -n default`), the bundled Postgres, Skanyxx's mcp port, the
   agent pods on `a2aPorts` (8080), the internet on 443 minus `clusterCidrs` (public plugin servers) and
   `controllerEgress.extra` (a BYO database, an in-cluster `Studio:McpServers` server); turn it on wherever plugins come
-  from anyone but you, since the controller connects to every plugin server with its header values. Agent pods only kagent's controller, Skanyxx's mcp port (never its UI/API) and
+  from anyone but you, since the controller connects to every plugin server with its header values. Agent pods only the gate's agent port (kagent's controller with the gate off), Skanyxx's mcp port (never its UI/API) and
   `networkPolicy.modelEgress` (the internet on 443 minus `networkPolicy.clusterCidrs`; a local model such as Ollama or
   a tool server you add needs a rule in `modelEgress.extra`) (D148); the stores DNS only. `clusterCidrs` defaults to
   the private ranges (RFC 1918, CGNAT, link-local incl. cloud metadata, loopback, IPv6 ULA/link-local): on **IPv6 or
@@ -1359,11 +1369,13 @@ Everyone sees their own percentage on Chat and on their account page.
   set their personal limits within the cap: the tightest team or department limit, or with none, the personal limit as
   it stands, which a supervisor may only lower. Team and department limits and prices are the owner's. Every rule is
   enforced by the API, not the page.
-- **Cost** is optional: the owner's USD price per 1,000 tokens per ModelConfig (`PUT api/quotas/prices/{ns}/{name}`). It is
-  an estimate, never a bill, and is always shown with that disclaimer. Ticket stage and Investigate step turns are
+- **Cost** is optional: prices come from configuration only, `Analytics:Prices:<namespace/name>:InputPerMillion` and
+  `OutputPerMillion` (plus `Analytics:Currency`), the same prices Analytics, the Dashboard and Chat use (D549); `/Quotas`
+  lists them read-only. Only the model's tokens are priced and counted against a limit; "Sent by us" (Skanyxx's own
+  estimate of what it sent, D548) is shown beside them. A cost is an estimate, never a bill, and is always shown with that disclaimer. Ticket stage and Investigate step turns are
   priced by the ModelConfig the agent's spec names (kagent's `default-model-config` when a declarative spec names none);
   a BYO agent's, or one kagent does not describe, stays unpriced (`unknown`).
-- **Audit**: `quota.limit.set`, `quota.price.set`, `quota.requested`, `quota.request.approved|denied`, with names and
+- **Audit**: `quota.limit.set`, `quota.requested`, `quota.request.approved|denied`, with names and
   numbers only (never a reason or chat text).
 - **New features that call a model** go through Core's `IChatQuota` (`AdmitAsync` before the turn, `RecordAsync` after,
   `ChatQuotaUsage.Measure` for the count); Investigate steps do (D385).
@@ -1708,3 +1720,16 @@ a 401 whatever it names; and a sandbox token is a 401 on every other port.
 - **Known exposure:** AX stores env in plaintext (its Redis, task metadata), so the token is as private as AX's env —
   both are fenced from sandboxes by the NetworkPolicies above ("Deployment prerequisites"). Anyone who can `get pods`
   in the WorkerPool namespace, or read AX tasks, can read it: treat RBAC on that namespace as access to sandbox memory.
+
+## Day 0/1/2 scripted runs (customer scenario)
+
+Requirements §5 as repeatable runs on a throwaway cluster (D542): `scripts/day0` (install the umbrella on kind
+`skx-day0` or an explicit `--context`, then smoke it), `scripts/day1` (git, CI runner, Argo CD, model providers),
+`scripts/day2` (people, knowledge base, an agent from a template through PR → CI → merge → kagent, reported by Argo CD, chat and
+history, RBAC, cleanup). `scripts/e2e/studio-cicd.sh` runs the Studio CI/CD path alone; `scripts/e2e/run-all.sh --down`
+runs everything and removes it again. Each folder has a README; state and generated credentials stay in
+`~/.config/skanyxx-e2e/<target>` (0600), never printed.
+
+```bash
+LOGDIR=/tmp/skx-e2e scripts/e2e/run-all.sh --down          # needs Docker (OrbStack or Docker Desktop), kind, helm, node
+```

@@ -124,6 +124,8 @@ public sealed class RateLimitTests(PostgresFixture fixture)
     [InlineData("10.42.3.17/32", false)]
     [InlineData("::/0", true)]
     [InlineData("fd00:7::/48", true)]
+    [InlineData("fd00:7::/111", true)]
+    [InlineData("fd00:7::/112", true)] // D525's floor; D399's /120 is kept (D552)
     [InlineData("fd00:7::/119", true)]
     [InlineData("fd00:7::/120", false)]
     [InlineData("fd00:7::5/128", false)]

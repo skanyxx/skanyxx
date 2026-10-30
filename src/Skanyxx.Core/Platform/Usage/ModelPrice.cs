@@ -1,4 +1,4 @@
-namespace Skanyxx.Module.Analytics;
+namespace Skanyxx.Core.Platform.Usage;
 
 /// <summary>What one million tokens cost on a model, in and out, as the owner configured it.</summary>
 public sealed class ModelPrice

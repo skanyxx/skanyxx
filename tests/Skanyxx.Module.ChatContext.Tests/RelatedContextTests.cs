@@ -1,4 +1,5 @@
 using Skanyxx.Core.Platform.ChatContext;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.ChatContext.Context;
 using Skanyxx.Module.ChatContext.Data;
 using Skanyxx.Module.ChatContext.Tests.Infrastructure;
@@ -81,6 +82,44 @@ public sealed class RelatedContextTests(PostgresFixture postgres) : ChatContextT
         Assert.EndsWith(RelatedBlock.Footer, prepared.Context);
     }
 
+    /// <summary>D501 (answer drift): one shared word is a coincidence, not related work; two make it related.</summary>
+    [Fact]
+    public async Task OneSharedWord_IsNotRelatedWork_TwoAre()
+    {
+        await App.TurnAsync(Ana, "plus", "what is three plus three", "Three plus three is six.");
+        await App.TurnAsync(Ana, "refunds", "EU refund delays", "The bank batch runs on Fridays.");
+
+        var arithmetic = await App.PrepareAsync(Ana, "what is two plus two");
+        var refunds = await App.PrepareAsync(Ana, "why are refund payments delayed");
+
+        Assert.Equal("", arithmetic.Context);
+        Assert.Empty(arithmetic.Sessions);
+        Assert.Equal(["refunds"], refunds.Sessions.Select(s => s.SessionId));
+    }
+
+    /// <summary>D501: two forms of one word are one shared word ("refund", "refunds"), not two.</summary>
+    [Fact]
+    public async Task TwoFormsOfOneWord_AreOneSharedWord()
+    {
+        await App.TurnAsync(Ana, "s1", "refund", "Refunds take fourteen days.");
+
+        var prepared = await App.PrepareAsync(Ana, "refunds: is a refund possible");
+
+        Assert.Empty(prepared.Sessions);
+    }
+
+    [Fact]
+    public async Task TheHeader_SaysEarlierChatsWereOtherQuestions()
+    {
+        await App.TurnAsync(Ana, "s58", "Refund on SDB-58", "Done.", ["SDB-58"]);
+
+        var prepared = await App.PrepareAsync(Ana, "Continue", ["SDB-58"]);
+
+        Assert.StartsWith("[Related prior work, found by Skanyxx", prepared.Context);
+        Assert.Contains("never answer one of them instead of it", prepared.Context);
+        Assert.EndsWith("[End of related prior work]\n\n", prepared.Context);
+    }
+
     [Fact]
     public async Task NothingRelated_InjectsNothing()
     {
@@ -102,7 +141,7 @@ public sealed class RelatedContextTests(PostgresFixture postgres) : ChatContextT
 
         // Default budget 600 tokens (2400 characters), at most 3 sessions.
         Assert.Equal(3, prepared.Sessions.Count);
-        Assert.True(prepared.Context.Length <= 600 * RelatedBlock.CharsPerToken);
+        Assert.True(prepared.Context.Length <= CharTokenEstimator.Chars(600));
     }
 
     [Fact]
@@ -111,13 +150,13 @@ public sealed class RelatedContextTests(PostgresFixture postgres) : ChatContextT
         var now = DateTime.UtcNow;
         SessionSummary Session(string id, int outcome) => new(id, "t", "kagent/seed", "personal:ana", [], [], [], new string('o', outcome), 1, now, now, true);
 
-        var tight = RelatedBlock.Build([Session("big", 500), Session("small", 10)], 150);
+        var tight = RelatedBlock.Build([Session("big", 500), Session("small", 10)], 150, CharTokenEstimator.Instance);
         Assert.Equal(["small"], tight.Sessions.Select(s => s.SessionId));
         Assert.True(tight.EstimatedTokens <= 150);
 
-        Assert.Equal("", RelatedBlock.Build([Session("big", 500)], 50).Text);
+        Assert.Equal("", RelatedBlock.Build([Session("big", 500)], 50, CharTokenEstimator.Instance).Text);
         // An item longer than its cap is shortened to the cap (with "…"), not dropped.
-        Assert.Equal(RelatedBlock.MaxItemChars, RelatedBlock.Build([Session("huge", 5_000)], 4_000).Text.Split('\n')[1].Length);
+        Assert.Equal(RelatedBlock.MaxItemChars, RelatedBlock.Build([Session("huge", 5_000)], 4_000, CharTokenEstimator.Instance).Text.Split('\n')[1].Length);
     }
 }
 

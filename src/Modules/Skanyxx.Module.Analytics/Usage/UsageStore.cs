@@ -19,14 +19,15 @@ internal sealed class UsageStore(AnalyticsDbContext db)
         var errors = turn.Failed ? 1L : 0L;
         await db.Database.ExecuteSqlAsync($"""
             INSERT INTO analytics_usage_daily
-                (day, user_id, agent, model, requests, chats, tokens_in, tokens_out, unreported, cache_hits, tokens_saved, errors)
+                (day, user_id, agent, model, requests, chats, tokens_in, tokens_out, client_tokens, unreported, cache_hits, tokens_saved, errors)
             VALUES ({day}, {turn.UserId}, {turn.AgentRef}, {turn.Model}, 1, {chats}, {turn.Usage.InputTokens}, {turn.Usage.OutputTokens},
-                {unreported}, {hits}, {turn.TokensSaved}, {errors})
+                {turn.ClientTokens}, {unreported}, {hits}, {turn.TokensSaved}, {errors})
             ON CONFLICT (day, user_id, agent, model) DO UPDATE SET
                 requests = analytics_usage_daily.requests + 1,
                 chats = analytics_usage_daily.chats + EXCLUDED.chats,
                 tokens_in = analytics_usage_daily.tokens_in + EXCLUDED.tokens_in,
                 tokens_out = analytics_usage_daily.tokens_out + EXCLUDED.tokens_out,
+                client_tokens = analytics_usage_daily.client_tokens + EXCLUDED.client_tokens,
                 unreported = analytics_usage_daily.unreported + EXCLUDED.unreported,
                 cache_hits = analytics_usage_daily.cache_hits + EXCLUDED.cache_hits,
                 tokens_saved = analytics_usage_daily.tokens_saved + EXCLUDED.tokens_saved,

@@ -51,11 +51,10 @@ internal sealed class QuotaOverviewHandler(OrgReader orgs, QuotaLedger ledger, Q
 
         // A supervisor sees only the requests they may decide: a fellow supervisor's or the owner's reason is not theirs to read.
         var requests = await store.RequestsAsync(viewer.IsOwner ? null : actFor, RecentRequests, ct);
-        var models = book.Usage.Select(u => u.Model).Concat(book.Prices.Keys).Distinct().Order(StringComparer.Ordinal).ToList();
         return Outcome<QuotaOverviewDto>.Ok(new QuotaOverviewDto(
             month.ToString("yyyy-MM"), QuotaMonth.ResetsOn(month), viewer.IsOwner, rows, limits, scopes,
             [.. requests.Select(r => QuotaRequestDto.From(r, org))],
-            [.. book.Prices.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new PriceDto(p.Key, p.Value))], models,
-            actFor, QuotaPrice.Currency, QuotaCostDisclaimer.Title, QuotaCostDisclaimer.Text));
+            [.. book.Cost.Prices.OrderBy(p => p.Key, StringComparer.Ordinal).Select(p => new PriceDto(p.Key, p.Value.InputPerMillion, p.Value.OutputPerMillion))],
+            actFor, book.Cost.Currency, QuotaCostDisclaimer.Title, QuotaCostDisclaimer.Text));
     }
 }

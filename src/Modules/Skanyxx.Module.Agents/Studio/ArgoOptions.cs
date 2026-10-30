@@ -12,7 +12,7 @@ public sealed class ArgoOptions
     /// <summary>A read-only Argo CD account token (<c>applications, get</c>). Never logged, never returned.</summary>
     public string Token { get; set; } = "";
 
-    /// <summary>The Application that syncs the agent repo.</summary>
+    /// <summary>The Application that compares the agent repo with kagent (D546: it reports, the reconciler applies).</summary>
     public string Application { get; set; } = "skanyxx-agents";
 
     public int TimeoutSeconds { get; set; } = 10;

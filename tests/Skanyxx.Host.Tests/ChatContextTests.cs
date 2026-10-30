@@ -68,6 +68,43 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("Thanks", LastMessageSent());
     }
 
+    /// <summary>
+    /// Answer drift (D500–D503): a new "two plus two" chat was given the "three plus three" chat, as related work and as
+    /// its memory card, and a small model answered the earlier question. A new chat on other words goes to kagent bare.
+    /// </summary>
+    [Fact]
+    public async Task ANewChat_IsNotGivenAnEarlierChatThatSharesOneWord()
+    {
+        var owner = await _host.OwnerAsync();
+        _kagent.Answer = "Three plus three is six.";
+        var first = await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "what is three plus three" });
+
+        _kagent.Answer = "Two plus two is four.";
+        var second = await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "what is two plus two" });
+
+        Assert.NotEqual(first.GetProperty("conversationId").GetString(), second.GetProperty("conversationId").GetString());
+        Assert.Equal("what is two plus two", LastMessageSent());
+        Assert.Empty(second.GetProperty("relatedSessions").EnumerateArray());
+        Assert.Empty(second.GetProperty("memoryCards").EnumerateArray());
+        Assert.Equal("Two plus two is four.", second.GetProperty("message").GetProperty("content").GetString());
+    }
+
+    /// <summary>D503: with related work in front, the person's own message is announced, and a reopened chat shows it bare.</summary>
+    [Fact]
+    public async Task RelatedWork_IsFollowedByTheNewMessageMarker_AndReopenedWithoutIt()
+    {
+        var owner = await _host.OwnerAsync();
+        await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "Why are EU refunds slow?", ticketKeys = new[] { "SDB-58" } });
+
+        var second = await ChatAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "Continue SDB-58", ticketKeys = new[] { "SDB-58" } });
+
+        Assert.EndsWith("[End of related prior work]\n\n[The person's new message. Answer this one:]\nContinue SDB-58", LastMessageSent());
+        var view = await owner.GetFromJsonAsync<JsonElement>(
+            $"/api/chat/conversations/{second.GetProperty("conversationId").GetString()}", TestContext.Current.CancellationToken);
+        var asked = view.GetProperty("items").EnumerateArray().First(i => i.GetProperty("kind").GetString() == "user");
+        Assert.Equal("Continue SDB-58", asked.GetProperty("text").GetString());
+    }
+
     [Fact]
     public async Task AnotherPerson_IsGivenNothingOfAPrivateChat_AndSeesOnlyTheirOwnHistory()
     {
@@ -110,9 +147,13 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains("/api/chat/conversations", script);
     }
 
-    /// <summary>requirements.md §1.5, §3.5 (D273): cost carries the disclaimer, and no model's price is assumed (was GPT-4's for every model).</summary>
+    /// <summary>
+    /// requirements.md §1.5, §3.5 (D273): cost carries the disclaimer, and no model's price is assumed (was GPT-4's for
+    /// every model). D548: "Sent by us" and "Spent by model" are two tiles, never one number; D549: the estimate comes
+    /// from the configured price of the agent's model, n/a until one is known.
+    /// </summary>
     [Fact]
-    public async Task TheChatPage_ShowsCostAsNa_WithTheDisclaimer()
+    public async Task TheChatPage_ShowsBothCounters_AndCostAsNaUntilAPriceIsKnown_WithTheDisclaimer()
     {
         var browser = new Browser(_host);
         await browser.SubmitAsync("/Setup", new()
@@ -122,11 +163,22 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
 
         var page = await (await browser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains("<span class=\"stat-value\" id=\"estCost\" title=\"No price is known for this agent's model\">n/a</span>", page);
+        Assert.Contains("<span class=\"stat-value\" id=\"estCost\" title=\"No price is configured for this agent's model\">n/a</span>", page);
         Assert.Contains("Cost is informational only, not accurate.", page);
         Assert.Contains("Your provider's bill is authoritative.", page);
         Assert.DoesNotContain("GPT-4", page);
         Assert.DoesNotContain("estCost').textContent", page);
+        string[] tiles = ["Sent by us", "Spent by model", "Input", "Output", "Est. Cost"];
+        var at = tiles.Select(t => page.IndexOf($"<span class=\"stat-label\">{t}</span>", StringComparison.Ordinal)).ToList();
+        Assert.All(at, i => Assert.True(i > 0));
+        Assert.Equal(at.Order(), at);
+        Assert.Contains("id=\"clientTokens\"", page);
+        Assert.DoesNotContain("Chat total", page);
+
+        var script = await (await browser.GetAsync("/js/chat.js")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("state.price = d.price || null;", script);
+        Assert.Contains("state.usage.prompt / 1e6 * price.inputPerMillion + state.usage.completion / 1e6 * price.outputPerMillion", script);
+        Assert.Contains("$('clientTokens').textContent = formatTokens(state.clientTokens);", script);
     }
 
     // Chat creates each kagent session as the person, so a reload reads it back as them (D274, D315; the owner's default

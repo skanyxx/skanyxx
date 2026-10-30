@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Data;
 using Skanyxx.Module.Analytics.Features;
 using Skanyxx.Module.Analytics.Health;
@@ -28,9 +29,8 @@ public sealed class AnalyticsModule : IModule
     {
         services.AddOptions<AnalyticsOptions>()
             .Bind(configuration.GetSection(AnalyticsOptions.Section))
-            .Configure(o => o.ConnectionString = configuration.GetConnectionString("Memory") ?? "")
-            .Validate(o => o.Prices.Values.All(p => p.InputPerMillion >= 0 && p.OutputPerMillion >= 0), "Analytics:Prices cannot be negative.")
-            .ValidateOnStart();
+            .Configure(o => o.ConnectionString = configuration.GetConnectionString("Memory") ?? "");
+        services.AddTokenUsage(configuration);
 
         services.AddDbContext<AnalyticsDbContext>((sp, o) => o.UseNpgsql(
             sp.GetRequiredService<IOptions<AnalyticsOptions>>().Value.ConnectionString,
@@ -41,7 +41,6 @@ public sealed class AnalyticsModule : IModule
         services.AddScoped<UsageStore>();
         services.AddScoped<OrgReader>();
         services.AddScoped<HealthProbe>();
-        services.AddSingleton(sp => new CostCalculator(sp.GetRequiredService<IOptions<AnalyticsOptions>>().Value));
         services.AddSingleton<UsageReportBuilder>();
     }
 

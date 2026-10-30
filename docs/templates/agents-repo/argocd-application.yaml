@@ -1,0 +1,56 @@
+# Argo CD for the Skanyxx agent repo (D363, D546): Argo is the deploy record. It compares each merged
+# agents/<name>/agent.yaml with the Agent Skanyxx's reconciler applied (found by the tracking id the reconciler sets)
+# and reports Synced/OutOfSync, Missing and health; Skanyxx reads that for "Deployed" on /Studio. Argo never applies:
+# no automated sync here, and argocd-agent-policy.yaml (apply it first) refuses any Argo write to an Agent.
+# Replace REPO_URL (the agent repo as Argo reaches it) and NAMESPACE (kagent's namespace, the chart's release namespace);
+# the Application's name is Studio:Argo:Application.
+#
+# - only agent.yaml: grants.yaml is Skanyxx's (memory), plugins/ are applied by Skanyxx with their secrets;
+# - ignoreDifferences on labels: the reconciler's skanyxx.dev/* labels are not in the files;
+# - its own AppProject: only kagent Agents, only in NAMESPACE, only from this repo.
+# Also needed (scripts/day1/day1.sh does all of it): a repository Secret with a read-only git token, a read-only Argo
+# account for Skanyxx (`p, skanyxx, applications, get, skanyxx-agents/skanyxx-agents, allow`) and a health check for
+# kagent.dev/Agent in argocd-cm (argocd-agent-health.lua next to this file), without which Argo never says Healthy.
+# The tracking id the reconciler sets assumes Argo's default annotation tracking (no installationID) and this
+# Application in Argo's own namespace. To remove the Application, delete it without cascade: the policy refuses Argo's
+# deletes of Agents, so a cascading delete waits on its finalizer.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: skanyxx-agents
+  namespace: argocd
+spec:
+  description: The Skanyxx agent repo (kagent Agents only, reported on, never applied)
+  sourceRepos:
+    - REPO_URL
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: NAMESPACE
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: kagent.dev
+      kind: Agent
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: skanyxx-agents
+  namespace: argocd
+spec:
+  project: skanyxx-agents
+  source:
+    repoURL: REPO_URL
+    targetRevision: main
+    # The repo root, not agents/: a fresh repo has no agents/ yet and Argo would report "path does not exist".
+    path: .
+    directory:
+      recurse: true
+      include: "agents/*/agent.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: NAMESPACE
+  ignoreDifferences:
+    - group: kagent.dev
+      kind: Agent
+      jsonPointers:
+        - /metadata/labels

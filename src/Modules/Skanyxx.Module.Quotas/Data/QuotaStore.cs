@@ -12,17 +12,20 @@ internal sealed class QuotaStore(QuotaDbContext db)
 {
     public async Task AddUsageAsync(DateOnly month, ChatQuotaUsage turn, CancellationToken ct)
     {
-        var (prompt, completion, estimated, estimatedTurns) = turn.Estimated
-            ? (0L, 0L, turn.Usage.Total, 1L)
+        var (prompt, completion, estimated, estimatedCompletion, estimatedTurns) = turn.Estimated
+            ? (0L, 0L, turn.Usage.Total, turn.Usage.Completion, 1L)
             // A thinking model's total also holds thought and tool-use tokens: those count, as output.
-            : (turn.Usage.Prompt, Math.Max(turn.Usage.Completion, turn.Usage.Total - turn.Usage.Prompt), 0L, 0L);
+            : (turn.Usage.Prompt, Math.Max(turn.Usage.Completion, turn.Usage.Total - turn.Usage.Prompt), 0L, 0L, 0L);
         await db.Database.ExecuteSqlAsync($"""
-            INSERT INTO quota_usage (month, user_id, model, prompt_tokens, completion_tokens, estimated_tokens, turns, estimated_turns)
-            VALUES ({month}, {turn.UserId}, {turn.Model}, {prompt}, {completion}, {estimated}, 1, {estimatedTurns})
+            INSERT INTO quota_usage
+                (month, user_id, model, prompt_tokens, completion_tokens, estimated_tokens, estimated_completion_tokens, client_tokens, turns, estimated_turns)
+            VALUES ({month}, {turn.UserId}, {turn.Model}, {prompt}, {completion}, {estimated}, {estimatedCompletion}, {turn.ClientTokens}, 1, {estimatedTurns})
             ON CONFLICT (month, user_id, model) DO UPDATE SET
                 prompt_tokens = quota_usage.prompt_tokens + EXCLUDED.prompt_tokens,
                 completion_tokens = quota_usage.completion_tokens + EXCLUDED.completion_tokens,
                 estimated_tokens = quota_usage.estimated_tokens + EXCLUDED.estimated_tokens,
+                estimated_completion_tokens = quota_usage.estimated_completion_tokens + EXCLUDED.estimated_completion_tokens,
+                client_tokens = quota_usage.client_tokens + EXCLUDED.client_tokens,
                 turns = quota_usage.turns + 1,
                 estimated_turns = quota_usage.estimated_turns + EXCLUDED.estimated_turns
             """, ct);
@@ -55,24 +58,6 @@ internal sealed class QuotaStore(QuotaDbContext db)
                 INSERT INTO quota_limits (kind, scope_id, monthly_tokens, set_by, set_at) VALUES ({kind}, {id}, {tokens.Value}, {actor}, {now})
                 ON CONFLICT (kind, scope_id) DO UPDATE SET
                     monthly_tokens = EXCLUDED.monthly_tokens, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at
-                """, ct);
-        return previous;
-    }
-
-    public async Task<IReadOnlyList<QuotaPrice>> PricesAsync(CancellationToken ct) =>
-        await db.Prices.AsNoTracking().OrderBy(p => p.Model).ToListAsync(ct);
-
-    /// <summary>As <see cref="SetLimitAsync"/>: one upsert, the previous price read just before.</summary>
-    public async Task<decimal?> SetPriceAsync(string model, decimal? price, string actor, DateTimeOffset now, CancellationToken ct)
-    {
-        var row = db.Prices.Where(p => p.Model == model);
-        var previous = await row.Select(p => (decimal?)p.PricePer1K).FirstOrDefaultAsync(ct);
-        if (price is null)
-            await row.ExecuteDeleteAsync(ct);
-        else
-            await db.Database.ExecuteSqlAsync($"""
-                INSERT INTO quota_prices (model, price_per_1k, set_by, set_at) VALUES ({model}, {price.Value}, {actor}, {now})
-                ON CONFLICT (model) DO UPDATE SET price_per_1k = EXCLUDED.price_per_1k, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at
                 """, ct);
         return previous;
     }

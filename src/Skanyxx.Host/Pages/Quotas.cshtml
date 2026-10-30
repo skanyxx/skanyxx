@@ -3,7 +3,7 @@
 @{
     ViewData["Title"] = "Quotas";
 }
-<page-header description="Monthly token limits for people, teams and departments: the tightest one binds. Decide requests for more and, as the owner, set model prices." />
+<page-header description="Monthly token limits for people, teams and departments: the tightest one binds. Limits count the model's tokens; what Skanyxx sent is shown beside them. Decide requests for more." />
 @await Component.InvokeAsync("SetupGuide", new { id = "quotas" })
 
 <div id="quotas" data-owner="@(Model.IsOwner ? "true" : "false")">
@@ -16,6 +16,9 @@
                 <p class="text-muted text-sm" id="monthLine"></p>
             </div>
         </div>
+        @* D504: the People table shows an estimated cost per person. *@
+        <partial name="_TokenCounters" />
+        <partial name="_QuotaCostDisclaimer" />
         <div class="card card-flush">
             <div class="table-container"><table class="table table-stack" id="peopleTable" aria-labelledby="people-title"></table></div>
         </div>
@@ -44,7 +47,8 @@
         <div class="section-header">
             <div>
                 <h2 class="section-title" id="prices-title">Model prices</h2>
-                <p class="text-muted text-sm">USD per 1,000 tokens, prompt and completion alike. Only used for the cost estimates on this page and on each person's own usage.</p>
+                @* D549: one price source for Quotas, Analytics, the Dashboard and Chat; read-only here. *@
+                <p class="text-muted text-sm" id="pricesNote">Prices are set in configuration (<code>Analytics:Prices</code>), not on this page: per million input and per million output tokens, for each ModelConfig. Only the model's tokens are priced, never what Skanyxx sent.</p>
             </div>
         </div>
         <partial name="_QuotaCostDisclaimer" />
@@ -72,27 +76,6 @@
     </form>
 </dialog>
 
-<dialog class="dialog" id="priceDialog" aria-labelledby="priceTitle">
-    <form method="dialog" class="dialog-form">
-        <div class="dialog-header"><h2 class="dialog-title" id="priceTitle">Set price</h2></div>
-        <div class="dialog-body">
-            <div class="field">
-                <label for="priceModel">Model (ModelConfig, namespace/name)</label>
-                <input id="priceModel" name="model" maxlength="320" pattern="[a-z0-9][\-a-z0-9.]*/[a-z0-9][\-a-z0-9.]*" />
-            </div>
-            <div class="field">
-                <label for="priceValue">USD per 1,000 tokens</label>
-                <input id="priceValue" name="price" type="number" min="0" max="1000000" step="0.000001" inputmode="decimal" />
-                <p class="field-hint">An estimate only: your provider's pricing may differ.</p>
-            </div>
-        </div>
-        <div class="dialog-footer">
-            <button type="button" class="btn btn-secondary" data-dialog-close>Cancel</button>
-            <button type="submit" class="btn btn-ghost" value="clear" formnovalidate>Remove price</button>
-            <button type="submit" class="btn btn-primary" value="save">Save</button>
-        </div>
-    </form>
-</dialog>
 
 @section Styles {
     <link rel="stylesheet" href="~/css/quotas.css" asp-append-version="true" />

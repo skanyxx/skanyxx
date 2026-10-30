@@ -9,11 +9,13 @@ namespace Skanyxx.Module.Chat.Features.Turns;
 /// A turn ready to go to kagent: the agent, the caller's session (<paramref name="IsNew"/> when this turn created it),
 /// and the <paramref name="Prompt"/> — related work, related cards and attached files in front of the message. A
 /// non-null <c>Prepared.Cached</c> answers it without kagent. <paramref name="Admission"/> is the quota's: disposed when
-/// the turn is over (counting it does that too).
+/// the turn is over (counting it does that too). <paramref name="ClientTokens"/>: Skanyxx's own count of what it sends
+/// kagent, the prompt and the images as they go on the wire (D548); 0 for a cached answer.
 /// </summary>
 internal sealed record TurnStart(
     Agent Agent, string AgentRef, string SessionId, bool IsNew, string Title,
-    ChatPreparation Prepared, MemoryContext Memory, string Prompt, IReadOnlyList<A2AFilePart> Images, ChatQuotaAdmission Admission)
+    ChatPreparation Prepared, MemoryContext Memory, string Prompt, IReadOnlyList<A2AFilePart> Images, ChatQuotaAdmission Admission,
+    long ClientTokens = 0)
 {
     private int _recorded;
 

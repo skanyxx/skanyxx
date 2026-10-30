@@ -66,6 +66,24 @@ public sealed class MemoryAttachTests : SandboxesTestBase
         Assert.Equal("Terminating", Ax.Stored("fix-42")!.Status.Phase);
     }
 
+    /// <summary>D526: a sandbox stopped because its maker was demoted during the AX create loses its memory token too.</summary>
+    [Fact]
+    public async Task ADemotionDuringTheAxCreate_RevokesTheNewToken()
+    {
+        Ax.SeedWorkspace("repo-ws", FakeMemoryTokens.Url);
+        await using var app = await MemoryAppAsync();
+        Ax.HoldUpdates = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var run = RunAsync("fix-42", app: app, body: Bind("repo-ws"));
+        await Ax.UpdateEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
+        app.Standing.Roles[SandboxesApp.User] = [];
+        Ax.HoldUpdates.SetResult();
+
+        Assert.Equal(HttpStatusCode.Forbidden, (await run).StatusCode);
+        Assert.Equal([Assert.Single(_memory.Issued).AgentId], _memory.Revoked);
+        Assert.Equal(1, Ax.DeleteCalls);
+    }
+
     [Theory]
     [InlineData("plain-ws")]
     [InlineData("missing-ws")]

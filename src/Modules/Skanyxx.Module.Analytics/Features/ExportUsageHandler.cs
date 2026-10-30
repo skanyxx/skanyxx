@@ -1,6 +1,7 @@
 using MediatR;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Reports;
 using Skanyxx.Module.Analytics.Scopes;
 using Skanyxx.Module.Analytics.Usage;

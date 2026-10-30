@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Skanyxx.Core.Platform.Analytics;
+using Skanyxx.Core.Platform.Usage;
 
 namespace Skanyxx.Host.Tests.Analytics;
 
@@ -93,7 +94,7 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
     public async Task ChatTurns_AreRolledUp_WithKAgentsTokens_PerPersonAgentAndModel()
     {
         var first = await ChatAsync(_ann, "helper", Question);
-        await ChatAsync(_ann, "helper", "And the date?", first.GetProperty("conversationId").GetString());
+        var second = await ChatAsync(_ann, "helper", "And the date?", first.GetProperty("conversationId").GetString());
         await ChatAsync(_eve, "seed", "Hello");
         _kagent.A2AStatus = 500;
         Assert.Equal(HttpStatusCode.BadGateway, (await _ann.PostAsJsonAsync("/api/chat",
@@ -105,6 +106,11 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(1, Total(ann, "chats"));
         Assert.Equal(240, Total(ann, "tokensIn"));
         Assert.Equal(60, Total(ann, "tokensOut"));
+        // D548: what Skanyxx sent is its own count, kept apart from kagent's (the failed turn's prompt was sent too).
+        var sent = first.GetProperty("clientTokens").GetInt64() + second.GetProperty("clientTokens").GetInt64();
+        Assert.True(first.GetProperty("clientTokens").GetInt64() >= CharTokenEstimator.Instance.Count(Question));
+        Assert.True(Total(ann, "clientTokens") > sent);
+        Assert.Equal(300, Total(ann, "tokens"));
         Assert.Equal(1, Total(ann, "errors"));
         Assert.Equal(0, Total(ann, "unreported"));
         Assert.Equal(["kagent/default-model-config"], ann.GetProperty("tokensByModel").EnumerateArray().Select(s => s.GetProperty("name").GetString()));
@@ -146,14 +152,17 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         var html = await analytics.Content.ReadAsStringAsync(Ct);
         Assert.DoesNotContain("href=\"/Dashboard\"", html); // not in the nav either
         Assert.Contains(CostDisclaimer.Text.Replace("'", "&#x27;"), html);
+        // D504: the breakdown's "Est. cost" column carries its own disclaimer, in its section.
+        var breakdown = html.IndexOf("id=\"breakdown\"", StringComparison.Ordinal);
+        Assert.InRange(html.IndexOf(CostDisclaimer.Text.Replace("'", "&#x27;"), breakdown, StringComparison.Ordinal), breakdown, html.IndexOf("</section>", breakdown, StringComparison.Ordinal));
         Assert.DoesNotContain("id=\"export\"", html);
     }
 
     [Fact]
     public async Task ASupervisor_SeesTheirTeam_NotTheOrganization_AndTheDashboardReadOnly()
     {
-        await ChatAsync(_ann, "seed", "Hello");
-        await ChatAsync(_eve, "seed", "Hello");
+        var anns = (await ChatAsync(_ann, "seed", "Hello")).GetProperty("clientTokens").GetInt64();
+        var eves = (await ChatAsync(_eve, "seed", "Hello")).GetProperty("clientTokens").GetInt64();
         await CardAsync(_sue, "team:billing", "invoice-day");
         await CardAsync(_owner, "company", "refund-window");
         await CardAsync(_eve, $"personal:{_eveId}", "eve-note");
@@ -167,6 +176,7 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
 
         var summary = await _sue.GetFromJsonAsync<JsonElement>("/api/dashboard/summary", Ct);
         Assert.Equal(1, summary.GetProperty("active7d").GetInt32()); // ann; eve is not in sue's team
+        Assert.Equal(anns, summary.GetProperty("clientTokens7d").GetInt64()); // D548: what was sent for ann only
         Assert.Equal(2, summary.GetProperty("people").GetInt32()); // sue and ann
         Assert.Equal(JsonValueKind.Null, summary.GetProperty("topUsers").ValueKind);
         Assert.Equal(JsonValueKind.Null, summary.GetProperty("recentEvents").ValueKind);
@@ -175,6 +185,8 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
 
         var owners = await _owner.GetFromJsonAsync<JsonElement>("/api/dashboard/summary", Ct);
         Assert.Equal(2, owners.GetProperty("active7d").GetInt32());
+        Assert.Equal(anns + eves, owners.GetProperty("clientTokens7d").GetInt64());
+        Assert.Equal(anns + eves, owners.GetProperty("clientTokensToday").GetInt64());
         Assert.Equal(2, owners.GetProperty("topUsers").GetArrayLength());
         Assert.Equal(3, owners.GetProperty("cardsPerDay").EnumerateArray().Sum(d => d.GetInt64()));
         Assert.NotEmpty(owners.GetProperty("recentEvents").EnumerateArray());
@@ -252,6 +264,15 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains(CostDisclaimer.Text.Replace("'", "&#x27;"), html);
         Assert.Contains("/lib/chartjs/chart.umd.min.js", html);
         Assert.Contains("id=\"events\"", html);
+        Assert.Contains("<strong>Sent by us</strong>", html);
+        var script = await (await browser.GetAsync("/js/dashboard.js")).Content.ReadAsStringAsync(Ct);
+        Assert.Contains("stat('Sent by us today / 7 days (estimate)'", script);
+        Assert.Contains("stat('Spent by model today (input / output)'", script);
+        var analytics = await (await browser.GetAsync("/Analytics")).Content.ReadAsStringAsync(Ct);
+        Assert.Contains("<strong>Sent by us</strong>", analytics);
+        var columns = await (await browser.GetAsync("/js/analytics.js")).Content.ReadAsStringAsync(Ct);
+        Assert.Contains("{ key: 'clientTokens', title: 'Sent by us'", columns);
+        Assert.Contains("{ key: 'tokens', title: 'Spent by model'", columns);
         Assert.Equal(HttpStatusCode.OK, (await _host.Client().GetAsync("/lib/chartjs/chart.umd.min.js", Ct)).StatusCode);
     }
 }

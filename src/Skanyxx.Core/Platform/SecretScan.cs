@@ -204,6 +204,7 @@ public static class SecretScan
     private static JsonNode? RedactNode(JsonNode? node) => node switch
     {
         JsonObject o => new JsonObject(o.Select(p => KeyValuePair.Create(p.Key,
+            // Any kind: an array or object under a credential name is blanked whole, not searched for patterns.
             p.Value is not null && (IsCredentialName(p.Key) || (p.Key == "value" && NamesACredential(o)))
                 ? JsonValue.Create(Redacted)
                 : RedactNode(p.Value)))),

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform.Chat;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Domain;
 
@@ -15,7 +16,7 @@ namespace Skanyxx.Module.Tickets.Engine;
 /// ModelConfig when kagent names it (D387).
 /// </summary>
 public sealed class StageRunner(
-    TicketsDbContext db, PromptBuilder prompts, IStageAgentClient agents, IChatQuota quota, IOptions<TicketsOptions> options, TimeProvider clock)
+    TicketsDbContext db, PromptBuilder prompts, IStageAgentClient agents, IChatQuota quota, ITokenEstimator estimator, IOptions<TicketsOptions> options, TimeProvider clock)
 {
     public async Task<StageRun> RunAsync(Run run, CancellationToken ct)
     {
@@ -62,7 +63,7 @@ public sealed class StageRunner(
             {
                 // Not the run's token: a cancelled call was paid for too.
                 if (asked)
-                    await quota.RecordAsync(ChatQuotaUsage.Measure(run.CreatedBy, agent.Agent, model,
+                    await quota.RecordAsync(ChatQuotaUsage.Measure(estimator, run.CreatedBy, agent.Agent, model,
                         run.Id.ToString(), answer?.Usage ?? ChatUsage.None, message, answer?.Text ?? ""), CancellationToken.None);
             }
 
