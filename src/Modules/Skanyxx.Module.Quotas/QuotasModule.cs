@@ -4,14 +4,15 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Skanyxx.Core;
 using Skanyxx.Core.Platform.Chat;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Quotas.Data;
 using Skanyxx.Module.Quotas.Features;
 
 namespace Skanyxx.Module.Quotas;
 
 /// <summary>
-/// Monthly token quotas per person, team and department (the tightest one binds), what each person used, requests for
-/// more and the owner's per-model prices. Replaces the unlimited <see cref="IChatQuota"/> (Chat, Studio, Tickets). Memory's database; the org
+/// Monthly token quotas per person, team and department (the tightest one binds), what each person used and requests for
+/// more; cost from the configured prices (<c>Analytics:Prices</c>, D549). Replaces the unlimited <see cref="IChatQuota"/> (Chat, Studio, Tickets). Memory's database; the org
 /// tree from identity.
 /// </summary>
 public sealed class QuotasModule : IModule
@@ -28,6 +29,7 @@ public sealed class QuotasModule : IModule
             npgsql => npgsql.MigrationsHistoryTable(QuotaDbContext.MigrationsTable)));
         services.AddHostedService<QuotaMigrator>();
         services.TryAddSingleton(TimeProvider.System);
+        services.AddTokenUsage(configuration);
 
         services.AddScoped<QuotaStore>();
         services.AddScoped<QuotaLedger>();

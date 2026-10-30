@@ -5,6 +5,7 @@ namespace Skanyxx.Module.Chat.Features.Agents;
 /// <summary>
 /// The right-hand panel: what the agent is and can reach. Never its system prompt (the Agents page shows that to
 /// builders and up). <paramref name="Memory"/> is null without the memory module; empty means memory's default.
+/// <paramref name="Price"/> is null when no price is configured for the agent's model (Chat then shows n/a).
 /// </summary>
 internal sealed record ChatAgentDetails(
     string Namespace,
@@ -20,4 +21,5 @@ internal sealed record ChatAgentDetails(
     IReadOnlyList<string> Skills,
     IReadOnlyList<ChatAgentSkill> A2aSkills,
     IReadOnlyList<AgentMemoryGrant>? Memory,
-    string AgentsPageUrl);
+    string AgentsPageUrl,
+    ChatAgentPrice? Price = null);

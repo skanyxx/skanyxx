@@ -1,5 +1,5 @@
 using Skanyxx.Core.Platform.Analytics;
-using Skanyxx.Module.Analytics;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Data;
 using Skanyxx.Module.Analytics.Reports;
 using Skanyxx.Module.Analytics.Scopes;
@@ -13,7 +13,7 @@ public sealed class UsageReportTests
     private static readonly DateOnly Today = new(2026, 10, 28);
     private static readonly DateRange Week = DateRange.Last(7, Today);
 
-    private static readonly CostCalculator Cost = new(new AnalyticsOptions
+    private static readonly CostCalculator Cost = new(new PricingOptions
     {
         Prices = { ["kagent/gpt"] = new ModelPrice { InputPerMillion = 2m, OutputPerMillion = 8m } }
     });
@@ -148,7 +148,7 @@ public sealed class UsageReportTests
         Assert.Contains("not a bill", CostDisclaimer.Text);
         Assert.Contains("invoice is authoritative", CostDisclaimer.Text);
 
-        var unpriced = new CostCalculator(new AnalyticsOptions()).Estimate(Rows);
+        var unpriced = new CostCalculator(new PricingOptions()).Estimate(Rows);
         Assert.False(unpriced.Priced);
         Assert.Equal(0, unpriced.Amount);
     }

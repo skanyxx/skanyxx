@@ -10,7 +10,6 @@ public sealed class QuotaDbContext(DbContextOptions<QuotaDbContext> options) : D
     public DbSet<QuotaLimit> Limits => Set<QuotaLimit>();
     public DbSet<QuotaUsage> Usage => Set<QuotaUsage>();
     public DbSet<QuotaRequest> Requests => Set<QuotaRequest>();
-    public DbSet<QuotaPrice> Prices => Set<QuotaPrice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,15 +54,6 @@ public sealed class QuotaDbContext(DbContextOptions<QuotaDbContext> options) : D
             // One open request per person, enforced by the database so two quick submits cannot both land.
             request.HasIndex(r => r.UserId).IsUnique().HasFilter("status = 'pending'").HasDatabaseName("ux_quota_requests_pending");
             request.HasIndex(r => new { r.Month, r.UserId });
-        });
-        modelBuilder.Entity<QuotaPrice>(price =>
-        {
-            price.ToTable("quota_prices");
-            price.HasKey(p => p.Model);
-            price.Property(p => p.Model).HasColumnName("model").HasMaxLength(320);
-            price.Property(p => p.PricePer1K).HasColumnName("price_per_1k").HasPrecision(18, 6);
-            price.Property(p => p.SetBy).HasColumnName("set_by").HasMaxLength(450);
-            price.Property(p => p.SetAt).HasColumnName("set_at");
         });
     }
 }

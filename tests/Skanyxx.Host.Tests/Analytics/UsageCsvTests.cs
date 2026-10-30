@@ -1,5 +1,5 @@
 using Skanyxx.Core.Platform.Analytics;
-using Skanyxx.Module.Analytics;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Data;
 using Skanyxx.Module.Analytics.Reports;
 
@@ -12,7 +12,7 @@ public sealed class UsageCsvTests
     public void DisclaimerFirst_ThenFixedColumns()
     {
         var csv = UsageCsv.Write([new UsageDay { Day = new(2026, 10, 28), UserId = "ann", Agent = "kagent/seed", Model = "m", Requests = 2, TokensIn = 5, ClientTokens = 3 }],
-            OrgFixture.Snapshot, new CostCalculator(new AnalyticsOptions()));
+            OrgFixture.Snapshot, new CostCalculator(new PricingOptions()));
         var lines = csv.Split('\n', StringSplitOptions.RemoveEmptyEntries);
 
         Assert.Equal($"# {CostDisclaimer.Text}", lines[0]);

@@ -1,4 +1,4 @@
 namespace Skanyxx.Module.Quotas.Contracts;
 
-/// <summary>Null <see cref="PricePer1K"/>: the price was cleared.</summary>
-public sealed record PriceDto(string Model, decimal? PricePer1K);
+/// <summary>A configured price (<c>Analytics:Prices</c>), per million model tokens in and out; read-only here (D549).</summary>
+public sealed record PriceDto(string Model, decimal InputPerMillion, decimal OutputPerMillion);

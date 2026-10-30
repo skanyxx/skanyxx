@@ -3,6 +3,7 @@ using MediatR;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Data;
 using Skanyxx.Module.Analytics.Reports;
 using Skanyxx.Module.Analytics.Scopes;

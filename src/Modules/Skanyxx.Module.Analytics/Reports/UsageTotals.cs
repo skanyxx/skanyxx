@@ -1,3 +1,4 @@
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Data;
 
 namespace Skanyxx.Module.Analytics.Reports;

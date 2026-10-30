@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Identity;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Quotas.Data;
 using Skanyxx.Module.Quotas.Features;
 
@@ -45,6 +46,9 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         _host = await HostApp.StartAsync(_database, s =>
         {
             s["KAgent:Port"] = _kagent.Port.ToString();
+            // D549: the one price source, per million input and output tokens.
+            s["Analytics:Prices:kagent/default-model-config:InputPerMillion"] = "1000";
+            s["Analytics:Prices:kagent/default-model-config:OutputPerMillion"] = "4000";
             HostApp.WithoutSandboxes(s);
         });
         _owner = await _host.OwnerAsync();
@@ -283,7 +287,6 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
             {
                 ("team limit", SetLimitAsync(client, "team", "billing", 1)),
                 ("department limit", SetLimitAsync(client, "department", "finance", 1)),
-                ("price", client.PutAsJsonAsync($"/api/quotas/prices/kagent/default-model-config", new { pricePer1K = 1m }, Ct)),
             };
             if (!asOwnerOnly)
             {
@@ -315,23 +318,38 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(100, (await MeAsync(_ann)).GetProperty("limit").GetInt64());
         var owners = await _owner.GetFromJsonAsync<JsonElement>("/api/quotas/overview", Ct);
         Assert.All(owners.GetProperty("requests").EnumerateArray(), r => Assert.Equal("pending", r.GetProperty("status").GetString()));
-        Assert.Empty(owners.GetProperty("prices").EnumerateArray());
         Assert.DoesNotContain(owners.GetProperty("limits").EnumerateArray(), l => l.GetProperty("kind").GetString() != "user");
-        Assert.Empty((await AuditAsync("quota.price.set")).EnumerateArray());
     }
 
     [Fact]
-    public async Task TheOwnersPrices_GiveACostEstimate_AlwaysWithTheDisclaimer()
+    public async Task TheConfiguredPrices_GiveACostEstimate_FromModelTokensOnly_AlwaysWithTheDisclaimer()
     {
-        Assert.Equal(HttpStatusCode.OK, (await _owner.PutAsJsonAsync("/api/quotas/prices/kagent/default-model-config", new { pricePer1K = 0.002m }, Ct)).StatusCode);
-        await ChatAsync(_ann);
-        await ChatAsync(_ann);
+        Assert.Equal(HttpStatusCode.OK, (await ChatAsync(_ann)).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await ChatAsync(_ann)).StatusCode);
 
         var me = await _ann.GetFromJsonAsync<JsonElement>("/api/quotas/me", Ct);
-        Assert.Equal(0.0006m, me.GetProperty("quota").GetProperty("cost").GetDecimal()); // 300 tokens × 0.002 / 1,000
+        var quota = me.GetProperty("quota");
+        // D549: input and output priced apart, as Analytics prices them: 240 in × 1,000/M + 60 out × 4,000/M.
+        Assert.Equal(0.48m, quota.GetProperty("cost").GetDecimal());
+        Assert.Equal("USD", me.GetProperty("currency").GetString());
         Assert.Equal(QuotaCostDisclaimer.Text, me.GetProperty("costDisclaimer").GetString());
-        var price = Assert.Single((await AuditAsync("quota.price.set")).EnumerateArray());
-        Assert.Equal(Model, price.GetProperty("targetId").GetString());
+        // D550: the limit counts the model's tokens; what Skanyxx sent is shown beside them, never in them.
+        Assert.Equal(300, quota.GetProperty("used").GetInt64());
+        Assert.True(quota.GetProperty("clientTokens").GetInt64() >= 2 * CharTokenEstimator.Instance.Count(Question));
+
+        var overview = await _owner.GetFromJsonAsync<JsonElement>("/api/quotas/overview", Ct);
+        var price = Assert.Single(overview.GetProperty("prices").EnumerateArray());
+        Assert.Equal(Model, price.GetProperty("model").GetString());
+        Assert.Equal(1000m, price.GetProperty("inputPerMillion").GetDecimal());
+        Assert.Equal(4000m, price.GetProperty("outputPerMillion").GetDecimal());
+        var ann = overview.GetProperty("people").EnumerateArray().Single(p => p.GetProperty("userId").GetString() == _annId);
+        Assert.Equal(0.48m, ann.GetProperty("cost").GetDecimal());
+        Assert.Equal(quota.GetProperty("clientTokens").GetInt64(), ann.GetProperty("clientTokens").GetInt64());
+
+        // Prices are configuration only: there is no API to set one, for anyone.
+        var put = await _owner.PutAsJsonAsync($"/api/quotas/prices/{Model}", new { pricePer1K = 1m }, Ct);
+        Assert.Contains(put.StatusCode, new[] { HttpStatusCode.NotFound, HttpStatusCode.MethodNotAllowed });
+        Assert.Empty((await AuditAsync("quota.price.set")).EnumerateArray());
     }
 
     [Fact]
@@ -540,16 +558,13 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ConcurrentFirstWrites_OfALimitAndAPrice_AllSucceed()
+    public async Task ConcurrentFirstWrites_OfALimit_AllSucceed()
     {
         var limits = await Task.WhenAll(Enumerable.Range(1, 8).Select(i => SetLimitAsync(_owner, "team", "billing", i * 100)));
-        var prices = await Task.WhenAll(Enumerable.Range(1, 8).Select(i =>
-            _owner.PutAsJsonAsync("/api/quotas/prices/kagent/default-model-config", new { pricePer1K = i / 1000m }, Ct)));
 
-        Assert.All(limits.Concat(prices), r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
+        Assert.All(limits, r => Assert.Equal(HttpStatusCode.OK, r.StatusCode));
         var overview = await _owner.GetFromJsonAsync<JsonElement>("/api/quotas/overview", Ct);
         Assert.Single(overview.GetProperty("limits").EnumerateArray(), l => l.GetProperty("kind").GetString() == "team");
-        Assert.Single(overview.GetProperty("prices").EnumerateArray());
     }
 
     [Fact]
@@ -608,7 +623,7 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         var store = new QuotaStore(db);
         // 1 November 01:30 in Jerusalem is still 31 October in UTC.
         var clock = new QuotaClock(new DateTimeOffset(2026, 11, 1, 1, 30, 0, TimeSpan.FromHours(2)));
-        var quota = new DbChatQuota(new NoMembership(), new QuotaLedger(store), store, new QuotaInFlight(clock, TimeSpan.FromMinutes(10)), clock,
+        var quota = new DbChatQuota(new NoMembership(), new QuotaLedger(store, new CostCalculator(new PricingOptions())), store, new QuotaInFlight(clock, TimeSpan.FromMinutes(10)), clock,
             Microsoft.Extensions.Logging.Abstractions.NullLogger<DbChatQuota>.Instance);
         await store.SetLimitAsync(QuotaScopes.User, "zed", 100, "owner", clock.GetUtcNow(), Ct);
         await quota.RecordAsync(new ChatQuotaUsage("zed", "kagent/helper", Model, "c", new ChatUsage(80, 40, 120), false), Ct);

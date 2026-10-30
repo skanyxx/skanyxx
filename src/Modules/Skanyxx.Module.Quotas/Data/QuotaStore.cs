@@ -62,24 +62,6 @@ internal sealed class QuotaStore(QuotaDbContext db)
         return previous;
     }
 
-    public async Task<IReadOnlyList<QuotaPrice>> PricesAsync(CancellationToken ct) =>
-        await db.Prices.AsNoTracking().OrderBy(p => p.Model).ToListAsync(ct);
-
-    /// <summary>As <see cref="SetLimitAsync"/>: one upsert, the previous price read just before.</summary>
-    public async Task<decimal?> SetPriceAsync(string model, decimal? price, string actor, DateTimeOffset now, CancellationToken ct)
-    {
-        var row = db.Prices.Where(p => p.Model == model);
-        var previous = await row.Select(p => (decimal?)p.PricePer1K).FirstOrDefaultAsync(ct);
-        if (price is null)
-            await row.ExecuteDeleteAsync(ct);
-        else
-            await db.Database.ExecuteSqlAsync($"""
-                INSERT INTO quota_prices (model, price_per_1k, set_by, set_at) VALUES ({model}, {price.Value}, {actor}, {now})
-                ON CONFLICT (model) DO UPDATE SET price_per_1k = EXCLUDED.price_per_1k, set_by = EXCLUDED.set_by, set_at = EXCLUDED.set_at
-                """, ct);
-        return previous;
-    }
-
     /// <summary>Tokens approved requests added, per person, for <paramref name="month"/>.</summary>
     public async Task<IReadOnlyDictionary<string, long>> ExtrasAsync(DateOnly month, IReadOnlyCollection<string>? users, CancellationToken ct)
     {

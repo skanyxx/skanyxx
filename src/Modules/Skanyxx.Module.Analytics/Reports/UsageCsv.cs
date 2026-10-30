@@ -1,6 +1,7 @@
-using Skanyxx.Core.Platform.Analytics;
 using System.Globalization;
 using System.Text;
+using Skanyxx.Core.Platform.Analytics;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Data;
 using Skanyxx.Module.Analytics.Scopes;
 

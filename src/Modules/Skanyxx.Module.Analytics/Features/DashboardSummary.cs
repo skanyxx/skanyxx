@@ -1,4 +1,5 @@
 using Skanyxx.Core.Platform.Analytics;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Analytics.Reports;
 
 namespace Skanyxx.Module.Analytics.Features;
