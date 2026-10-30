@@ -1367,11 +1367,13 @@ Everyone sees their own percentage on Chat and on their account page.
   set their personal limits within the cap: the tightest team or department limit, or with none, the personal limit as
   it stands, which a supervisor may only lower. Team and department limits and prices are the owner's. Every rule is
   enforced by the API, not the page.
-- **Cost** is optional: the owner's USD price per 1,000 tokens per ModelConfig (`PUT api/quotas/prices/{ns}/{name}`). It is
-  an estimate, never a bill, and is always shown with that disclaimer. Ticket stage and Investigate step turns are
+- **Cost** is optional: prices come from configuration only, `Analytics:Prices:<namespace/name>:InputPerMillion` and
+  `OutputPerMillion` (plus `Analytics:Currency`), the same prices Analytics, the Dashboard and Chat use (D549); `/Quotas`
+  lists them read-only. Only the model's tokens are priced and counted against a limit; "Sent by us" (Skanyxx's own
+  estimate of what it sent, D548) is shown beside them. A cost is an estimate, never a bill, and is always shown with that disclaimer. Ticket stage and Investigate step turns are
   priced by the ModelConfig the agent's spec names (kagent's `default-model-config` when a declarative spec names none);
   a BYO agent's, or one kagent does not describe, stays unpriced (`unknown`).
-- **Audit**: `quota.limit.set`, `quota.price.set`, `quota.requested`, `quota.request.approved|denied`, with names and
+- **Audit**: `quota.limit.set`, `quota.requested`, `quota.request.approved|denied`, with names and
   numbers only (never a reason or chat text).
 - **New features that call a model** go through Core's `IChatQuota` (`AdmitAsync` before the turn, `RecordAsync` after,
   `ChatQuotaUsage.Measure` for the count); Investigate steps do (D385).
