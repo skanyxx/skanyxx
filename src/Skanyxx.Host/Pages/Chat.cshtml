@@ -44,7 +44,7 @@
                 <span class="chat-subtitle" id="chatSubtitle"></span>
             </div>
             <div class="quota-meter" data-quota-meter="compact" hidden></div>
-            <button type="button" class="usage-chip" id="usageChip" aria-expanded="false" aria-controls="usagePanel" title="Tokens in this chat">
+            <button type="button" class="usage-chip" id="usageChip" aria-expanded="false" aria-controls="usagePanel" title="Model tokens in this chat">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>
                 <span id="usageChipText">0 tokens</span>
             </button>
@@ -53,15 +53,19 @@
             </button>
         </header>
 
-        <!-- Tokens: per message on each answer, per chat here. The quota (IChatQuota) refuses a turn with a 429 the page shows as is; the meter above is the month's. -->
+        <!-- Tokens: per message on each answer, per chat here. Two counters, never one number (D548): what Skanyxx sent, by
+             its own estimate, and what the model spent, as kagent reports it. The quota (IChatQuota) counts the model's
+             only and refuses a turn with a 429 the page shows as is; the meter above is the month's. -->
         <div class="usage-panel" id="usagePanel" hidden>
-            <div class="stat-card"><span class="stat-label">Chat total</span><span class="stat-value" id="totalTokens">0</span></div>
+            <div class="stat-card"><span class="stat-label">Sent by us</span><span class="stat-value" id="clientTokens" title="Skanyxx's own estimate of what it sent the agent: your messages, files and the context it added">0</span></div>
+            <div class="stat-card"><span class="stat-label">Spent by model</span><span class="stat-value" id="totalTokens" title="The model's tokens, as kagent reports them">0</span></div>
             <div class="stat-card"><span class="stat-label">Input</span><span class="stat-value" id="promptTokens">0</span></div>
             <div class="stat-card"><span class="stat-label">Output</span><span class="stat-value" id="completionTokens">0</span></div>
-            <div class="stat-card"><span class="stat-label">Est. Cost</span><span class="stat-value" id="estCost" title="No price is known for this agent's model">n/a</span></div>
-            @* requirements.md §1.5, §3.5 (D273, D329): wherever money appears, the disclaimer appears with it, in one sentence. *@
+            <div class="stat-card"><span class="stat-label">Est. Cost</span><span class="stat-value" id="estCost" title="No price is configured for this agent's model">n/a</span></div>
+            @* requirements.md §1.5, §3.5 (D273, D329, D549): wherever money appears, the disclaimer appears with it. *@
             <p class="cost-disclaimer" role="note">
-                <strong>Cost is informational only, not accurate.</strong> Your provider's bill is authoritative. Skanyxx has no price for this agent's model, so it shows n/a.
+                <strong>Cost is informational only, not accurate.</strong> Your provider's bill is authoritative.
+                <span id="costBasis">No price is configured for this agent's model, so it shows n/a.</span>
             </p>
         </div>
 

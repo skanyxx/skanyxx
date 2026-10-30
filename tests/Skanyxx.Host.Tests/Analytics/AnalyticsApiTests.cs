@@ -161,8 +161,8 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
     [Fact]
     public async Task ASupervisor_SeesTheirTeam_NotTheOrganization_AndTheDashboardReadOnly()
     {
-        await ChatAsync(_ann, "seed", "Hello");
-        await ChatAsync(_eve, "seed", "Hello");
+        var anns = (await ChatAsync(_ann, "seed", "Hello")).GetProperty("clientTokens").GetInt64();
+        var eves = (await ChatAsync(_eve, "seed", "Hello")).GetProperty("clientTokens").GetInt64();
         await CardAsync(_sue, "team:billing", "invoice-day");
         await CardAsync(_owner, "company", "refund-window");
         await CardAsync(_eve, $"personal:{_eveId}", "eve-note");
@@ -176,6 +176,7 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
 
         var summary = await _sue.GetFromJsonAsync<JsonElement>("/api/dashboard/summary", Ct);
         Assert.Equal(1, summary.GetProperty("active7d").GetInt32()); // ann; eve is not in sue's team
+        Assert.Equal(anns, summary.GetProperty("clientTokens7d").GetInt64()); // D548: what was sent for ann only
         Assert.Equal(2, summary.GetProperty("people").GetInt32()); // sue and ann
         Assert.Equal(JsonValueKind.Null, summary.GetProperty("topUsers").ValueKind);
         Assert.Equal(JsonValueKind.Null, summary.GetProperty("recentEvents").ValueKind);
@@ -184,6 +185,8 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
 
         var owners = await _owner.GetFromJsonAsync<JsonElement>("/api/dashboard/summary", Ct);
         Assert.Equal(2, owners.GetProperty("active7d").GetInt32());
+        Assert.Equal(anns + eves, owners.GetProperty("clientTokens7d").GetInt64());
+        Assert.Equal(anns + eves, owners.GetProperty("clientTokensToday").GetInt64());
         Assert.Equal(2, owners.GetProperty("topUsers").GetArrayLength());
         Assert.Equal(3, owners.GetProperty("cardsPerDay").EnumerateArray().Sum(d => d.GetInt64()));
         Assert.NotEmpty(owners.GetProperty("recentEvents").EnumerateArray());
@@ -261,6 +264,15 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains(CostDisclaimer.Text.Replace("'", "&#x27;"), html);
         Assert.Contains("/lib/chartjs/chart.umd.min.js", html);
         Assert.Contains("id=\"events\"", html);
+        Assert.Contains("<strong>Sent by us</strong>", html);
+        var script = await (await browser.GetAsync("/js/dashboard.js")).Content.ReadAsStringAsync(Ct);
+        Assert.Contains("stat('Sent by us today / 7 days (estimate)'", script);
+        Assert.Contains("stat('Spent by model today (input / output)'", script);
+        var analytics = await (await browser.GetAsync("/Analytics")).Content.ReadAsStringAsync(Ct);
+        Assert.Contains("<strong>Sent by us</strong>", analytics);
+        var columns = await (await browser.GetAsync("/js/analytics.js")).Content.ReadAsStringAsync(Ct);
+        Assert.Contains("{ key: 'clientTokens', title: 'Sent by us'", columns);
+        Assert.Contains("{ key: 'tokens', title: 'Spent by model'", columns);
         Assert.Equal(HttpStatusCode.OK, (await _host.Client().GetAsync("/lib/chartjs/chart.umd.min.js", Ct)).StatusCode);
     }
 }

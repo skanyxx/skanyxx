@@ -34,12 +34,13 @@
         <h2 id="totals-title" class="insights-title"><span id="scope-name">Me</span> · <span id="range-name"></span></h2>
         <div id="totals" class="stat-grid" aria-live="polite"></div>
         <p id="notes" class="text-muted"></p>
+        <partial name="_TokenCounters" />
         <partial name="_CostDisclaimer" />
     </section>
 
     <section class="insights-section chart-grid">
-        <figure class="chart-card"><figcaption>Tokens over time by model</figcaption><div class="chart-box"><canvas id="chart-model" role="img" aria-label="Tokens per day, stacked by model"></canvas></div></figure>
-        <figure class="chart-card"><figcaption>Tokens over time by agent</figcaption><div class="chart-box"><canvas id="chart-agent" role="img" aria-label="Tokens per day, stacked by agent"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Model tokens over time by model</figcaption><div class="chart-box"><canvas id="chart-model" role="img" aria-label="Tokens per day, stacked by model"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Model tokens over time by agent</figcaption><div class="chart-box"><canvas id="chart-agent" role="img" aria-label="Tokens per day, stacked by agent"></canvas></div></figure>
         <figure class="chart-card" id="top-card"><figcaption id="top-title">Top users</figcaption><div class="chart-box"><canvas id="chart-top" role="img" aria-label="Top users or teams by tokens"></canvas></div></figure>
         <figure class="chart-card"><figcaption>Cache savings (estimated tokens saved)</figcaption><div class="chart-box"><canvas id="chart-saved" role="img" aria-label="Estimated tokens the answer cache saved per day"></canvas></div></figure>
     </section>

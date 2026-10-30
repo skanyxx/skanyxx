@@ -397,6 +397,20 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.InRange(html.LastIndexOf(QuotaCostDisclaimer.Title, people, StringComparison.Ordinal), html.IndexOf("id=\"people-title\"", StringComparison.Ordinal), people);
         Assert.Contains("id=\"setup-quotas\"", html);
         Assert.Contains("href=\"/Quotas\"", html);
+        // D548: the two counters are explained where they are shown; D549: prices are read-only, from configuration.
+        Assert.Contains("<strong>Sent by us</strong>", html);
+        Assert.Contains("<strong>Spent by model</strong>", html);
+        Assert.Contains("id=\"pricesNote\"", html);
+        Assert.Contains("<code>Analytics:Prices</code>", html);
+        Assert.DoesNotContain("priceDialog", html);
+        var script = await (await owner.GetAsync("/js/quotas.js")).Content.ReadAsStringAsync(Ct);
+        Assert.DoesNotContain("/api/quotas/prices", script);
+        Assert.DoesNotContain("Set price", script);
+        Assert.Contains("['Spent by model'], ['Sent by us', 'num']", script);
+        Assert.Contains("inputPerMillion", script);
+        var mine = await (await owner.GetAsync("/js/quota-mine.js")).Content.ReadAsStringAsync(Ct);
+        Assert.Contains("'Sent by us'", mine);
+        Assert.Contains("q.clientTokens", mine);
 
         var ann = new Browser(_host);
         await ann.SubmitAsync("/Login", new() { ["Email"] = "ann@skanyxx.example", ["Password"] = Password });
@@ -582,6 +596,8 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(15, tom.GetProperty("percent").GetInt32());
         Assert.Equal("", tom.GetProperty("email").GetString());
         Assert.Equal(0, tom.GetProperty("used").GetInt64());
+        Assert.Equal(0, tom.GetProperty("clientTokens").GetInt64());
+        Assert.Equal(JsonValueKind.Null, tom.GetProperty("cost").ValueKind);
         Assert.Empty(tom.GetProperty("teams").EnumerateArray());
         Assert.Equal(JsonValueKind.Null, tom.GetProperty("limit").ValueKind);
         Assert.DoesNotContain(overview.GetProperty("limits").EnumerateArray(), l => l.GetProperty("id").GetString() == tomId);
@@ -590,6 +606,7 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("ann@skanyxx.example", ann.GetProperty("email").GetString());
         var owners = await _owner.GetFromJsonAsync<JsonElement>("/api/quotas/overview", Ct);
         Assert.All(owners.GetProperty("people").EnumerateArray(), p => Assert.False(p.GetProperty("masked").GetBoolean()));
+        Assert.True(owners.GetProperty("people").EnumerateArray().Single(p => p.GetProperty("userId").GetString() == tomId).GetProperty("clientTokens").GetInt64() > 0);
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 // The Quotas panel (api/quotas/overview): people and their usage, requests to decide, team and department limits, and
-// model prices. The server decides who may do what; this page offers only what the overview says the viewer may do,
-// and shows the server's words when it refuses.
+// the configured model prices (read-only, D549). The server decides who may do what; this page offers only what the
+// overview says the viewer may do, and shows the server's words when it refuses. The model's tokens (what limits count)
+// and what Skanyxx sent are two columns, never one number (D548).
 (() => {
     'use strict';
     const root = document.getElementById('quotas');
@@ -69,20 +70,23 @@
         h('td', {}, h('div', { class: 'quota-cell' },
             h('span', { text: p.percent === null ? 'no limit' : `${p.percent}% of their limit` }),
             p.percent === null ? null : bar(p))),
+        h('td', { class: 'num text-muted', text: 'Not shown' }),
         h('td', { class: 'text-muted', text: 'Not yours to manage' }),
         h('td', { class: 'num text-muted', text: 'Not shown' }),
         h('td', {}));
 
     function renderPeople() {
         $('monthLine').textContent = `Month ${data.month} (UTC). Usage resets on ${data.resetsOn} (UTC).`;
-        table('peopleTable', [['Person'], ['Teams'], ['Used this month'], ['Limit set by'], ['Est. cost', 'num'], ['', '']],
+        table('peopleTable', [['Person'], ['Teams'], ['Spent by model'], ['Sent by us', 'num'], ['Limit set by'], ['Est. cost', 'num'], ['', '']],
             data.people.map(p => p.masked ? maskedRow(p) : h('tr', {},
                 h('td', {}, h('span', { text: p.name }), h('span', { class: 'table-cell-sub', text: p.email })),
                 h('td', { text: p.teams.join(', ') || 'No team' }),
                 h('td', {}, h('div', { class: 'quota-cell' },
                     h('span', { text: p.limit === null ? `${number(p.used)} · no limit` : `${number(p.used)} of ${number(p.limit)} (${p.percent}%)` }),
                     p.limit === null ? null : bar(p),
+                    h('span', { class: 'table-cell-sub', text: `Input ${number(p.promptTokens)} · Output ${number(p.completionTokens)}` }),
                     p.estimatedTurns > 0 ? h('span', { class: 'table-cell-sub', text: `incl. ~${number(p.estimatedTokens)} estimated (kagent reported nothing for ${number(p.estimatedTurns)} turns)` }) : null)),
+                h('td', { class: 'num', title: 'Skanyxx\'s own estimate of what it sent; not counted against the limit', text: number(p.clientTokens) }),
                 h('td', {}, h('span', { text: p.bindingKind ? `${kindLabel[p.bindingKind]}${p.bindingKind === 'user' ? '' : ' ' + p.bindingName}` : 'none' }),
                     p.extra > 0 ? h('span', { class: 'table-cell-sub', text: `+${number(p.extra)} approved` }) : null,
                     p.personalLimit !== null && p.bindingKind !== 'user' ? h('span', { class: 'table-cell-sub', text: `personal ${number(p.personalLimit)}` }) : null),
@@ -120,17 +124,14 @@
             'No teams or departments yet. Create them on the Org page.');
     }
 
+    // Read-only: prices come from configuration (Analytics:Prices), the same ones Analytics and Chat use.
     function renderPrices() {
-        const price = model => data.prices.find(p => p.model === model)?.pricePer1K ?? null;
-        const rows = data.models.map(m => h('tr', {},
-            h('td', { text: m }),
-            h('td', { class: 'num', text: price(m) === null ? 'no price' : `$${price(m)}` }),
-            h('td', {}, h('div', { class: 'row-actions' }, isOwner ? button('Set price', b => setPrice(b, m, price(m))) : null))));
-        table('pricesTable', [['Model'], ['USD per 1,000 tokens', 'num'], ['', '']], rows, 'No model has been used or priced yet.');
-        if (isOwner) {
-            const add = button('Add a model price', b => setPrice(b, '', null), 'btn btn-secondary');
-            $('pricesTable').append(h('caption', {}, add));
-        }
+        const rows = data.prices.map(p => h('tr', {},
+            h('td', { text: p.model }),
+            h('td', { class: 'num', text: number(p.inputPerMillion) }),
+            h('td', { class: 'num', text: number(p.outputPerMillion) })));
+        table('pricesTable', [['Model'], [`Input, ${data.currency} per million`, 'num'], [`Output, ${data.currency} per million`, 'num']], rows,
+            'No price is configured, so no cost is estimated.');
     }
 
     async function load() {
@@ -178,22 +179,6 @@
             monthlyTokens === null ? `Limit removed for ${name}.` : `Limit for ${name} set to ${number(monthlyTokens)} tokens.`);
     }
 
-    async function setPrice(trigger, model, current) {
-        const modelInput = $('priceModel');
-        const value = $('priceValue');
-        modelInput.value = model;
-        modelInput.readOnly = model !== '';
-        value.value = current ?? '';
-        const answer = await skx.ask($('priceDialog'), model ? value : modelInput);
-        if (answer !== 'save' && answer !== 'clear') return;
-        const slash = modelInput.value.indexOf('/');
-        const [ns, name] = slash < 0 ? ['', ''] : [modelInput.value.slice(0, slash), modelInput.value.slice(slash + 1)];
-        if (!ns || !name || name.includes('/')) { skx.toast('A model is its ModelConfig as namespace/name.', { tone: 'error' }); return; }
-        if (answer === 'save' && value.value === '') { skx.toast('Type a price, or use Remove price.', { tone: 'error' }); return; }
-        const pricePer1K = answer === 'clear' ? null : Number(value.value);
-        await save(trigger, 'PUT', `/api/quotas/prices/${encodeURIComponent(ns)}/${encodeURIComponent(name)}`, { pricePer1K },
-            pricePer1K === null ? `Price removed for ${modelInput.value}.` : `Price for ${modelInput.value} saved.`);
-    }
 
     async function decide(trigger, request, decision) {
         const approve = decision === 'approve';

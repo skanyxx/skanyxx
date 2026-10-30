@@ -73,10 +73,17 @@
             notes.push(h('span', { text: `Estimated cost: ${q.cost.toLocaleString(undefined, { style: 'currency', currency: data.currency, maximumFractionDigits: 4 })} (an estimate, not a bill${q.unpricedModels.length ? `; no price for ${q.unpricedModels.join(', ')}` : ''}).` }));
 
         meter.querySelector('[data-quota-body]').replaceChildren(
+            // The limit counts the model's tokens; what Skanyxx sent is its own estimate, shown apart (D548, D550).
             h('div', { class: 'quota-line' },
-                h('span', { text: q.limit === null ? 'Tokens used' : 'Tokens used of your monthly limit' }),
+                h('span', { text: q.limit === null ? 'Spent by model' : 'Spent by model, of your monthly limit' }),
                 h('strong', { text: q.limit === null ? number(q.used) : `${number(q.used)} of ${number(q.limit)} (${q.percent}%)` })),
             q.limit === null ? null : bar(q, 'Your monthly tokens'),
+            h('div', { class: 'quota-line' },
+                h('span', { text: 'Input · Output' }),
+                h('span', { text: `${number(q.promptTokens)} · ${number(q.completionTokens)}` })),
+            h('div', { class: 'quota-line' },
+                h('span', { title: 'Skanyxx\'s own estimate of what it sent the agents; not counted against your limit or priced', text: 'Sent by us' }),
+                h('span', { text: number(q.clientTokens) })),
             h('div', { class: 'quota-notes' }, ...notes),
             h('div', { class: 'quota-actions' }, requestButton(data)));
         meter.querySelector('[data-quota-cost]').hidden = q.cost === null;

@@ -73,7 +73,9 @@
             stat('People (enabled)', number(s.people)),
             stat('Active users today / 7 days', `${number(s.activeToday)} / ${number(s.active7d)}`),
             stat('New chats today / 7 days', `${number(s.chatsToday)} / ${number(s.chats7d)}`),
-            stat('Tokens today (in / out)', `${number(s.tokensInToday)} / ${number(s.tokensOutToday)}`, spark),
+            // Two counters, never one number (D548): the model's tokens and what Skanyxx sent, by its own estimate.
+            stat('Spent by model today (input / output)', `${number(s.tokensInToday)} / ${number(s.tokensOutToday)}`, spark),
+            stat('Sent by us today / 7 days (estimate)', `${number(s.clientTokensToday)} / ${number(s.clientTokens7d)}`),
             stat('Answer cache hit rate (7 days)', hitRate, el('div', { class: 'stat-delta' }, `≈ ${number(s.tokensSaved7d)} tokens saved (estimate)`)),
             stat('Estimated cost, 7 days', cost(s.cost7d)),
             stat('Estimated cost, 30 days', cost(s.cost30d)));

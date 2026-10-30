@@ -147,9 +147,13 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains("/api/chat/conversations", script);
     }
 
-    /// <summary>requirements.md §1.5, §3.5 (D273): cost carries the disclaimer, and no model's price is assumed (was GPT-4's for every model).</summary>
+    /// <summary>
+    /// requirements.md §1.5, §3.5 (D273): cost carries the disclaimer, and no model's price is assumed (was GPT-4's for
+    /// every model). D548: "Sent by us" and "Spent by model" are two tiles, never one number; D549: the estimate comes
+    /// from the configured price of the agent's model, n/a until one is known.
+    /// </summary>
     [Fact]
-    public async Task TheChatPage_ShowsCostAsNa_WithTheDisclaimer()
+    public async Task TheChatPage_ShowsBothCounters_AndCostAsNaUntilAPriceIsKnown_WithTheDisclaimer()
     {
         var browser = new Browser(_host);
         await browser.SubmitAsync("/Setup", new()
@@ -159,11 +163,22 @@ public sealed class ChatContextTests(PostgresFixture fixture) : IAsyncLifetime
 
         var page = await (await browser.GetAsync("/Chat")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
 
-        Assert.Contains("<span class=\"stat-value\" id=\"estCost\" title=\"No price is known for this agent's model\">n/a</span>", page);
+        Assert.Contains("<span class=\"stat-value\" id=\"estCost\" title=\"No price is configured for this agent's model\">n/a</span>", page);
         Assert.Contains("Cost is informational only, not accurate.", page);
         Assert.Contains("Your provider's bill is authoritative.", page);
         Assert.DoesNotContain("GPT-4", page);
         Assert.DoesNotContain("estCost').textContent", page);
+        string[] tiles = ["Sent by us", "Spent by model", "Input", "Output", "Est. Cost"];
+        var at = tiles.Select(t => page.IndexOf($"<span class=\"stat-label\">{t}</span>", StringComparison.Ordinal)).ToList();
+        Assert.All(at, i => Assert.True(i > 0));
+        Assert.Equal(at.Order(), at);
+        Assert.Contains("id=\"clientTokens\"", page);
+        Assert.DoesNotContain("Chat total", page);
+
+        var script = await (await browser.GetAsync("/js/chat.js")).Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("state.price = d.price || null;", script);
+        Assert.Contains("state.usage.prompt / 1e6 * price.inputPerMillion + state.usage.completion / 1e6 * price.outputPerMillion", script);
+        Assert.Contains("$('clientTokens').textContent = formatTokens(state.clientTokens);", script);
     }
 
     // Chat creates each kagent session as the person, so a reload reads it back as them (D274, D315; the owner's default

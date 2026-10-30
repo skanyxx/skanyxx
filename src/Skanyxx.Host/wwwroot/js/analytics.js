@@ -51,8 +51,11 @@
         const t = r.totals, p = r.previous ?? undefined;
         const pick = key => p === undefined ? undefined : p[key];
         document.getElementById('totals').replaceChildren(
-            stat('Tokens in', number(t.tokensIn), t.tokensIn, pick('tokensIn')),
-            stat('Tokens out', number(t.tokensOut), t.tokensOut, pick('tokensOut')),
+            // Two counters, never one number (D548): the model's tokens (priced) and what Skanyxx sent (its own estimate).
+            stat('Spent by model', number(t.tokensIn + t.tokensOut), t.tokensIn + t.tokensOut, p === undefined ? undefined : p.tokensIn + p.tokensOut),
+            stat('Model input', number(t.tokensIn), t.tokensIn, pick('tokensIn')),
+            stat('Model output', number(t.tokensOut), t.tokensOut, pick('tokensOut')),
+            stat('Sent by us (estimate)', number(t.clientTokens), t.clientTokens, pick('clientTokens')),
             stat('Chat turns', number(t.requests), t.requests, pick('requests')),
             stat('New chats', number(t.chats), t.chats, pick('chats')),
             stat('Active people', number(t.activeUsers), t.activeUsers, pick('activeUsers')),
@@ -96,9 +99,10 @@
         { key: 'name', title: 'Name', value: row => row.name },
         { key: 'requests', title: 'Turns', num: true, value: row => row.totals.requests },
         { key: 'chats', title: 'New chats', num: true, value: row => row.totals.chats },
-        { key: 'tokensIn', title: 'Tokens in', num: true, value: row => row.totals.tokensIn },
-        { key: 'tokensOut', title: 'Tokens out', num: true, value: row => row.totals.tokensOut },
-        { key: 'tokens', title: 'Tokens', num: true, value: row => row.totals.tokensIn + row.totals.tokensOut },
+        { key: 'clientTokens', title: 'Sent by us', num: true, value: row => row.totals.clientTokens },
+        { key: 'tokens', title: 'Spent by model', num: true, value: row => row.totals.tokensIn + row.totals.tokensOut },
+        { key: 'tokensIn', title: 'Model input', num: true, value: row => row.totals.tokensIn },
+        { key: 'tokensOut', title: 'Model output', num: true, value: row => row.totals.tokensOut },
         { key: 'cacheHits', title: 'Cache hits', num: true, value: row => row.totals.cacheHits },
         { key: 'errors', title: 'Failed', num: true, value: row => row.totals.errors },
         { key: 'activeUsers', title: 'Active people', num: true, value: row => row.totals.activeUsers },

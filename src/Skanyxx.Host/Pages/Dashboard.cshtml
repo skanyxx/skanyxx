@@ -22,11 +22,12 @@
     <section class="insights-section" aria-labelledby="glance-title">
         <h2 id="glance-title" class="insights-title">Usage at a glance</h2>
         <div id="glance" class="stat-grid"></div>
+        <partial name="_TokenCounters" />
         <partial name="_CostDisclaimer" />
     </section>
 
     <section class="insights-section chart-grid" aria-label="Last 30 days">
-        <figure class="chart-card"><figcaption>Tokens per day (30 days)</figcaption><div class="chart-box"><canvas id="chart-tokens" role="img" aria-label="Tokens in and out per day"></canvas></div></figure>
+        <figure class="chart-card"><figcaption>Model tokens per day (30 days)</figcaption><div class="chart-box"><canvas id="chart-tokens" role="img" aria-label="Tokens in and out per day"></canvas></div></figure>
         <figure class="chart-card"><figcaption>Chats per day by agent</figcaption><div class="chart-box"><canvas id="chart-chats" role="img" aria-label="New chats per day, stacked by agent"></canvas></div></figure>
         <figure class="chart-card"><figcaption>Failed turns per day</figcaption><div class="chart-box"><canvas id="chart-errors" role="img" aria-label="Chat turns that failed per day"></canvas></div></figure>
         <figure class="chart-card"><figcaption>New memory cards per day</figcaption><div class="chart-box"><canvas id="chart-cards" role="img" aria-label="Memory cards created per day"></canvas></div></figure>
