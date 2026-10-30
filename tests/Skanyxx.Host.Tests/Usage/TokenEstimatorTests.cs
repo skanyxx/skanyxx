@@ -1,5 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Options;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Chat.Features.Conversations;
@@ -41,6 +44,36 @@ public sealed class TokenEstimatorTests
         Assert.True(estimated.Estimated);
         Assert.Equal(new ChatUsage(100, 10, 110), estimated.Usage);
         Assert.Equal(100, estimated.ClientTokens);
+
+        // Chat counted its images too: the estimate's input is everything sent, and so is the client count.
+        var withImages = ChatQuotaUsage.Measure(Estimator, "ann", "kagent/a", "kagent/m", "c", ChatUsage.None, prompt, "", sent: 900);
+        Assert.Equal(900, withImages.Usage.Prompt);
+        Assert.Equal(900, withImages.ClientTokens);
+    }
+
+    [Theory]
+    [InlineData("US$")]
+    [InlineData("usd")]
+    [InlineData("")]
+    public void ACurrencyThatIsNotAnIsoCode_IsRefusedAtStart(string currency)
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Analytics:Currency"] = currency }).Build();
+        using var services = new ServiceCollection().AddTokenUsage(configuration).BuildServiceProvider();
+
+        Assert.Throws<OptionsValidationException>(() => services.GetRequiredService<CostCalculator>());
+    }
+
+    [Fact]
+    public void TheCalculator_PricesInputAndOutputApart_AndNamesUnpricedModels()
+    {
+        var cost = new CostCalculator(new PricingOptions { Prices = { ["kagent/m"] = new ModelPrice { InputPerMillion = 1, OutputPerMillion = 4 } }, Currency = "EUR" });
+
+        var estimate = cost.Estimate([new("kagent/m", 1_000_000, 500_000), new("kagent/free", 10, 0), new("kagent/idle", 0, 0)]);
+
+        Assert.True(estimate.Priced);
+        Assert.Equal(3m, estimate.Amount);
+        Assert.Equal("EUR", estimate.Currency);
+        Assert.Equal(["kagent/free"], estimate.UnpricedModels);
     }
 
     [Fact]

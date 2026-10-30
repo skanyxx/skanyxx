@@ -14,6 +14,8 @@ public static class UsageServices
         services.AddOptions<PricingOptions>()
             .Bind(configuration.GetSection(PricingOptions.Section))
             .Validate(o => o.Prices.Values.All(p => p.InputPerMillion >= 0 && p.OutputPerMillion >= 0), "Analytics:Prices cannot be negative.")
+            // The pages format money with it (Intl currency style): anything but an ISO 4217 code would break them.
+            .Validate(o => o.Currency.Length == 3 && o.Currency.All(char.IsAsciiLetterUpper), "Analytics:Currency must be an ISO 4217 code, such as USD.")
             .ValidateOnStart();
         services.AddSingleton(sp => new CostCalculator(sp.GetRequiredService<IOptions<PricingOptions>>().Value));
         return services;

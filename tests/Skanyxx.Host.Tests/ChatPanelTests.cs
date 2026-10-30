@@ -35,6 +35,9 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
             s["KAgent:BaseUrl"] = "127.0.0.1";
             s["KAgent:Port"] = _kagent.Port.ToString();
             s["KAgent:ChatTimeoutSeconds"] = "20";
+            s["Analytics:Prices:kagent/default-model-config:InputPerMillion"] = "2.5";
+            s["Analytics:Prices:kagent/default-model-config:OutputPerMillion"] = "10";
+            s["Analytics:Currency"] = "EUR";
             s["Chat:Files:MaxTextBytes"] = MaxTextBytes.ToString();
             s["Chat:Files:MaxFilesPerPerson"] = MaxFilesPerPerson.ToString();
         }, services => services.AddScoped<IChatQuota, TestQuota>());
@@ -114,6 +117,18 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task AgentDetails_OfAnUnpricedModel_HaveNoPrice()
+    {
+        var employee = await EmployeeAsync();
+        _kagent.AgentObjects["kagent/local"] = Agent("local", new JsonObject { ["skanyxx.dev/merged"] = "true" },
+            new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject { ["modelConfig"] = "ollama-local", ["systemMessage"] = "x" } });
+
+        var details = await employee.GetFromJsonAsync<JsonElement>("/api/chat/agents/kagent/local", Ct);
+
+        Assert.Equal(JsonValueKind.Null, details.GetProperty("price").ValueKind);
+    }
+
+    [Fact]
     public async Task AgentDetails_ShowModelToolsSkillsAndMemory_NeverTheSystemPrompt()
     {
         var employee = await EmployeeAsync();
@@ -127,6 +142,12 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("Answers refund questions", details.GetProperty("description").GetString());
         Assert.Equal("gpt-4o", details.GetProperty("model").GetString());
         Assert.Equal("kagent/default-model-config", details.GetProperty("modelConfig").GetString());
+        // D549: the configured price of the agent's model, for Chat's estimate.
+        var price = details.GetProperty("price");
+        Assert.Equal("kagent/default-model-config", price.GetProperty("model").GetString());
+        Assert.Equal(2.5m, price.GetProperty("inputPerMillion").GetDecimal());
+        Assert.Equal(10m, price.GetProperty("outputPerMillion").GetDecimal());
+        Assert.Equal("EUR", price.GetProperty("currency").GetString());
         var server = Assert.Single(details.GetProperty("toolServers").EnumerateArray());
         Assert.Equal("kagent/docs-mcp", server.GetProperty("ref").GetString());
         Assert.False(server.GetProperty("allTools").GetBoolean());

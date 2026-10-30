@@ -156,8 +156,8 @@ internal sealed class ChatTurns(
         try
         {
             // The images went to kagent too: what was sent is the turn's own count, not the prompt's alone.
-            var measured = ChatQuotaUsage.Measure(estimator, command.UserId, start.AgentRef, ModelRef(start.Agent), start.SessionId, usage, start.Prompt, answer);
-            await quota.RecordAsync(measured with { ClientTokens = start.ClientTokens }, CancellationToken.None);
+            await quota.RecordAsync(ChatQuotaUsage.Measure(estimator, command.UserId, start.AgentRef, ModelRef(start.Agent), start.SessionId,
+                usage, start.Prompt, answer, start.ClientTokens), CancellationToken.None);
         }
         finally
         {

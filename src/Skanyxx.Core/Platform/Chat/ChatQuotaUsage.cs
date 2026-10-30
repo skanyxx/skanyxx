@@ -14,16 +14,18 @@ public sealed record ChatQuotaUsage(
     /// <summary>
     /// kagent's count when it reported one; otherwise the <paramref name="estimator"/>'s count of prompt and answer,
     /// marked as an estimate. Never nothing: a turn that reached kagent spent at least its prompt, also when it failed or
-    /// was stopped before any answer (D380). <see cref="ClientTokens"/> is the prompt's count either way.
+    /// was stopped before any answer (D380). <see cref="ClientTokens"/> is what was sent either way: <paramref name="sent"/>
+    /// when the caller counted more than the prompt's text (Chat's images), else the prompt's count.
     /// </summary>
     public static ChatQuotaUsage Measure(
-        ITokenEstimator estimator, string userId, string agentRef, string model, string conversationId, ChatUsage reported, string prompt, string answer)
+        ITokenEstimator estimator, string userId, string agentRef, string model, string conversationId, ChatUsage reported, string prompt, string answer,
+        long? sent = null)
     {
-        var sent = estimator.Count(prompt, model);
+        var client = sent ?? estimator.Count(prompt, model);
         if (reported.Total > 0)
-            return new(userId, agentRef, model, conversationId, reported, false, sent);
+            return new(userId, agentRef, model, conversationId, reported, false, client);
         var said = estimator.Count(answer, model);
-        return new(userId, agentRef, model, conversationId, new ChatUsage(sent, said, sent + said), true, sent);
+        return new(userId, agentRef, model, conversationId, new ChatUsage(client, said, client + said), true, client);
     }
 
     /// <summary>An agent's ModelConfig as the price key: <c>namespace/name</c>, its own namespace when it names none; <c>unknown</c> without one.</summary>

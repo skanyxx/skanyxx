@@ -126,10 +126,11 @@
 
     // Read-only: prices come from configuration (Analytics:Prices), the same ones Analytics and Chat use.
     function renderPrices() {
+        const price = n => Number(n).toLocaleString(undefined, { maximumFractionDigits: 6 });
         const rows = data.prices.map(p => h('tr', {},
             h('td', { text: p.model }),
-            h('td', { class: 'num', text: number(p.inputPerMillion) }),
-            h('td', { class: 'num', text: number(p.outputPerMillion) })));
+            h('td', { class: 'num', text: price(p.inputPerMillion) }),
+            h('td', { class: 'num', text: price(p.outputPerMillion) })));
         table('pricesTable', [['Model'], [`Input, ${data.currency} per million`, 'num'], [`Output, ${data.currency} per million`, 'num']], rows,
             'No price is configured, so no cost is estimated.');
     }
