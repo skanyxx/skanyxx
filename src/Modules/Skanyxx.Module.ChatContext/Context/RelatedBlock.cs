@@ -1,18 +1,18 @@
 using System.Globalization;
 using Skanyxx.Core.Platform.ChatContext;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.ChatContext.Data;
 using Skanyxx.Module.ChatContext.Extraction;
 
 namespace Skanyxx.Module.ChatContext.Context;
 
 /// <summary>
-/// The related-work text prepended to a new chat's first message (D262), within a token budget estimated at 4 characters
-/// a token (the Chat page's own estimate). Sessions go in rank order until the next would not fit; one
+/// The related-work text prepended to a new chat's first message (D262), within a token budget counted by the shared
+/// <see cref="ITokenEstimator"/> (D548). Sessions go in rank order until the next would not fit; one
 /// item is never cut mid-way. Prior text is data, not instructions: the header says so, and the block is fenced.
 /// </summary>
 internal static class RelatedBlock
 {
-    public const int CharsPerToken = 4;
     public const int MaxItemChars = 600;
 
     // D503: the start and the end are what Chat's PromptBlocks strips from a reopened message; keep them.
@@ -23,31 +23,30 @@ internal static class RelatedBlock
 
     public const string Footer = "[End of related prior work]\n\n";
 
-    public sealed record Result(string Text, IReadOnlyList<SessionSummary> Sessions)
-    {
-        public int EstimatedTokens => (Text.Length + CharsPerToken - 1) / CharsPerToken;
-    }
+    public sealed record Result(string Text, IReadOnlyList<SessionSummary> Sessions, long EstimatedTokens);
 
-    public static Result Build(IReadOnlyList<SessionSummary> sessions, int tokenBudget)
+    /// <summary>Each piece is counted on its own, so the whole block never counts more than <paramref name="tokenBudget"/>.</summary>
+    public static Result Build(IReadOnlyList<SessionSummary> sessions, int tokenBudget, ITokenEstimator estimator)
     {
-        var budget = tokenBudget * CharsPerToken - Header.Length - Footer.Length;
+        var budget = tokenBudget - estimator.Count(Header + Footer);
         var lines = new List<string>();
         var usedSessions = new List<SessionSummary>();
 
         foreach (var session in sessions)
-            if (TryAdd(Line(session), lines, ref budget))
-                usedSessions.Add(session);
+        {
+            var line = Line(session);
+            var cost = estimator.Count(line);
+            if (cost > budget)
+                continue;
+            lines.Add(line);
+            usedSessions.Add(session);
+            budget -= cost;
+        }
 
-        return lines.Count == 0 ? new Result("", []) : new Result(Header + string.Concat(lines) + Footer, usedSessions);
-    }
-
-    private static bool TryAdd(string line, List<string> lines, ref int budget)
-    {
-        if (line.Length > budget)
-            return false;
-        lines.Add(line);
-        budget -= line.Length;
-        return true;
+        if (lines.Count == 0)
+            return new Result("", [], 0);
+        var text = Header + string.Concat(lines) + Footer;
+        return new Result(text, usedSessions, estimator.Count(text));
     }
 
     private static string Line(SessionSummary s)

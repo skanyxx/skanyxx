@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Chat;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Core.Services;
 
 namespace Skanyxx.Module.Agents.Studio.Features;
@@ -13,7 +14,7 @@ namespace Skanyxx.Module.Agents.Studio.Features;
 /// whatever ended it, a malformed answer included (D383, D388). When our deadline passes or the caller leaves, kagent is
 /// asked to stop this turn's task, as Chat does (D381).
 /// </summary>
-internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, ILogger<StudioChat> logger)
+internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, ITokenEstimator estimator, ILogger<StudioChat> logger)
 {
     /// <param name="model">The agent's ModelConfig as <c>namespace/name</c> (the quota's price key).</param>
     public async Task<Outcome<ChatResponse>> SendAsync(
@@ -79,7 +80,7 @@ internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, ILogg
 
     // Not the request's token: the tokens were spent whether or not the caller is still there.
     private Task RecordAsync(string userId, string agentRef, string model, string sessionId, ChatUsage usage, string prompt, string answer) =>
-        quota.RecordAsync(ChatQuotaUsage.Measure(userId, agentRef, model, sessionId, usage, prompt, answer), CancellationToken.None);
+        quota.RecordAsync(ChatQuotaUsage.Measure(estimator, userId, agentRef, model, sessionId, usage, prompt, answer), CancellationToken.None);
 
     private async Task DeleteAsync(string sessionId, string userId)
     {

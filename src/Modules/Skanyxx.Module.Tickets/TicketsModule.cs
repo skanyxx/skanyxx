@@ -9,6 +9,7 @@ using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Tickets;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Tickets.Data;
 using Skanyxx.Module.Tickets.Engine;
 using Skanyxx.Module.Tickets.Features.Runs;
@@ -54,6 +55,7 @@ public sealed class TicketsModule : IModule
         services.AddScoped<StageRunner>();
         // The token quota's hook: unlimited unless the quotas module is loaded (D383).
         services.TryAddScoped<IChatQuota, UnlimitedChatQuota>();
+        services.AddTokenUsage(configuration);
         services.AddScoped<RunStepper>();
         services.AddScoped<ITicketRuns, TicketRuns>();
 

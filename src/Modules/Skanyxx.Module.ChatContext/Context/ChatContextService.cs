@@ -4,6 +4,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform.ChatContext;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.ChatContext.Access;
 using Skanyxx.Module.ChatContext.Cache;
 using Skanyxx.Module.ChatContext.Data;
@@ -19,7 +20,7 @@ namespace Skanyxx.Module.ChatContext.Context;
 /// </summary>
 internal sealed class ChatContextService(
     ChatContextDbContext db, SessionSearch search, SessionAccess access, IChatExtractor extractor, DeterministicExtractor probe, AnswerCache cache,
-    IOptions<ChatContextOptions> options, TimeProvider clock, ILogger<ChatContextService> logger) : IChatContext
+    IOptions<ChatContextOptions> options, ITokenEstimator estimator, TimeProvider clock, ILogger<ChatContextService> logger) : IChatContext
 {
     public const int MaxTitle = 80;
 
@@ -34,7 +35,7 @@ internal sealed class ChatContextService(
                 cacheKey = await cache.KeyAsync(me, start.AgentRef, start.AgentRevision, start.TicketKeys, start.Message);
                 if (!start.NoCache && cacheKey is not null && await cache.GetAsync(cacheKey) is { } hit && await StillOneTurnAsync(me, hit, ct))
                 {
-                    await cache.RecordHitAsync(me, (start.Message.Length + hit.Content.Length) / RelatedBlock.CharsPerToken);
+                    await cache.RecordHitAsync(me, estimator.Count(start.Message + hit.Content));
                     return ChatPreparation.None with { Cached = Answer(hit) };
                 }
             }
@@ -48,7 +49,7 @@ internal sealed class ChatContextService(
             var tickets = start.TicketKeys.Union(asked.TicketKeys).ToList();
             var readable = await access.ReadableAsync(start.Reader, ct);
             var sessions = await search.RelatedAsync(readable, start.Message, tickets, asked.Categories, settings.MaxRelatedSessions, ct);
-            var block = RelatedBlock.Build(sessions, settings.RelatedTokenBudget);
+            var block = RelatedBlock.Build(sessions, settings.RelatedTokenBudget, estimator);
             if (block.Text.Length > 0)
                 logger.LogInformation("Related work for {UserId}: {Sessions} sessions, ~{Tokens} tokens",
                     me, block.Sessions.Count, block.EstimatedTokens);

@@ -9,6 +9,7 @@ using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Memory;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Agents.Plugins;
 using Skanyxx.Module.Agents.Plugins.Features;
 using Skanyxx.Module.Agents.Plugins.Sources;
@@ -80,6 +81,7 @@ public class AgentsModule : IModule
         services.AddSingleton<DeployStatusReader>();
         services.AddScoped<StudioChat>();
         services.TryAddScoped<IChatQuota, UnlimitedChatQuota>();
+        services.AddTokenUsage(configuration);
 
         services.AddOptions<PluginsOptions>().Bind(configuration.GetSection(PluginsOptions.Section));
         services.AddHttpClient(GitArchiveSource.HttpClientName, client => client.Timeout = GitArchiveSource.Timeout)

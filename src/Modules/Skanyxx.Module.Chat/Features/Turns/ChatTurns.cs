@@ -8,6 +8,7 @@ using Skanyxx.Core.Platform.Analytics;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Memory;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Core.Services;
 using Skanyxx.Module.Chat.Features.Agents;
 using Skanyxx.Module.Chat.Features.Conversations;
@@ -26,7 +27,7 @@ namespace Skanyxx.Module.Chat.Features.Turns;
 /// </summary>
 internal sealed class ChatTurns(
     KAgentApiClient kagent, IRelatedMemory related, ICardExtractor extractor, IChatContext context, IChatQuota quota, ChatFiles files,
-    IPublisher publisher, TimeProvider clock, ILogger<ChatTurns> logger)
+    ITokenEstimator estimator, IPublisher publisher, TimeProvider clock, ILogger<ChatTurns> logger)
 {
     public const int MaxTitle = 80;
 
@@ -102,8 +103,10 @@ internal sealed class ChatTurns(
             await files.DetachConversationAsync(command.UserId, sessionId, CancellationToken.None);
             throw;
         }
-        return Outcome<TurnStart>.Ok(new TurnStart(agent, agentRef, sessionId, isNew, title, prepared, memory,
-            PromptBlocks.Prompt(prepared.Context + memory.Block, turnFiles.Block, command.Message), turnFiles.Images, admission));
+        var prompt = PromptBlocks.Prompt(prepared.Context + memory.Block, turnFiles.Block, command.Message);
+        var model = ModelRef(agent);
+        var sent = estimator.Count(prompt, model) + turnFiles.Images.Sum(i => estimator.CountBase64(i.Bytes.Length, model));
+        return Outcome<TurnStart>.Ok(new TurnStart(agent, agentRef, sessionId, isNew, title, prepared, memory, prompt, turnFiles.Images, admission, sent));
     }
 
     /// <summary>
@@ -120,17 +123,17 @@ internal sealed class ChatTurns(
                 CancellationToken.None);
         await extractor.ChatTurnAsync(new ChatTurnDigest(
             command.UserId, start.Agent.Name, start.AgentRef, start.SessionId, command.Message, answer, start.IsNew), CancellationToken.None);
-        await RollupAsync(command, start.Agent, reported ?? Tokens(usage), start.IsNew, cached: false, saved: 0, failed: false);
+        await RollupAsync(command, start, reported ?? Tokens(usage), start.IsNew, cached: false, saved: 0, failed: false);
     }
 
     /// <summary>An answer from the cache, for the usage rollup: no tokens spent, the cache's own estimate saved.</summary>
     public Task CachedAsync(SendChatMessageCommand command, TurnStart start, ChatResponse cached) =>
-        RollupAsync(command, start.Agent, TokenUsage.None, newChat: false, cached: true,
-            saved: (command.Message.Length + cached.Message.Content.Length) / ChatQuotaUsage.CharsPerToken, failed: false);
+        RollupAsync(command, start, TokenUsage.None, newChat: false, cached: true,
+            saved: estimator.Count(command.Message + cached.Message.Content, ModelRef(start.Agent)), failed: false);
 
     /// <summary>A turn kagent failed, for the usage rollup (the quota records its tokens through <see cref="RecordUsageAsync"/>).</summary>
     public Task FailedAsync(SendChatMessageCommand command, TurnStart start) =>
-        RollupAsync(command, start.Agent, TokenUsage.None, newChat: false, cached: false, saved: 0, failed: true);
+        RollupAsync(command, start, TokenUsage.None, newChat: false, cached: false, saved: 0, failed: true);
 
     /// <summary>A failed or abandoned first turn leaves no conversation behind. Not the request's token: the caller may be gone.</summary>
     public async Task AbandonAsync(SendChatMessageCommand command, TurnStart start)
@@ -152,8 +155,9 @@ internal sealed class ChatTurns(
             return;
         try
         {
-            await quota.RecordAsync(ChatQuotaUsage.Measure(command.UserId, start.AgentRef, ModelRef(start.Agent), start.SessionId, usage, start.Prompt, answer),
-                CancellationToken.None);
+            // The images went to kagent too: what was sent is the turn's own count, not the prompt's alone.
+            var measured = ChatQuotaUsage.Measure(estimator, command.UserId, start.AgentRef, ModelRef(start.Agent), start.SessionId, usage, start.Prompt, answer);
+            await quota.RecordAsync(measured with { ClientTokens = start.ClientTokens }, CancellationToken.None);
         }
         finally
         {
@@ -187,10 +191,10 @@ internal sealed class ChatTurns(
         usage.Total > 0 ? new TokenUsage(usage.Prompt, usage.Completion, true) : TokenUsage.None;
 
     /// <summary>The turn as numbers only (the analytics module's rollup). Not the request's token: the turn happened either way.</summary>
-    private Task RollupAsync(SendChatMessageCommand command, Agent agent, TokenUsage usage, bool newChat, bool cached, long saved, bool failed) =>
+    private Task RollupAsync(SendChatMessageCommand command, TurnStart start, TokenUsage usage, bool newChat, bool cached, long saved, bool failed) =>
         publisher.Publish(new ChatTurnUsage(
-            clock.GetUtcNow(), command.UserId, $"{agent.Namespace}/{agent.Name}",
-            ModelRef(agent), usage, newChat, cached, saved, failed), CancellationToken.None);
+            clock.GetUtcNow(), command.UserId, $"{start.Agent.Namespace}/{start.Agent.Name}",
+            ModelRef(start.Agent), usage, newChat, cached, saved, failed, start.ClientTokens), CancellationToken.None);
 
     private static string ModelRef(Agent agent) => ChatQuotaUsage.ModelRef(agent.Namespace, agent.ModelConfig);
 

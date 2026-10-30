@@ -1,4 +1,5 @@
 using Skanyxx.Core.Platform.ChatContext;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.ChatContext.Context;
 using Skanyxx.Module.ChatContext.Data;
 using Skanyxx.Module.ChatContext.Tests.Infrastructure;
@@ -140,7 +141,7 @@ public sealed class RelatedContextTests(PostgresFixture postgres) : ChatContextT
 
         // Default budget 600 tokens (2400 characters), at most 3 sessions.
         Assert.Equal(3, prepared.Sessions.Count);
-        Assert.True(prepared.Context.Length <= 600 * RelatedBlock.CharsPerToken);
+        Assert.True(prepared.Context.Length <= CharTokenEstimator.Chars(600));
     }
 
     [Fact]
@@ -149,13 +150,13 @@ public sealed class RelatedContextTests(PostgresFixture postgres) : ChatContextT
         var now = DateTime.UtcNow;
         SessionSummary Session(string id, int outcome) => new(id, "t", "kagent/seed", "personal:ana", [], [], [], new string('o', outcome), 1, now, now, true);
 
-        var tight = RelatedBlock.Build([Session("big", 500), Session("small", 10)], 150);
+        var tight = RelatedBlock.Build([Session("big", 500), Session("small", 10)], 150, CharTokenEstimator.Instance);
         Assert.Equal(["small"], tight.Sessions.Select(s => s.SessionId));
         Assert.True(tight.EstimatedTokens <= 150);
 
-        Assert.Equal("", RelatedBlock.Build([Session("big", 500)], 50).Text);
+        Assert.Equal("", RelatedBlock.Build([Session("big", 500)], 50, CharTokenEstimator.Instance).Text);
         // An item longer than its cap is shortened to the cap (with "…"), not dropped.
-        Assert.Equal(RelatedBlock.MaxItemChars, RelatedBlock.Build([Session("huge", 5_000)], 4_000).Text.Split('\n')[1].Length);
+        Assert.Equal(RelatedBlock.MaxItemChars, RelatedBlock.Build([Session("huge", 5_000)], 4_000, CharTokenEstimator.Instance).Text.Split('\n')[1].Length);
     }
 }
 

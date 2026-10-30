@@ -6,6 +6,7 @@ using Skanyxx.Core;
 using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.ChatContext;
 using Skanyxx.Core.Platform.Memory;
+using Skanyxx.Core.Platform.Usage;
 using Skanyxx.Module.Chat.Features;
 using Skanyxx.Module.Chat.Features.Files;
 using Skanyxx.Module.Chat.Features.Turns;
@@ -42,6 +43,7 @@ public class ChatModule : IModule
         services.TryAddScoped<IAgentMemoryAccess, NoAgentMemoryAccess>();
         services.TryAddScoped<IChatContext, NoChatContext>();
         services.TryAddScoped<IChatQuota, UnlimitedChatQuota>();
+        services.AddTokenUsage(configuration);
     }
 
     public Task InitializeAsync(IServiceProvider serviceProvider) => Task.CompletedTask;
