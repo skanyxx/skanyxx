@@ -22,6 +22,7 @@ public sealed record QuotaBook(
             rows.Sum(r => r.PromptTokens), rows.Sum(r => r.CompletionTokens), rows.Sum(r => r.EstimatedTokens),
             rows.Sum(r => r.Turns), rows.Sum(r => r.EstimatedTurns),
             cost is { } c ? Math.Round(c, 4) : null,
-            [.. rows.Select(r => r.Model).Where(m => !Prices.ContainsKey(m)).Distinct().Order(StringComparer.Ordinal)]);
+            [.. rows.Select(r => r.Model).Where(m => !Prices.ContainsKey(m)).Distinct().Order(StringComparer.Ordinal)],
+            rows.Sum(r => r.ClientTokens));
     }
 }

@@ -34,6 +34,8 @@ public sealed class QuotaDbContext(DbContextOptions<QuotaDbContext> options) : D
             usage.Property(u => u.PromptTokens).HasColumnName("prompt_tokens");
             usage.Property(u => u.CompletionTokens).HasColumnName("completion_tokens");
             usage.Property(u => u.EstimatedTokens).HasColumnName("estimated_tokens");
+            usage.Property(u => u.EstimatedCompletionTokens).HasColumnName("estimated_completion_tokens");
+            usage.Property(u => u.ClientTokens).HasColumnName("client_tokens");
             usage.Property(u => u.Turns).HasColumnName("turns");
             usage.Property(u => u.EstimatedTurns).HasColumnName("estimated_turns");
         });

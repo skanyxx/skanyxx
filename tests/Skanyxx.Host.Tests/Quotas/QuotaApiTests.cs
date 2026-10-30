@@ -345,7 +345,7 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         {
             await using var db = new QuotaDbContext(options);
             await new QuotaStore(db).AddUsageAsync(month,
-                new ChatQuotaUsage("ann", "kagent/helper", Model, $"c{i}", new ChatUsage(10, 5, 15), Estimated: i % 3 == 0), Ct);
+                new ChatQuotaUsage("ann", "kagent/helper", Model, $"c{i}", new ChatUsage(10, 5, 15), Estimated: i % 3 == 0, ClientTokens: 7), Ct);
         }));
 
         // A thinking model's total holds more than prompt plus candidates: the rest counts as output.
@@ -360,6 +360,9 @@ public sealed class QuotaApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal((Turns - Turns / 3) * 10, row.PromptTokens);
         Assert.Equal((Turns - Turns / 3) * 5, row.CompletionTokens);
         Assert.Equal(Turns / 3 * 15, row.EstimatedTokens);
+        Assert.Equal(Turns / 3 * 5, row.EstimatedCompletionTokens);
+        // D548: Skanyxx's own count is kept beside the model's tokens, never in them.
+        Assert.Equal(Turns * 7, row.ClientTokens);
     }
 
     [Fact]

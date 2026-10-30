@@ -14,7 +14,7 @@ public static class UsageCsv
 {
     public static readonly string[] Columns =
     [
-        "day", "user_id", "user", "agent", "model", "requests", "chats", "tokens_in", "tokens_out",
+        "day", "user_id", "user", "agent", "model", "requests", "chats", "tokens_in", "tokens_out", "client_tokens_estimate",
         "turns_without_token_report", "cache_hits", "tokens_saved_estimate", "errors", "estimated_cost"
     ];
 
@@ -30,7 +30,7 @@ public static class UsageCsv
             string[] cells =
             [
                 r.Day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), r.UserId, org.PersonName(r.UserId), r.Agent, r.Model,
-                Number(r.Requests), Number(r.Chats), Number(r.TokensIn), Number(r.TokensOut), Number(r.Unreported),
+                Number(r.Requests), Number(r.Chats), Number(r.TokensIn), Number(r.TokensOut), Number(r.ClientTokens), Number(r.Unreported),
                 Number(r.CacheHits), Number(r.TokensSaved), Number(r.Errors),
                 estimate.Priced ? $"{estimate.Amount.ToString(CultureInfo.InvariantCulture)} {estimate.Currency}" : ""
             ];

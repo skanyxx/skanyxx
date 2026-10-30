@@ -2,6 +2,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Skanyxx.Core.Platform.Analytics;
+using Skanyxx.Core.Platform.Usage;
 
 namespace Skanyxx.Host.Tests.Analytics;
 
@@ -93,7 +94,7 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
     public async Task ChatTurns_AreRolledUp_WithKAgentsTokens_PerPersonAgentAndModel()
     {
         var first = await ChatAsync(_ann, "helper", Question);
-        await ChatAsync(_ann, "helper", "And the date?", first.GetProperty("conversationId").GetString());
+        var second = await ChatAsync(_ann, "helper", "And the date?", first.GetProperty("conversationId").GetString());
         await ChatAsync(_eve, "seed", "Hello");
         _kagent.A2AStatus = 500;
         Assert.Equal(HttpStatusCode.BadGateway, (await _ann.PostAsJsonAsync("/api/chat",
@@ -105,6 +106,11 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(1, Total(ann, "chats"));
         Assert.Equal(240, Total(ann, "tokensIn"));
         Assert.Equal(60, Total(ann, "tokensOut"));
+        // D548: what Skanyxx sent is its own count, kept apart from kagent's (the failed turn's prompt was sent too).
+        var sent = first.GetProperty("clientTokens").GetInt64() + second.GetProperty("clientTokens").GetInt64();
+        Assert.True(first.GetProperty("clientTokens").GetInt64() >= CharTokenEstimator.Instance.Count(Question));
+        Assert.True(Total(ann, "clientTokens") > sent);
+        Assert.Equal(300, Total(ann, "tokens"));
         Assert.Equal(1, Total(ann, "errors"));
         Assert.Equal(0, Total(ann, "unreported"));
         Assert.Equal(["kagent/default-model-config"], ann.GetProperty("tokensByModel").EnumerateArray().Select(s => s.GetProperty("name").GetString()));

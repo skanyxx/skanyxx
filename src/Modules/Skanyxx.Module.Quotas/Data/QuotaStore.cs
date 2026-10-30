@@ -12,17 +12,20 @@ internal sealed class QuotaStore(QuotaDbContext db)
 {
     public async Task AddUsageAsync(DateOnly month, ChatQuotaUsage turn, CancellationToken ct)
     {
-        var (prompt, completion, estimated, estimatedTurns) = turn.Estimated
-            ? (0L, 0L, turn.Usage.Total, 1L)
+        var (prompt, completion, estimated, estimatedCompletion, estimatedTurns) = turn.Estimated
+            ? (0L, 0L, turn.Usage.Total, turn.Usage.Completion, 1L)
             // A thinking model's total also holds thought and tool-use tokens: those count, as output.
-            : (turn.Usage.Prompt, Math.Max(turn.Usage.Completion, turn.Usage.Total - turn.Usage.Prompt), 0L, 0L);
+            : (turn.Usage.Prompt, Math.Max(turn.Usage.Completion, turn.Usage.Total - turn.Usage.Prompt), 0L, 0L, 0L);
         await db.Database.ExecuteSqlAsync($"""
-            INSERT INTO quota_usage (month, user_id, model, prompt_tokens, completion_tokens, estimated_tokens, turns, estimated_turns)
-            VALUES ({month}, {turn.UserId}, {turn.Model}, {prompt}, {completion}, {estimated}, 1, {estimatedTurns})
+            INSERT INTO quota_usage
+                (month, user_id, model, prompt_tokens, completion_tokens, estimated_tokens, estimated_completion_tokens, client_tokens, turns, estimated_turns)
+            VALUES ({month}, {turn.UserId}, {turn.Model}, {prompt}, {completion}, {estimated}, {estimatedCompletion}, {turn.ClientTokens}, 1, {estimatedTurns})
             ON CONFLICT (month, user_id, model) DO UPDATE SET
                 prompt_tokens = quota_usage.prompt_tokens + EXCLUDED.prompt_tokens,
                 completion_tokens = quota_usage.completion_tokens + EXCLUDED.completion_tokens,
                 estimated_tokens = quota_usage.estimated_tokens + EXCLUDED.estimated_tokens,
+                estimated_completion_tokens = quota_usage.estimated_completion_tokens + EXCLUDED.estimated_completion_tokens,
+                client_tokens = quota_usage.client_tokens + EXCLUDED.client_tokens,
                 turns = quota_usage.turns + 1,
                 estimated_turns = quota_usage.estimated_turns + EXCLUDED.estimated_turns
             """, ct);

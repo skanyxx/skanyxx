@@ -40,7 +40,7 @@ internal sealed class DashboardSummaryHandler(
 
         return new DashboardSummary(
             org.People.Count(p => !p.Disabled && (users is null || users.Contains(p.Id))), todayTotals.ActiveUsers, weekTotals.ActiveUsers, todayTotals.Chats, weekTotals.Chats,
-            todayTotals.TokensIn, todayTotals.TokensOut, UsageReportBuilder.PerDay(weekRows, [.. week.Each()], r => r.TokensIn + r.TokensOut),
+            todayTotals.TokensIn, todayTotals.TokensOut, todayTotals.ClientTokens, weekTotals.ClientTokens, UsageReportBuilder.PerDay(weekRows, [.. week.Each()], r => r.TokensIn + r.TokensOut),
             weekTotals.Requests, weekTotals.Unreported, weekTotals.CacheHitRate, weekTotals.TokensSaved,
             weekTotals.Cost, cost.Estimate(rows),
             Top(weekRows, r => r.Agent, k => k), owner ? Top(weekRows, r => r.UserId, org.PersonName) : null,

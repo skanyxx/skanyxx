@@ -156,9 +156,17 @@ namespace Skanyxx.Module.Quotas.Data.Migrations
                         .HasColumnType("character varying(320)")
                         .HasColumnName("model");
 
+                    b.Property<long>("ClientTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("client_tokens");
+
                     b.Property<long>("CompletionTokens")
                         .HasColumnType("bigint")
                         .HasColumnName("completion_tokens");
+
+                    b.Property<long>("EstimatedCompletionTokens")
+                        .HasColumnType("bigint")
+                        .HasColumnName("estimated_completion_tokens");
 
                     b.Property<long>("EstimatedTokens")
                         .HasColumnType("bigint")

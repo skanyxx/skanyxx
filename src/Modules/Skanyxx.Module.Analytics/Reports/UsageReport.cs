@@ -8,7 +8,7 @@ namespace Skanyxx.Module.Analytics.Reports;
 public sealed record UsageReport(
     string ScopeKind, string? ScopeId, string ScopeName, DateOnly From, DateOnly To,
     UsageTotals Totals, UsageTotals? Previous, IReadOnlyList<string> Days,
-    IReadOnlyList<long> TokensInPerDay, IReadOnlyList<long> TokensOutPerDay, IReadOnlyList<long> RequestsPerDay,
+    IReadOnlyList<long> TokensInPerDay, IReadOnlyList<long> TokensOutPerDay, IReadOnlyList<long> ClientTokensPerDay, IReadOnlyList<long> RequestsPerDay,
     IReadOnlyList<long> ErrorsPerDay, IReadOnlyList<long> SavedPerDay,
     IReadOnlyList<Series> TokensByModel, IReadOnlyList<Series> TokensByAgent, IReadOnlyList<Series> ChatsByAgent,
     IReadOnlyList<Ranked> TopUsers, IReadOnlyList<Ranked> TopTeams, IReadOnlyList<TableRow> Rows)

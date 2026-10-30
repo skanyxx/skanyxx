@@ -20,6 +20,7 @@ internal sealed class UsageDayConfiguration : IEntityTypeConfiguration<UsageDay>
         usage.Property(u => u.Chats).HasColumnName("chats");
         usage.Property(u => u.TokensIn).HasColumnName("tokens_in");
         usage.Property(u => u.TokensOut).HasColumnName("tokens_out");
+        usage.Property(u => u.ClientTokens).HasColumnName("client_tokens");
         usage.Property(u => u.Unreported).HasColumnName("unreported");
         usage.Property(u => u.CacheHits).HasColumnName("cache_hits");
         usage.Property(u => u.TokensSaved).HasColumnName("tokens_saved");
