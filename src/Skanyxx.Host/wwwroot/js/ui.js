@@ -16,6 +16,8 @@
  *   skx.ask(dialog)                   showModal a <dialog> holding a method="dialog" form -> Promise of the submit
  *                                     button's value, or '' for Cancel, Escape or the close button
  *   skx.announce(text)                say it to screen readers (a polite live region), without a toast
+ *   skx.kagentReason(text)            kagent's own words about a failure (builders and up only, D553): its start, and
+ *                                     when longer, "Shortened: show all N characters" with the whole text; null for none
  *
  * Declarative: <form data-confirm="…" data-confirm-title="…" data-confirm-action="Disable" data-danger>,
  * <form data-once> (one submit), <button data-copy="…"> / data-copy-target="#id", <table class="table-stack">,
@@ -249,7 +251,25 @@
         },
     };
 
-    window.skx = { api, toast, confirm: confirmDialog, state, badge, fieldError, busy, prefs, icon, time, utc, ask, announce, table: { label: labelTable } };
+    // ---------- kagent's failure reason (D553, D556) ----------
+    // The server sends it to builders and up only. Text only; a long one shows its start, says it was cut, and keeps the
+    // whole of it one click away: nothing is cut without saying so.
+    const REASON_SHOWN = 280;
+    function kagentReason(reason) {
+        if (!reason) return null;
+        const chars = Array.from(reason);
+        const box = el('div', 'failure-reason');
+        box.append(el('div', 'failure-reason-label', 'kagent said'),
+            el('div', 'failure-reason-text', chars.length > REASON_SHOWN ? chars.slice(0, REASON_SHOWN).join('') + '…' : reason));
+        if (chars.length > REASON_SHOWN) {
+            const more = el('details');
+            more.append(el('summary', null, `Shortened: show all ${chars.length.toLocaleString()} characters`), el('pre', 'failure-reason-full', reason));
+            box.append(more);
+        }
+        return box;
+    }
+
+    window.skx = { api, toast, confirm: confirmDialog, state, badge, fieldError, busy, prefs, icon, time, utc, ask, announce, kagentReason, table: { label: labelTable } };
 
     // ---------- Shell behaviour ----------
     function initNav() {

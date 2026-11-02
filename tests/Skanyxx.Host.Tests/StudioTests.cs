@@ -499,6 +499,38 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
             (await _builder.PostAsJsonAsync($"/api/studio/proposals/{number}/chat", new { message = "refund window?" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
     }
 
+    /// <summary>D556: a preview turn kagent ended badly answers with fixed words and kagent's reason, cleaned, for the studio's people.</summary>
+    [Fact]
+    public async Task AFailedPreviewTurn_CarriesKagentsReason_ToTheStudiosPeople()
+    {
+        var number = await ProposeAsync(_builder, Draft());
+        Assert.Equal(HttpStatusCode.OK, (await _builder.PostAsync($"/api/studio/proposals/{number}/preview", null, TestContext.Current.CancellationToken)).StatusCode);
+        _kagent.A2ABody = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["result"] = new JsonObject
+            {
+                ["kind"] = "task", ["id"] = "task-p",
+                ["status"] = new JsonObject
+                {
+                    ["state"] = "failed",
+                    ["message"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["kind"] = "text", ["text"] = $"{ChatFailureReasonTests.Observed} token={FakeKAgent.StreamSecret}" }) }
+                }
+            }
+        }.ToJsonString();
+
+        var turn = await _builder.PostAsJsonAsync($"/api/studio/proposals/{number}/chat", new { message = "refund window?" }, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadGateway, turn.StatusCode);
+        var body = await turn.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        var problem = JsonDocument.Parse(body).RootElement;
+        Assert.Equal(Skanyxx.Module.Agents.Studio.Features.StudioChat.Unfinished, problem.GetProperty("detail").GetString());
+        Assert.StartsWith(ChatFailureReasonTests.Observed, problem.GetProperty("kagentReason").GetString());
+        Assert.DoesNotContain(FakeKAgent.StreamSecret, body);
+        Assert.Equal(HttpStatusCode.Forbidden,
+            (await _employee.PostAsJsonAsync($"/api/studio/proposals/{number}/chat", new { message = "hi" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+    }
+
     [Fact]
     public async Task APreview_IsRemoved_WhenItsProposalMerges_OrCloses()
     {

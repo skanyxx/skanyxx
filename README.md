@@ -101,7 +101,8 @@ Warning with the agent and task id, and builders, supervisors and the owner also
 blanked, cut visibly past 2 000 characters; the stream's `error` event likewise), employees never (D553). An agent
 whose tool server kagent does not list, or lists with no tools, shows as unhealthy in the picker, its details and on
 the Agents page — by server name for builders and up, "a tool is unavailable" for employees (D554). Chat shows no tool
-steps; the server sends none (D555). Chat is the only place that talks to an agent (D002, D017).
+steps; the server sends none (D555). Investigate steps (run panel, JSON and PDF reports) and the Studio preview chat
+carry the same reason, to the same roles (D556). Chat is the only place that talks to an agent (D002, D017).
 kagent's API is unauthenticated in this setup (`auth.mode: unsecure`): keep it on localhost / inside the cluster.
 
 ## Local stack on OrbStack

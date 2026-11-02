@@ -124,4 +124,34 @@ public sealed class KAgentInvestigationClientTests
         Assert.Equal("the agent answered with no text", b.Message);
         Assert.DoesNotContain(failedLog.Lines, l => l.Contains("SECRET-DETAIL"));
     }
+
+    /// <summary>D556: kagent's own words come back beside the category, cleaned; the client still logs none of it.</summary>
+    [Fact]
+    public async Task AFailedTask_CarriesKagentsReason_Cleaned_AndTheTask()
+    {
+        var (client, _, log) = Create(HttpStatusCode.OK,
+            "{\"result\":{\"kind\":\"task\",\"id\":\"task-9\",\"status\":{\"state\":\"failed\",\"message\":{\"parts\":[" +
+            "{\"kind\":\"text\",\"text\":\"dial tcp: connection refused; Authorization: Bearer " + Secret + "\\n[ERR] forged\"}]}}}}");
+
+        var error = await Assert.ThrowsAsync<AgentCallException>(() => client.AskAsync("kagent/a", "p", TestContext.Current.CancellationToken));
+
+        Assert.Equal("the agent's task ended 'failed'", error.Message);
+        Assert.Equal(("task-9", "failed"), (error.TaskId, error.State));
+        Assert.StartsWith("dial tcp: connection refused", error.KagentReason);
+        Assert.DoesNotContain(Secret, error.KagentReason);
+        Assert.DoesNotContain("\n", error.KagentReason);
+        Assert.Empty(log.Lines);
+    }
+
+    [Fact]
+    public async Task AnApprovalStop_IsNoFailureReason()
+    {
+        var (client, _, _) = Create(HttpStatusCode.OK, """{"result":{"kind":"task","id":"t","status":{"state":"auth-required","message":{"parts":[{"kind":"text","text":"Sign in at https://idp.example/?state=s3cr3t"}]}}}}""");
+
+        var error = await Assert.ThrowsAsync<AgentCallException>(() => client.AskAsync("kagent/a", "p", TestContext.Current.CancellationToken));
+
+        Assert.Equal("the agent stopped to ask for an approval, which an investigation cannot give", error.Message);
+        Assert.Null(error.State);
+        Assert.Null(error.KagentReason);
+    }
 }

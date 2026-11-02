@@ -608,6 +608,9 @@
                 line('Preview', body.message?.content ?? '');
             } catch (error) {
                 line('Error', error.message, 'is-error');
+                // kagent's own words, for the studio's builders and up (D556): text only, cut visibly.
+                const why = skx.kagentReason(error.data?.kagentReason);
+                if (why) log.lastElementChild.append(why);
             }
         });
     })();

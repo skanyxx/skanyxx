@@ -12,7 +12,9 @@ namespace Skanyxx.Module.Agents.Studio.Features;
 /// to merged agents (D101): kagent sessions are per user, a continued conversation must be the caller's and this
 /// agent's, and a failed first turn deletes the session it created. The token quota admits the turn and counts it once
 /// whatever ended it, a malformed answer included (D383, D388). When our deadline passes or the caller leaves, kagent is
-/// asked to stop this turn's task, as Chat does (D381).
+/// asked to stop this turn's task, as Chat does (D381). A task kagent ended badly answers as Chat's does, with kagent's
+/// reason beside the fixed words (D556): every caller is a studio person, builder or up (<see cref="Endpoints.StudioRoles"/>,
+/// checked again by <c>StudioUser.CanEnter</c>), the roles that read it in Chat (D553).
 /// </summary>
 internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, ITokenEstimator estimator, ILogger<StudioChat> logger)
 {
@@ -27,13 +29,14 @@ internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, IToke
         var messageId = Guid.NewGuid().ToString();
         string? created = null, sent = null;
         ChatResponse? response = null;
+        var spent = ChatUsage.None;
         var recorded = false;
         async Task RecordOnceAsync()
         {
             if (sent is null || recorded)
                 return;
             recorded = true;
-            await RecordAsync(userId, agentRef, model, sent, response is null ? ChatUsage.None : ChatUsage.Of(response.Usage), message, response?.Message.Content ?? "");
+            await RecordAsync(userId, agentRef, model, sent, response is null ? spent : ChatUsage.Of(response.Usage), message, response?.Message.Content ?? "");
         }
 
         try
@@ -50,6 +53,18 @@ internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, IToke
             response = await kagent.SendMessageAsync(ns, agent, sessionId, message, userId, ct, messageId: messageId);
             await RecordOnceAsync();
             return Outcome<ChatResponse>.Ok(response);
+        }
+        catch (KAgentTaskFailedException ex)
+        {
+            // kagent answered: the task ended badly. KAgentApiClient logged its reason with the task.
+            logger.LogWarning("Studio chat with {AgentRef} failed for {UserId}: task {TaskId} ended {State}", agentRef, userId, ex.TaskId, ex.State);
+            spent = ChatUsage.Of(ex.Usage);
+            await RecordOnceAsync();
+            if (created is not null)
+                await DeleteAsync(created, userId);
+            return ex.State is "input-required" or "auth-required"
+                ? Outcome<ChatResponse>.Unavailable(NeedsApproval)
+                : Outcome<ChatResponse>.Unavailable(Unfinished, ex.Reason);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
@@ -77,6 +92,10 @@ internal sealed class StudioChat(KAgentApiClient kagent, IChatQuota quota, IToke
             await RecordOnceAsync();
         }
     }
+
+    public const string Unfinished = "The agent could not finish the answer. Try again in a moment.";
+
+    public const string NeedsApproval = "The agent stopped to ask for an approval, which the preview cannot give.";
 
     // Not the request's token: the tokens were spent whether or not the caller is still there.
     private Task RecordAsync(string userId, string agentRef, string model, string sessionId, ChatUsage usage, string prompt, string answer) =>

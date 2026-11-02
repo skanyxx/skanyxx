@@ -37,6 +37,8 @@ public static class PdfReport
             Add(lines, "F1", 9, $"{step.State}{(step.DurationMs is { } ms ? $", {ms / 1000.0:0.0} s" : "")}", indent);
             if (step.Error is not null)
                 Add(lines, "F1", 9, $"Error: {step.Error}", indent);
+            if (step.KagentReason is not null)
+                Add(lines, "F3", 9, $"kagent said: {step.KagentReason}", indent);
             if (step.Output is not null)
                 Add(lines, "F3", 9, step.Output.Length > MaxOutputPerStep
                     ? step.Output[..MaxOutputPerStep] + "\n[cut here; the JSON report has the whole answer]"

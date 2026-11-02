@@ -17,5 +17,6 @@ internal sealed class StepRunConfiguration : IEntityTypeConfiguration<StepRun>
         b.Property(s => s.EndedAt).HasColumnName("ended_at");
         b.Property(s => s.Output).HasColumnName("output");
         b.Property(s => s.Error).HasColumnName("error").HasMaxLength(1000);
+        b.Property(s => s.KagentReason).HasColumnName("kagent_reason");
     }
 }

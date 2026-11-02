@@ -8,7 +8,7 @@ public sealed record RunReport(
     Guid RunId, Guid WorkflowId, string Workflow, string Input, string State, string? Failure, string StartedBy,
     DateTime CreatedAt, DateTime? StartedAt, DateTime? EndedAt, string? Card, IReadOnlyList<ReportStep> Steps)
 {
-    public static RunReport From(InvestigationRun run)
+    public static RunReport From(InvestigationRun run, Viewer viewer)
     {
         var results = run.StepRuns.ToDictionary(s => s.StepId);
         return new(
@@ -22,7 +22,7 @@ public sealed record RunReport(
                     n.Step.Id, n.Step.Title, Name(n.Step.Kind), n.Depth, isAgent ? n.Step.Agent : null, isAgent ? null : Name(n.Step.Mode),
                     Name(result?.State ?? StepState.Pending), result?.StartedAt, result?.EndedAt,
                     result is { StartedAt: { } start, EndedAt: { } end } ? (long)(end - start).TotalMilliseconds : null,
-                    result?.Output, result?.Error);
+                    result?.Output, result?.Error, viewer.SeesAgentInternals ? result?.KagentReason : null);
             })]);
     }
 

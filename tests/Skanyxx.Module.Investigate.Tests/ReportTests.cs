@@ -62,7 +62,7 @@ public sealed partial class ReportTests(PostgresFixture postgres) : InvestigateT
     {
         var output = string.Join('\n', Enumerable.Range(1, 400).Select(i => $"line {i} " + new string('x', 150)));
         var report = new RunReport(Guid.NewGuid(), Guid.NewGuid(), "Long", "in", "succeeded", null, "bea", DateTime.UtcNow, null, null, null,
-            [new ReportStep("s1", "Step", "agent", 1, Researcher, null, "succeeded", null, null, null, output, null)]);
+            [new ReportStep("s1", "Step", "agent", 1, Researcher, null, "succeeded", null, null, null, output, null, null)]);
 
         var bytes = PdfReport.Render(report);
 

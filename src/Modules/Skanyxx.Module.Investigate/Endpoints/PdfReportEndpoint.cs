@@ -18,12 +18,13 @@ internal sealed class PdfReportEndpoint(IMediator mediator) : Endpoint<IdRequest
 
     public override async Task HandleAsync(IdRequest req, CancellationToken ct)
     {
-        var outcome = await mediator.Send(new GetRunQuery(Viewer.From(User), req.Id), ct);
+        var viewer = Viewer.From(User);
+        var outcome = await mediator.Send(new GetRunQuery(viewer, req.Id), ct);
         if (outcome.Status != OutcomeStatus.Ok)
         {
             await Send.ResultAsync(outcome.ToHttp(r => r.Id));
             return;
         }
-        await Send.BytesAsync(PdfReport.Render(RunReport.From(outcome.Value!)), $"investigation-{req.Id:N}.pdf", "application/pdf", cancellation: ct);
+        await Send.BytesAsync(PdfReport.Render(RunReport.From(outcome.Value!, viewer)), $"investigation-{req.Id:N}.pdf", "application/pdf", cancellation: ct);
     }
 }

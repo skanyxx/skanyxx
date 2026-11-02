@@ -60,22 +60,8 @@
     function errorAlert(title, message, retry, reason) {
         return h('div', { class: 'alert alert-error', role: 'alert' }, skx.icon('i-alert-circle'),
             h('div', { class: 'alert-body' }, h('div', { class: 'alert-title', text: title }), h('div', { class: 'message-content plain', text: message }),
-                reasonBlock(reason),
+                skx.kagentReason(reason),
                 retry ? h('div', { class: 'mt-1' }, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onclick: retry }, 'Try again')) : null));
-    }
-
-    // kagent's own words about a failed turn: the server sends them to builders and up only (D553). Text only; a long
-    // one shows its start, says it was cut, and keeps the whole of it one click away.
-    const REASON_SHOWN = 280;
-    function reasonBlock(reason) {
-        if (!reason) return null;
-        const chars = Array.from(reason);
-        const cut = chars.length > REASON_SHOWN;
-        return h('div', { class: 'failure-reason' },
-            h('div', { class: 'failure-reason-label', text: 'kagent said' }),
-            h('div', { class: 'failure-reason-text', text: cut ? chars.slice(0, REASON_SHOWN).join('') + '…' : reason }),
-            cut ? h('details', {}, h('summary', { text: `Shortened: show all ${chars.length.toLocaleString()} characters` }),
-                h('pre', { class: 'failure-reason-full', text: reason })) : null);
     }
 
     const formatTokens = n => n >= 10000 ? `${(n / 1000).toFixed(1)}k` : Number(n || 0).toLocaleString();
