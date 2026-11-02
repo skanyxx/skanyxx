@@ -24,7 +24,7 @@ internal sealed class A2ATurn
     /// <summary>Why the turn did not complete, in plain words; null while it is fine.</summary>
     public string? Failure { get; private set; }
 
-    /// <summary>The state a failed turn ended in (<c>failed</c>, <c>rejected</c>, …); null while it is fine.</summary>
+    /// <summary>The state a failed turn ended in (<c>failed</c>, <c>rejected</c>, <c>canceled</c>); null while it is fine or stopped for an approval.</summary>
     public string? FailedState { get; private set; }
 
     /// <summary>
@@ -63,7 +63,7 @@ internal sealed class A2ATurn
                 "input-required" or "auth-required" => ChatFailure.NeedsApproval,
                 _ => null
             };
-            if (Failure is not null)
+            if (Failure == ChatFailure.Unfinished)
                 (FailedState, FailureDetail) = (state, Said(EventFields.Get(status, "message")));
         }
         return Failure is null ? Message(EventFields.Get(status, "message"), final) : [];
@@ -105,7 +105,7 @@ internal sealed class A2ATurn
             var type = EventFields.Text(EventFields.Get(part, "metadata"), "adkType") ?? EventFields.Text(EventFields.Get(part, "metadata"), "kagentType");
             if (type == "function_call")
             {
-                if (Clear(text, partial))
+                if (Clear(text))
                     yield return ChatStreamEvent.Text("");
             }
             else if (type == "function_response")
@@ -135,9 +135,9 @@ internal sealed class A2ATurn
 
     // What the model said before calling a tool is not the answer (D316), and no longer shown at all (D555). True when
     // the page was showing it, so it is told to take it away.
-    private bool Clear(StringBuilder text, bool partial)
+    private bool Clear(StringBuilder text)
     {
-        var shown = _draft.Length > 0 || (partial && text.Length > 0);
+        var shown = _draft.Length > 0;
         text.Clear();
         _draft = "";
         return shown;

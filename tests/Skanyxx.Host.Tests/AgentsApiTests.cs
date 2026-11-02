@@ -113,6 +113,22 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(JsonValueKind.Null, (await ListAsync(_owner)).First(a => a.GetProperty("name").GetString() == "fine").GetProperty("toolProblem").ValueKind);
     }
 
+    /// <summary>A server in another namespace is read as that namespace's, in the list and the details alike (code review 1, M1).</summary>
+    [Fact]
+    public async Task AToolServerInAnotherNamespace_IsCheckedThere_InTheListAndTheDetails()
+    {
+        _kagent.ToolServers["team-a/shared-mcp"] = new JsonObject();
+        var shared = Mcp("shared-mcp");
+        shared["mcpServer"]!["namespace"] = "team-a";
+        Seed("helper", Direct(), new JsonArray(shared));
+
+        var listed = (await ListAsync(_owner)).First(a => a.GetProperty("name").GetString() == "helper");
+        var detail = await _owner.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct);
+
+        Assert.Equal(JsonValueKind.Null, listed.GetProperty("toolProblem").ValueKind);
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("toolProblem").ValueKind);
+    }
+
     [Fact]
     public async Task KagentNotListingToolServers_LeavesHealthUnknown_NotTheListFailing()
     {

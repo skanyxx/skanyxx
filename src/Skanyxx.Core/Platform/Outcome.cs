@@ -3,7 +3,7 @@ namespace Skanyxx.Core.Platform;
 /// <summary>
 /// A handler's result. On <see cref="OutcomeStatus.Conflict"/>, <see cref="Value"/> is the current state to re-read and
 /// <see cref="Reason"/> (optional) says which kind of conflict it is. On <see cref="OutcomeStatus.Unavailable"/>, <see cref="Reason"/>
-/// (optional) is the upstream's own words, for a caller allowed to read them (D553).
+/// (optional) is the upstream's own words, for a caller allowed to read them; the problem carries it as <c>kagentReason</c> (D553).
 /// </summary>
 public sealed record Outcome<T>(OutcomeStatus Status, T? Value = default, string? Message = null, string? Reason = null)
 {

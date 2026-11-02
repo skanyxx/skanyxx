@@ -31,7 +31,7 @@ public static class OutcomeResults
             new ConflictResponse<TDto>(outcome.Message!, outcome.Value is null ? default : map(outcome.Value), outcome.Reason),
             statusCode: outcome.Status.HttpStatus()),
         OutcomeStatus.Unavailable when outcome.Reason is { } reason =>
-            Results.Problem(outcome.Message, statusCode: outcome.Status.HttpStatus(), extensions: new Dictionary<string, object?> { ["reason"] = reason }),
+            Results.Problem(outcome.Message, statusCode: outcome.Status.HttpStatus(), extensions: new Dictionary<string, object?> { ["kagentReason"] = reason }),
         OutcomeStatus.NotFound or OutcomeStatus.Forbidden or OutcomeStatus.Unauthorized or OutcomeStatus.RateLimited or OutcomeStatus.Unavailable =>
             Results.Problem(outcome.Message, statusCode: outcome.Status.HttpStatus()),
         OutcomeStatus.Accepted => Results.Json(map(outcome.Value!), statusCode: outcome.Status.HttpStatus()),

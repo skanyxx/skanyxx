@@ -39,12 +39,21 @@ public static class ToolServerHealth
         }
     }
 
+    /// <summary>An Agent CR's MCP servers as <c>namespace/name</c>, as <see cref="Models.Agent.McpServerRefs"/> reads them from kagent's list.</summary>
+    public static IEnumerable<string> ServerRefs(JsonObject agent)
+    {
+        var ns = Text(agent["metadata"]?["namespace"]);
+        return (agent["spec"]?["declarative"]?["tools"] as JsonArray ?? []).Select(t => t?["mcpServer"]).OfType<JsonObject>()
+            .Select(s => Text(s["name"]) is { } name ? $"{Text(s["namespace"]) ?? ns}/{name}" : null)
+            .OfType<string>();
+    }
+
     /// <param name="serverRefs">The agent's servers as <c>namespace/name</c>.</param>
     /// <param name="toolServers">kagent's list; the first entry of a repeated ref wins, as on the Tool servers page.</param>
     public static IReadOnlyList<ToolServerProblem> Problems(IEnumerable<string> serverRefs, JsonArray toolServers)
     {
         var listed = toolServers.OfType<JsonObject>()
-            .Select(s => (Ref: s["ref"] is JsonValue v && v.TryGetValue<string>(out var r) ? r : null, Tools: (s["discoveredTools"] as JsonArray)?.Count ?? 0))
+            .Select(s => (Ref: Text(s["ref"]), Tools: (s["discoveredTools"] as JsonArray)?.Count ?? 0))
             .Where(s => s.Ref is not null)
             .DistinctBy(s => s.Ref)
             .ToDictionary(s => s.Ref!, s => s.Tools);
@@ -52,6 +61,8 @@ public static class ToolServerHealth
             .Select(r => !listed.TryGetValue(r, out var tools) ? new ToolServerProblem(r, NotListed) : tools == 0 ? new ToolServerProblem(r, NoTools) : null)
             .OfType<ToolServerProblem>()];
     }
+
+    private static string? Text(JsonNode? node) => node is JsonValue v && v.TryGetValue<string>(out var s) && s.Length > 0 ? s : null;
 
     /// <summary>One line for an agent's status, null when its servers are fine: every problem for builders and up, else <see cref="ForEmployees"/>.</summary>
     public static string? Summary(IReadOnlyList<ToolServerProblem> problems, bool internals) =>

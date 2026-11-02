@@ -251,7 +251,7 @@
                 : null,
             section('Memory access', memory),
             d.ready && d.toolProblem
-                ? h('p', { class: 'tool-server-problem', text: 'Ready, but a tool is unavailable: ' + d.toolProblem })
+                ? h('p', { class: 'tool-server-problem', text: d.toolProblem })
                 : h('p', { class: 'muted small', text: d.ready ? 'Ready.' : 'Starting: the first answer may take a minute.' })
         ].filter(Boolean));
     }
@@ -628,7 +628,7 @@
                 // A 429 is the quota hook's refusal (IChatQuota): its words are shown as they are, and the quota meter
                 // (quota-mine.js) reloads to offer "Request more".
                 const problem = await response.json().catch(() => ({}));
-                fail(problemText(problem, response.status), problem.reason);
+                fail(problemText(problem, response.status), problem.kagentReason);
                 if (response.status === 429) document.dispatchEvent(new CustomEvent('skx:quota-changed'));
                 return;
             }
@@ -649,7 +649,7 @@
                 else if (type === 'done') done = data;
                 else if (type === 'error') {
                     if (data.conversationGone && wasNew) forgetNewConversation();
-                    fail(data.message, data.reason);
+                    fail(data.message, data.kagentReason);
                 }
             });
             if (done) await finish(turn, done, text);

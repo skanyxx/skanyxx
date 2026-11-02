@@ -27,6 +27,7 @@ internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioO
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {
             logger.LogWarning(ex, "Agents list: kagent did not answer");
+            await servers;
             return Outcome<IReadOnlyList<AgentSummary>>.Unavailable(AgentFailure.Unavailable);
         }
         var canWrite = AgentAccess.CanWrite(query.User);

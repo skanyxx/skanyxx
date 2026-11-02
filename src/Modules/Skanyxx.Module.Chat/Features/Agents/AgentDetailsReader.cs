@@ -39,7 +39,8 @@ internal static class AgentDetailsReader
         JsonObject server, string agentNamespace, JsonArray toolServers, IReadOnlyList<ToolServerProblem> problems, bool internals)
     {
         var reference = $"{AgentEntries.Text(server["namespace"]) ?? agentNamespace}/{AgentEntries.Text(server["name"])}";
-        var problem = problems.FirstOrDefault(p => p.Server == reference) is { } found ? internals ? found.Problem : ToolServerHealth.Unavailable : null;
+        var found = problems.FirstOrDefault(p => p.Server == reference);
+        var problem = found is null ? null : internals ? found.Problem : ToolServerHealth.Unavailable;
         var discovered = (toolServers.OfType<JsonObject>().FirstOrDefault(s => AgentEntries.Text(s["ref"]) == reference)?["discoveredTools"] as JsonArray ?? [])
             .OfType<JsonObject>()
             .Select(t => new ChatTool(AgentEntries.Text(t["name"]) ?? "", AgentEntries.Text(t["description"]) ?? ""))

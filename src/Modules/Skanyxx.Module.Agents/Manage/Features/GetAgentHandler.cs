@@ -31,7 +31,7 @@ internal sealed class GetAgentHandler(KAgentApiClient kagent, IOptions<StudioOpt
             return Outcome<AgentDetail>.Ok(detail with
             {
                 ToolProblem = ToolServerHealth.Summary(
-                    ToolServerHealth.Problems(detail.McpTools.Select(t => $"{query.Namespace}/{t.Server}"), servers), readAll),
+                    ToolServerHealth.Problems(ToolServerHealth.ServerRefs(agent), servers), readAll),
                 ToolsByServer = [.. detail.McpTools.Select(t => AgentQueries.Describe(t, query.Namespace, catalog))],
                 UsedBy = readAll ? AgentQueries.UsedBy(await kagent.GetAgentsAsync(ct), query.Namespace, query.Name) : []
             });

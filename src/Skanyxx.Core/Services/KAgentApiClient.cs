@@ -420,7 +420,7 @@ public class KAgentApiClient
                 var reason = ChatFailureReason.Of(Text(result["status"]?["message"]?["parts"]));
                 _logger.LogWarning("kagent task {TaskId} of {AgentRef} ended {State}: {Detail}",
                     taskId, agentRef, ChatFailureReason.Of(state) ?? "?", reason ?? "(no message)");
-                throw new KAgentTaskFailedException(taskId, ChatFailureReason.Of(state) ?? "?", reason);
+                throw new KAgentTaskFailedException(taskId, ChatFailureReason.Of(state) ?? "?", reason, A2AUsage.From(result));
             }
             var artifacts = result["artifacts"]?.AsArray();
             answer = artifacts is { Count: > 0 } ? Text(artifacts[^1]!["parts"]) : "";

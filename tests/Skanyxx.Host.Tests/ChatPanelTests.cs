@@ -292,7 +292,7 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("error", error.Type);
         Assert.Equal("The agent could not finish the answer. Try again in a moment.", error.Data.GetProperty("message").GetString());
         Assert.True(error.Data.GetProperty("conversationGone").GetBoolean());
-        Assert.False(error.Data.TryGetProperty("reason", out _));
+        Assert.False(error.Data.TryGetProperty("kagentReason", out _));
         Assert.DoesNotContain("SECRET-INTERNAL", raw);
         Assert.Empty(_kagent.SessionIds);
     }
@@ -304,17 +304,18 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         _kagent.StreamFinalState = "failed";
         _kagent.StreamFailureText = $"{ChatFailureReasonTests.Observed} Authorization: Bearer {FakeKAgent.StreamSecret}";
         var builder = await PersonAsync("bo@skanyxx.example", "builder");
+        var supervisor = await PersonAsync("sue@skanyxx.example", "supervisor");
 
-        foreach (var client in new[] { await _host.OwnerAsync(), builder })
+        foreach (var client in new[] { await _host.OwnerAsync(), supervisor, builder })
         {
             var (events, raw) = await StreamAsync(client, new { agentNamespace = "kagent", agentName = "seed", message = "hi" });
             var error = events.Last();
             Assert.Equal("The agent could not finish the answer. Try again in a moment.", error.Data.GetProperty("message").GetString());
-            Assert.StartsWith(ChatFailureReasonTests.Observed, error.Data.GetProperty("reason").GetString());
+            Assert.StartsWith(ChatFailureReasonTests.Observed, error.Data.GetProperty("kagentReason").GetString());
             Assert.DoesNotContain(FakeKAgent.StreamSecret, raw);
         }
         var (asEmployee, employeeRaw) = await StreamAsync(await EmployeeAsync(), new { agentNamespace = "kagent", agentName = "seed", message = "hi" });
-        Assert.False(asEmployee.Last().Data.TryGetProperty("reason", out _));
+        Assert.False(asEmployee.Last().Data.TryGetProperty("kagentReason", out _));
         Assert.DoesNotContain("host.docker.internal", employeeRaw);
     }
 
@@ -336,16 +337,18 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         }.ToJsonString();
 
         var asOwner = await (await _host.OwnerAsync()).PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "hi" }, Ct);
+        var asBuilder = await (await PersonAsync("bo@skanyxx.example", "builder")).PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "hi" }, Ct);
         var asEmployee = await (await EmployeeAsync()).PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "hi" }, Ct);
 
         Assert.Equal(HttpStatusCode.BadGateway, asOwner.StatusCode);
         var problem = await asOwner.Content.ReadFromJsonAsync<JsonElement>(Ct);
         Assert.Equal("The agent could not finish the answer. Try again in a moment.", problem.GetProperty("detail").GetString());
-        Assert.Equal(ChatFailureReasonTests.Observed, problem.GetProperty("reason").GetString());
+        Assert.Equal(ChatFailureReasonTests.Observed, problem.GetProperty("kagentReason").GetString());
+        Assert.Equal(ChatFailureReasonTests.Observed, (await asBuilder.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("kagentReason").GetString());
         Assert.Equal(HttpStatusCode.BadGateway, asEmployee.StatusCode);
         var employeeBody = await asEmployee.Content.ReadAsStringAsync(Ct);
         Assert.DoesNotContain("host.docker.internal", employeeBody);
-        Assert.DoesNotContain("\"reason\"", employeeBody);
+        Assert.DoesNotContain("kagentReason", employeeBody);
         Assert.Empty(_kagent.SessionIds);
     }
 
@@ -365,11 +368,14 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         });
         var owner = await _host.OwnerAsync();
         var employee = await EmployeeAsync();
+        var builder = await PersonAsync("bo@skanyxx.example", "builder");
 
         var picker = (await owner.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct)).EnumerateArray().ToList();
         var broken = picker.First(a => a.GetProperty("name").GetString() == "broken");
         Assert.Equal($"kagent/skanyxx-memory-seed: {ToolServerHealth.NoTools} team-a/gone-mcp: {ToolServerHealth.NotListed}", broken.GetProperty("toolProblem").GetString());
         Assert.Equal(JsonValueKind.Null, picker.First(a => a.GetProperty("name").GetString() == "helper").GetProperty("toolProblem").ValueKind);
+        Assert.Equal(broken.GetProperty("toolProblem").GetString(), (await builder.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct)).EnumerateArray()
+            .First(a => a.GetProperty("name").GetString() == "broken").GetProperty("toolProblem").GetString());
         var details = await owner.GetFromJsonAsync<JsonElement>("/api/chat/agents/kagent/broken", Ct);
         Assert.Equal(broken.GetProperty("toolProblem").GetString(), details.GetProperty("toolProblem").GetString());
         Assert.Equal([ToolServerHealth.NoTools, ToolServerHealth.NotListed],

@@ -42,6 +42,24 @@ public sealed class ChatFailureReasonTests
         Assert.DoesNotContain(reason, c => char.IsControl(c) || c is '\u2028' or '\u202E');
     }
 
+    /// <summary>Shapes kagent's Go errors quote from request URLs and headers that the shared redactors leave (security review 1).</summary>
+    [Theory]
+    [InlineData("GET https://maps.example/api?key=AbC123xyz&q=1 failed", "AbC123xyz")]
+    [InlineData("GET https://h.example/x?auth=s3cr3tv4lue: 403", "s3cr3tv4lue")]
+    [InlineData("PUT https://b.s3.example/o?X-Amz-Signature=deadbeefcafe0011 denied", "deadbeefcafe0011")]
+    [InlineData("Ocp-Apim-Subscription-Key: 0123456789abcdef0123456789abcdef rejected", "0123456789abcdef0123456789abcdef")]
+    [InlineData("x-functions-key=Zz9yYy8xXx7 unauthorized", "Zz9yYy8xXx7")]
+    [InlineData("Post \"https://ghp1234shorttok@git.example/repo\": 401", "ghp1234shorttok")]
+    [InlineData("Authorization: Bearer abc123 was refused", "abc123")]
+    [InlineData("\"api_token\": \"t0k3n-v4l\" invalid", "t0k3n-v4l")]
+    public void CredentialShapesFromUrlsAndHeaders_AreBlanked(string text, string secret)
+    {
+        var reason = ChatFailureReason.Of(text)!;
+
+        Assert.DoesNotContain(secret, reason);
+        Assert.Contains(SecretScan.Redacted, reason);
+    }
+
     [Fact]
     public void ALongReason_IsCut_AndSaysSo()
     {
@@ -75,6 +93,18 @@ public sealed class ChatFailureReasonTests
         Assert.Equal(Observed, turn.FailureDetail);
         Assert.Equal("t-1", turn.TaskId);
         Assert.DoesNotContain(events, e => e.Type is "answer" or "text" or "delta");
+    }
+
+    [Fact]
+    public void AnApprovalStop_IsNoFailureReason()
+    {
+        var turn = new A2ATurn();
+
+        _ = turn.Read(Node("""{"kind":"status-update","taskId":"t-3","final":true,"status":{"state":"auth-required","message":{"role":"agent","parts":[{"kind":"text","text":"Sign in at https://idp.example/?state=abc"}]}}}""")).ToList();
+
+        Assert.Equal(ChatFailure.NeedsApproval, turn.Failure);
+        Assert.Null(turn.FailedState);
+        Assert.Null(turn.FailureDetail);
     }
 
     [Fact]

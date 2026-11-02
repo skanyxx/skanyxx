@@ -1,3 +1,5 @@
+using Skanyxx.Core.Platform.Analytics;
+
 namespace Skanyxx.Core.Services;
 
 /// <summary>
@@ -5,7 +7,8 @@ namespace Skanyxx.Core.Services;
 /// …). The message is fixed, as for every kagent failure; <see cref="Reason"/> is kagent's own status message, already
 /// through <see cref="Platform.Chat.ChatFailureReason"/>, for the log and for builders and up (D553).
 /// </summary>
-public sealed class KAgentTaskFailedException(string? taskId, string state, string? reason)
+/// <param name="usage">The tokens kagent reported for the turn: they were spent although it failed (D551).</param>
+public sealed class KAgentTaskFailedException(string? taskId, string state, string? reason, TokenUsage usage)
     : HttpRequestException("the agent did not complete the answer")
 {
     public string? TaskId { get; } = taskId;
@@ -13,4 +16,6 @@ public sealed class KAgentTaskFailedException(string? taskId, string state, stri
     public string State { get; } = state;
 
     public string? Reason { get; } = reason;
+
+    public TokenUsage Usage { get; } = usage;
 }
