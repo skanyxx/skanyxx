@@ -21,7 +21,7 @@ internal static class AgentDetailsReader
             agent.Namespace, agent.Name, agent.Description, agent.Ready,
             AgentEntries.Text(entry?["model"]), AgentEntries.Text(entry?["modelProvider"]),
             AgentEntries.Text(entry?["modelConfigRef"]) ?? AgentEntries.Text(declarative?["modelConfig"]),
-            MergedAgents.AcceptsImages(agent),
+            OfferedAgents.AcceptsImages(agent),
             [.. tools.Select(t => t?["mcpServer"]).OfType<JsonObject>().Select(s => Server(s, agent.Namespace, toolServers, problems, internals))],
             [.. tools.Select(t => t?["agent"]).OfType<JsonObject>()
                 .Select(a => AgentEntries.Text(a["name"]) is { } name ? $"{AgentEntries.Text(a["namespace"]) ?? agent.Namespace}/{name}" : null)

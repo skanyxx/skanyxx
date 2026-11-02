@@ -11,8 +11,8 @@ metadata:
   namespace: kagent
   labels:
     app.kubernetes.io/part-of: skanyxx-memory
-    # Merged agents are the ones people may chat with in Skanyxx (D4/D031). The studio reconciler sets this label on
-    # merge later (D045); the seed is merged by definition.
+    # "Merged" = came through review (D045); the seed is merged by definition. Chat offers every agent but Skanyxx's own
+    # (D557), and this part-of value is the one Skanyxx label that stays chat-able.
     skanyxx.dev/merged: "true"
 spec:
   type: Declarative

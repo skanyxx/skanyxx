@@ -18,7 +18,7 @@ internal sealed class GetConversationHandler(KAgentApiClient kagent, ITokenEstim
             var envelope = await kagent.GetSessionWithEventsAsync(query.ConversationId, query.UserId, ct);
             if (envelope?.Session is not { } session || !OwnConversation.IsOwn(session, query.UserId))
                 return Outcome<ConversationView>.NotFound(OwnConversation.NotFound);
-            var agent = MergedAgents.FromSessionAgentId(session.AgentId)!.Value;
+            var agent = OfferedAgents.FromSessionAgentId(session.AgentId)!.Value;
             var (items, usage, sent) = SessionEvents.Read(envelope.Events, estimator);
             return Outcome<ConversationView>.Ok(new ConversationView(session.Id, OwnConversation.Title(session), agent.Namespace, agent.Name, items, usage, sent));
         }

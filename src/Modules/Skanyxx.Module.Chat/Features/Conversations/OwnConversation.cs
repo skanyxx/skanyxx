@@ -15,7 +15,7 @@ internal static class OwnConversation
     public const string Untitled = "New chat";
 
     public static bool IsOwn(KAgentSession? session, string userId) =>
-        session is not null && session.UserId == userId && session.Source != "agent" && MergedAgents.FromSessionAgentId(session.AgentId) is not null;
+        session is not null && session.UserId == userId && session.Source != "agent" && OfferedAgents.FromSessionAgentId(session.AgentId) is not null;
 
     public static async Task<KAgentSession?> FindAsync(KAgentApiClient kagent, string userId, string conversationId, CancellationToken ct) =>
         await kagent.GetSessionAsync(conversationId, userId, ct) is { } session && IsOwn(session, userId) ? session : null;

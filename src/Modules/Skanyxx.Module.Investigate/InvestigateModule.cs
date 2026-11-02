@@ -48,7 +48,7 @@ public sealed class InvestigateModule : IModule
 
         services.AddSingleton<RunSignal>();
         services.AddSingleton<StepWriter>();
-        services.AddSingleton<IInvestigationAgents, MergedAgents>();
+        services.AddSingleton<IInvestigationAgents, OfferedAgents>();
         services.AddScoped<RunExecutor>();
         // Unlimited until the quotas module replaces it; registered here too, as Agents and Tickets do, so Investigate runs without Chat.
         services.TryAddScoped<IChatQuota, UnlimitedChatQuota>();

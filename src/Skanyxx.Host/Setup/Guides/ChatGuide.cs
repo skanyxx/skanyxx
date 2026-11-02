@@ -1,13 +1,13 @@
 namespace Skanyxx.Host.Setup.Guides;
 
-/// <summary>Chat with merged agents through kagent. Facts: README "First hour" (Chat), first-hour.sh `up`.</summary>
+/// <summary>Chat with every kagent agent (D557) through kagent. Facts: README "First hour" (Chat), first-hour.sh `up`.</summary>
 public static class ChatGuide
 {
     public static SetupGuide Guide { get; } = new(
         Id: "chat",
         Title: "Chat",
         Readme: "First hour (local three-plane run) → Chat",
-        What: "People chat with merged agents (the seed today). Skanyxx talks to kagent's controller as the signed-in person; Chat is the only place that talks to an agent.",
+        What: "People chat with every agent kagent runs, except Skanyxx's own (Studio previews, the factory, ticket stages) and suspended ones (D557). Skanyxx talks to kagent's controller as the signed-in person; Chat is the only place that talks to an agent.",
         Prerequisites:
         [
             "kagent 0.10.2 on a Kubernetes cluster (local: first-hour.sh up installs it; Helm: bundled, or your own with kagent.enabled=false).",
@@ -45,6 +45,6 @@ public static class ChatGuide
             new("first-hour.sh up stops: \"localhost:8083 is held by pid …\"", "Another port-forward or process holds :8083; stop it by its pid and run up again."),
             new("Chat answers 502 with a fixed text", "kagent failed the turn: its own text is in the Host's log. Check the model on /Model and kagent's pods."),
             new("Chat answers 403", "The page was opened under an address not in Skanyxx:AllowedOrigins and not the origin of Identity:PublicBaseUrl."),
-            new("No agents listed", "Only agents labelled skanyxx.dev/merged=true are listed: apply the seed (first-hour.sh up) or merge one in Studio."),
+            new("No agents listed", "kagent runs no agent Chat offers: apply the seed (first-hour.sh up), merge one in Studio or create one on /Agents. Previews, the factory, ticket stages and suspended agents are never listed."),
         ]);
 }

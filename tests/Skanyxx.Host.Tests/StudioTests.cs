@@ -201,7 +201,7 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Null(tool["allowedHeaders"]); // a studio agent never acts for users (D084)
         var server = _kagent.ToolServers[$"{Ns}/skanyxx-memory-refund-helper"];
         Assert.Equal("http://skanyxx.skanyxx.svc:8080/mcp/memory", server["spec"]!["url"]!.GetValue<string>());
-        // An employee now talks to it in Chat (D031).
+        // An employee now talks to it in Chat (D557).
         var chatAgents = await _employee.GetFromJsonAsync<JsonElement>("/api/chat/agents", cancellationToken: TestContext.Current.CancellationToken);
         Assert.Contains(chatAgents.EnumerateArray(), a => a.GetProperty("name").GetString() == "refund-helper");
         var answer = await _employee.PostAsJsonAsync("/api/chat", new { message = "refund window?", agentNamespace = Ns, agentName = "refund-helper" }, cancellationToken: TestContext.Current.CancellationToken);
@@ -463,7 +463,7 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         }, cancellationToken: TestContext.Current.CancellationToken);
         Assert.True(upsert.IsError);
         Assert.Contains("No upsert grant", Text(upsert));
-        // Not in Chat, for anyone (D031), and Chat refuses to talk to it.
+        // A preview: not in Chat, for anyone (D557), and Chat refuses to talk to it.
         Assert.DoesNotContain(name, await _employee.GetStringAsync("/api/chat/agents", TestContext.Current.CancellationToken));
         Assert.Equal(HttpStatusCode.NotFound,
             (await _owner.PostAsJsonAsync("/api/chat", new { message = "hi", agentNamespace = Ns, agentName = name }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);

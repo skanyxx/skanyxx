@@ -1,11 +1,12 @@
 using System.Text.RegularExpressions;
+using Skanyxx.Core.Platform.Chat;
 
 namespace Skanyxx.Module.Agents.Studio.Definition;
 
 /// <summary>Names and labels the studio owns in git and kagent.</summary>
 internal static partial class StudioNames
 {
-    /// <summary>Set by the reconciler on merge; Chat lists only agents carrying it (D100, D031).</summary>
+    /// <summary>Set by the reconciler on merge: the agent came through review. It no longer decides Chat (D557, <see cref="ChatOffer"/>).</summary>
     public const string MergedLabel = "skanyxx.dev/merged";
 
     /// <summary>On every object the studio creates in kagent. An agent without it is never adopted or changed.</summary>
@@ -14,13 +15,13 @@ internal static partial class StudioNames
     public const string ManagedBy = "skanyxx-studio";
 
     /// <summary>On a preview agent: the pull request it previews (D030). Never together with <see cref="MergedLabel"/>.</summary>
-    public const string PreviewLabel = "skanyxx.dev/preview";
+    public const string PreviewLabel = ChatOffer.PreviewLabel;
 
     /// <summary>On a plugin server the studio created: the plugin it belongs to (for people reading kagent; kagent's API does not list labels).</summary>
     public const string PluginLabel = "skanyxx.dev/plugin";
 
     /// <summary>On the factory agent (D5).</summary>
-    public const string RoleLabel = "skanyxx.dev/role";
+    public const string RoleLabel = ChatOffer.RoleLabel;
 
     public const string FactoryAgent = "skanyxx-factory";
 
@@ -42,8 +43,7 @@ internal static partial class StudioNames
 
     /// <summary>Names a person may not take: the seed is the owner's, and these prefixes are the studio's own objects.</summary>
     public static bool IsReserved(string name) =>
-        name == "seed" || name == FactoryAgent || name.StartsWith("preview-", StringComparison.Ordinal)
-        || name.StartsWith("skanyxx-", StringComparison.Ordinal);
+        name == "seed" || name == FactoryAgent || ChatOffer.HasReservedPrefix(name);
 
     /// <summary>
     /// A studio agent name: a Kubernetes name that starts with a letter, because kagent derives a Service from it and a
@@ -54,7 +54,7 @@ internal static partial class StudioNames
     /// <summary>A Kubernetes object name (RFC 1123 label).</summary>
     public static bool IsKubeName(string? name) => name is not null && name.Length <= 63 && KubeName().IsMatch(name);
 
-    public const string MemoryServerPrefix = "skanyxx-memory-";
+    public const string MemoryServerPrefix = ChatOffer.MemoryServerPrefix;
 
     public static string MemoryServer(string agent) => MemoryServerPrefix + agent;
 
@@ -84,7 +84,7 @@ internal static partial class StudioNames
     /// <summary>A plugin server's name: a Kubernetes name of at most 50, never one of the studio's own prefixes.</summary>
     public static bool IsValidServerName(string? name) =>
         name is not null && name.Length <= MaxServerNameLength && KubeName().IsMatch(name)
-        && !name.StartsWith("skanyxx-", StringComparison.Ordinal) && !name.StartsWith("preview-", StringComparison.Ordinal);
+        && !ChatOffer.HasReservedPrefix(name);
 
     public static string PluginFolder(string plugin) => $"{PluginsFolder}/{plugin}";
 

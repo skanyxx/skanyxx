@@ -15,7 +15,7 @@ internal sealed class ChatAgentDetailsHandler(KAgentApiClient kagent, IAgentMemo
     {
         try
         {
-            if (await MergedAgents.FindAsync(kagent, query.Namespace, query.Name, ct) is not { } agent)
+            if (await OfferedAgents.FindAsync(kagent, query.Namespace, query.Name, ct) is not { } agent)
                 return Outcome<ChatAgentDetails>.NotFound("No such agent to chat with.");
             var entries = kagent.GetAgentListAsync(ct);
             var servers = kagent.GetToolServerListAsync(ct);

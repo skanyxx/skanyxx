@@ -47,7 +47,7 @@ pgvector later: an `embedding` column next to `search`, filled by a model-based 
 
 | Route | |
 |---|---|
-| `GET api/chat/agents` | the picker: merged, not suspended; model, accepts images, `toolProblem` (D554) |
+| `GET api/chat/agents` | the picker: every kagent agent but Skanyxx's own, not suspended (D557); model, accepts images, `toolProblem` (D554) |
 | `GET api/chat/agents/{ns}/{name}` | details panel (404 for any agent Chat does not offer); `toolProblem`, each server's `problem` (D554) |
 | `POST api/chat` / `POST api/chat/stream` | one turn, blocking / server-sent events (`session`, `delta`, `text`, `usage`, `answer`, `done` or `error`; no tool steps, D555); a failed task's `reason` for builders and up only (D553) |
 | `GET api/chat/conversations` | the caller's kagent sessions, newest first |

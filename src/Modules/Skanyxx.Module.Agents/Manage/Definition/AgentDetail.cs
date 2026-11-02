@@ -3,7 +3,7 @@ using Skanyxx.Core.Platform.Studio;
 namespace Skanyxx.Module.Agents.Manage.Definition;
 
 /// <param name="Source">An <see cref="AgentSource"/>.</param>
-/// <param name="InChat">Labelled merged: Chat lists it, and employees can read it (D031, D254).</param>
+/// <param name="InChat">Chat offers it unless suspended (<see cref="Skanyxx.Core.Platform.Chat.ChatOffer"/>, D557), and employees can read it then (D254). On a write's response it judges the agent alone, not the agents it calls.</param>
 /// <param name="Suspended">Scaled to zero on the Agents page and out of Chat (D257).</param>
 /// <param name="CanEdit">The caller may change it here: a supervisor, and an agent neither the studio's nor Skanyxx's.</param>
 /// <param name="Protection">Why it cannot be changed here, when it cannot.</param>

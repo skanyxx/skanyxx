@@ -30,7 +30,8 @@ See `identity.md` and `install-path.md`. Bootstrap is always a local owner. Entr
   `default-model-config`) in the list of kagent's ModelConfigs, through `api/models` and kagent's API; a pasted key goes
   into a Secret kagent owns. Skanyxx stores no key and holds no Kubernetes credentials (D099). `/` sends the owner here
   until the default exists and kagent has accepted it.
-- **Chat.** Lists merged agents only — label `skanyxx.dev/merged: "true"`, carried by the seed (D100) — and talks to
+- **Chat.** Lists every agent kagent runs except Skanyxx's own (previews, the factory, ticket stages) and suspended
+  ones (D557; until then only `skanyxx.dev/merged: "true"`, D100) — and talks to
   kagent as the signed-in person, so the seed searches company memory plus that person's personal memory (D101).
 - **Seed memory secret.** Issued by the owner with `actsForUsers: true` and written into the seed's Secret
   (`scripts/dev/first-hour.sh seed-secret`; the umbrella chart will do it at install, slice 4). Skanyxx still holds no

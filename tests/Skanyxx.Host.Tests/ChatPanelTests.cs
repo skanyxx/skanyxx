@@ -76,7 +76,11 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
             });
         _kagent.AgentObjects["kagent/paused"] = Agent("paused", new JsonObject { ["skanyxx.dev/merged"] = "true" },
             new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject { ["deployment"] = new JsonObject { ["replicas"] = 0 } } });
-        _kagent.AgentObjects["kagent/hidden"] = Agent("hidden", new JsonObject(), new JsonObject { ["type"] = "Declarative" });
+        // D557: an agent made straight in kagent (kagent UI, kubectl, Helm) is offered; Skanyxx's own machinery is not.
+        _kagent.AgentObjects["kagent/kagent-made"] = Agent("kagent-made", new JsonObject(), new JsonObject { ["type"] = "Declarative" });
+        _kagent.AgentObjects["kagent/hidden"] = Agent("hidden", new JsonObject { ["skanyxx.dev/preview"] = "7", ["skanyxx.dev/managed-by"] = "skanyxx-studio" },
+            new JsonObject { ["type"] = "Declarative" });
+        _kagent.AgentObjects["kagent/factory"] = Agent("factory", new JsonObject { ["skanyxx.dev/role"] = "factory" }, new JsonObject { ["type"] = "Declarative" });
     }
 
     private static JsonObject Agent(string name, JsonObject labels, JsonObject spec) => new()
@@ -94,7 +98,7 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
 
         var agents = await employee.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct);
 
-        Assert.Equal(["kagent/helper", "kagent/seed", "team-a/seed"],
+        Assert.Equal(["kagent/e2e-hello", "kagent/helper", "kagent/kagent-made", "kagent/seed", "team-a/seed"],
             agents.EnumerateArray().Select(a => $"{a.GetProperty("namespace").GetString()}/{a.GetProperty("name").GetString()}"));
         var helper = agents.EnumerateArray().First(a => a.GetProperty("name").GetString() == "helper");
         Assert.Equal("gpt-4o", helper.GetProperty("model").GetString());
@@ -103,6 +107,7 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
 
     [Theory]
     [InlineData("hidden")]
+    [InlineData("factory")]
     [InlineData("paused")]
     [InlineData("ticket-planner")]
     public async Task AnAgentChatDoesNotOffer_HasNoDetails_AndNoTurn(string name)
@@ -115,6 +120,21 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.NotFound, details.StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, turn.StatusCode);
         Assert.Empty(_kagent.CallsTo("POST", "/api/sessions"));
+    }
+
+    /// <summary>D557: an agent nobody labelled (made in kagent directly) has details and takes an employee's turn.</summary>
+    [Fact]
+    public async Task AnUnlabelledAgent_HasDetails_AndAnEmployeeChatsWithIt()
+    {
+        var employee = await EmployeeAsync();
+
+        var details = await employee.GetAsync("/api/chat/agents/kagent/kagent-made", Ct);
+        var turn = await employee.PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "kagent-made", message = "hi" }, Ct);
+
+        Assert.Equal(HttpStatusCode.OK, details.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, turn.StatusCode);
+        Assert.Equal("kagent/kagent-made", Assert.Single(_kagent.CallsTo("POST", "/api/sessions")).Body!["agent_ref"]!.GetValue<string>());
+        Assert.Single(_kagent.CallsTo("POST", "/api/a2a/kagent/kagent-made/"));
     }
 
     [Fact]
@@ -382,13 +402,16 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
     [Fact]
     public async Task AnAgentWhoseToolServerGivesNoTools_ShowsUnhealthy_ByNameForBuildersAndUpOnly()
     {
+        // Its own memory server, listed without tools (an agent naming another's is never offered, D557).
+        _kagent.ToolServers["kagent/skanyxx-memory-broken"] = new JsonObject();
+        _kagent.DiscoveredTools["kagent/skanyxx-memory-broken"] = [];
         _kagent.AgentObjects["kagent/broken"] = Agent("broken", new JsonObject { ["skanyxx.dev/merged"] = "true" }, new JsonObject
         {
             ["type"] = "Declarative",
             ["declarative"] = new JsonObject
             {
                 ["tools"] = new JsonArray(
-                    new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "skanyxx-memory-seed", ["kind"] = "RemoteMCPServer" } },
+                    new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "skanyxx-memory-broken", ["kind"] = "RemoteMCPServer" } },
                     new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "gone-mcp", ["namespace"] = "team-a", ["kind"] = "RemoteMCPServer" } })
             }
         });
@@ -398,7 +421,7 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
 
         var picker = (await owner.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct)).EnumerateArray().ToList();
         var broken = picker.First(a => a.GetProperty("name").GetString() == "broken");
-        Assert.Equal($"kagent/skanyxx-memory-seed: {ToolServerHealth.NoTools} team-a/gone-mcp: {ToolServerHealth.NotListed}", broken.GetProperty("toolProblem").GetString());
+        Assert.Equal($"kagent/skanyxx-memory-broken: {ToolServerHealth.NoTools} team-a/gone-mcp: {ToolServerHealth.NotListed}", broken.GetProperty("toolProblem").GetString());
         Assert.Equal(JsonValueKind.Null, picker.First(a => a.GetProperty("name").GetString() == "helper").GetProperty("toolProblem").ValueKind);
         Assert.Equal(broken.GetProperty("toolProblem").GetString(), (await builder.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct)).EnumerateArray()
             .First(a => a.GetProperty("name").GetString() == "broken").GetProperty("toolProblem").GetString());

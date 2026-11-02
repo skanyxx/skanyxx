@@ -1,5 +1,6 @@
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Skanyxx.Host.Tests;
 
@@ -84,6 +85,48 @@ public sealed class InvestigateTests(PostgresFixture fixture) : IAsyncLifetime
 
         var pdf = await _owner.GetAsync($"/api/investigate/runs/{runId}/report.pdf", Ct);
         Assert.Equal("application/pdf", pdf.Content.Headers.ContentType?.MediaType);
+    }
+
+    /// <summary>D557: a step may call any agent Chat offers, labelled or not; never a Studio preview, a ticket stage or a suspended agent.</summary>
+    [Fact]
+    public async Task AStep_TakesAnUnlabelledAgent_ButNeverAPreview()
+    {
+        _kagent.AgentObjects["kagent/preview-9-helper"] = new JsonObject
+        {
+            ["metadata"] = new JsonObject
+            {
+                ["name"] = "preview-9-helper", ["namespace"] = "kagent",
+                ["labels"] = new JsonObject { ["skanyxx.dev/preview"] = "9", ["skanyxx.dev/managed-by"] = "skanyxx-studio" }
+            },
+            ["spec"] = new JsonObject { ["type"] = "Declarative" }
+        };
+        Task<HttpResponseMessage> SaveAsync(string agent) => _owner.PostAsJsonAsync("/api/investigate/workflows", new
+        {
+            name = $"Uses {agent}",
+            steps = new object[] { new { id = "s1", title = "Ask", kind = "agent", agent, prompt = "{{input}}", steps = Array.Empty<object>() } }
+        }, Ct);
+
+        _kagent.AgentObjects["kagent/asleep"] = new JsonObject
+        {
+            ["metadata"] = new JsonObject { ["name"] = "asleep", ["namespace"] = "kagent" },
+            ["spec"] = new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject { ["deployment"] = new JsonObject { ["replicas"] = 0 } } }
+        };
+
+        var options = await _owner.GetFromJsonAsync<JsonElement>("/api/investigate/options", Ct);
+        var unlabelled = await SaveAsync("kagent/e2e-hello");
+        var suspended = await SaveAsync("kagent/asleep");
+        var preview = await SaveAsync("kagent/preview-9-helper");
+        var stage = await SaveAsync("kagent/ticket-planner");
+
+        var refs = options.GetProperty("agents").EnumerateArray().Select(a => a.GetProperty("ref").GetString()).ToList();
+        Assert.Contains("kagent/e2e-hello", refs);
+        Assert.DoesNotContain("kagent/preview-9-helper", refs);
+        Assert.DoesNotContain("kagent/ticket-planner", refs);
+        Assert.Equal(HttpStatusCode.Created, unlabelled.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, preview.StatusCode);
+        Assert.Contains("Not an agent you can use now", await preview.Content.ReadAsStringAsync(Ct));
+        Assert.Equal(HttpStatusCode.Conflict, stage.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, suspended.StatusCode);
     }
 
     [Fact]

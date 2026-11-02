@@ -341,7 +341,7 @@ internal sealed class StudioReconciler(
             await RemoveAsync(preview.Name, ct);
     }
 
-    /// <summary>The factory agent (D5), under the reconcile lock (m9): not merged (never in Chat), no tools, the owner's model.</summary>
+    /// <summary>The factory agent (D5), under the reconcile lock (m9): labelled with its role (never in Chat, D557), no tools, the owner's model.</summary>
     public async Task EnsureFactoryAsync(CancellationToken ct)
     {
         await using var held = await HoldAsync(ct);

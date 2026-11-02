@@ -7,7 +7,7 @@ namespace Skanyxx.Module.Investigate.Features;
 
 /// <summary>
 /// Checked on save, on start and again when the worker picks the run up (D386): every agent a tree calls must be one
-/// people may use now (merged, not suspended), and a step reading an earlier answer may call a write-capable agent only
+/// people may use now (one Chat offers, D557), and a step reading an earlier answer may call a write-capable agent only
 /// when the workflow allows chained writes (D372). Again, because an agent may have gained a tool or a grant since the
 /// workflow was saved or the run was queued.
 /// </summary>

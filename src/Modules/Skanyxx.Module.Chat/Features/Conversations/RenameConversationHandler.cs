@@ -21,7 +21,7 @@ internal sealed class RenameConversationHandler(KAgentApiClient kagent, IPublish
                 return Outcome<ConversationSummary>.NotFound(OwnConversation.NotFound);
             // kagent has the new title: the index follows even if the caller leaves now.
             await publisher.Publish(new ChatConversationRenamed(command.UserId, session.Id, title), CancellationToken.None);
-            var agent = MergedAgents.FromSessionAgentId(session.AgentId)!.Value;
+            var agent = OfferedAgents.FromSessionAgentId(session.AgentId)!.Value;
             return Outcome<ConversationSummary>.Ok(new ConversationSummary(session.Id, title, agent.Namespace, agent.Name, session.CreatedAt, session.LastUpdateTime));
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
