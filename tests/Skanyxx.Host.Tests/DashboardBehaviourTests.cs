@@ -15,7 +15,7 @@ public sealed partial class DashboardBehaviourTests
     [
         "healthySaysSo", "offTilesComeLast", "chartsHaveTheirNumbers", "chatsTrend", "failedTurnsTrendIsBad", "checkedAtShown",
         "refreshRedrawsOnce", "allHealthy", "emptyChartsSaySo", "problemsComeFirst", "statusNamesWhatIsWrong", "statesAreIconAndWords",
-        "downTileHasItsFix", "alertsListDownThenDegraded", "onlyFixedTexts", "healthErrorRetries", "lastAttemptAfterAFailure",
+        "downTileHasItsFix", "alertsListDownThenDegraded", "onlyFixedTexts", "healthErrorRetries", "lastAttemptThenUpdated",
         "usageErrorRetries", "latestReadWins", "supervisorSeesNoPeople", "supervisorIsOfferedOpenNotFix"
     ];
 

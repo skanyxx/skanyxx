@@ -152,16 +152,18 @@
                 && text('alerts').includes('kagent controller: Skanyxx could not reach the kagent controller.');
             const alerts = [...$('alerts').children].map(li => li.dataset.severity + ':' + li.textContent);
             r.alertsListDownThenDegraded = alerts[0].startsWith('down:') && alerts[0].includes('kagent controller')
+                && [...$('alerts').querySelectorAll('a')].every(a => $(a.getAttribute('aria-describedby'))?.textContent.length > 0)
                 && alerts[1].startsWith('warn:') && alerts[1].includes('Tool servers: 1 tool server(s) have no tools discovered.');
             r.onlyFixedTexts = !text('root').includes('hunter2') && !text('root').includes('Host=db');
 
             await open({ tiles: healthy, health: [{ fail: true }] });
             const healthError = $('status').dataset.tone === 'down' && text('status').includes('Health could not be read')
                 && text('status').includes('The database did not answer in time.') && text('alerts').includes('Health could not be read, so this list may be incomplete.');
+            const lastAttempt = $('checked-at').textContent.startsWith('Last attempt ');
             tryAgain($('status')).click();
             await settled();
             r.healthErrorRetries = healthError && $('health').querySelectorAll('[data-tile]').length === 3 && document.activeElement === $('status');
-            r.lastAttemptAfterAFailure = $('checked-at').textContent.startsWith('Last attempt ');
+            r.lastAttemptThenUpdated = lastAttempt && $('checked-at').textContent.startsWith('Updated ');
 
             await open({ tiles: healthy, usage: [{ fail: true }] });
             const usageError = $('glance').querySelector('.error-state') !== null && $('chart-tokens').hidden
@@ -178,7 +180,7 @@
             await settled();
             await new Promise(r => setTimeout(r, 200));
             r.latestReadWins = $('glance').querySelectorAll('.dash-kpi').length === 9 && !text('alerts').includes('Usage could not be read')
-                && !$('chart-tokens').hidden;
+                && !$('chart-tokens').hidden && document.activeElement !== $('glance') && $('checked-at').textContent.startsWith('Updated ');
 
             await open({ tiles: problems, owner: false });
             r.supervisorSeesNoPeople = text('top-users').includes('Per-person usage is the owner\'s.') && $('top-users').querySelector('table') === null

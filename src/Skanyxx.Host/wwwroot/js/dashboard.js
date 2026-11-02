@@ -32,7 +32,11 @@
     // Latest request wins: a reply that lands after a newer request for the same source is dropped.
     const seq = { health: 0, usage: 0 };
     // The server's own links (HealthBoard, DashboardSummaryHandler) are paths in this app; anything else is not a link.
-    const local = url => typeof url === 'string' && url.startsWith('/') && !url.startsWith('//') ? url : null;
+    function local(url) {
+        if (typeof url !== 'string' || !url.startsWith('/')) return null;
+        const resolved = new URL(url, location.origin);
+        return resolved.origin === location.origin ? resolved.pathname + resolved.search + resolved.hash : null;
+    }
 
     // The shared setup block's prompt and copy button (js/setup-guide.js): the tile's fixed texts, no values.
     function guide(tile) {
@@ -98,7 +102,7 @@
                     el('p', { class: 'dash-status-title' }, 'Health could not be read'),
                     el('p', { class: 'dash-status-detail' }, `The server said: ${failed.health.replace(/\.$/, '')}.${usageNote}`)),
                 el('button', { type: 'button', class: 'btn btn-secondary btn-sm', onclick: () => retry(failed.usage !== null ? loadAll : loadHealth, 'status') },
-                    icon('i-refresh'), 'Try again'));
+                    icon('i-refresh'), failed.usage !== null ? 'Try again: health and usage' : 'Try again'));
             return;
         }
         const down = tiles.filter(t => t.status === 'down');
@@ -146,11 +150,12 @@
             list.replaceChildren(el('li', { class: 'is-empty' }, icon(checking ? 'i-refresh' : 'i-check-circle'), checking ? 'Checking…' : 'Nothing needs attention.'));
             return;
         }
-        list.replaceChildren(...items.map(a => {
+        list.replaceChildren(...items.map((a, i) => {
             const s = SEVERITY[a.severity] ?? SEVERITY.info;
+            // Every link says "Open"; the item's own words describe which one.
             return el('li', { 'data-severity': a.severity }, icon(s.icon),
-                el('span', { class: 'dash-alert-text' }, el('span', { class: 'visually-hidden' }, `${s.label}: `), a.text),
-                local(a.url) ? el('a', { href: local(a.url), class: 'dash-alert-link' }, 'Open') : null);
+                el('span', { class: 'dash-alert-text', id: `dash-alert-${i}` }, el('span', { class: 'visually-hidden' }, `${s.label}: `), a.text),
+                local(a.url) ? el('a', { href: local(a.url), class: 'dash-alert-link', 'aria-describedby': `dash-alert-${i}` }, 'Open') : null);
         }));
     }
 
@@ -179,7 +184,8 @@
         target.replaceChildren(box);
     }
 
-    /** A reply, or the error it failed with, for the latest request of a source only; null for a superseded one. */
+    /** A reply, or the error it failed with, for the latest request of a source only; null for a superseded one. The
+     *  loaders return whether their reply was drawn, so a superseded one neither stamps the time nor moves focus. */
     async function latest(source, url) {
         const n = ++seq[source];
         let reply;
@@ -188,10 +194,19 @@
         return n === seq[source] ? reply : null;
     }
 
-    // "Try again" sits in the content it reloads, so focus moves to that region once it is back (not to the page).
+    // "Try again" sits in the content it reloads, so focus moves to that region once it is back (not to the page),
+    // unless the person has moved on meanwhile.
     async function retry(load, regionId) {
-        await load();
-        $(regionId).focus();
+        if (!await load()) return;
+        stamp();
+        if (document.activeElement === document.body || document.activeElement === null) $(regionId).focus();
+    }
+
+    function stamp() {
+        const at = new Date();
+        const word = failed.health === null && failed.usage === null ? 'Updated' : 'Last attempt';
+        $('checked-at').replaceChildren(el('time', { datetime: at.toISOString(), title: skx.utc(at) },
+            `${word} ${at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`));
     }
 
     async function loadHealth() {
@@ -202,7 +217,7 @@
         renderAlerts();
         skeletons($('health'), 4, 'dash-tile-skeleton');
         const reply = await latest('health', '/api/dashboard/health');
-        if (!reply) return;
+        if (!reply) return false;
         if ('data' in reply) {
             tiles = reply.data;
             renderHealth();
@@ -214,6 +229,7 @@
         renderStatus();
         renderCounts();
         renderAlerts();
+        return true;
     }
 
     // ---------- Usage ----------
@@ -385,7 +401,7 @@
         renderStatus();
         renderAlerts();
         const reply = await latest('usage', '/api/dashboard/summary');
-        if (!reply) return;
+        if (!reply) return false;
         if ('data' in reply) {
             renderGlance(reply.data);
             renderCharts(reply.data);
@@ -398,14 +414,13 @@
         }
         renderStatus();
         renderAlerts();
+        return true;
     }
 
     async function loadAll() {
-        await Promise.all([loadHealth(), loadSummary()]);
-        const at = new Date();
-        const word = failed.health === null && failed.usage === null ? 'Updated' : 'Last attempt';
-        $('checked-at').replaceChildren(el('time', { datetime: at.toISOString(), title: skx.utc(at) },
-            `${word} ${at.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`));
+        const drawn = (await Promise.all([loadHealth(), loadSummary()])).every(Boolean);
+        if (drawn) stamp();
+        return drawn;
     }
 
     if (root) {
