@@ -3,52 +3,83 @@
 @{
     ViewData["Title"] = "Dashboard";
 }
-<page-header description="How the install is doing: what needs attention, and how much it is used." />
-<div class="insights" id="dashboard" data-owner="@(Model.IsOwner ? "true" : "false")">
+@* Order (D558): what is wrong first (the status, what needs attention, the services), then usage, the charts and the
+   lists; services that are not set up come last. js/dashboard.js fills every part. *@
+<page-header description="How the install is doing: what needs attention, and how much it is used.">
+    <span id="checked-at" class="dash-checked"></span>
+    <button type="button" id="dash-refresh" class="btn btn-secondary btn-sm"><svg class="icon" aria-hidden="true" focusable="false"><use href="#i-refresh" /></svg><span>Refresh</span></button>
+</page-header>
+<div class="insights dash" id="dashboard" data-owner="@(Model.IsOwner ? "true" : "false")">
     @if (!Model.IsOwner)
     {
         <alert tone="info">Read-only: the install's health, and usage of the people in your teams. Per-person lists and the audit are the owner's.</alert>
     }
-    <section class="insights-section" aria-labelledby="health-title">
-        <h2 id="health-title" class="insights-title">System health</h2>
-        <div id="health" class="tile-grid" aria-live="polite"></div>
+
+    <section class="dash-section" aria-labelledby="status-title">
+        <h2 id="status-title" class="visually-hidden">Status</h2>
+        <div id="status" class="dash-status" tabindex="-1" aria-live="polite" aria-busy="true"></div>
+        <h3 id="alerts-title" class="dash-subtitle">Needs attention</h3>
+        <ul id="alerts" class="dash-alerts" aria-labelledby="alerts-title"></ul>
     </section>
 
-    <section class="insights-section" aria-labelledby="alerts-title">
-        <h2 id="alerts-title" class="insights-title">Needs attention</h2>
-        <ul id="alerts" class="alert-list" aria-live="polite"></ul>
+    <section class="dash-section" aria-labelledby="health-title">
+        <div class="section-header">
+            <h2 id="health-title" class="section-title">System health</h2>
+            <p id="health-counts" class="dash-counts"></p>
+        </div>
+        <div id="health" class="dash-tiles"></div>
     </section>
 
-    <section class="insights-section" aria-labelledby="glance-title">
-        <h2 id="glance-title" class="insights-title">Usage at a glance</h2>
-        <div id="glance" class="stat-grid"></div>
+    <section class="dash-section" aria-labelledby="glance-title">
+        <div class="section-header">
+            <h2 id="glance-title" class="section-title">Usage at a glance</h2>
+            <p class="section-description">@(Model.IsOwner ? "Everyone on this install." : "The people in your teams.") Trends compare the last 7 days with the 7 days before.</p>
+        </div>
+        <div id="glance" class="dash-kpis" tabindex="-1"></div>
         <partial name="_TokenCounters" />
         <partial name="_CostDisclaimer" />
     </section>
 
-    <section class="insights-section chart-grid" aria-label="Last 30 days">
-        <figure class="chart-card"><figcaption>Model tokens per day (30 days)</figcaption><div class="chart-box"><canvas id="chart-tokens" role="img" aria-label="Tokens in and out per day"></canvas></div></figure>
-        <figure class="chart-card"><figcaption>Chats per day by agent</figcaption><div class="chart-box"><canvas id="chart-chats" role="img" aria-label="New chats per day, stacked by agent"></canvas></div></figure>
-        <figure class="chart-card"><figcaption>Failed turns per day</figcaption><div class="chart-box"><canvas id="chart-errors" role="img" aria-label="Chat turns that failed per day"></canvas></div></figure>
-        <figure class="chart-card"><figcaption>New memory cards per day</figcaption><div class="chart-box"><canvas id="chart-cards" role="img" aria-label="Memory cards created per day"></canvas></div></figure>
+    <section class="dash-section" aria-labelledby="charts-title">
+        <div class="section-header">
+            <h2 id="charts-title" class="section-title">Last 30 days</h2>
+        </div>
+        <div class="dash-charts">
+            <figure class="chart-card"><figcaption><span class="chart-title">Model tokens per day</span><span class="chart-summary" id="sum-tokens"></span></figcaption><div class="chart-box"><canvas id="chart-tokens" role="img" aria-label="Tokens in and out per day"></canvas></div></figure>
+            <figure class="chart-card"><figcaption><span class="chart-title">Chats per day by agent</span><span class="chart-summary" id="sum-chats"></span></figcaption><div class="chart-box"><canvas id="chart-chats" role="img" aria-label="New chats per day, stacked by agent"></canvas></div></figure>
+            <figure class="chart-card"><figcaption><span class="chart-title">Failed turns per day</span><span class="chart-summary" id="sum-errors"></span></figcaption><div class="chart-box"><canvas id="chart-errors" role="img" aria-label="Chat turns that failed per day"></canvas></div></figure>
+            <figure class="chart-card"><figcaption><span class="chart-title">New memory cards per day</span><span class="chart-summary" id="sum-cards"></span></figcaption><div class="chart-box"><canvas id="chart-cards" role="img" aria-label="Memory cards created per day"></canvas></div></figure>
+        </div>
     </section>
 
-    <section class="insights-section top-grid">
-        <div class="card"><h3 class="card-title">Top agents (7 days)</h3><div id="top-agents" class="table-container"></div></div>
-        <div class="card"><h3 class="card-title">Top users (7 days)</h3><div id="top-users" class="table-container"></div></div>
+    <section class="dash-section" aria-labelledby="lists-title">
+        <h2 id="lists-title" class="visually-hidden">Top agents and people</h2>
+        <div class="dash-lists">
+            <div class="card card-flush"><div class="card-header"><h3 class="card-title">Top agents (7 days)</h3></div><div id="top-agents" class="table-container"></div></div>
+            <div class="card card-flush"><div class="card-header"><h3 class="card-title">Top users (7 days)</h3></div><div id="top-users" class="table-container"></div></div>
+        </div>
     </section>
 
     @if (Model.IsOwner)
     {
-        <section class="insights-section card" aria-labelledby="events-title">
-            <h2 id="events-title" class="insights-title">Recent admin events</h2>
+        <section class="dash-section card card-flush" aria-labelledby="events-title">
+            <div class="card-header"><h2 id="events-title" class="card-title">Recent admin events</h2></div>
             <div id="events" class="table-container"></div>
-            <p class="field-hint mt-1">Who did what, without details or addresses. The full record is on the Audit page.</p>
+            <p class="field-hint dash-footnote">Who did what, without details or addresses. The full record is on the Audit page.</p>
         </section>
     }
+
+    <section class="dash-section" aria-labelledby="off-title" id="off-section" hidden>
+        <div class="section-header">
+            <h2 id="off-title" class="section-title">Not set up</h2>
+            <p class="section-description">Parts that are off on this install. Nothing is broken; open one to see how to turn it on.</p>
+        </div>
+        <div id="off" class="dash-off-list"></div>
+    </section>
 </div>
 @section Styles {
     <link rel="stylesheet" href="~/css/insights.css" asp-append-version="true" />
+    <link rel="stylesheet" href="~/css/dashboard.css" asp-append-version="true" />
 }
 @section Scripts {
     <script src="~/lib/chartjs/chart.umd.min.js" asp-append-version="true"></script>
