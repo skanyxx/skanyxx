@@ -107,4 +107,21 @@ public sealed class QuotaTests(PostgresFixture postgres) : InvestigateTestBase(p
             Assert.Equal(0L, u.Usage.Completion);
         });
     }
+
+    /// <summary>D556: a task kagent ended badly counts the tokens kagent reported for it, not an estimate.</summary>
+    [Fact]
+    public async Task AFailedKagentTask_IsCountedWithTheTokensKagentReported()
+    {
+        await WithRecordingQuotaAsync();
+        App.Agents.Answers[Analyst] = (_, _) =>
+            throw new AgentCallException("the agent's task ended 'failed'", "t", "failed", "connection refused", new ChatUsage(70, 5, 75));
+        var workflow = await App.CreateAsync(Builder, "Spends", [Agent("bad", Analyst, "y")]);
+
+        var run = await App.StartAsync(Builder, workflow.Id, "x");
+        await App.WaitForAsync(run.Id, RunState.Failed);
+
+        var used = Assert.Single(_quota.Recorded);
+        Assert.False(used.Estimated);
+        Assert.Equal(new ChatUsage(70, 5, 75), used.Usage);
+    }
 }

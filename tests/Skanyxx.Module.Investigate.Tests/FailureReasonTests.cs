@@ -65,7 +65,7 @@ public sealed class FailureReasonTests(PostgresFixture postgres) : InvestigateTe
 
         Assert.EndsWith("… (cut: kagent's message has 3,008 characters)", Assert.Single(RunReport.From(run, builder).Steps).KagentReason);
         var pdf = Encoding.Latin1.GetString(PdfReport.Render(RunReport.From(run, builder)));
-        Assert.Contains("...", pdf);
+        Assert.Contains("x...", pdf);
         Assert.Contains(@"\(cut: kagent's message has 3,008 characters\)", pdf); // parentheses escaped in a PDF string
     }
 
