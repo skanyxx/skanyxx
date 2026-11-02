@@ -74,11 +74,15 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
     public async Task Employees_ReadOnlyTheAgentsChatOffers_WithoutTheirPrompt_BuildersReadAll()
     {
         Seed("helper", Direct());
-        Seed("hidden", External());
+        Seed("hidden", new JsonObject { ["skanyxx.dev/preview"] = "4", ["skanyxx.dev/managed-by"] = "skanyxx-studio" });
+        Seed("outside", External());
 
         var employeeList = await ListAsync(_employee);
         Assert.All(employeeList, a => Assert.True(a.GetProperty("inChat").GetBoolean()));
         Assert.Contains(employeeList, a => a.GetProperty("name").GetString() == "helper");
+        // D557: an agent made in the kagent UI is one Chat offers, so an employee reads it too; a Studio preview is not.
+        Assert.Contains(employeeList, a => a.GetProperty("name").GetString() == "outside");
+        Assert.Equal(JsonValueKind.Null, (await _employee.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/outside", Ct)).GetProperty("systemMessage").ValueKind);
         Assert.DoesNotContain(employeeList, a => a.GetProperty("name").GetString() == "hidden");
         Assert.All(employeeList, a => Assert.False(a.GetProperty("canEdit").GetBoolean() || a.GetProperty("canDelete").GetBoolean()));
         Assert.Equal(HttpStatusCode.NotFound, (await _employee.GetAsync($"/api/agents/{Ns}/hidden", Ct)).StatusCode);

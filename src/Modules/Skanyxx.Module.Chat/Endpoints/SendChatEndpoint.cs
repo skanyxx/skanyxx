@@ -4,7 +4,7 @@ using Skanyxx.Core.Platform;
 
 namespace Skanyxx.Module.Chat.Endpoints;
 
-/// <summary>One blocking message to a merged agent, as the signed-in person (the API; the page streams).</summary>
+/// <summary>One blocking message to an agent Chat offers (D557), as the signed-in person (the API; the page streams).</summary>
 internal sealed class SendChatEndpoint(IMediator mediator) : Endpoint<SendChatRequest>
 {
     public const int MaxBodyBytes = 64 * 1024;

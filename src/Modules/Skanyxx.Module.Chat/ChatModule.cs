@@ -14,7 +14,7 @@ using Skanyxx.Module.Chat.Features.Turns;
 namespace Skanyxx.Module.Chat;
 
 /// <summary>
-/// People talk to merged kagent agents here (D017): the agent picker and details, conversations (kagent's sessions, as
+/// People talk to kagent agents here (D017, D557): the agent picker and details, conversations (kagent's sessions, as
 /// the person), streamed turns, and files attached to a turn.
 /// </summary>
 public class ChatModule : IModule

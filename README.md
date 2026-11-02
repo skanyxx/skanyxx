@@ -92,7 +92,12 @@ host (`baseUrl`); the owner may point it at any URL the agent pods reach — tru
 pod all the same. kagent 0.10.2's update takes no version, so concurrent saves are last-writer-wins. `/` sends the
 owner here until kagent has accepted a model with its credentials; everyone else lands on Chat.
 
-**Chat:** lists only **merged** agents — Agents labelled `skanyxx.dev/merged: "true"` (the seed today; D100) — via
+**Chat:** lists **every agent kagent runs** (D557) except Skanyxx's own machinery — Studio previews
+(`skanyxx.dev/preview`), the factory (`skanyxx.dev/role`), the Tickets stage agents
+(`app.kubernetes.io/part-of: skanyxx-ticket-flow`) — and suspended agents. An agent created in the kagent UI, by kubectl
+or Helm is offered like a Studio or Agents-page one: **any agent in kagent, with whatever tools it has, is reachable by
+every signed-in person, employees included**, so kagent's RBAC and namespace placement decide what exists to talk to.
+`skanyxx.dev/merged` still marks an agent that came through review (Studio), but no longer gates Chat. Listed by
 `GET /api/chat/agents`; `POST /api/chat {agentNamespace, agentName, message, conversationId?}` talks to kagent as the
 signed-in person (kagent's `user_id`/`X-User-Id`), so the seed searches company memory and that person's personal
 memory (D101). An agent is `namespace/name`. A failing turn answers `502` with a fixed text and deletes the conversation
@@ -360,7 +365,7 @@ Skanyxx.sln
 │   │   └── modules/               # Module DLLs loaded at runtime (build output, not tracked)
 │   └── Modules/
 │       ├── Skanyxx.Module.Agents/     # Agent list, studio (PRs in skanyxx-agents), plugins
-│       ├── Skanyxx.Module.Chat/       # Chat with merged agents through kagent
+│       ├── Skanyxx.Module.Chat/       # Chat with kagent's agents (D557)
 │       ├── Skanyxx.Module.Identity/   # Accounts, owner bootstrap, sign-in (ASP.NET Core Identity)
 │       ├── Skanyxx.Module.Memory/     # Memory engine (Postgres cards + MCP)
 │       ├── Skanyxx.Module.Runtime/    # The owner's model step (kagent ModelConfig)
@@ -530,7 +535,7 @@ Each module exposes REST endpoints under `/api/`:
 | Module | Routes |
 |---|---|
 | Agents | `/api/agents` (read only), `/api/studio`, `/api/plugins` |
-| Chat | `/api/chat`, `/api/chat/agents` (merged agents only) |
+| Chat | `/api/chat`, `/api/chat/agents` (every kagent agent but Skanyxx's own and suspended ones, D557) |
 | Identity | `/api/identity/status`, `/bootstrap`, `/sign-in`, `/refresh`, `/sign-out`, `/me`, `/unlock`, `/invites`, `/people`, `/org/departments`, `/org/teams` |
 | Memory | `/api/memory/cards`, `/api/memory/grants`, `/api/memory/agents/{agentId}/secret` (+ MCP at `/mcp/memory`, agent secret) |
 | Tickets | `/api/tickets/issues`, `/api/tickets/pipelines`, `/api/tickets/runs` |
@@ -1460,7 +1465,7 @@ dotnet test tests/Skanyxx.Module.Tickets.Tests     # needs Docker; kagent is fak
 ## Investigate
 
 `/Investigate` (owner, supervisors, builders; D340–D346): a **workflow** is a tree of steps. An agent step is one A2A
-`message/send` to a merged kagent agent (the ones Chat offers) with a prompt that may use `{{input}}` (what the run
+`message/send` to a kagent agent Chat offers (D557) with a prompt that may use `{{input}}` (what the run
 starts with) and `{{steps.<id>}}` (an earlier step's answer); a group runs its steps one after another or at the same
 time, nested up to `Investigate:MaxDepth` (4) levels and `Investigate:MaxSteps` (40) steps.
 

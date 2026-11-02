@@ -38,7 +38,7 @@ Design: `first-hour.md`, D017–D019, D025.
 - [x] Apply **only** `deploy/kagent/memory/` (seed Agent + RemoteMCPServer). Do **not** ship kagent’s sample pack (D019).
 - [x] Issue the seed’s memory secret (`POST /api/memory/agents/{id}/secret`, owner, `actsForUsers: true` as designed) and put it in the k8s Secret the RemoteMCPServer uses.
 - [x] After Setup, land on **Chat with the seed**, not Dashboard. Model-key / `ModelConfig` belongs in this hour (owner job in `roles.md`).
-- [x] Chat lists **merged** agents only (today: seed). kagent dashboard is not the talk surface (D017).
+- [x] Chat lists **merged** agents only (today: seed). kagent dashboard is not the talk surface (D017). Superseded by D557: every kagent agent but Skanyxx's own.
 
 > **2026-10-05 — slice 1 done** (branch `slice1-first-hour`). `scripts/dev/first-hour.sh up|host|seed-secret|status`
 > and README "First hour"; owner-only model step `/Model` / `PUT /api/model` writes kagent's ModelConfig through kagent's
@@ -83,7 +83,7 @@ Design: `studio.md`, `seed-vs-factory.md`, D020–D024, D028–D033, D045.
 - [x] Studio form fields = D029 (name, model, instructions, skills, MCP, **search/upsert grants**, optional kagent TTL). Grants live in Skanyxx, YAML in git, **same PR**.
 - [x] Factory is builder-only sugar over the same files (D022). Employees never get factory tools.
 - [x] Our reconciler applies merged YAML to kagent (D045). Not live `kubectl apply` from the form.
-- [x] Employees see merged agents only (D031). Preview is builder/supervisor.
+- [x] Employees see merged agents only (D031; superseded by D557). Preview is builder/supervisor.
 
 **2026-10-06 — slice 3 built (D109–D115).** `/Studio` (builders, supervisors, owner) + `api/studio`: the form or the
 factory's draft → one PR in `skanyxx-agents` (bundled Gitea, created at setup, `main` protected) carrying `agent.yaml` +

@@ -17,7 +17,7 @@ using Skanyxx.Module.Chat.Features.Files;
 namespace Skanyxx.Module.Chat.Features.Turns;
 
 /// <summary>
-/// What every turn does around kagent, blocking or streamed. Only a merged agent (by namespace and name), and only the
+/// What every turn does around kagent, blocking or streamed. Only an agent Chat offers (<see cref="OfferedAgents"/>, by namespace and name), and only the
 /// caller's own conversation with that agent: kagent looks sessions up by id and user, so another person's conversation
 /// id is "not found", and a conversation with a different agent is refused the same way. A first turn that fails, or
 /// that the caller abandons, deletes the session it just created, so retries leave no empty sessions behind.
@@ -37,7 +37,7 @@ internal sealed class ChatTurns(
     /// </summary>
     public async Task<Outcome<TurnStart>> StartAsync(SendChatMessageCommand command, CancellationToken ct)
     {
-        if (await MergedAgents.FindAsync(kagent, command.AgentNamespace, command.AgentName, ct) is not { } agent)
+        if (await OfferedAgents.FindAsync(kagent, command.AgentNamespace, command.AgentName, ct) is not { } agent)
             return Outcome<TurnStart>.NotFound("No such agent to chat with.");
         var agentRef = $"{agent.Namespace}/{agent.Name}";
         var admission = await quota.AdmitAsync(command.UserId, agentRef, ct);
@@ -86,7 +86,7 @@ internal sealed class ChatTurns(
             sessionId = (await kagent.CreateSessionAsync(agentRef, command.UserId, ct, title)).Id;
         }
         else if (await OwnConversation.FindAsync(kagent, command.UserId, command.ConversationId!, ct) is { } session
-                 && session.AgentId == MergedAgents.SessionAgentId(agent))
+                 && session.AgentId == OfferedAgents.SessionAgentId(agent))
             (sessionId, title) = (session.Id, OwnConversation.Title(session));
         else
             return Outcome<TurnStart>.NotFound(OwnConversation.NotFound);
@@ -232,7 +232,7 @@ internal sealed class ChatTurns(
             var bytes = await files.ReadAsync(userId, file, ct);
             if (file.Kind == ChatFileKinds.Image)
             {
-                if (!MergedAgents.AcceptsImages(agent))
+                if (!OfferedAgents.AcceptsImages(agent))
                     return Outcome<TurnFiles>.Conflict(null,
                         $"{agent.Name} does not read images, so {file.Name} was not sent. Remove it and describe the image in words, " +
                         "or pick an agent that reads images.", "images_not_supported");

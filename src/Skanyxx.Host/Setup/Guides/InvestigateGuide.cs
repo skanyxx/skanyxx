@@ -1,6 +1,6 @@
 namespace Skanyxx.Host.Setup.Guides;
 
-/// <summary>Investigation workflows over merged kagent agents (D340). Facts: README "Investigate".</summary>
+/// <summary>Investigation workflows over the kagent agents Chat offers (D340, D557). Facts: README "Investigate".</summary>
 public static class InvestigateGuide
 {
     public static SetupGuide Guide { get; } = new(
@@ -11,7 +11,7 @@ public static class InvestigateGuide
               "Each run reports every step's answer, downloads as JSON or PDF, and leaves a memory card with the finding in the starter's personal scope.",
         Prerequisites:
         [
-            "Chat working (see the Chat guide): a step can use any agent Chat offers (labelled skanyxx.dev/merged=true, not suspended).",
+            "Chat working (see the Chat guide): a step can use any agent Chat offers (every kagent agent except Studio previews, the factory, ticket stages and suspended ones; D557).",
             "Memory working (see the Memory guide): workflows and runs are kept in memory's database, and the finding becomes a card.",
             "People who build workflows hold the builder or supervisor role; employees do not get the panel.",
         ],
@@ -46,7 +46,7 @@ public static class InvestigateGuide
         Errors:
         [
             new("\"kagent did not answer\" on the page", "kagent's controller is not reachable from the Host: check the Chat guide."),
-            new("409 \"Not an agent you can use now\"", "A step names an agent that was suspended or is no longer merged: pick another agent and save."),
+            new("409 \"Not an agent you can use now\"", "A step names an agent that was suspended or removed from kagent: pick another agent and save."),
             new("409 \"… can write (tools or memory)\"", "A step that reads an earlier answer calls a write-capable agent: use a read-only agent, list its servers in Investigate:ReadOnlyToolServers, or have a supervisor tick Allow chained writes."),
             new("A step fails \"timed out after N s\"", "The agent took longer than Investigate:StepTimeoutSeconds: raise it, or split the step."),
             new("429 on Start", "Too many investigations queued or running: wait for one to finish or cancel it."),

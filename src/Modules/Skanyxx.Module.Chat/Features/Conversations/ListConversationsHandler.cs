@@ -15,7 +15,7 @@ internal sealed class ListConversationsHandler(KAgentApiClient kagent, ILogger<L
         {
             return Outcome<IReadOnlyList<ConversationSummary>>.Ok([.. (await kagent.ListSessionsAsync(query.UserId, ct))
                 .Where(s => OwnConversation.IsOwn(s, query.UserId))
-                .Select(s => (Session: s, Agent: MergedAgents.FromSessionAgentId(s.AgentId)!.Value))
+                .Select(s => (Session: s, Agent: OfferedAgents.FromSessionAgentId(s.AgentId)!.Value))
                 .Select(s => new ConversationSummary(s.Session.Id, OwnConversation.Title(s.Session), s.Agent.Namespace, s.Agent.Name,
                     s.Session.CreatedAt, s.Session.LastUpdateTime ?? s.Session.CreatedAt))
                 .OrderByDescending(s => EventFields.Time(System.Text.Json.Nodes.JsonValue.Create(s.UpdatedAt)) ?? DateTimeOffset.MinValue)]);

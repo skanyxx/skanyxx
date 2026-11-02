@@ -38,14 +38,15 @@ The seed general-purpose agent is just the first file. Changing it uses the same
 ## Preview vs production (locked)
 
 - **Preview chat** on the branch (D030): builder/supervisor only.
-- **Employee chat** lists **merged** agents only (D031).
+- **Employee chat** lists every kagent agent except previews, the factory, ticket stages and suspended ones (D557;
+  superseded D031's merged-only rule). Previews stay out of Chat.
 - Preview may **search** granted collections so retrieval can be tested; it **must not write** cards to production (D032).
 
 ## As built (2026-10-06, todo.md slice 3)
 
 ```
 /Studio form (or factory draft) → branch + commit + PR in skanyxx-agents (builder) → preview chat (builder/supervisor)
-    → supervisor merge in Skanyxx (owner for team/department grants) → reconciler → kagent Agent labelled merged → Chat
+    → supervisor merge in Skanyxx (owner for team/department grants) → reconciler → kagent Agent labelled merged (reviewed) → Chat
 ```
 
 - **Repo.** Setup creates `skanyxx/skanyxx-agents` in the bundled git (Gitea locally; `main` protected, only Skanyxx's
@@ -88,7 +89,7 @@ The seed general-purpose agent is just the first file. Changing it uses the same
 The Agents page is kagent-ui's CRUD for agents the studio does **not** manage: supervisors and the owner create, edit
 and delete them straight through kagent's controller API, no PR. A studio agent there is read-only and shows its file
 (`agents/<name>/agent.yaml`); its change is a Studio proposal, so git never silently diverges (D252). Direct agents
-are labelled `skanyxx.dev/managed-by: skanyxx-agents` (the reconciler leaves them alone) and `merged` (in Chat, D253).
+are labelled `skanyxx.dev/managed-by: skanyxx-agents` (the reconciler leaves them alone) and `merged` (D253; Chat offers every agent since D557).
 A name a direct agent holds cannot later be merged from the studio (the reconciler never takes over an agent it did
 not create).
 

@@ -20,6 +20,6 @@ internal static class AgentAccess
 
     public static bool CanReadAll(StudioUser user) => user.IsSupervisor || user.IsBuilder;
 
-    /// <summary>An employee reads what Chat offers them: merged and not suspended (D031, D257).</summary>
+    /// <summary>An employee reads what Chat offers them: a chat agent (D557) that is not suspended (D257).</summary>
     public static bool CanRead(StudioUser user, bool inChat, bool suspended) => CanReadAll(user) || (inChat && !suspended);
 }

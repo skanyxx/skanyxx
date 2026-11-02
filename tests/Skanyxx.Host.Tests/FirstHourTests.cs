@@ -111,13 +111,14 @@ public sealed class FirstHourTests(PostgresFixture fixture) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task ChatLists_MergedAgentsOnly()
+    public async Task ChatLists_EveryAgentButSkanyxxsOwn()
     {
         var (employee, _) = await EmployeeAsync();
 
         var agents = await employee.GetFromJsonAsync<JsonElement>("/api/chat/agents", cancellationToken: TestContext.Current.CancellationToken);
 
-        Assert.Equal(["kagent/seed", "team-a/seed"],
+        // D557: e2e-hello carries no label at all; ticket-planner is a Tickets stage, never a chat partner.
+        Assert.Equal(["kagent/e2e-hello", "kagent/seed", "team-a/seed"],
             agents.EnumerateArray().Select(a => $"{a.GetProperty("namespace").GetString()}/{a.GetProperty("name").GetString()}"));
     }
 

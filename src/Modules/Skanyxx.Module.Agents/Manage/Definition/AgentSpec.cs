@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
 
@@ -17,7 +18,7 @@ internal static partial class AgentSpec
     /// <summary>What kagent keeps a memory entry when <c>ttlDays</c> is unset.</summary>
     public const int KagentDefaultTtlDays = 15;
 
-    /// <summary>A new agent: Declarative, labelled as the Agents page's and listed in Chat (D253).</summary>
+    /// <summary>A new agent: Declarative, labelled as the Agents page's and as reviewed (D253); Chat offers it (D557).</summary>
     public static JsonObject NewAgent(AgentForm form) => new()
     {
         ["apiVersion"] = "kagent.dev/v1alpha2",
@@ -201,7 +202,7 @@ internal static partial class AgentSpec
             Condition(agent, "Ready"),
             Condition(agent, "Accepted"),
             source,
-            labels.GetValueOrDefault(StudioNames.MergedLabel) == "true",
+            ChatOffer.IsChatAgent(labels),
             IsSuspended(agent),
             canWrite && refusal is null && declarativeType && !HasPromptSource(agent) && !HasUneditableTools(agent),
             canWrite && refusal is null,

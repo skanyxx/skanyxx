@@ -1,24 +1,23 @@
 using Skanyxx.Core.Models;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Services;
 
 namespace Skanyxx.Module.Chat.Features.Agents;
 
 /// <summary>
-/// The agents people may talk to: Agent CRs labelled <c>skanyxx.dev/merged: "true"</c> (D4). Today only the seed's YAML
-/// carries it; the studio reconciler sets it on merge later (D045, D031). Everything else in kagent (ticket stages,
-/// experiments) is not a chat partner, nor is an agent suspended on the Agents page (D257). An agent is
-/// <c>namespace/name</c>: two merged agents may share a name. Every chat route asks this list, so an agent outside it
-/// has no picker entry, no details, no turn and no conversation.
+/// The agents people may talk to: every agent kagent lists except Skanyxx's own machinery and suspended ones
+/// (<see cref="ChatOffer"/>, D557; it replaced the <c>skanyxx.dev/merged</c> gate of D4/D100). An agent is
+/// <c>namespace/name</c>: two may share a name. Every chat route asks this list, so an agent outside it has no picker
+/// entry, no details, no turn and no conversation. An agent that is not Ready stays listed with its status; a turn to it
+/// fails through kagent's own failure path (D553).
 /// </summary>
-internal static class MergedAgents
+internal static class OfferedAgents
 {
-    public const string Label = "skanyxx.dev/merged";
-
     /// <summary>A supervisor marks an agent whose model reads images; Chat sends images to no other.</summary>
     public const string ImagesLabel = "skanyxx.dev/accepts-images";
 
     public static async Task<IReadOnlyList<Agent>> ListAsync(KAgentApiClient kagent, CancellationToken ct) =>
-        [.. (await kagent.GetAgentsAsync(ct)).Where(a => a.Labels.TryGetValue(Label, out var merged) && merged == "true" && !a.Suspended)];
+        [.. (await kagent.GetAgentsAsync(ct)).Where(ChatOffer.Offers)];
 
     public static async Task<Agent?> FindAsync(KAgentApiClient kagent, string ns, string name, CancellationToken ct) =>
         (await ListAsync(kagent, ct)).FirstOrDefault(a => a.Namespace == ns && a.Name == name);
