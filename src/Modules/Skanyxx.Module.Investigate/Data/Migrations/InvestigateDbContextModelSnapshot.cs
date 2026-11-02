@@ -127,6 +127,10 @@ namespace Skanyxx.Module.Investigate.Data.Migrations
                         .HasColumnType("character varying(1000)")
                         .HasColumnName("error");
 
+                    b.Property<string>("KagentReason")
+                        .HasColumnType("text")
+                        .HasColumnName("kagent_reason");
+
                     b.Property<string>("Output")
                         .HasColumnType("text")
                         .HasColumnName("output");

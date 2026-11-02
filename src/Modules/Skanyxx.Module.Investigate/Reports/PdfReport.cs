@@ -37,6 +37,8 @@ public static class PdfReport
             Add(lines, "F1", 9, $"{step.State}{(step.DurationMs is { } ms ? $", {ms / 1000.0:0.0} s" : "")}", indent);
             if (step.Error is not null)
                 Add(lines, "F1", 9, $"Error: {step.Error}", indent);
+            if (step.KagentReason is not null)
+                Add(lines, "F3", 9, $"kagent said: {step.KagentReason}", indent);
             if (step.Output is not null)
                 Add(lines, "F3", 9, step.Output.Length > MaxOutputPerStep
                     ? step.Output[..MaxOutputPerStep] + "\n[cut here; the JSON report has the whole answer]"
@@ -107,13 +109,14 @@ public static class PdfReport
         return pages;
     }
 
-    /// <summary>A PDF string literal: Latin-1 printable characters, the delimiters escaped, everything else '?'.</summary>
+    /// <summary>A PDF string literal: Latin-1 printable characters, the delimiters escaped, "…" as "...", everything else '?'.</summary>
     private static string Escape(string text)
     {
         var escaped = new StringBuilder(text.Length);
         foreach (var c in text)
         {
             if (c is '(' or ')' or '\\') escaped.Append('\\').Append(c);
+            else if (c == '\u2026') escaped.Append("..."); // a cut says so, also in Latin-1
             else if (c == '\t') escaped.Append("    ");
             else if (c is (>= ' ' and <= '~') or (>= ' ' and <= 'ÿ')) escaped.Append(c);
             else if (!char.IsControl(c)) escaped.Append('?');

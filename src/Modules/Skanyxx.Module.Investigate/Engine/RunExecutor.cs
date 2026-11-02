@@ -176,6 +176,7 @@ internal sealed partial class RunExecutor(
             var prompt = PromptTemplate.Render(step.Prompt!, context.Input, context.Outputs, _options.MaxRenderedPromptChars);
             var asked = false;
             AgentAnswer? answer = null;
+            var spent = ChatUsage.None;
             try
             {
                 // Released at once, as for a ticket run: this run's own parallel steps (up to MaxParallelSteps) must not
@@ -201,14 +202,17 @@ internal sealed partial class RunExecutor(
             }
             catch (AgentCallException ex)
             {
-                return await FailAsync(step, context, ex.Message);
+                spent = ex.Usage;
+                if (ex.State is not null)
+                    LogTaskFailed(logger, context.RunId, step.Id, step.Agent!, ex.TaskId, ex.State, ex.KagentReason ?? "(no message)");
+                return await FailAsync(step, context, ex.Message, ex.KagentReason);
             }
             finally
             {
                 // Not the run's token: a timed-out or cancelled call was paid for too.
                 if (asked)
                     await quota.RecordAsync(ChatQuotaUsage.Measure(estimator, context.StartedBy, step.Agent!, context.Models[step.Agent!],
-                        context.RunId.ToString(), answer?.Usage ?? ChatUsage.None, prompt, answer?.Text ?? ""), CancellationToken.None);
+                        context.RunId.ToString(), answer?.Usage ?? spent, prompt, answer?.Text ?? ""), CancellationToken.None);
             }
         }
         finally
@@ -217,11 +221,11 @@ internal sealed partial class RunExecutor(
         }
     }
 
-    private async Task<StepState> FailAsync(WorkflowStep step, RunContext context, string reason)
+    private async Task<StepState> FailAsync(WorkflowStep step, RunContext context, string reason, string? kagentReason = null)
     {
         reason = SecretText.Redact(reason);
         context.Fail($"Step '{step.Title}' ({step.Agent}) failed: {reason}.");
-        await steps.EndedAsync(context.RunId, step.Id, StepState.Failed, error: reason);
+        await steps.EndedAsync(context.RunId, step.Id, StepState.Failed, error: reason, kagentReason: kagentReason);
         return StepState.Failed;
     }
 
@@ -308,6 +312,9 @@ internal sealed partial class RunExecutor(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Investigation run {RunId}: the heartbeat or cancel check failed; retrying")]
     private static partial void LogWatchFailed(ILogger logger, Guid runId, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Investigation run {RunId}: step {StepId} ({AgentRef}) failed: kagent task {TaskId} ended {State}: {Reason}")]
+    private static partial void LogTaskFailed(ILogger logger, Guid runId, string stepId, string agentRef, string? taskId, string state, string reason);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Investigation run {RunId}: its end could not be saved")]
     private static partial void LogEndNotSaved(ILogger logger, Guid runId, Exception ex);

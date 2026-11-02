@@ -445,6 +445,9 @@
         const time = duration(r.startedAt, r.endedAt);
         if (time) li.append(el('div', 'inv-step-meta', r.state === 'running' ? `running for ${time}` : time));
         if (r.error) li.append(el('p', 'field-error', r.error));
+        // kagent's own words: sent to builders and up only (D556), text only, cut visibly.
+        const why = skx.kagentReason(r.kagentReason);
+        if (why) li.append(why);
         if (r.output) {
             const out = el('details', 'inv-output');
             out.open = step.kind === 'agent' && r.output.length < 1200;

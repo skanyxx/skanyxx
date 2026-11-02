@@ -16,4 +16,7 @@ public sealed class StepRun
     public string? Output { get; set; }
 
     public string? Error { get; set; }
+
+    /// <summary>kagent's own words when it ended the step's task badly, cleaned (D556); only builders and up read it.</summary>
+    public string? KagentReason { get; set; }
 }
