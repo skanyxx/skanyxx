@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<!-- DashboardBehaviourTests loads this in headless Chrome with the real ui.js, setup-guide.js, insights.js and dashboard.js
+     (Chart.js and the API stubbed) and reads window.dashboardBehaviour. The markup holds the ids dashboard.js reads;
+     DashboardBehaviourTests also checks that Pages/Dashboard.cshtml has every one of them. -->
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>dashboard.js behaviour</title>
+    <script src="{{UI_JS}}"></script>
+</head>
+<body>
+    <template id="page">
+        <span id="checked-at"></span>
+        <button type="button" id="dash-refresh">Refresh</button>
+        <div id="dashboard" data-owner="true">
+            <div id="status"></div>
+            <ul id="alerts"></ul>
+            <p id="health-counts"></p>
+            <div id="health"></div>
+            <div id="glance"></div>
+            <figure><span id="sum-tokens"></span><div class="chart-box"><canvas id="chart-tokens" aria-label="Tokens in and out per day"></canvas></div></figure>
+            <figure><span id="sum-chats"></span><div class="chart-box"><canvas id="chart-chats" aria-label="New chats per day"></canvas></div></figure>
+            <figure><span id="sum-errors"></span><div class="chart-box"><canvas id="chart-errors" aria-label="Failed turns per day"></canvas></div></figure>
+            <figure><span id="sum-cards"></span><div class="chart-box"><canvas id="chart-cards" aria-label="Memory cards per day"></canvas></div></figure>
+            <div class="dash-charts"></div>
+            <div id="top-agents"></div>
+            <div id="top-users"></div>
+            <div id="events" data-owner-only></div>
+            <section id="off-section" hidden><div id="off"></div></section>
+        </div>
+    </template>
+    <div id="root"></div>
+
+    <script>
+        window.Chart = class { constructor(canvas, config) { this.config = config; } destroy() { } };
+        window.Chart.defaults = {};
+    </script>
+    <script src="{{SETUP_GUIDE_JS}}"></script>
+    <script src="{{INSIGHTS_JS}}"></script>
+    <script>
+        const tile = (id, title, status, summary, reason, fixUrl, fixSteps = []) => ({ id, title, status, summary, reason, fixUrl, fixSteps });
+        const healthy = [
+            tile('kagent', 'kagent controller', 'ok', 'Reachable in 40 ms', null, null),
+            tile('toolservers', 'Tool servers', 'ok', '2 / 2 up', null, null),
+            tile('postgres', 'Postgres', 'ok', '3 / 3 stores answer', null, null),
+            tile('git', 'Studio git (Gitea)', 'off', 'Not configured', null, '/Studio', ['Run the bundled Gitea.', 'Set Studio:Git:BaseUrl and Studio:Git:Token.'])
+        ];
+        // A field the API never sends, as a check that a tile shows only its fixed texts.
+        const problems = [
+            tile('postgres', 'Postgres', 'ok', '3 / 3 stores answer', null, null),
+            tile('toolservers', 'Tool servers', 'warn', '1 / 2 up', '1 tool server(s) have no tools discovered.', '/ToolServers', ['Open Tool Servers.']),
+            { ...tile('kagent', 'kagent controller', 'down', 'Not reachable', 'Skanyxx could not reach the kagent controller.', '/Debug', ['Check KAgent:BaseUrl.']), description: 'Host=db;Password=hunter2' },
+            tile('git', 'Studio git (Gitea)', 'off', 'Not configured', null, '/Studio', ['Run the bundled Gitea.'])
+        ];
+        const days = [...Array(30)].map((_, i) => new Date(Date.UTC(2026, 9, 4 + i)).toISOString().slice(0, 10));
+        // Chats: 1 a day for the 7 days before, 2 a day for the last 7 (+100%). Failed turns: 1 before, 3 in the last 7.
+        const chats = days.map((_, i) => i >= 23 ? 2 : i >= 16 ? 1 : 0);
+        const errors = days.map((_, i) => i === 20 ? 1 : i >= 27 ? 1 : 0);
+        const zero = days.map(() => 0);
+        const summary = (owner, empty) => ({
+            people: 5, activeToday: 1, active7d: 2, chatsToday: 2, chats7d: 14,
+            tokensInToday: 10, tokensOutToday: 5, clientTokensToday: 7, clientTokens7d: 70, tokens7d: [1, 2, 3, 4, 5, 6, 7],
+            requests7d: 10, unreported7d: 0, cacheHitRate7d: 0.25, tokensSaved7d: 100,
+            cost7d: { priced: false, amount: 0, currency: 'USD', unpricedModels: [] }, cost30d: { priced: false, amount: 0, currency: 'USD', unpricedModels: [] },
+            topAgents: empty ? [] : [{ key: 'helper', name: 'kagent/helper', tokens: 15, requests: 10, chats: 14 }],
+            topUsers: owner ? [{ key: 'u', name: 'Ann', tokens: 15, requests: 10, chats: 14 }] : null,
+            days, tokensInPerDay: empty ? zero : chats.map(c => c * 100), tokensOutPerDay: empty ? zero : chats.map(c => c * 10),
+            chatsByAgent: empty ? [] : [{ name: 'kagent/helper', values: chats }], errorsPerDay: empty ? zero : errors, cardsPerDay: empty ? zero : null,
+            recentEvents: owner ? [{ at: '2026-11-01T10:00:00Z', action: 'people.invited', actor: 'owner@x', target: 'ann@x' }] : null,
+            alerts: empty ? [] : [{ severity: 'warn', text: '1 chat turn(s) failed today (kagent or the agent did not answer).', url: '/Debug' }]
+        });
+
+        let scenario;
+        const failure = { ok: false, status: 503, json: async () => ({ title: 'Service Unavailable', detail: 'The database did not answer in time.' }) };
+        window.fetch = async url => {
+            const health = url.includes('/health');
+            if (health && scenario.healthFails-- > 0) return failure;
+            if (!health && scenario.usageFails-- > 0) return failure;
+            return { ok: true, status: 200, json: async () => health ? scenario.tiles : summary(scenario.owner, scenario.empty) };
+        };
+
+        const $ = id => document.getElementById(id);
+        const text = id => $(id)?.textContent ?? '';
+        const settled = () => new Promise(resolve => {
+            const t = () => !$('dash-refresh').disabled && $('status').getAttribute('aria-busy') === 'false' ? setTimeout(resolve, 20) : setTimeout(t, 20);
+            setTimeout(t, 20);
+        });
+
+        async function open(s) {
+            scenario = { owner: true, empty: false, healthFails: 0, usageFails: 0, ...s };
+            $('root').replaceChildren($('page').content.cloneNode(true));
+            if (!scenario.owner) {
+                $('events').remove();
+                $('dashboard').dataset.owner = 'false';
+            }
+            const script = document.createElement('script');
+            script.src = '{{DASHBOARD_JS}}';
+            const loaded = new Promise(resolve => script.addEventListener('load', resolve));
+            document.body.append(script);
+            await loaded;
+            script.remove();
+            await settled();
+        }
+
+        const labelled = node => node.querySelector('svg') !== null && node.textContent.trim().length > 0;
+        const tryAgain = box => [...box.querySelectorAll('button')].find(b => b.textContent.includes('Try again'));
+
+        async function run() {
+            const r = {};
+
+            await open({ tiles: healthy });
+            r.healthySaysSo = $('status').dataset.tone === 'warn' && text('status').includes('All services healthy, usage needs a look');
+            r.offTilesComeLast = !$('off-section').hidden && $('off').querySelectorAll('details[data-tile="git"]').length === 1
+                && $('health').querySelector('[data-tile="git"]') === null
+                && text('off').includes('Copy instructions for agent') && text('off').includes('Set Studio:Git:BaseUrl');
+            r.chartsHaveTheirNumbers = document.querySelectorAll('details.chart-data').length === 3
+                && $('chart-cards').hidden && text('root').includes('Memory could not be read just now.');
+            r.chatsTrend = [...document.querySelectorAll('#glance .dash-trend')].some(t => t.textContent === '14 in 7 days, +100% vs the 7 days before' && t.dataset.tone === 'neutral');
+            r.failedTurnsTrendIsBad = [...document.querySelectorAll('#glance .dash-trend')].some(t => t.textContent === '3 in 7 days, +200% vs the 7 days before' && t.dataset.tone === 'bad');
+            r.checkedAtShown = $('checked-at').querySelector('time') !== null;
+
+            await open({ tiles: healthy, empty: true });
+            r.allHealthy = $('status').dataset.tone === 'ok' && text('status').includes('All systems healthy') && text('status').includes('3 of 4 checks healthy; 1 not set up')
+                && text('alerts').includes('Nothing needs attention.');
+            r.emptyChartsSaySo = text('root').includes('No tokens reported in the last 30 days.') && text('root').includes('No new chats in the last 30 days.')
+                && document.querySelectorAll('details.chart-data').length === 0 && text('top-agents').includes('No chat turns in the last 7 days.');
+
+            await open({ tiles: problems });
+            const order = [...$('health').querySelectorAll('[data-tile]')].map(t => t.dataset.tile).join(',');
+            r.problemsComeFirst = order === 'kagent,toolservers,postgres';
+            r.statusNamesWhatIsWrong = $('status').dataset.tone === 'down' && text('status').includes('2 problems need attention')
+                && text('status').includes('Down: kagent controller.') && text('status').includes('Degraded: Tool servers.');
+            r.statesAreIconAndWords = [...document.querySelectorAll('.dash-state')].every(labelled)
+                && [...$('alerts').children].every(li => li.querySelector('svg') && li.querySelector('.visually-hidden'))
+                && [...document.querySelectorAll('#health-counts .dash-count')].every(labelled);
+            r.downTileHasItsFix = $('health').querySelector('[data-tile="kagent"] a[href="/Debug"]')?.textContent === 'Fix it'
+                && text('alerts').includes('kagent controller: Skanyxx could not reach the kagent controller.');
+            r.onlyFixedTexts = !text('root').includes('hunter2') && !text('root').includes('Host=db');
+
+            await open({ tiles: healthy, healthFails: 1 });
+            const healthError = $('status').dataset.tone === 'down' && text('status').includes('Health could not be read')
+                && text('status').includes('The database did not answer in time.') && text('alerts').includes('Health could not be read, so this list may be incomplete.');
+            tryAgain($('status')).click();
+            await settled();
+            r.healthErrorRetries = healthError && $('health').querySelectorAll('[data-tile]').length === 3;
+
+            await open({ tiles: healthy, usageFails: 1 });
+            const usageError = $('glance').querySelector('.error-state') !== null && text('chart-tokens') === ''
+                && text('root').includes('Not shown: usage could not be read.') && $('status').dataset.tone === 'warn';
+            tryAgain($('glance')).click();
+            await settled();
+            r.usageErrorRetries = usageError && $('glance').querySelectorAll('.dash-kpi').length === 9;
+
+            await open({ tiles: healthy, owner: false });
+            r.supervisorSeesNoPeople = text('top-users').includes('Per-person usage is the owner\'s.') && $('top-users').querySelector('table') === null
+                && $('events') === null && $('glance').querySelectorAll('.dash-kpi').length === 9;
+
+            return r;
+        }
+
+        window.dashboardBehaviour = new Promise(resolve => document.readyState === 'loading' ? document.addEventListener('DOMContentLoaded', resolve) : resolve())
+            .then(run)
+            .then(r => JSON.stringify(r), e => JSON.stringify({ error: String(e && e.stack || e) }));
+    </script>
+</body>
+</html>

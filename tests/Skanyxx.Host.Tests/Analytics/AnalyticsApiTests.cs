@@ -192,6 +192,17 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.NotEmpty(owners.GetProperty("recentEvents").EnumerateArray());
         Assert.All(owners.GetProperty("recentEvents").EnumerateArray(), e =>
             Assert.Equal(["at", "action", "actor", "target"], e.EnumerateObject().Select(p => p.Name))); // no details, no address
+
+        // The page: read-only, scoped to their teams, no audit section (D558 keeps D319's rules).
+        var browser = new Browser(_host);
+        await browser.SubmitAsync("/Login", new() { ["Email"] = "sue@skanyxx.example", ["Password"] = Password });
+        var page = await browser.GetAsync("/Dashboard");
+        Assert.Equal(HttpStatusCode.OK, page.StatusCode);
+        var html = await page.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("Read-only: the install", html);
+        Assert.Contains("The people in your teams.", html);
+        Assert.DoesNotContain("id=\"events\"", html);
+        Assert.Contains("id=\"status\"", html);
     }
 
     [Fact]
@@ -264,6 +275,8 @@ public sealed class AnalyticsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains(CostDisclaimer.Text.Replace("'", "&#x27;"), html);
         Assert.Contains("/lib/chartjs/chart.umd.min.js", html);
         Assert.Contains("id=\"events\"", html);
+        Assert.Contains("Everyone on this install.", html);
+        Assert.Contains("/css/dashboard.css", html);
         Assert.Contains("<strong>Sent by us</strong>", html);
         var script = await (await browser.GetAsync("/js/dashboard.js")).Content.ReadAsStringAsync(Ct);
         Assert.Contains("stat('Sent by us today / 7 days (estimate)'", script);

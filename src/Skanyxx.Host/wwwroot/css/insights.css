@@ -1,7 +1,8 @@
 /*
- * Dashboard, Analytics and the Audit explorer: the pages with charts. Colours are tokens only: the charts read
- * --chart-1 … --chart-8 and --status-* from the document at render time (insights.js, the Audit script) and redraw when
- * the theme changes, so a theme overrides these and nothing else. Every theme in tokens.css defines them.
+ * Dashboard, Analytics and the Audit explorer: the pages with charts (the Dashboard's own parts are in dashboard.css).
+ * Colours are tokens only: the charts read --chart-1 … --chart-8 and --status-* from the document at render time
+ * (insights.js, the Audit script) and redraw when the theme changes, so a theme overrides these and nothing else. Every
+ * theme in tokens.css defines them.
  */
 .insights-section {
   margin-bottom: var(--space-6);
@@ -13,47 +14,11 @@
   margin-bottom: var(--space-3);
 }
 
-.tile-grid,
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: var(--space-3);
 }
-
-.health-tile {
-  background-color: var(--surface-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.health-tile .tile-head {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: var(--weight-semibold);
-}
-
-.status-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background-color: var(--status-off);
-  flex: none;
-}
-
-.health-tile[data-status="ok"] .status-dot { background-color: var(--status-ok); }
-.health-tile[data-status="warn"] .status-dot { background-color: var(--status-warn); }
-.health-tile[data-status="down"] .status-dot { background-color: var(--status-down); }
-.health-tile[data-status="down"] { border-color: var(--status-down); }
-
-.health-tile .tile-summary { color: var(--text-2); }
-.health-tile .tile-reason { color: var(--text-3); font-size: var(--text-sm); }
-.health-tile ol { margin: 0 0 0 var(--space-5); font-size: var(--text-sm); color: var(--text-2); overflow-wrap: anywhere; }
-.health-tile .tile-actions { display: flex; gap: var(--space-2); flex-wrap: wrap; margin-top: var(--space-1); }
 
 .stat-tile {
   background-color: var(--surface-1);
@@ -100,36 +65,6 @@
   grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: var(--space-3);
 }
-
-.alert-list {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.alert-list li {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-md);
-  background: var(--surface-1);
-  border: 1px solid var(--border);
-}
-
-.alert-list li::before {
-  content: "";
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--status-off);
-}
-
-.alert-list li[data-severity="warn"]::before { background: var(--status-warn); }
-.alert-list li[data-severity="down"]::before { background: var(--status-down); }
-.alert-list li.is-empty::before { content: none; }
 
 .cost-disclaimer {
   margin-top: var(--space-2);
