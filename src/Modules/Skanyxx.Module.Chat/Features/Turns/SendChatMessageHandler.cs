@@ -11,7 +11,8 @@ namespace Skanyxx.Module.Chat.Features.Turns;
 /// <summary>
 /// One blocking turn (<c>POST api/chat</c>); the rules are <see cref="ChatTurns"/>'. A turn that fails, runs out of time
 /// or that the caller leaves still counts (at least its prompt), and in the last two cases kagent is asked to stop it,
-/// as a stopped stream is (D380, D381).
+/// as a stopped stream is (D380, D381). A task kagent ended badly answers as a streamed one does: fixed words, and
+/// kagent's reason for builders and up (D553).
 /// </summary>
 internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ChatTurns turns, ILogger<SendChatMessageHandler> logger)
     : IRequestHandler<SendChatMessageCommand, Outcome<ChatResponse>>
@@ -37,6 +38,18 @@ internal sealed class SendChatMessageHandler(KAgentApiClient kagent, ChatTurns t
             response.ClientTokens = start.ClientTokens;
             await turns.CompleteAsync(command, start, response.Message.Content, ChatUsage.None, response.Usage);
             return Outcome<ChatResponse>.Ok(response);
+        }
+        catch (KAgentTaskFailedException ex) when (start is not null)
+        {
+            // kagent answered: the task ended badly. KAgentApiClient logged its reason with the task; this names the person.
+            logger.LogWarning("Chat with {AgentRef} failed for {UserId}: task {TaskId} ended {State}", start.AgentRef, command.UserId, ex.TaskId, ex.State);
+            await turns.RecordUsageAsync(command, start, ChatUsage.Of(ex.Usage), "");
+            await turns.AbandonAsync(command, start);
+            await turns.FailedAsync(command, start);
+            // As the stream answers it: an approval stop is not a failure, and its words are not kagent's error.
+            return ex.State is "input-required" or "auth-required"
+                ? Outcome<ChatResponse>.Unavailable(ChatFailure.NeedsApproval)
+                : Outcome<ChatResponse>.Unavailable(ChatFailure.Unfinished, command.SeesFailureReason ? ex.Reason : null);
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)
         {

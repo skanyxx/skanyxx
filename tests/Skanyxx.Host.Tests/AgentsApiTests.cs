@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Skanyxx.Core.Services;
 
 namespace Skanyxx.Host.Tests;
 
@@ -88,6 +89,55 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         var asBuilder = await _builder.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct);
         Assert.Equal("Answer briefly.", asBuilder.GetProperty("systemMessage").GetString());
         Assert.False(asBuilder.GetProperty("canEdit").GetBoolean());
+    }
+
+    /// <summary>D554: Ready in kagent, but a tool server it names gives no tools: unhealthy, by name for builders and up only.</summary>
+    [Fact]
+    public async Task AReadyAgent_WhoseToolServerGivesNoTools_IsUnhealthy_ByNameForBuildersAndUpOnly()
+    {
+        Seed("helper", Direct(), new JsonArray(Mcp(Server), Mcp("skanyxx-memory-seed")));
+        Seed("fine", Direct(), new JsonArray(Mcp(Server)));
+
+        foreach (var client in new[] { _owner, _supervisor, _builder })
+        {
+            var listed = (await ListAsync(client)).First(a => a.GetProperty("name").GetString() == "helper");
+            Assert.True(listed.GetProperty("ready").GetBoolean());
+            Assert.Equal($"{Ns}/skanyxx-memory-seed: {ToolServerHealth.NoTools}", listed.GetProperty("toolProblem").GetString());
+            var detail = await client.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct);
+            Assert.Equal(listed.GetProperty("toolProblem").GetString(), detail.GetProperty("toolProblem").GetString());
+        }
+        var asEmployee = (await ListAsync(_employee)).First(a => a.GetProperty("name").GetString() == "helper");
+        Assert.Equal(ToolServerHealth.ForEmployees, asEmployee.GetProperty("toolProblem").GetString());
+        Assert.Equal(ToolServerHealth.ForEmployees,
+            (await _employee.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct)).GetProperty("toolProblem").GetString());
+        Assert.Equal(JsonValueKind.Null, (await ListAsync(_owner)).First(a => a.GetProperty("name").GetString() == "fine").GetProperty("toolProblem").ValueKind);
+    }
+
+    /// <summary>A server in another namespace is read as that namespace's, in the list and the details alike (code review 1, M1).</summary>
+    [Fact]
+    public async Task AToolServerInAnotherNamespace_IsCheckedThere_InTheListAndTheDetails()
+    {
+        _kagent.ToolServers["team-a/shared-mcp"] = new JsonObject();
+        var shared = Mcp("shared-mcp");
+        shared["mcpServer"]!["namespace"] = "team-a";
+        Seed("helper", Direct(), new JsonArray(shared));
+
+        var listed = (await ListAsync(_owner)).First(a => a.GetProperty("name").GetString() == "helper");
+        var detail = await _owner.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct);
+
+        Assert.Equal(JsonValueKind.Null, listed.GetProperty("toolProblem").ValueKind);
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("toolProblem").ValueKind);
+    }
+
+    [Fact]
+    public async Task KagentNotListingToolServers_LeavesHealthUnknown_NotTheListFailing()
+    {
+        Seed("helper", Direct(), new JsonArray(Mcp("skanyxx-memory-seed")));
+        _kagent.ToolServersStatus = 500;
+
+        var helper = (await ListAsync(_owner)).First(a => a.GetProperty("name").GetString() == "helper");
+
+        Assert.Equal(JsonValueKind.Null, helper.GetProperty("toolProblem").ValueKind);
     }
 
     // --- Create, read, update, delete ---
@@ -602,6 +652,9 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
     private static JsonObject Direct() => new() { ["skanyxx.dev/managed-by"] = "skanyxx-agents", ["skanyxx.dev/merged"] = "true" };
 
     private static JsonObject External() => new() { ["created-by"] = "kagent-ui" };
+
+    private static JsonObject Mcp(string server) =>
+        new() { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = server, ["kind"] = "RemoteMCPServer" } };
 
     private void Seed(string name, JsonObject labels, JsonArray? tools = null) =>
         _kagent.AgentObjects[$"{Ns}/{name}"] = new JsonObject

@@ -25,7 +25,11 @@ internal static class AgentQueries
 
     /// <summary>kagent's tool servers (<c>ns/name</c>) with the tools and descriptions it discovered; the first entry of a repeated ref wins.</summary>
     public static async Task<IReadOnlyDictionary<string, IReadOnlyList<ToolInfo>>> ToolCatalogAsync(KAgentApiClient kagent, CancellationToken ct) =>
-        (await kagent.GetToolServerListAsync(ct))
+        ToolCatalog(await kagent.GetToolServerListAsync(ct));
+
+    /// <inheritdoc cref="ToolCatalogAsync"/>
+    public static IReadOnlyDictionary<string, IReadOnlyList<ToolInfo>> ToolCatalog(JsonArray toolServers) =>
+        toolServers
             .Select(s => (Ref: Text(s?["ref"]), Tools: (IReadOnlyList<ToolInfo>)[.. (s?["discoveredTools"] as JsonArray ?? [])
                 .Where(t => Text(t?["name"]) is not null).Select(t => new ToolInfo(Text(t!["name"])!, Text(t["description"]) ?? ""))]))
             .Where(s => s.Ref is not null)

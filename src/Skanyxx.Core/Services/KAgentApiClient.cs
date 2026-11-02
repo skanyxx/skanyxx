@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using Skanyxx.Core.Models;
 using Skanyxx.Core.Platform;
 using Skanyxx.Core.Platform.Analytics;
+using Skanyxx.Core.Platform.Chat;
 
 namespace Skanyxx.Core.Services;
 
@@ -221,6 +222,7 @@ public class KAgentApiClient
             Suspended = Replicas(spec) == 0,
             ModelConfig = type == "Declarative" ? DeclarativeModelConfig(spec) : null,
             McpToolNames = McpToolNames(spec),
+            McpServerRefs = McpServerRefs(spec, ns),
             AgentToolNames = AgentToolNames(spec)
         };
     }
@@ -255,6 +257,16 @@ public class KAgentApiClient
                     : [];
         return tools;
     }
+
+    private static List<string> McpServerRefs(JsonElement spec, string agentNamespace) =>
+        spec.ValueKind == JsonValueKind.Object && spec.TryGetProperty("declarative", out var declarative) && declarative.ValueKind == JsonValueKind.Object
+        && declarative.TryGetProperty("tools", out var list) && list.ValueKind == JsonValueKind.Array
+            ? [.. list.EnumerateArray()
+                .Where(t => t.ValueKind == JsonValueKind.Object && t.TryGetProperty("mcpServer", out var s) && s.ValueKind == JsonValueKind.Object)
+                .Select(t => t.GetProperty("mcpServer"))
+                .Select(s => GetStringProperty(s, "name") is { } name ? $"{GetStringProperty(s, "namespace") ?? agentNamespace}/{name}" : null)
+                .OfType<string>().Distinct()]
+            : [];
 
     private static List<string> AgentToolNames(JsonElement spec) =>
         spec.ValueKind == JsonValueKind.Object && spec.TryGetProperty("declarative", out var declarative) && declarative.ValueKind == JsonValueKind.Object
@@ -369,7 +381,7 @@ public class KAgentApiClient
         try
         {
             var body = await response.Content.ReadFromJsonAsync<JsonNode>(ct);
-            answer = Answer(body);
+            answer = Answer(body, $"{agentNamespace}/{agentName}");
             usage = A2AUsage.From((body as JsonObject)?["result"]);
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
@@ -387,7 +399,7 @@ public class KAgentApiClient
         };
     }
 
-    private string Answer(JsonNode? body)
+    private string Answer(JsonNode? body, string agentRef)
     {
         if (body?["error"] is { } error)
         {
@@ -403,8 +415,17 @@ public class KAgentApiClient
             var state = result["status"]?["state"]?.GetValue<string>();
             if (state != "completed")
             {
-                _logger.LogWarning("kagent task ended {State}: {Detail}", Cut(state ?? "?"), Cut(Text(result["status"]?["message"]?["parts"])));
-                throw new HttpRequestException("the agent did not complete the answer");
+                // Cleaned once, for this line and for the caller (D553): no control character forges a log line.
+                var taskId = ChatFailureReason.Of(result["id"]?.GetValue<string>());
+                // An approval stop is no failure: its text (a sign-in link with its state) is neither logged nor passed on.
+                var approval = state is "input-required" or "auth-required";
+                var reason = approval ? null : ChatFailureReason.Of(Text(result["status"]?["message"]?["parts"]));
+                if (approval)
+                    _logger.LogInformation("kagent task {TaskId} of {AgentRef} stopped for an approval ({State})", taskId, agentRef, state);
+                else
+                    _logger.LogWarning("kagent task {TaskId} of {AgentRef} ended {State}: {Detail}",
+                        taskId, agentRef, ChatFailureReason.Of(state) ?? "?", reason ?? "(no message)");
+                throw new KAgentTaskFailedException(taskId, ChatFailureReason.Of(state) ?? "?", reason, A2AUsage.From(result));
             }
             var artifacts = result["artifacts"]?.AsArray();
             answer = artifacts is { Count: > 0 } ? Text(artifacts[^1]!["parts"]) : "";

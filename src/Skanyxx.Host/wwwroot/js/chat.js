@@ -57,10 +57,25 @@
             h('h3', { class: 'empty-state-title', text: title }), body ? h('div', { class: 'empty-state-body', text: body }) : null, extra ?? null);
     }
 
-    function errorAlert(title, message, retry) {
+    function errorAlert(title, message, retry, reason) {
         return h('div', { class: 'alert alert-error', role: 'alert' }, skx.icon('i-alert-circle'),
             h('div', { class: 'alert-body' }, h('div', { class: 'alert-title', text: title }), h('div', { class: 'message-content plain', text: message }),
+                reasonBlock(reason),
                 retry ? h('div', { class: 'mt-1' }, h('button', { type: 'button', class: 'btn btn-secondary btn-sm', onclick: retry }, 'Try again')) : null));
+    }
+
+    // kagent's own words about a failed turn: the server sends them to builders and up only (D553). Text only; a long
+    // one shows its start, says it was cut, and keeps the whole of it one click away.
+    const REASON_SHOWN = 280;
+    function reasonBlock(reason) {
+        if (!reason) return null;
+        const chars = Array.from(reason);
+        const cut = chars.length > REASON_SHOWN;
+        return h('div', { class: 'failure-reason' },
+            h('div', { class: 'failure-reason-label', text: 'kagent said' }),
+            h('div', { class: 'failure-reason-text', text: cut ? chars.slice(0, REASON_SHOWN).join('') + '…' : reason }),
+            cut ? h('details', {}, h('summary', { text: `Shortened: show all ${chars.length.toLocaleString()} characters` }),
+                h('pre', { class: 'failure-reason-full', text: reason })) : null);
     }
 
     const formatTokens = n => n >= 10000 ? `${(n / 1000).toFixed(1)}k` : Number(n || 0).toLocaleString();
@@ -162,6 +177,12 @@
         $('pickerSearch').focus();
     }
 
+    // Ready but a tool server it names gives no tools (D554): the card says so, by name for builders and up only.
+    function statusDot(a) {
+        const [cls, label] = !a.ready ? ['starting', 'Starting'] : a.toolProblem ? ['unhealthy', 'A tool is unavailable'] : ['ready', 'Ready'];
+        return h('span', { class: 'status-dot ' + cls, title: label, 'aria-label': label });
+    }
+
     function renderPicker() {
         const q = $('pickerSearch').value.trim().toLowerCase();
         const shown = state.agents.filter(a => !q || [a.name, a.namespace, a.model, a.description].some(v => (v || '').toLowerCase().includes(q)));
@@ -177,9 +198,10 @@
         },
             h('span', { class: 'agent-card-top' },
                 h('span', { class: 'agent-card-name', text: a.name }),
-                h('span', { class: 'status-dot ' + (a.ready ? 'ready' : 'starting'), title: a.ready ? 'Ready' : 'Starting', 'aria-label': a.ready ? 'Ready' : 'Starting' })),
+                statusDot(a)),
             h('span', { class: 'agent-card-meta', text: [a.namespace, a.model].filter(Boolean).join(' · ') }),
-            h('span', { class: 'agent-card-desc', text: a.description || 'No description.' }))));
+            h('span', { class: 'agent-card-desc', text: a.description || 'No description.' }),
+            a.toolProblem ? h('span', { class: 'agent-card-problem', text: a.toolProblem }) : null)));
         if (!shown.length) $('pickerGrid').append(h('p', { class: 'muted', text: 'No agent matches.' }));
     }
 
@@ -205,6 +227,7 @@
         const section = (title, ...content) => h('section', { class: 'details-section' }, h('h4', { text: title }), ...content);
         const servers = d.toolServers.map(s => h('details', { class: 'tool-server', open: d.toolServers.length === 1 },
             h('summary', {}, h('span', { text: s.ref }), h('span', { class: 'count', text: s.allTools ? `all ${s.tools.length}` : String(s.tools.length) })),
+            s.problem ? h('p', { class: 'tool-server-problem', text: s.problem }) : null,
             s.allTools ? h('p', { class: 'muted small', text: 'Every tool this server offers.' }) : null,
             h('ul', { class: 'tool-list' }, ...s.tools.map(t => h('li', {}, h('code', { text: t.name }), t.description ? h('span', { class: 'muted small', text: t.description }) : null)))));
         const memory = d.memory === null
@@ -227,7 +250,9 @@
                     ...d.a2aSkills.map(s => h('li', {}, h('strong', { text: s.name || s.id }), s.description ? h('span', { class: 'muted small', text: ' ' + s.description }) : null))))
                 : null,
             section('Memory access', memory),
-            h('p', { class: 'muted small', text: d.ready ? 'Ready.' : 'Starting: the first answer may take a minute.' })
+            d.ready && d.toolProblem
+                ? h('p', { class: 'tool-server-problem', text: d.toolProblem })
+                : h('p', { class: 'muted small', text: d.ready ? 'Ready.' : 'Starting: the first answer may take a minute.' })
         ].filter(Boolean));
     }
 
@@ -446,14 +471,8 @@
             box.append(welcome());
             return;
         }
-        let steps = [];
-        const flush = () => { if (steps.length) box.append(stepsGroup(steps, false)); steps = []; };
-        state.items.forEach((item, index) => {
-            if (item.kind === 'user') { flush(); box.append(userBubble(item)); }
-            else if (item.kind === 'assistant') { flush(); box.append(answerBubble(item, index)); }
-            else steps.push(item);
-        });
-        flush();
+        // Only questions and answers: tool steps are background work, and the server sends none (D555).
+        state.items.forEach((item, index) => box.append(item.kind === 'user' ? userBubble(item) : answerBubble(item, index)));
         box.scrollTop = box.scrollHeight;
     }
 
@@ -477,37 +496,6 @@
                     item.usage?.total ? h('span', { class: 'message-tokens', text: tokensLabel(item.usage) }) : null,
                     h('button', { type: 'button', class: 'link-btn copy-answer', 'data-index': String(index) }, 'Copy'))),
             note || null);
-    }
-
-    // Tool calls as collapsible steps (kagent's ToolCallGroup): each call with its arguments and result, redacted by the server.
-    function stepsGroup(items, running) {
-        const results = new Map(items.filter(i => i.kind === 'tool_result' && i.callId).map(i => [i.callId, i]));
-        const calls = items.filter(i => i.kind === 'tool_call');
-        const names = [...new Set(calls.map(c => c.agent ? `agent ${c.agent}` : c.tool))];
-        const body = [];
-        for (const item of items) {
-            if (item.kind === 'step') body.push(h('div', { class: 'step-text', text: item.text }));
-            else if (item.kind === 'tool_call') body.push(toolStep(item, results.get(item.callId), running));
-            else if (!calls.some(c => c.callId && c.callId === item.callId)) body.push(toolStep(null, item, running));
-        }
-        const label = calls.length
-            ? `${calls.length} ${calls.length === 1 ? 'step' : 'steps'}: ${names.join(', ')}`
-            : 'Working';
-        return h('details', { class: 'tool-steps' + (running ? ' running' : ''), open: running },
-            h('summary', {}, h('span', { class: 'steps-icon', 'aria-hidden': 'true' }, running ? '◌' : '⚙'), h('span', { text: label })), ...body);
-    }
-
-    function toolStep(call, result, running) {
-        const name = (call || result).agent ? `Asked agent ${(call || result).agent}` : (call || result).tool || 'tool';
-        const status = result ? (result.isError ? 'error' : 'done') : running ? 'running' : 'no result';
-        return h('details', { class: 'tool-step ' + status.replace(' ', '-') },
-            h('summary', {}, h('code', { text: name }), h('span', { class: 'tool-status', text: status })),
-            call ? h('div', { class: 'tool-part' }, h('div', { class: 'tool-label', text: 'Arguments' }), h('pre', { text: prettyJson(call.arguments) })) : null,
-            result ? h('div', { class: 'tool-part' }, h('div', { class: 'tool-label', text: result.isError ? 'Error' : 'Result' }), h('pre', { text: prettyJson(result.result) })) : null);
-    }
-
-    function prettyJson(text) {
-        try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text || ''; }
     }
 
     // Which prior chats and cards a first turn was given, or that the answer came from the cache.
@@ -557,28 +545,26 @@
 
     function liveTurn() {
         const box = $('chatMessages');
-        const turn = { draft: '', answer: '', items: [], usage: null, stepsEl: null, bubble: null };
+        const turn = { draft: '', answer: '', usage: null, bubble: null };
+        const working = () => h('span', { class: 'typing-dots', 'aria-label': 'The agent is working' }, h('i'), h('i'), h('i'));
         const bubble = h('div', { class: 'chat-message assistant live' },
-            h('div', { class: 'message-bubble' }, h('div', { class: 'message-content markdown' },
-                h('span', { class: 'typing-dots', 'aria-label': 'The agent is working' }, h('i'), h('i'), h('i')))));
+            h('div', { class: 'message-bubble' }, h('div', { class: 'message-content markdown' }, working())));
         box.append(bubble);
         turn.bubble = bubble;
         turn.render = () => {
-            const steps = turn.items.length ? stepsGroup(turn.items, true) : null;
-            if (turn.stepsEl) turn.stepsEl.remove();
-            turn.stepsEl = steps;
-            if (steps) box.insertBefore(steps, bubble);
             const text = turn.answer || turn.draft;
             const content = bubble.querySelector('.message-content');
+            // An empty draft (a tool call took it away) shows the agent working again.
             if (text) content.innerHTML = md.render(text) + '<span class="cursor" aria-hidden="true"></span>';
+            else content.replaceChildren(working());
             box.scrollTop = box.scrollHeight;
         };
-        turn.remove = () => { bubble.remove(); turn.stepsEl?.remove(); };
+        turn.remove = () => bubble.remove();
         return turn;
     }
 
-    function failedBubble(message, retry) {
-        return errorAlert('The agent did not answer', message, retry);
+    function failedBubble(message, retry, reason) {
+        return errorAlert('The agent did not answer', message, retry, reason);
     }
 
     function setStreaming(on) {
@@ -615,9 +601,9 @@
             send(text, fileIds, attachments);
         };
         let failed = null;
-        const fail = msg => {
+        const fail = (msg, reason) => {
             turn.remove();
-            failed = failedBubble(msg, retry);
+            failed = failedBubble(msg, retry, reason);
             $('chatMessages').append(failed);
             $('chatMessages').scrollTop = $('chatMessages').scrollHeight;
         };
@@ -641,7 +627,8 @@
             if (!response.ok) {
                 // A 429 is the quota hook's refusal (IChatQuota): its words are shown as they are, and the quota meter
                 // (quota-mine.js) reloads to offer "Request more".
-                fail(problemText(await response.json().catch(() => ({})), response.status));
+                const problem = await response.json().catch(() => ({}));
+                fail(problemText(problem, response.status), problem.kagentReason);
                 if (response.status === 429) document.dispatchEvent(new CustomEvent('skx:quota-changed'));
                 return;
             }
@@ -658,15 +645,11 @@
                 } else if (type === 'delta') { turn.draft += data.text; turn.render(); }
                 else if (type === 'text') { turn.draft = data.text; turn.render(); }
                 else if (type === 'answer') { turn.answer = data.text; turn.render(); }
-                else if (type === 'item') {
-                    if (data.kind === 'step') turn.draft = '';
-                    turn.items.push(data);
-                    turn.render();
-                } else if (type === 'usage') turn.usage = data;
+                else if (type === 'usage') turn.usage = data;
                 else if (type === 'done') done = data;
                 else if (type === 'error') {
                     if (data.conversationGone && wasNew) forgetNewConversation();
-                    fail(data.message);
+                    fail(data.message, data.kagentReason);
                 }
             });
             if (done) await finish(turn, done, text);
@@ -693,7 +676,7 @@
             renderItems();
             return;
         }
-        state.items.push(...turn.items, { kind: 'assistant', text: turn.answer || turn.draft, usage: done.usage, at: new Date().toISOString() });
+        state.items.push({ kind: 'assistant', text: turn.answer || turn.draft, usage: done.usage, at: new Date().toISOString() });
         const note = relatedNote(done, question);
         if (note) state.notes.set(state.items.length - 1, note);
         setUsage({
@@ -721,7 +704,6 @@
             notice('Stopped. Nothing was saved, since the agent had not answered yet.');
             return;
         }
-        state.items.push(...turn.items);
         if (turn.answer || turn.draft) state.items.push({ kind: 'assistant', text: (turn.answer || turn.draft) + '\n\n_(stopped)_', at: new Date().toISOString() });
         turn.remove();
         renderItems();

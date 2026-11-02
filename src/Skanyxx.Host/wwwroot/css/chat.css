@@ -186,22 +186,6 @@
 html[data-motion="reduce"] .cursor, html[data-motion="reduce"] .typing-dots i { animation: none; }
 @media (prefers-reduced-motion: reduce) { html:not([data-motion="full"]) .cursor, html:not([data-motion="full"]) .typing-dots i { animation: none; } }
 
-/* Tool steps (named apart from the setup guide's numbered .steps) */
-.tool-steps { max-width: 85%; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-1); font-size: var(--text-sm); }
-.tool-steps > summary { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); cursor: pointer; color: var(--text-2); }
-.tool-steps.running > summary { color: var(--text); }
-.steps-icon { font-size: var(--text-base); }
-.tool-steps > :not(summary) { margin: 0 var(--space-3) var(--space-2); }
-.step-text { color: var(--text-2); font-style: italic; white-space: pre-wrap; }
-.tool-step { border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-0); }
-.tool-step > summary { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); cursor: pointer; }
-.tool-status { margin-left: auto; font-size: var(--text-xs); color: var(--text-3); }
-.tool-step.done .tool-status { color: var(--success); }
-.tool-step.error .tool-status { color: var(--danger); }
-.tool-step.running .tool-status { color: var(--warning); }
-.tool-part { padding: 0 var(--space-3) var(--space-2); }
-.tool-label { font-size: var(--text-xs); color: var(--text-2); margin-bottom: 2px; }
-.tool-part pre { margin: 0; padding: var(--space-2); max-height: 260px; overflow: auto; background: var(--surface-2); border-radius: var(--radius-md); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* Composer */
 .security-warning { margin: 0 var(--space-4) var(--space-2); }
@@ -276,6 +260,16 @@ html[data-motion="reduce"] .cursor, html[data-motion="reduce"] .typing-dots i { 
 .agent-picker .status-dot, .chat-app .status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--status-off); }
 .agent-picker .status-dot.ready { background: var(--status-ok); }
 .agent-picker .status-dot.starting { background: var(--status-warn); }
+.agent-picker .status-dot.unhealthy { background: var(--status-down); }
+.agent-card-problem { color: var(--danger); font-size: var(--text-xs); }
+.chat-details .tool-server-problem { color: var(--danger); font-size: var(--text-xs); margin: 0; }
+.chat-details .tool-server > .tool-server-problem { padding: 0 var(--space-3) var(--space-1); }
+/* kagent's reason for a failed turn (builders and up, D553): plain text, wrapped, the full text behind a disclosure. */
+.failure-reason { margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border); }
+.failure-reason-label { font-size: var(--text-xs); color: var(--text-2); }
+.failure-reason-text { font-family: var(--font-mono); font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; }
+.failure-reason details summary { cursor: pointer; font-size: var(--text-xs); }
+.failure-reason-full { font-size: var(--text-xs); white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow-y: auto; margin: var(--space-1) 0 0; }
 
 /* ---------- narrow screens ---------- */
 @media (max-width: 1200px) {
@@ -291,5 +285,5 @@ html[data-motion="reduce"] .cursor, html[data-motion="reduce"] .typing-dots i { 
     .chat-side { display: none; }
     .chat-app.side-open .chat-side { display: flex; position: fixed; left: 0; top: 0; bottom: 0; width: min(280px, 85vw); z-index: var(--z-dialog); box-shadow: var(--shadow-lg); }
     .side-toggle { display: inline-flex; }
-    .message-bubble, .tool-steps, .chat-messages > .alert { max-width: 100%; }
+    .message-bubble, .chat-messages > .alert { max-width: 100%; }
 }

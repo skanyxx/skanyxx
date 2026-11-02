@@ -32,6 +32,7 @@
                 <option value="ready">Ready</option>
                 <option value="starting">Starting</option>
                 <option value="not-ready">Not ready</option>
+                <option value="tools">Tool unavailable</option>
                 <option value="suspended">Suspended</option>
             </select>
             <span class="spacer"></span>
@@ -227,10 +228,11 @@
     const el = (tag, text, cls) => { const e = document.createElement(tag); if (text !== undefined) e.textContent = text; if (cls) e.className = cls; return e; };
     const lines = text => text.split('\n').map(s => s.trim()).filter(Boolean);
     const show = view => views.forEach(v => { v.hidden = v.id !== view; });
-    const status = a => a.suspended ? 'suspended' : (a.ready ? 'ready' : (a.accepted ? 'starting' : 'not-ready'));
-    const statusLabel = { suspended: 'Suspended', ready: 'Ready', starting: 'Accepted, starting', 'not-ready': 'Not ready' };
-    // The shared status words (skx.badge, StatusTone): ready is green, starting and suspended amber, not ready red.
-    const statusWord = { suspended: 'suspended', ready: 'ready', starting: 'starting', 'not-ready': 'failed' };
+    // Ready with a tool server that gives no tools is unhealthy (D554): kagent calls it Ready, its turns fail.
+    const status = a => a.suspended ? 'suspended' : (a.ready ? (a.toolProblem ? 'tools' : 'ready') : (a.accepted ? 'starting' : 'not-ready'));
+    const statusLabel = { suspended: 'Suspended', ready: 'Ready', starting: 'Accepted, starting', 'not-ready': 'Not ready', tools: 'Tool unavailable' };
+    // The shared status words (skx.badge, StatusTone): ready is green, starting and suspended amber, not ready and tools red.
+    const statusWord = { suspended: 'suspended', ready: 'ready', starting: 'starting', 'not-ready': 'failed', tools: 'unhealthy' };
     const stateBadge = a => skx.badge(statusWord[status(a)], statusLabel[status(a)]);
 
     // The shared client (js/ui.js): the error carries the status and the problem body (a 400's errors by field).
@@ -280,7 +282,9 @@
         if (canWrite && a.canEdit) actions.appendChild(button('Edit', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }));
         if (canProposeChanges && a.source === 'studio') actions.appendChild(button('Propose change', a.name, () => { location.hash = `edit/${a.namespace}/${a.name}`; }));
         if (canWrite && a.canDelete) actions.appendChild(button('Delete', a.name, () => remove(a.namespace, a.name), 'btn btn-danger-ghost btn-sm'));
-        c.append(head, el('p', a.description || 'No description.', 'text-secondary clamp'), meta, actions);
+        c.append(head, el('p', a.description || 'No description.', 'text-secondary clamp'), meta);
+        if (a.toolProblem) c.append(el('p', a.toolProblem, 'text-danger text-sm'));
+        c.append(actions);
         // A click anywhere else on the card opens it too, as a mouse convenience; it waits out a double-click and gives
         // way to a selection, so selecting a word or the model line to copy it never navigates.
         let pending = 0;
@@ -423,6 +427,7 @@
             ['State', statusLabel[status(a)]],
             ['In Chat', a.inChat ? (a.suspended ? 'no (suspended)' : 'yes') : 'no'],
             ['Replicas', a.replicas ?? '1 (kagent default)'],
+            ['Tools', a.toolProblem],
             ...a.conditions.map(c => [c.type, `${c.status}${c.reason ? ` (${c.reason})` : ''}`]),
             ['Used as a tool by', a.usedBy.join(', ')],
             ['Studio file', a.studioPath]

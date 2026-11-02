@@ -134,10 +134,15 @@ public static class SecretScan
     /// (<c>total_tokens</c>) stay. The cut drops the word it lands in, so a token straddling it cannot survive as a
     /// fragment too short to be recognised (D391).
     /// </summary>
-    public static string Redact(string text)
+    public static string Redact(string text) => Redact(text, out _);
+
+    /// <inheritdoc cref="Redact(string)"/>
+    /// <param name="cut">The normalised text was longer than <see cref="MaxRedacted"/>, so the end is missing.</param>
+    public static string Redact(string text, out bool cut)
     {
         var normalized = Normalize(text);
-        if (normalized.Length > MaxRedacted)
+        cut = normalized.Length > MaxRedacted;
+        if (cut)
             normalized = WithoutTrailingWord(normalized[..MaxRedacted]);
 
         var named = new StringBuilder(normalized.Length);

@@ -15,5 +15,5 @@ internal sealed record SendChatRequest(
     /// <summary>As the signed-in person, never a user id from the body.</summary>
     public SendChatMessageCommand Command(ClaimsPrincipal user) => new(
         Caller.UserId(user)!, Message ?? "", AgentNamespace?.Trim() ?? "", AgentName?.Trim() ?? "", ConversationId,
-        ChatReader.From(user), TicketKeys ?? [], NoCache, FileIds ?? []);
+        ChatReader.From(user), TicketKeys ?? [], NoCache, FileIds ?? [], Caller.SeesAgentInternals(user));
 }

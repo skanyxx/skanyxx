@@ -16,4 +16,10 @@ public static class Caller
 
     public static bool IsSupervisor(ClaimsPrincipal principal) =>
         principal.IsInRole(SkanyxxRoles.Owner) || principal.IsInRole(SkanyxxRoles.Supervisor);
+
+    /// <summary>
+    /// Builders, supervisors and the owner: they read every agent (D254) and kagent's own words when an agent or one of
+    /// its tool servers fails (D553). An employee gets fixed texts only.
+    /// </summary>
+    public static bool SeesAgentInternals(ClaimsPrincipal principal) => IsSupervisor(principal) || principal.IsInRole(SkanyxxRoles.Builder);
 }

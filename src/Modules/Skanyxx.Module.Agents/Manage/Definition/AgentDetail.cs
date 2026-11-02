@@ -48,4 +48,7 @@ internal sealed record AgentDetail(
 
     /// <summary>Agents in its namespace that call it as a tool: deleting it breaks them. Only for builders and up.</summary>
     public IReadOnlyList<string> UsedBy { get; init; } = [];
+
+    /// <inheritdoc cref="AgentSummary.ToolProblem"/>
+    public string? ToolProblem { get; init; }
 }

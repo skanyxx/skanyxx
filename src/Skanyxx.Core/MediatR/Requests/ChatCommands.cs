@@ -12,9 +12,11 @@ namespace Skanyxx.Core.MediatR.Requests;
 /// agent acts for that person (D5). NotFound for an agent that is not merged or a conversation that is not theirs.
 /// With <paramref name="Reader"/> (the signed-in person, for access checks), the chat index is used (D260–D265):
 /// related prior work on the first turn, <paramref name="TicketKeys"/> linked, the index updated after the turn.
-/// <paramref name="FileIds"/> are the caller's own uploaded chat files sent with this turn.
+/// <paramref name="FileIds"/> are the caller's own uploaded chat files sent with this turn. A failed turn carries kagent's
+/// own reason only with <paramref name="SeesFailureReason"/> (builders and up, <see cref="Caller.SeesAgentInternals"/>, D553).
 /// </summary>
 public record SendChatMessageCommand(
     string UserId, string Message, string AgentNamespace, string AgentName, string? ConversationId,
-    ChatReader? Reader = null, IReadOnlyList<string>? TicketKeys = null, bool NoCache = false, IReadOnlyList<string>? FileIds = null)
+    ChatReader? Reader = null, IReadOnlyList<string>? TicketKeys = null, bool NoCache = false, IReadOnlyList<string>? FileIds = null,
+    bool SeesFailureReason = false)
     : IRequest<Outcome<ChatResponse>>;

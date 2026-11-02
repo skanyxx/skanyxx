@@ -69,11 +69,12 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
             finished = true;
             if (failure is not null)
             {
+                var reason = turn.FailedState is null ? null : Failed(turn);
                 // Counted before anything is cleaned up: the cleanup may fail, the tokens were spent.
                 await turns.RecordUsageAsync(command, start, turn.Usage, turn.Answer);
                 await turns.AbandonAsync(command, start);
                 await turns.FailedAsync(command, start);
-                yield return ChatStreamEvent.Error(failure, start.IsNew);
+                yield return ChatStreamEvent.Error(failure, start.IsNew, command.SeesFailureReason ? reason : null);
                 yield break;
             }
             await turns.CompleteAsync(command, start, turn.Answer, turn.Usage);
@@ -93,6 +94,15 @@ internal sealed class ChatStream(SendChatMessageCommand command, TurnStart start
                 await turns.AbandonAsync(command, start);
             }
         }
+    }
+
+    /// <summary>kagent ended the task badly: its reason, cleaned (D553), and a log line whoever asked.</summary>
+    private string? Failed(A2ATurn turn)
+    {
+        var reason = ChatFailureReason.Of(turn.FailureDetail);
+        logger.LogWarning("Streamed chat with {AgentRef} failed for {UserId}: task {TaskId} ended {State}: {Reason}",
+            start.AgentRef, command.UserId, ChatFailureReason.Of(turn.TaskId), ChatFailureReason.Of(turn.FailedState), reason ?? "(no message)");
+        return reason;
     }
 
     // An iterator cannot catch around a yield, so each read is caught here.

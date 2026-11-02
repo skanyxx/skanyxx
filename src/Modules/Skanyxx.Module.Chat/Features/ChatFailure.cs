@@ -1,6 +1,9 @@
 namespace Skanyxx.Module.Chat.Features;
 
-/// <summary>What a person sees when kagent fails: fixed texts only; kagent's own text and the cause go to the log.</summary>
+/// <summary>
+/// What a person sees when kagent fails: fixed texts only; kagent's own text and the cause go to the log, and a failed
+/// task's reason also to builders and up, beside these words (D553).
+/// </summary>
 internal static class ChatFailure
 {
     public const string Generic = "The agents cannot answer right now. Try again in a moment.";

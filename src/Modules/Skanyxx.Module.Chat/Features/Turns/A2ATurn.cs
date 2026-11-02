@@ -7,9 +7,9 @@ namespace Skanyxx.Module.Chat.Features.Turns;
 
 /// <summary>
 /// Reads one turn's A2A stream from kagent (task, status updates, artifact updates) into <see cref="ChatStreamEvent"/>s.
-/// Partial chunks grow the draft; a whole intermediate message replaces it; a tool call turns the draft into a step;
-/// the final status message or the artifact is the answer. Reasoning parts are skipped; tool payloads are redacted. A
-/// message's usage counts once per message id.
+/// Partial chunks grow the draft; a whole intermediate message replaces it; a tool call clears the draft (what the model
+/// said on its way to a tool is not the answer); the final status message or the artifact is the answer. Tool calls and
+/// their results never leave the server, and reasoning parts are skipped (D555). A message's usage counts once per message id.
 /// </summary>
 internal sealed class A2ATurn
 {
@@ -23,6 +23,15 @@ internal sealed class A2ATurn
 
     /// <summary>Why the turn did not complete, in plain words; null while it is fine.</summary>
     public string? Failure { get; private set; }
+
+    /// <summary>The state a failed turn ended in (<c>failed</c>, <c>rejected</c>, <c>canceled</c>); null while it is fine or stopped for an approval.</summary>
+    public string? FailedState { get; private set; }
+
+    /// <summary>
+    /// kagent's own text about a failed turn (its final status message), raw: for the log and builders and up only, after
+    /// <see cref="Core.Platform.Chat.ChatFailureReason"/> (D553).
+    /// </summary>
+    public string? FailureDetail { get; private set; }
 
     /// <summary>The answer, else the last thing the agent said.</summary>
     public string Answer => _answer.Length > 0 ? _answer : _draft;
@@ -41,19 +50,29 @@ internal sealed class A2ATurn
         };
     }
 
-    // A turn that ends badly says so in fixed words: kagent's own text about it (a stack, a pod name) goes nowhere.
+    // A turn that ends badly says so in fixed words; kagent's own text about it (a stack, a pod name, an address) is kept
+    // apart, for the log and for builders and up (D553).
     private IEnumerable<ChatStreamEvent> Status(JsonNode? status, bool final)
     {
-        Failure ??= final
-            ? EventFields.Text(status, "state") switch
+        if (Failure is null && final)
+        {
+            var state = EventFields.Text(status, "state");
+            Failure = state switch
             {
                 "failed" or "rejected" or "canceled" => ChatFailure.Unfinished,
                 "input-required" or "auth-required" => ChatFailure.NeedsApproval,
                 _ => null
-            }
-            : null;
+            };
+            if (Failure == ChatFailure.Unfinished)
+                (FailedState, FailureDetail) = (state, Said(EventFields.Get(status, "message")));
+        }
         return Failure is null ? Message(EventFields.Get(status, "message"), final) : [];
     }
+
+    // A message's text parts, reasoning skipped.
+    private static string Said(JsonNode? message) => string.Concat((EventFields.Get(message, "parts") as JsonArray ?? [])
+        .Where(p => EventFields.Text(p, "kind") == "text" && !SessionEvents.IsThought(p))
+        .Select(p => EventFields.Text(p, "text")));
 
     private IEnumerable<ChatStreamEvent> Message(JsonNode? message, bool final)
     {
@@ -84,15 +103,13 @@ internal sealed class A2ATurn
         foreach (var part in parts as JsonArray ?? [])
         {
             var type = EventFields.Text(EventFields.Get(part, "metadata"), "adkType") ?? EventFields.Text(EventFields.Get(part, "metadata"), "kagentType");
-            var data = EventFields.Get(part, "data");
             if (type == "function_call")
             {
-                if (Step(text, partial) is { } step)
-                    yield return step;
-                yield return ChatStreamEvent.Item(ToolSteps.Call(EventFields.Text(data, "id"), EventFields.Text(data, "name"), EventFields.Get(data, "args"), null));
+                if (Clear(text))
+                    yield return ChatStreamEvent.Text("");
             }
             else if (type == "function_response")
-                yield return ChatStreamEvent.Item(ToolSteps.Result(EventFields.Text(data, "id"), EventFields.Text(data, "name"), EventFields.Get(data, "response"), null));
+                continue;
             else if (EventFields.Text(part, "kind") == "text" && !SessionEvents.IsThought(part))
                 text.Append(EventFields.Text(part, "text"));
         }
@@ -116,13 +133,14 @@ internal sealed class A2ATurn
         }
     }
 
-    // What the model said before calling a tool is a step, not the answer (D316).
-    private ChatStreamEvent? Step(StringBuilder text, bool partial)
+    // What the model said before calling a tool is not the answer (D316), and no longer shown at all (D555). True when
+    // the page was showing it, so it is told to take it away.
+    private bool Clear(StringBuilder text)
     {
-        var said = partial ? _draft + text : text.Length > 0 ? text.ToString() : _draft;
+        var shown = _draft.Length > 0;
         text.Clear();
         _draft = "";
-        return said.Trim().Length > 0 ? ChatStreamEvent.Item(new ConversationItem(ConversationItemKinds.Step, said)) : null;
+        return shown;
     }
 
     private static bool IsTerminal(string? state) => state is "completed" or "failed" or "rejected" or "canceled" or "input-required" or "auth-required";

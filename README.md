@@ -95,8 +95,13 @@ owner here until kagent has accepted a model with its credentials; everyone else
 **Chat:** lists only **merged** agents — Agents labelled `skanyxx.dev/merged: "true"` (the seed today; D100) — via
 `GET /api/chat/agents`; `POST /api/chat {agentNamespace, agentName, message, conversationId?}` talks to kagent as the
 signed-in person (kagent's `user_id`/`X-User-Id`), so the seed searches company memory and that person's personal
-memory (D101). An agent is `namespace/name`. A failing turn answers `502` with a fixed text (kagent's own text stays in
-the log) and deletes the conversation it had just started. Chat is the only place that talks to an agent (D002, D017).
+memory (D101). An agent is `namespace/name`. A failing turn answers `502` with a fixed text and deletes the conversation
+it had just started; when kagent ended the task itself (`failed`, `rejected`, …) its own status message is logged at
+Warning with the agent and task id, and builders, supervisors and the owner also get it as `kagentReason` (credentials
+blanked, cut visibly past 2 000 characters; the stream's `error` event likewise), employees never (D553). An agent
+whose tool server kagent does not list, or lists with no tools, shows as unhealthy in the picker, its details and on
+the Agents page — by server name for builders and up, "a tool is unavailable" for employees (D554). Chat shows no tool
+steps; the server sends none (D555). Chat is the only place that talks to an agent (D002, D017).
 kagent's API is unauthenticated in this setup (`auth.mode: unsecure`): keep it on localhost / inside the cluster.
 
 ## Local stack on OrbStack
