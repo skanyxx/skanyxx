@@ -135,6 +135,9 @@ public sealed class FakeKAgent : IAsyncDisposable
     /// <summary>A streamed turn ends in this task state instead of <c>completed</c>.</summary>
     public string StreamFinalState { get; set; } = "completed";
 
+    /// <summary>What the final status message of a streamed turn that did not complete says.</summary>
+    public string StreamFailureText { get; set; } = InternalDetail;
+
     /// <summary>A streamed turn's final status message (with its usage) is sent twice under one message id, as kagent may repeat it.</summary>
     public bool RepeatFinalMessage { get; set; }
 
@@ -538,7 +541,7 @@ public sealed class FakeKAgent : IAsyncDisposable
             });
         var last = AgentMessage(new JsonObject { ["kagent_usage_metadata"] = Usage(50, 10) },
             new JsonObject { ["kind"] = "text", ["text"] = "thinking…", ["metadata"] = new JsonObject { ["adk_thought"] = true } },
-            new JsonObject { ["kind"] = "text", ["text"] = StreamFinalState == "completed" ? Answer : InternalDetail });
+            new JsonObject { ["kind"] = "text", ["text"] = StreamFinalState == "completed" ? Answer : StreamFailureText });
         if (RepeatFinalMessage)
             await Send(Status("working", (JsonObject)last.DeepClone()));
         await Send(Status(StreamFinalState, last, final: true));

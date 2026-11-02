@@ -1,15 +1,10 @@
 namespace Skanyxx.Module.Chat.Features.Conversations;
 
+/// <summary>What a conversation shows: the person's messages and the answers, no tool steps (D555).</summary>
 internal static class ConversationItemKinds
 {
     public const string User = "user";
 
     /// <summary>The turn's answer.</summary>
     public const string Assistant = "assistant";
-
-    /// <summary>What the model said on its way to a tool call (D316: not the answer; shown with the steps).</summary>
-    public const string Step = "step";
-
-    public const string ToolCall = "tool_call";
-    public const string ToolResult = "tool_result";
 }

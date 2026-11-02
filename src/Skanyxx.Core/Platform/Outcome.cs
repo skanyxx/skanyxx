@@ -2,7 +2,8 @@ namespace Skanyxx.Core.Platform;
 
 /// <summary>
 /// A handler's result. On <see cref="OutcomeStatus.Conflict"/>, <see cref="Value"/> is the current state to re-read and
-/// <see cref="Reason"/> (optional) says which kind of conflict it is.
+/// <see cref="Reason"/> (optional) says which kind of conflict it is. On <see cref="OutcomeStatus.Unavailable"/>, <see cref="Reason"/>
+/// (optional) is the upstream's own words, for a caller allowed to read them (D553).
 /// </summary>
 public sealed record Outcome<T>(OutcomeStatus Status, T? Value = default, string? Message = null, string? Reason = null)
 {
@@ -15,7 +16,7 @@ public sealed record Outcome<T>(OutcomeStatus Status, T? Value = default, string
         new(OutcomeStatus.Conflict, current, message, reason);
     public static Outcome<T> RateLimited(string message) => new(OutcomeStatus.RateLimited, Message: message);
     public static Outcome<T> Accepted(T value) => new(OutcomeStatus.Accepted, value);
-    public static Outcome<T> Unavailable(string message) => new(OutcomeStatus.Unavailable, Message: message);
+    public static Outcome<T> Unavailable(string message, string? reason = null) => new(OutcomeStatus.Unavailable, Message: message, Reason: reason);
 
     /// <summary>The same outcome with its value (if any) mapped, e.g. an entity to the DTO a contract returns.</summary>
     public Outcome<TOut> Map<TOut>(Func<T, TOut> map) => new(Status, Value is null ? default : map(Value), Message, Reason);

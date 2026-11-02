@@ -9,13 +9,17 @@ using Skanyxx.Module.Agents.Studio.Definition;
 
 namespace Skanyxx.Module.Agents.Manage.Features;
 
-/// <summary>Every agent for builders and supervisors; the agents Chat offers for anyone else (D254, D312).</summary>
+/// <summary>
+/// Every agent for builders and supervisors; the agents Chat offers for anyone else (D254, D312). Each says whether its
+/// tool servers look fine; kagent not listing them leaves that unknown, not the list failing (D554).
+/// </summary>
 internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioOptions> options, ILogger<ListAgentsHandler> logger)
     : IRequestHandler<ListAgentsQuery, Outcome<IReadOnlyList<AgentSummary>>>
 {
     public async Task<Outcome<IReadOnlyList<AgentSummary>>> Handle(ListAgentsQuery query, CancellationToken ct)
     {
         List<Core.Models.Agent> agents;
+        var servers = ToolServerHealth.ListOrNullAsync(kagent, logger, ct);
         try
         {
             agents = await kagent.GetAgentsAsync(ct);
@@ -26,6 +30,8 @@ internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioO
             return Outcome<IReadOnlyList<AgentSummary>>.Unavailable(AgentFailure.Unavailable);
         }
         var canWrite = AgentAccess.CanWrite(query.User);
+        var internals = AgentAccess.CanReadAll(query.User);
+        var listed = await servers;
         return Outcome<IReadOnlyList<AgentSummary>>.Ok([.. agents
             .Select(a => (Agent: a, InChat: a.Labels.GetValueOrDefault(StudioNames.MergedLabel) == "true"))
             .Where(a => AgentAccess.CanRead(query.User, a.InChat, a.Agent.Suspended))
@@ -38,7 +44,10 @@ internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioO
                 return new AgentSummary(a.Agent.Namespace, a.Agent.Name, a.Agent.Description, a.Agent.Type, a.Agent.Ready, a.Agent.Accepted,
                     AgentProtection.SourceOf(a.Agent.Name, a.Agent.Labels), a.InChat, a.Agent.Suspended,
                     writable && a.Agent.Type == "Declarative", writable, refusal,
-                    [.. a.Agent.McpToolNames.Keys.Order(StringComparer.Ordinal)], a.Agent.ModelConfig ?? "", AgentQueries.ToolCount(a.Agent));
+                    [.. a.Agent.McpToolNames.Keys.Order(StringComparer.Ordinal)], a.Agent.ModelConfig ?? "", AgentQueries.ToolCount(a.Agent))
+                {
+                    ToolProblem = listed is null ? null : ToolServerHealth.Summary(ToolServerHealth.Problems(a.Agent.McpServerRefs, listed), internals)
+                };
             })]);
     }
 }

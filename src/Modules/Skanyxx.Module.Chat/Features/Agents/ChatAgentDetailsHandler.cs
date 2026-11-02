@@ -23,7 +23,7 @@ internal sealed class ChatAgentDetailsHandler(KAgentApiClient kagent, IAgentMemo
             // An agent's memory id is its kagent name (the studio grants by it). The price key is the quota's and the rollup's.
             var model = ChatQuotaUsage.ModelRef(agent.Namespace, agent.ModelConfig);
             var details = AgentDetailsReader.Read(
-                agent, AgentEntries.Find(entries.Result, agent.Namespace, agent.Name), servers.Result, await memory.ForAgentAsync(agent.Name, ct));
+                agent, AgentEntries.Find(entries.Result, agent.Namespace, agent.Name), servers.Result, await memory.ForAgentAsync(agent.Name, ct), query.Internals);
             return Outcome<ChatAgentDetails>.Ok(details with
             {
                 Price = cost.PriceOf(model) is { } price ? new ChatAgentPrice(model, price.InputPerMillion, price.OutputPerMillion, cost.Currency) : null

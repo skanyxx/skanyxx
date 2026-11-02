@@ -26,9 +26,12 @@ internal sealed class GetAgentHandler(KAgentApiClient kagent, IOptions<StudioOpt
             var detail = AgentSpec.Detail(agent, readAll, AgentAccess.CanWrite(query.User) && query.Namespace == options.Value.Namespace);
             if (!AgentAccess.CanRead(query.User, detail.InChat, detail.Suspended))
                 return Outcome<AgentDetail>.NotFound(AgentFailure.NotFound);
-            var catalog = await AgentQueries.ToolCatalogAsync(kagent, ct);
+            var servers = await kagent.GetToolServerListAsync(ct);
+            var catalog = AgentQueries.ToolCatalog(servers);
             return Outcome<AgentDetail>.Ok(detail with
             {
+                ToolProblem = ToolServerHealth.Summary(
+                    ToolServerHealth.Problems(detail.McpTools.Select(t => $"{query.Namespace}/{t.Server}"), servers), readAll),
                 ToolsByServer = [.. detail.McpTools.Select(t => AgentQueries.Describe(t, query.Namespace, catalog))],
                 UsedBy = readAll ? AgentQueries.UsedBy(await kagent.GetAgentsAsync(ct), query.Namespace, query.Name) : []
             });

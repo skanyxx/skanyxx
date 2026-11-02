@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.DependencyInjection;
 using Skanyxx.Core.Platform.Chat;
+using Skanyxx.Core.Services;
 
 namespace Skanyxx.Host.Tests;
 
@@ -214,7 +215,7 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
 
     /// <summary>requirements.md §3.4: a reload continues the same session — read back from kagent, never a new one.</summary>
     [Fact]
-    public async Task AReload_ReopensTheSameConversation_WithItsStepsAndTokens_AndCreatesNoSession()
+    public async Task AReload_ReopensTheSameConversation_WithItsAnswerAndTokens_NoSteps_AndCreatesNoSession()
     {
         var owner = await _host.OwnerAsync();
         _kagent.StreamToolCall = true;
@@ -230,12 +231,15 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains($"data-session=\"{id}\"", await page.Content.ReadAsStringAsync(Ct));
         Assert.Single(_kagent.CallsTo("POST", "/api/sessions"));
         Assert.Equal(view.GetRawText(), again.GetRawText());
-        Assert.Equal(["user", "step", "tool_call", "tool_result", "assistant"], view.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("kind").GetString()));
+        // D555: no tool steps, not even what the model said on its way to the tool.
+        Assert.Equal(["user", "assistant"], view.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("kind").GetString()));
+        Assert.DoesNotContain("memory_search", view.GetRawText());
+        Assert.DoesNotContain("Let me look that up.", view.GetRawText());
         var items = view.GetProperty("items").EnumerateArray().ToList();
         Assert.Equal("What is our refund window?", items[0].GetProperty("text").GetString());
-        Assert.Equal(_kagent.Answer, items[4].GetProperty("text").GetString());
-        // The answer carries its whole turn's tokens (the tool-calling step and the answer).
-        Assert.Equal(180, items[4].GetProperty("usage").GetProperty("total").GetInt64());
+        Assert.Equal(_kagent.Answer, items[1].GetProperty("text").GetString());
+        // The answer carries its whole turn's tokens (the tool-calling model call and the answer).
+        Assert.Equal(180, items[1].GetProperty("usage").GetProperty("total").GetInt64());
         Assert.Equal(180, view.GetProperty("usage").GetProperty("total").GetInt64());
 
         // The next message continues it.
@@ -247,7 +251,7 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
     // ---------- streamed turns ----------
 
     [Fact]
-    public async Task AStreamedTurn_ShowsToolSteps_Redacted_AndTheAnswerWithItsTokens()
+    public async Task AStreamedTurn_SendsNoToolSteps_OnlyTheAnswerWithItsTokens()
     {
         var owner = await _host.OwnerAsync();
         _kagent.StreamToolCall = true;
@@ -258,14 +262,10 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("session", events[0].Type);
         Assert.True(events[0].Data.GetProperty("isNew").GetBoolean());
         Assert.Equal("What is our refund window?", events[0].Data.GetProperty("title").GetString());
-        var call = events.Single(e => e.Type == "item" && e.Data.GetProperty("kind").GetString() == "tool_call").Data;
-        Assert.Equal("memory_search", call.GetProperty("tool").GetString());
-        var arguments = JsonDocument.Parse(call.GetProperty("arguments").GetString()!).RootElement;
-        Assert.Equal("refund window", arguments.GetProperty("query").GetString());
-        Assert.Equal("[redacted]", arguments.GetProperty("api_key").GetString());
-        var result = events.Single(e => e.Type == "item" && e.Data.GetProperty("kind").GetString() == "tool_result").Data;
-        Assert.Contains("[redacted]", result.GetProperty("result").GetString());
-        Assert.Equal("Let me look that up.", events.Single(e => e.Type == "item" && e.Data.GetProperty("kind").GetString() == "step").Data.GetProperty("text").GetString());
+        // D555: the tool call, its result and what the model said on its way there never leave the server.
+        Assert.DoesNotContain(events, e => e.Type == "item");
+        Assert.DoesNotContain("memory_search", raw);
+        Assert.DoesNotContain("Let me look that up.", raw);
         Assert.Contains(events, e => e.Type == "delta");
         Assert.Equal(_kagent.Answer, events.Last(e => e.Type == "answer").Data.GetProperty("text").GetString());
         Assert.DoesNotContain(events, e => e.Type == "answer" && e.Data.GetProperty("text").GetString()!.Contains("thinking"));
@@ -273,25 +273,113 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("done", done.Type);
         Assert.Equal(180, done.Data.GetProperty("usage").GetProperty("total").GetInt64());
 
-        // Read back, the steps are redacted the same way.
+        // Read back, no steps either.
         var id = events[0].Data.GetProperty("conversationId").GetString();
-        Assert.DoesNotContain(FakeKAgent.StreamSecret, await owner.GetStringAsync($"/api/chat/conversations/{id}", Ct));
+        var reopened = await owner.GetStringAsync($"/api/chat/conversations/{id}", Ct);
+        Assert.DoesNotContain(FakeKAgent.StreamSecret, reopened);
+        Assert.DoesNotContain("memory_search", reopened);
     }
 
     [Fact]
     public async Task AFailedFirstTurn_IsAnErrorInPlainWords_AndLeavesNoConversation()
     {
-        var owner = await _host.OwnerAsync();
+        var employee = await EmployeeAsync();
         _kagent.StreamFinalState = "failed";
 
-        var (events, raw) = await StreamAsync(owner, new { agentNamespace = "kagent", agentName = "seed", message = "hi" });
+        var (events, raw) = await StreamAsync(employee, new { agentNamespace = "kagent", agentName = "seed", message = "hi" });
 
         var error = events.Last();
         Assert.Equal("error", error.Type);
         Assert.Equal("The agent could not finish the answer. Try again in a moment.", error.Data.GetProperty("message").GetString());
         Assert.True(error.Data.GetProperty("conversationGone").GetBoolean());
+        Assert.False(error.Data.TryGetProperty("reason", out _));
         Assert.DoesNotContain("SECRET-INTERNAL", raw);
         Assert.Empty(_kagent.SessionIds);
+    }
+
+    /// <summary>D553: kagent's reason goes to builders and up, cleaned, under the same fixed words; never to an employee.</summary>
+    [Fact]
+    public async Task AFailedStreamedTurn_CarriesKagentsReason_ToBuildersAndUpOnly()
+    {
+        _kagent.StreamFinalState = "failed";
+        _kagent.StreamFailureText = $"{ChatFailureReasonTests.Observed} Authorization: Bearer {FakeKAgent.StreamSecret}";
+        var builder = await PersonAsync("bo@skanyxx.example", "builder");
+
+        foreach (var client in new[] { await _host.OwnerAsync(), builder })
+        {
+            var (events, raw) = await StreamAsync(client, new { agentNamespace = "kagent", agentName = "seed", message = "hi" });
+            var error = events.Last();
+            Assert.Equal("The agent could not finish the answer. Try again in a moment.", error.Data.GetProperty("message").GetString());
+            Assert.StartsWith(ChatFailureReasonTests.Observed, error.Data.GetProperty("reason").GetString());
+            Assert.DoesNotContain(FakeKAgent.StreamSecret, raw);
+        }
+        var (asEmployee, employeeRaw) = await StreamAsync(await EmployeeAsync(), new { agentNamespace = "kagent", agentName = "seed", message = "hi" });
+        Assert.False(asEmployee.Last().Data.TryGetProperty("reason", out _));
+        Assert.DoesNotContain("host.docker.internal", employeeRaw);
+    }
+
+    [Fact]
+    public async Task AFailedBlockingTurn_CarriesKagentsReason_ToBuildersAndUpOnly()
+    {
+        _kagent.A2ABody = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["result"] = new JsonObject
+            {
+                ["kind"] = "task", ["id"] = "task-7",
+                ["status"] = new JsonObject
+                {
+                    ["state"] = "failed",
+                    ["message"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["kind"] = "text", ["text"] = ChatFailureReasonTests.Observed }) }
+                }
+            }
+        }.ToJsonString();
+
+        var asOwner = await (await _host.OwnerAsync()).PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "hi" }, Ct);
+        var asEmployee = await (await EmployeeAsync()).PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "hi" }, Ct);
+
+        Assert.Equal(HttpStatusCode.BadGateway, asOwner.StatusCode);
+        var problem = await asOwner.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        Assert.Equal("The agent could not finish the answer. Try again in a moment.", problem.GetProperty("detail").GetString());
+        Assert.Equal(ChatFailureReasonTests.Observed, problem.GetProperty("reason").GetString());
+        Assert.Equal(HttpStatusCode.BadGateway, asEmployee.StatusCode);
+        var employeeBody = await asEmployee.Content.ReadAsStringAsync(Ct);
+        Assert.DoesNotContain("host.docker.internal", employeeBody);
+        Assert.DoesNotContain("\"reason\"", employeeBody);
+        Assert.Empty(_kagent.SessionIds);
+    }
+
+    /// <summary>D554: Ready in kagent, but a tool server it names gives no tools: the picker and details say so.</summary>
+    [Fact]
+    public async Task AnAgentWhoseToolServerGivesNoTools_ShowsUnhealthy_ByNameForBuildersAndUpOnly()
+    {
+        _kagent.AgentObjects["kagent/broken"] = Agent("broken", new JsonObject { ["skanyxx.dev/merged"] = "true" }, new JsonObject
+        {
+            ["type"] = "Declarative",
+            ["declarative"] = new JsonObject
+            {
+                ["tools"] = new JsonArray(
+                    new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "skanyxx-memory-seed", ["kind"] = "RemoteMCPServer" } },
+                    new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "gone-mcp", ["namespace"] = "team-a", ["kind"] = "RemoteMCPServer" } })
+            }
+        });
+        var owner = await _host.OwnerAsync();
+        var employee = await EmployeeAsync();
+
+        var picker = (await owner.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct)).EnumerateArray().ToList();
+        var broken = picker.First(a => a.GetProperty("name").GetString() == "broken");
+        Assert.Equal($"kagent/skanyxx-memory-seed: {ToolServerHealth.NoTools} team-a/gone-mcp: {ToolServerHealth.NotListed}", broken.GetProperty("toolProblem").GetString());
+        Assert.Equal(JsonValueKind.Null, picker.First(a => a.GetProperty("name").GetString() == "helper").GetProperty("toolProblem").ValueKind);
+        var details = await owner.GetFromJsonAsync<JsonElement>("/api/chat/agents/kagent/broken", Ct);
+        Assert.Equal(broken.GetProperty("toolProblem").GetString(), details.GetProperty("toolProblem").GetString());
+        Assert.Equal([ToolServerHealth.NoTools, ToolServerHealth.NotListed],
+            details.GetProperty("toolServers").EnumerateArray().Select(s => s.GetProperty("problem").GetString()));
+
+        var asEmployee = (await employee.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct)).EnumerateArray().First(a => a.GetProperty("name").GetString() == "broken");
+        Assert.Equal(ToolServerHealth.ForEmployees, asEmployee.GetProperty("toolProblem").GetString());
+        var employeeDetails = await employee.GetFromJsonAsync<JsonElement>("/api/chat/agents/kagent/broken", Ct);
+        Assert.Equal(ToolServerHealth.ForEmployees, employeeDetails.GetProperty("toolProblem").GetString());
+        Assert.All(employeeDetails.GetProperty("toolServers").EnumerateArray(), s => Assert.Equal(ToolServerHealth.Unavailable, s.GetProperty("problem").GetString()));
     }
 
     [Fact]
@@ -308,7 +396,7 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
 
         var response = await owner.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stop.Token);
         var reader = new StreamReader(await response.Content.ReadAsStreamAsync(stop.Token));
-        while (await reader.ReadLineAsync(stop.Token) is { } line && line != "event: item") { }
+        while (await reader.ReadLineAsync(stop.Token) is { } line && line != "event: usage") { }
         await stop.CancelAsync();
         response.Dispose();
 
@@ -680,19 +768,19 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         return condition();
     }
 
-    private async Task<HttpClient> EmployeeAsync()
+    private async Task<HttpClient> EmployeeAsync() => _employee ??= await PersonAsync(EmployeeEmail, "employee");
+
+    private async Task<HttpClient> PersonAsync(string email, string role)
     {
-        if (_employee is not null)
-            return _employee;
         var owner = await _host.OwnerAsync();
-        var invite = await owner.PostAsJsonAsync("/api/identity/invites", new { email = EmployeeEmail, roles = new[] { "employee" } }, Ct);
+        var invite = await owner.PostAsJsonAsync("/api/identity/invites", new { email, roles = new[] { role } }, Ct);
         invite.EnsureSuccessStatusCode();
         var link = (await invite.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("link").GetString()!;
         var token = System.Web.HttpUtility.ParseQueryString(new Uri(link).Query)["token"]!;
         (await _host.Client().PostAsJsonAsync("/api/identity/invites/accept", new { token, password = EmployeePassword }, Ct)).EnsureSuccessStatusCode();
-        var signIn = await _host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email = EmployeeEmail, password = EmployeePassword }, Ct);
+        var signIn = await _host.Client().PostAsJsonAsync("/api/identity/sign-in", new { email, password = EmployeePassword }, Ct);
         signIn.EnsureSuccessStatusCode();
-        return _employee = _host.Client((await signIn.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("tokens").GetProperty("accessToken").GetString()!);
+        return _host.Client((await signIn.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("tokens").GetProperty("accessToken").GetString()!);
     }
 
     /// <summary>The quota hook, refusing when a test says so (the default lets every turn through).</summary>

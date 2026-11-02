@@ -7,8 +7,9 @@ using Skanyxx.Core.Platform.Usage;
 namespace Skanyxx.Module.Chat.Features.Conversations;
 
 /// <summary>
-/// A conversation read back from kagent's session events (D274, D316): the person's messages without Skanyxx's blocks, each
-/// tool call and result (redacted), what the model said on its way to them, and each turn's answer with its tokens.
+/// A conversation read back from kagent's session events (D274, D555): the person's messages without Skanyxx's blocks and
+/// each turn's answer with its tokens. Tool calls, their results and what the model said on its way to them stay out:
+/// Chat shows no steps, so none leave the server.
 /// kagent lists events newest first; partial (streamed) events are skipped, since their whole event follows. Each model
 /// call carries its own usage, never a running total (TOK/kagent-usage.md), so a turn's tokens are their sum.
 /// <c>ClientTokens</c> is Skanyxx's own count of what it sent: every user message as stored, blocks and images included (D548).
@@ -36,17 +37,14 @@ internal static class SessionEvents
             foreach (var part in EventFields.Get(content, "parts") as JsonArray ?? [])
                 if (EventFields.Text(EventFields.Get(part, "inlineData"), "data") is { } image)
                     images += estimator.Count(image);
-                else if (EventFields.Get(part, "functionCall") is { } call)
+                else if (EventFields.Get(part, "functionCall") is not null)
                 {
-                    // What the model said before calling the tool is a step (D316), shown before the call.
-                    if (text.ToString().Trim().Length > 0)
-                        items.Add(new ConversationItem(ConversationItemKinds.Step, text.ToString(), At: at));
+                    // What the model said before calling the tool is not the answer (D316, D555).
                     text.Clear();
                     calls = true;
-                    items.Add(ToolSteps.Call(EventFields.Text(call, "id"), EventFields.Text(call, "name"), EventFields.Get(call, "args"), at));
                 }
-                else if (EventFields.Get(part, "functionResponse") is { } response)
-                    items.Add(ToolSteps.Result(EventFields.Text(response, "id"), EventFields.Text(response, "name"), EventFields.Get(response, "response"), at));
+                else if (EventFields.Get(part, "functionResponse") is not null)
+                    continue;
                 else if (EventFields.Text(part, "text") is { } t && !IsThought(part))
                     text.Append(t);
 
@@ -55,7 +53,7 @@ internal static class SessionEvents
             total = total.Add(usage);
             if (role == "user")
                 sent += estimator.Count(text.ToString()) + images;
-            if (text.ToString().Trim().Length == 0)
+            if (text.ToString().Trim().Length == 0 || (calls && role != "user"))
                 continue;
             if (role == "user")
             {
@@ -64,7 +62,7 @@ internal static class SessionEvents
                 items.Add(new ConversationItem(ConversationItemKinds.User, message, At: at, Attachments: files));
             }
             else
-                items.Add(new ConversationItem(calls ? ConversationItemKinds.Step : ConversationItemKinds.Assistant, text.ToString(), At: at));
+                items.Add(new ConversationItem(ConversationItemKinds.Assistant, text.ToString(), At: at));
         }
         CloseTurn(items, turn);
         return (items, total, sent);

@@ -15,5 +15,5 @@ internal sealed class ChatAgentDetailsEndpoint(IMediator mediator) : Endpoint<Ag
     }
 
     public override async Task HandleAsync(AgentRouteRequest req, CancellationToken ct) =>
-        await Send.ResultAsync((await mediator.Send(new ChatAgentDetailsQuery(req.Namespace, req.Name), ct)).ToHttp());
+        await Send.ResultAsync((await mediator.Send(new ChatAgentDetailsQuery(req.Namespace, req.Name, Caller.SeesAgentInternals(User)), ct)).ToHttp());
 }

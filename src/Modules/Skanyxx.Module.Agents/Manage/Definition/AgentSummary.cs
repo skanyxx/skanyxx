@@ -17,4 +17,8 @@ internal sealed record AgentSummary(
     string? Protection,
     IReadOnlyList<string> McpServers,
     string ModelConfig,
-    int ToolCount);
+    int ToolCount)
+{
+    /// <summary>Null while its tool servers look fine or kagent did not list them; else by name for builders and up, a fixed text for anyone else (D554).</summary>
+    public string? ToolProblem { get; init; }
+}
