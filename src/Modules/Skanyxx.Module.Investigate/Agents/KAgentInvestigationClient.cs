@@ -99,11 +99,14 @@ internal sealed partial class KAgentInvestigationClient(
         if (state is "input-required" or "auth-required")
             throw new AgentCallException("the agent stopped to ask for an approval, which an investigation cannot give");
         if (state != "completed")
-            throw state.Length <= 32
-                // kagent's own words, cleaned, beside the fixed category (D556); the id and state are kagent's too.
-                ? new AgentCallException($"the agent's task ended '{ChatFailureReason.Of(state)}'", ChatFailureReason.Of(result["id"]?.GetValue<string>()),
-                    ChatFailureReason.Of(state), ChatFailureReason.Of(Text(result["status"]!["message"]?["parts"])))
-                : new AgentCallException("kagent answered in an unexpected shape");
+        {
+            if (state.Length > 32)
+                throw new AgentCallException("kagent answered in an unexpected shape");
+            // kagent's own words, cleaned, beside the fixed category (D556); the id and state are kagent's too.
+            var ended = ChatFailureReason.Of(state) ?? "?";
+            throw new AgentCallException($"the agent's task ended '{ended}'", ChatFailureReason.Of(result["id"]?.GetValue<string>()), ended,
+                ChatFailureReason.Of(Text(result["status"]!["message"]?["parts"])), ChatUsage.Of(A2AUsage.From(result)));
+        }
 
         var artifacts = result["artifacts"]?.AsArray();
         var text = artifacts is { Count: > 0 } ? Text(artifacts[^1]!["parts"]) : "";

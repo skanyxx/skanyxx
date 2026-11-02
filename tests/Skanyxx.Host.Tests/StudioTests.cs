@@ -529,6 +529,24 @@ public sealed class StudioTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.DoesNotContain(FakeKAgent.StreamSecret, body);
         Assert.Equal(HttpStatusCode.Forbidden,
             (await _employee.PostAsJsonAsync($"/api/studio/proposals/{number}/chat", new { message = "hi" }, cancellationToken: TestContext.Current.CancellationToken)).StatusCode);
+        // A failed first turn leaves no session behind.
+        Assert.Empty(_kagent.SessionIds);
+    }
+
+    [Fact]
+    public async Task APreviewApprovalStop_AsksForTheApproval_WithNoKagentReason()
+    {
+        var number = await ProposeAsync(_builder, Draft());
+        Assert.Equal(HttpStatusCode.OK, (await _builder.PostAsync($"/api/studio/proposals/{number}/preview", null, TestContext.Current.CancellationToken)).StatusCode);
+        _kagent.A2ABody = """{"jsonrpc":"2.0","result":{"kind":"task","id":"t","status":{"state":"auth-required","message":{"parts":[{"kind":"text","text":"Sign in at https://idp.example/?state=s3cr3t"}]}}}}""";
+
+        var turn = await _builder.PostAsJsonAsync($"/api/studio/proposals/{number}/chat", new { message = "refund window?" }, cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadGateway, turn.StatusCode);
+        var body = await turn.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains(Skanyxx.Module.Agents.Studio.Features.StudioChat.NeedsApproval, body);
+        Assert.DoesNotContain("kagentReason", body);
+        Assert.DoesNotContain("idp.example", body);
     }
 
     [Fact]

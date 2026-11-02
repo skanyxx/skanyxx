@@ -109,13 +109,14 @@ public static class PdfReport
         return pages;
     }
 
-    /// <summary>A PDF string literal: Latin-1 printable characters, the delimiters escaped, everything else '?'.</summary>
+    /// <summary>A PDF string literal: Latin-1 printable characters, the delimiters escaped, "…" as "...", everything else '?'.</summary>
     private static string Escape(string text)
     {
         var escaped = new StringBuilder(text.Length);
         foreach (var c in text)
         {
             if (c is '(' or ')' or '\\') escaped.Append('\\').Append(c);
+            else if (c == '\u2026') escaped.Append("..."); // a cut says so, also in Latin-1
             else if (c == '\t') escaped.Append("    ");
             else if (c is (>= ' ' and <= '~') or (>= ' ' and <= 'ÿ')) escaped.Append(c);
             else if (!char.IsControl(c)) escaped.Append('?');

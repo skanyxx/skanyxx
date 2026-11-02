@@ -52,6 +52,24 @@ public sealed class FailureReasonTests(PostgresFixture postgres) : InvestigateTe
     }
 
     [Fact]
+    public void ALongReason_IsCutVisibly_AndTheReportsCarryTheLabel()
+    {
+        var reason = ChatFailureReason.Of(new string('x', 3_000) + " the end")!;
+        var run = new InvestigationRun
+        {
+            Id = Guid.NewGuid(), WorkflowName = "w", CreatedBy = Builder,
+            Steps = [Agent("s1", Researcher, "{{input}}")],
+            StepRuns = [new StepRun { StepId = "s1", State = StepState.Failed, Error = "the agent's task ended 'failed'", KagentReason = reason }]
+        };
+        var builder = new Viewer(Builder, false, false, SeesAgentInternals: true);
+
+        Assert.EndsWith("… (cut: kagent's message has 3,008 characters)", Assert.Single(RunReport.From(run, builder).Steps).KagentReason);
+        var pdf = Encoding.Latin1.GetString(PdfReport.Render(RunReport.From(run, builder)));
+        Assert.Contains("...", pdf);
+        Assert.Contains(@"\(cut: kagent's message has 3,008 characters\)", pdf); // parentheses escaped in a PDF string
+    }
+
+    [Fact]
     public void AViewerOutsideTheInternalsRoles_GetsNoReason_InTheRunOrTheReport()
     {
         var run = new InvestigationRun

@@ -176,6 +176,7 @@ internal sealed partial class RunExecutor(
             var prompt = PromptTemplate.Render(step.Prompt!, context.Input, context.Outputs, _options.MaxRenderedPromptChars);
             var asked = false;
             AgentAnswer? answer = null;
+            var spent = ChatUsage.None;
             try
             {
                 // Released at once, as for a ticket run: this run's own parallel steps (up to MaxParallelSteps) must not
@@ -201,6 +202,7 @@ internal sealed partial class RunExecutor(
             }
             catch (AgentCallException ex)
             {
+                spent = ex.Usage;
                 if (ex.State is not null)
                     LogTaskFailed(logger, context.RunId, step.Id, step.Agent!, ex.TaskId, ex.State, ex.KagentReason ?? "(no message)");
                 return await FailAsync(step, context, ex.Message, ex.KagentReason);
@@ -210,7 +212,7 @@ internal sealed partial class RunExecutor(
                 // Not the run's token: a timed-out or cancelled call was paid for too.
                 if (asked)
                     await quota.RecordAsync(ChatQuotaUsage.Measure(estimator, context.StartedBy, step.Agent!, context.Models[step.Agent!],
-                        context.RunId.ToString(), answer?.Usage ?? ChatUsage.None, prompt, answer?.Text ?? ""), CancellationToken.None);
+                        context.RunId.ToString(), answer?.Usage ?? spent, prompt, answer?.Text ?? ""), CancellationToken.None);
             }
         }
         finally

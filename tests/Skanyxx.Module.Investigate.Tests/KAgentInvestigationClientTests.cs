@@ -144,6 +144,18 @@ public sealed class KAgentInvestigationClientTests
     }
 
     [Fact]
+    public async Task AFailedTask_CarriesTheTokensKagentCounted()
+    {
+        var (client, _, _) = Create(HttpStatusCode.OK, """
+            {"result":{"kind":"task","id":"t","status":{"state":"failed"},"metadata":{"kagent_usage_metadata":{"promptTokenCount":100,"candidatesTokenCount":20,"totalTokenCount":120}}}}
+            """);
+
+        var error = await Assert.ThrowsAsync<AgentCallException>(() => client.AskAsync("kagent/a", "p", TestContext.Current.CancellationToken));
+
+        Assert.Equal(new ChatUsage(100, 20, 120), error.Usage);
+    }
+
+    [Fact]
     public async Task AnApprovalStop_IsNoFailureReason()
     {
         var (client, _, _) = Create(HttpStatusCode.OK, """{"result":{"kind":"task","id":"t","status":{"state":"auth-required","message":{"parts":[{"kind":"text","text":"Sign in at https://idp.example/?state=s3cr3t"}]}}}}""");
