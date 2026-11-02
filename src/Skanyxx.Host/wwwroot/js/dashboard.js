@@ -33,7 +33,7 @@
     const seq = { health: 0, usage: 0 };
     // The server's own links (HealthBoard, DashboardSummaryHandler) are paths in this app; anything else is not a link.
     function local(url) {
-        if (typeof url !== 'string' || !url.startsWith('/')) return null;
+        if (typeof url !== 'string' || !url.startsWith('/') || !URL.canParse(url, location.origin)) return null;
         const resolved = new URL(url, location.origin);
         return resolved.origin === location.origin ? resolved.pathname + resolved.search + resolved.hash : null;
     }
