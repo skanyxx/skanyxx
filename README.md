@@ -97,7 +97,12 @@ owner here until kagent has accepted a model with its credentials; everyone else
 (`app.kubernetes.io/part-of: skanyxx-ticket-flow`) — and suspended agents. An agent created in the kagent UI, by kubectl
 or Helm is offered like a Studio or Agents-page one: **any agent in kagent, with whatever tools it has, is reachable by
 every signed-in person, employees included**, so kagent's RBAC and namespace placement decide what exists to talk to.
-`skanyxx.dev/merged` still marks an agent that came through review (Studio), but no longer gates Chat. Listed by
+`skanyxx.dev/merged` still marks an agent that came through review (Studio), but no longer gates Chat. Names Skanyxx
+reserves (`skanyxx-*`, `preview-*`), any other `part-of: skanyxx*` value (a custom Tickets stage agent must carry one)
+and an agent naming a memory server other than its own `skanyxx-memory-<name>` are never offered. Memory: an
+unreviewed agent with no grant gets memory's default related cards (company plus the person's own) in a first prompt,
+and grants are keyed by agent **name**, so an agent named like a granted one in another namespace gets its grants —
+creating one now takes only kagent create rights (D557). Listed by
 `GET /api/chat/agents`; `POST /api/chat {agentNamespace, agentName, message, conversationId?}` talks to kagent as the
 signed-in person (kagent's `user_id`/`X-User-Id`), so the seed searches company memory and that person's personal
 memory (D101). An agent is `namespace/name`. A failing turn answers `502` with a fixed text and deletes the conversation

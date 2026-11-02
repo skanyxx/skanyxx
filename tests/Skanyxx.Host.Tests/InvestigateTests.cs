@@ -87,7 +87,7 @@ public sealed class InvestigateTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal("application/pdf", pdf.Content.Headers.ContentType?.MediaType);
     }
 
-    /// <summary>D557: a step may call any agent Chat offers, labelled or not; never a Studio preview or a ticket stage.</summary>
+    /// <summary>D557: a step may call any agent Chat offers, labelled or not; never a Studio preview, a ticket stage or a suspended agent.</summary>
     [Fact]
     public async Task AStep_TakesAnUnlabelledAgent_ButNeverAPreview()
     {
@@ -106,8 +106,15 @@ public sealed class InvestigateTests(PostgresFixture fixture) : IAsyncLifetime
             steps = new object[] { new { id = "s1", title = "Ask", kind = "agent", agent, prompt = "{{input}}", steps = Array.Empty<object>() } }
         }, Ct);
 
+        _kagent.AgentObjects["kagent/asleep"] = new JsonObject
+        {
+            ["metadata"] = new JsonObject { ["name"] = "asleep", ["namespace"] = "kagent" },
+            ["spec"] = new JsonObject { ["type"] = "Declarative", ["declarative"] = new JsonObject { ["deployment"] = new JsonObject { ["replicas"] = 0 } } }
+        };
+
         var options = await _owner.GetFromJsonAsync<JsonElement>("/api/investigate/options", Ct);
         var unlabelled = await SaveAsync("kagent/e2e-hello");
+        var suspended = await SaveAsync("kagent/asleep");
         var preview = await SaveAsync("kagent/preview-9-helper");
         var stage = await SaveAsync("kagent/ticket-planner");
 
@@ -119,6 +126,7 @@ public sealed class InvestigateTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(HttpStatusCode.Conflict, preview.StatusCode);
         Assert.Contains("Not an agent you can use now", await preview.Content.ReadAsStringAsync(Ct));
         Assert.Equal(HttpStatusCode.Conflict, stage.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, suspended.StatusCode);
     }
 
     [Fact]

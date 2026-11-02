@@ -34,7 +34,7 @@ internal sealed class ListAgentsHandler(KAgentApiClient kagent, IOptions<StudioO
         var internals = AgentAccess.CanReadAll(query.User);
         var listed = await servers;
         return Outcome<IReadOnlyList<AgentSummary>>.Ok([.. agents
-            .Select(a => (Agent: a, InChat: ChatOffer.IsChatAgent(a.Labels)))
+            .Select(a => (Agent: a, InChat: ChatOffer.IsChatAgent(a)))
             .Where(a => AgentAccess.CanRead(query.User, a.InChat, a.Agent.Suspended))
             .OrderBy(a => a.Agent.Namespace, StringComparer.Ordinal).ThenBy(a => a.Agent.Name, StringComparer.Ordinal)
             .Select(a =>

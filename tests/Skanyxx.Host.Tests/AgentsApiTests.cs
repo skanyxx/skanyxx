@@ -99,14 +99,17 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
     [Fact]
     public async Task AReadyAgent_WhoseToolServerGivesNoTools_IsUnhealthy_ByNameForBuildersAndUpOnly()
     {
-        Seed("helper", Direct(), new JsonArray(Mcp(Server), Mcp("skanyxx-memory-seed")));
+        // Its own memory server, listed without tools (an agent naming another's is never offered, D557).
+        _kagent.ToolServers[$"{Ns}/skanyxx-memory-helper"] = new JsonObject();
+        _kagent.DiscoveredTools[$"{Ns}/skanyxx-memory-helper"] = [];
+        Seed("helper", Direct(), new JsonArray(Mcp(Server), Mcp("skanyxx-memory-helper")));
         Seed("fine", Direct(), new JsonArray(Mcp(Server)));
 
         foreach (var client in new[] { _owner, _supervisor, _builder })
         {
             var listed = (await ListAsync(client)).First(a => a.GetProperty("name").GetString() == "helper");
             Assert.True(listed.GetProperty("ready").GetBoolean());
-            Assert.Equal($"{Ns}/skanyxx-memory-seed: {ToolServerHealth.NoTools}", listed.GetProperty("toolProblem").GetString());
+            Assert.Equal($"{Ns}/skanyxx-memory-helper: {ToolServerHealth.NoTools}", listed.GetProperty("toolProblem").GetString());
             var detail = await client.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct);
             Assert.Equal(listed.GetProperty("toolProblem").GetString(), detail.GetProperty("toolProblem").GetString());
         }

@@ -55,7 +55,7 @@ internal static partial class StudioNames
     /// <summary>A Kubernetes object name (RFC 1123 label).</summary>
     public static bool IsKubeName(string? name) => name is not null && name.Length <= 63 && KubeName().IsMatch(name);
 
-    public const string MemoryServerPrefix = "skanyxx-memory-";
+    public const string MemoryServerPrefix = ChatOffer.MemoryServerPrefix;
 
     public static string MemoryServer(string agent) => MemoryServerPrefix + agent;
 

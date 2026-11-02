@@ -9,7 +9,7 @@ namespace Skanyxx.Module.Agents.Studio.Features;
 
 /// <summary>
 /// One turn with a studio agent that is not in Chat (a preview, the factory), as the signed-in person, the way Chat talks
-/// to merged agents (D101): kagent sessions are per user, a continued conversation must be the caller's and this
+/// to the agents it offers (D101, D557): kagent sessions are per user, a continued conversation must be the caller's and this
 /// agent's, and a failed first turn deletes the session it created. The token quota admits the turn and counts it once
 /// whatever ended it, a malformed answer included (D383, D388). When our deadline passes or the caller leaves, kagent is
 /// asked to stop this turn's task, as Chat does (D381). A task kagent ended badly answers as Chat's does, with kagent's

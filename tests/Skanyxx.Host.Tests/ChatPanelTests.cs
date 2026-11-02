@@ -402,13 +402,16 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
     [Fact]
     public async Task AnAgentWhoseToolServerGivesNoTools_ShowsUnhealthy_ByNameForBuildersAndUpOnly()
     {
+        // Its own memory server, listed without tools (an agent naming another's is never offered, D557).
+        _kagent.ToolServers["kagent/skanyxx-memory-broken"] = new JsonObject();
+        _kagent.DiscoveredTools["kagent/skanyxx-memory-broken"] = [];
         _kagent.AgentObjects["kagent/broken"] = Agent("broken", new JsonObject { ["skanyxx.dev/merged"] = "true" }, new JsonObject
         {
             ["type"] = "Declarative",
             ["declarative"] = new JsonObject
             {
                 ["tools"] = new JsonArray(
-                    new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "skanyxx-memory-seed", ["kind"] = "RemoteMCPServer" } },
+                    new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "skanyxx-memory-broken", ["kind"] = "RemoteMCPServer" } },
                     new JsonObject { ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = "gone-mcp", ["namespace"] = "team-a", ["kind"] = "RemoteMCPServer" } })
             }
         });
@@ -418,7 +421,7 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
 
         var picker = (await owner.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct)).EnumerateArray().ToList();
         var broken = picker.First(a => a.GetProperty("name").GetString() == "broken");
-        Assert.Equal($"kagent/skanyxx-memory-seed: {ToolServerHealth.NoTools} team-a/gone-mcp: {ToolServerHealth.NotListed}", broken.GetProperty("toolProblem").GetString());
+        Assert.Equal($"kagent/skanyxx-memory-broken: {ToolServerHealth.NoTools} team-a/gone-mcp: {ToolServerHealth.NotListed}", broken.GetProperty("toolProblem").GetString());
         Assert.Equal(JsonValueKind.Null, picker.First(a => a.GetProperty("name").GetString() == "helper").GetProperty("toolProblem").ValueKind);
         Assert.Equal(broken.GetProperty("toolProblem").GetString(), (await builder.GetFromJsonAsync<JsonElement>("/api/chat/agents", Ct)).EnumerateArray()
             .First(a => a.GetProperty("name").GetString() == "broken").GetProperty("toolProblem").GetString());

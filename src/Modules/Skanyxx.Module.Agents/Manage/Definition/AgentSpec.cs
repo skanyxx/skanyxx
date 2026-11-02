@@ -202,7 +202,7 @@ internal static partial class AgentSpec
             Condition(agent, "Ready"),
             Condition(agent, "Accepted"),
             source,
-            ChatOffer.IsChatAgent(labels),
+            ChatOffer.IsChatAgent(agent, labels),
             IsSuspended(agent),
             canWrite && refusal is null && declarativeType && !HasPromptSource(agent) && !HasUneditableTools(agent),
             canWrite && refusal is null,

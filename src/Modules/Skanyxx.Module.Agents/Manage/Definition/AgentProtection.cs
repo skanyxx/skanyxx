@@ -1,3 +1,4 @@
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Module.Agents.Studio.Definition;
 
 namespace Skanyxx.Module.Agents.Manage.Definition;
@@ -11,7 +12,6 @@ internal static class AgentProtection
     /// <summary>The managed-by value on agents created on the Agents page (the studio's is <see cref="StudioNames.ManagedBy"/>).</summary>
     public const string ManagedBy = "skanyxx-agents";
 
-    private const string PartOfLabel = "app.kubernetes.io/part-of";
 
     public static string SourceOf(string name, IReadOnlyDictionary<string, string> labels) =>
         labels.GetValueOrDefault(StudioNames.ManagedByLabel) switch
@@ -38,8 +38,12 @@ internal static class AgentProtection
     public static bool IsCallable(string name, IReadOnlyDictionary<string, string> labels) =>
         SourceOf(name, labels) is AgentSource.Direct or AgentSource.External;
 
+    /// <summary>
+    /// Installed by Skanyxx. Wider than <see cref="ChatOffer"/>'s "Skanyxx's own": the seed is a system agent here (not
+    /// editable on the Agents page) and still one Chat offers, because it is the agent people talk to first.
+    /// </summary>
     private static bool IsSystem(string name, IReadOnlyDictionary<string, string> labels) =>
         StudioNames.IsReserved(name)
         || labels.ContainsKey(StudioNames.RoleLabel)
-        || labels.GetValueOrDefault(PartOfLabel)?.StartsWith("skanyxx", StringComparison.Ordinal) == true;
+        || labels.GetValueOrDefault(ChatOffer.PartOfLabel)?.StartsWith("skanyxx", StringComparison.Ordinal) == true;
 }
