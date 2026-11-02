@@ -13,11 +13,11 @@
         <span id="checked-at"></span>
         <button type="button" id="dash-refresh">Refresh</button>
         <div id="dashboard" data-owner="true">
-            <div id="status"></div>
+            <div id="status" tabindex="-1"></div>
             <ul id="alerts"></ul>
             <p id="health-counts"></p>
             <div id="health"></div>
-            <div id="glance"></div>
+            <div id="glance" tabindex="-1"></div>
             <figure><span id="sum-tokens"></span><div class="chart-box"><canvas id="chart-tokens" aria-label="Tokens in and out per day"></canvas></div></figure>
             <figure><span id="sum-chats"></span><div class="chart-box"><canvas id="chart-chats" aria-label="New chats per day"></canvas></div></figure>
             <figure><span id="sum-errors"></span><div class="chart-box"><canvas id="chart-errors" aria-label="Failed turns per day"></canvas></div></figure>
@@ -70,24 +70,35 @@
             alerts: empty ? [] : [{ severity: 'warn', text: '1 chat turn(s) failed today (kagent or the agent did not answer).', url: '/Debug' }]
         });
 
+        // Each source answers from its queue ({ fail, delay }), then succeeds at once; `pending` counts open requests.
         let scenario;
+        let pending = 0;
         const failure = { ok: false, status: 503, json: async () => ({ title: 'Service Unavailable', detail: 'The database did not answer in time.' }) };
         window.fetch = async url => {
             const health = url.includes('/health');
-            if (health && scenario.healthFails-- > 0) return failure;
-            if (!health && scenario.usageFails-- > 0) return failure;
-            return { ok: true, status: 200, json: async () => health ? scenario.tiles : summary(scenario.owner, scenario.empty) };
+            const step = (health ? scenario.health : scenario.usage).shift() ?? {};
+            pending++;
+            try {
+                if (step.delay) await new Promise(r => setTimeout(r, step.delay));
+                if (step.fail) return failure;
+                return { ok: true, status: 200, json: async () => health ? scenario.tiles : summary(scenario.owner, scenario.empty) };
+            } finally {
+                pending--;
+            }
         };
 
         const $ = id => document.getElementById(id);
         const text = id => $(id)?.textContent ?? '';
+        // Settled: no request open, the refresh button free, and the content that replies fill is drawn.
         const settled = () => new Promise(resolve => {
-            const t = () => !$('dash-refresh').disabled && $('status').getAttribute('aria-busy') === 'false' ? setTimeout(resolve, 20) : setTimeout(t, 20);
+            const done = () => pending === 0 && !$('dash-refresh').disabled && $('status').getAttribute('aria-busy') === 'false'
+                && $('glance').querySelector('.dash-kpi, .error-state') !== null;
+            const t = () => done() ? setTimeout(resolve, 30) : setTimeout(t, 20);
             setTimeout(t, 20);
         });
 
         async function open(s) {
-            scenario = { owner: true, empty: false, healthFails: 0, usageFails: 0, ...s };
+            scenario = { owner: true, empty: false, health: [], usage: [], ...s };
             $('root').replaceChildren($('page').content.cloneNode(true));
             if (!scenario.owner) {
                 $('events').remove();
@@ -117,7 +128,11 @@
                 && $('chart-cards').hidden && text('root').includes('Memory could not be read just now.');
             r.chatsTrend = [...document.querySelectorAll('#glance .dash-trend')].some(t => t.textContent === '14 in 7 days, +100% vs the 7 days before' && t.dataset.tone === 'neutral');
             r.failedTurnsTrendIsBad = [...document.querySelectorAll('#glance .dash-trend')].some(t => t.textContent === '3 in 7 days, +200% vs the 7 days before' && t.dataset.tone === 'bad');
-            r.checkedAtShown = $('checked-at').querySelector('time') !== null;
+            r.checkedAtShown = $('checked-at').querySelector('time')?.textContent.startsWith('Updated ') === true;
+            $('dash-refresh').click();
+            await settled();
+            r.refreshRedrawsOnce = document.querySelectorAll('details.chart-data').length === 3 && $('glance').querySelectorAll('.dash-kpi').length === 9
+                && $('glance').querySelectorAll('canvas').length === 1 && $('health').querySelectorAll('[data-tile]').length === 3;
 
             await open({ tiles: healthy, empty: true });
             r.allHealthy = $('status').dataset.tone === 'ok' && text('status').includes('All systems healthy') && text('status').includes('3 of 4 checks healthy; 1 not set up')
@@ -135,25 +150,40 @@
                 && [...document.querySelectorAll('#health-counts .dash-count')].every(labelled);
             r.downTileHasItsFix = $('health').querySelector('[data-tile="kagent"] a[href="/Debug"]')?.textContent === 'Fix it'
                 && text('alerts').includes('kagent controller: Skanyxx could not reach the kagent controller.');
+            const alerts = [...$('alerts').children].map(li => li.dataset.severity + ':' + li.textContent);
+            r.alertsListDownThenDegraded = alerts[0].startsWith('down:') && alerts[0].includes('kagent controller')
+                && alerts[1].startsWith('warn:') && alerts[1].includes('Tool servers: 1 tool server(s) have no tools discovered.');
             r.onlyFixedTexts = !text('root').includes('hunter2') && !text('root').includes('Host=db');
 
-            await open({ tiles: healthy, healthFails: 1 });
+            await open({ tiles: healthy, health: [{ fail: true }] });
             const healthError = $('status').dataset.tone === 'down' && text('status').includes('Health could not be read')
                 && text('status').includes('The database did not answer in time.') && text('alerts').includes('Health could not be read, so this list may be incomplete.');
             tryAgain($('status')).click();
             await settled();
-            r.healthErrorRetries = healthError && $('health').querySelectorAll('[data-tile]').length === 3;
+            r.healthErrorRetries = healthError && $('health').querySelectorAll('[data-tile]').length === 3 && document.activeElement === $('status');
+            r.lastAttemptAfterAFailure = $('checked-at').textContent.startsWith('Last attempt ');
 
-            await open({ tiles: healthy, usageFails: 1 });
-            const usageError = $('glance').querySelector('.error-state') !== null && text('chart-tokens') === ''
+            await open({ tiles: healthy, usage: [{ fail: true }] });
+            const usageError = $('glance').querySelector('.error-state') !== null && $('chart-tokens').hidden
                 && text('root').includes('Not shown: usage could not be read.') && $('status').dataset.tone === 'warn';
             tryAgain($('glance')).click();
             await settled();
-            r.usageErrorRetries = usageError && $('glance').querySelectorAll('.dash-kpi').length === 9;
+            r.usageErrorRetries = usageError && $('glance').querySelectorAll('.dash-kpi').length === 9 && document.activeElement === $('glance');
 
-            await open({ tiles: healthy, owner: false });
+            // An older read that fails after a newer one succeeded changes nothing (latest request wins).
+            await open({ tiles: healthy, usage: [{ fail: true }] });
+            scenario.usage = [{ fail: true, delay: 150 }, {}];
+            tryAgain($('glance')).click();
+            $('dash-refresh').click();
+            await settled();
+            await new Promise(r => setTimeout(r, 200));
+            r.latestReadWins = $('glance').querySelectorAll('.dash-kpi').length === 9 && !text('alerts').includes('Usage could not be read')
+                && !$('chart-tokens').hidden;
+
+            await open({ tiles: problems, owner: false });
             r.supervisorSeesNoPeople = text('top-users').includes('Per-person usage is the owner\'s.') && $('top-users').querySelector('table') === null
                 && $('events') === null && $('glance').querySelectorAll('.dash-kpi').length === 9;
+            r.supervisorIsOfferedOpenNotFix = $('health').querySelector('[data-tile="kagent"] a[href="/Debug"]')?.textContent === 'Open';
 
             return r;
         }

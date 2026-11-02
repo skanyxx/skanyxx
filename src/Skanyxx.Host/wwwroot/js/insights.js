@@ -24,7 +24,7 @@ window.Insights = (() => {
         entry.instance = new Chart(entry.canvas, entry.build(t));
     }
 
-    /** Draws a chart from build(theme) → Chart.js config, and again on every theme change. */
+    /** Lets a canvas's chart go: destroyed, and no longer redrawn on a theme change. */
     function forget(canvas) {
         const old = [...entries].find(e => e.canvas === canvas);
         if (old) {
@@ -33,6 +33,7 @@ window.Insights = (() => {
         }
     }
 
+    /** Draws a chart from build(theme) → Chart.js config, and again on every theme change. */
     function chart(canvas, build) {
         forget(canvas);
         canvas.hidden = false;
@@ -181,5 +182,5 @@ window.Insights = (() => {
         return `≈ ${amount} ${estimate.currency}${estimate.unpricedModels.length ? ' (some models unpriced)' : ''}`;
     }
 
-    return { chart, stacked, line, horizontal, sparkline, el, json, table, empty, hasData, dayLabels, number, cost };
+    return { chart, forget, stacked, line, horizontal, sparkline, el, json, table, empty, hasData, dayLabels, number, cost };
 })();

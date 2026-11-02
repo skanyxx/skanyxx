@@ -62,7 +62,7 @@ public static class HeadlessChrome
 
             // The page may still be loading when the socket opens: wait for its result to exist, then for it.
             var json = await EvaluateAsync(await PortAsync(profile, browser, stderr),
-                $"new Promise(r => {{ const t = () => window.{resultName} ? Promise.resolve(window.{resultName}).then(v => r(typeof v === 'string' ? v : JSON.stringify(v))) : setTimeout(t, 50); t(); }})");
+                $"new Promise(r => {{ const t = () => window.{resultName} ? Promise.resolve(window.{resultName}).then(v => r(typeof v === 'string' ? v : JSON.stringify(v)), e => r(JSON.stringify({{ error: String(e && e.stack || e) }}))) : setTimeout(t, 50); t(); }})");
             return JsonDocument.Parse(json).RootElement;
         }
         finally

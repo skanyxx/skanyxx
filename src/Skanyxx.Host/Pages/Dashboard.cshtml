@@ -17,9 +17,9 @@
 
     <section class="dash-section" aria-labelledby="status-title">
         <h2 id="status-title" class="visually-hidden">Status</h2>
-        <div id="status" class="dash-status" aria-live="polite" aria-busy="true"></div>
+        <div id="status" class="dash-status" tabindex="-1" aria-live="polite" aria-busy="true"></div>
         <h3 id="alerts-title" class="dash-subtitle">Needs attention</h3>
-        <ul id="alerts" class="dash-alerts" aria-labelledby="alerts-title" aria-live="polite"></ul>
+        <ul id="alerts" class="dash-alerts" aria-labelledby="alerts-title"></ul>
     </section>
 
     <section class="dash-section" aria-labelledby="health-title">
@@ -35,7 +35,7 @@
             <h2 id="glance-title" class="section-title">Usage at a glance</h2>
             <p class="section-description">@(Model.IsOwner ? "Everyone on this install." : "The people in your teams.") Trends compare the last 7 days with the 7 days before.</p>
         </div>
-        <div id="glance" class="dash-kpis" aria-live="polite"></div>
+        <div id="glance" class="dash-kpis" tabindex="-1"></div>
         <partial name="_TokenCounters" />
         <partial name="_CostDisclaimer" />
     </section>
@@ -52,9 +52,12 @@
         </div>
     </section>
 
-    <section class="dash-section dash-lists" aria-label="Top agents and people">
-        <div class="card card-flush"><div class="card-header"><h3 class="card-title">Top agents (7 days)</h3></div><div id="top-agents" class="table-container"></div></div>
-        <div class="card card-flush"><div class="card-header"><h3 class="card-title">Top users (7 days)</h3></div><div id="top-users" class="table-container"></div></div>
+    <section class="dash-section" aria-labelledby="lists-title">
+        <h2 id="lists-title" class="visually-hidden">Top agents and people</h2>
+        <div class="dash-lists">
+            <div class="card card-flush"><div class="card-header"><h3 class="card-title">Top agents (7 days)</h3></div><div id="top-agents" class="table-container"></div></div>
+            <div class="card card-flush"><div class="card-header"><h3 class="card-title">Top users (7 days)</h3></div><div id="top-users" class="table-container"></div></div>
+        </div>
     </section>
 
     @if (Model.IsOwner)

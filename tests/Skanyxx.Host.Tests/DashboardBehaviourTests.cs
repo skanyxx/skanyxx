@@ -6,7 +6,7 @@ namespace Skanyxx.Host.Tests;
 /// The Dashboard's states in a real browser (D558): the status says "all healthy" or names what is down and degraded,
 /// problems come first and parts that are off come last, every state is an icon and words, a tile shows only its fixed
 /// texts, a failed read offers "Try again" and recovers, empty data says so, trends compare the last 7 days with the 7
-/// before, and a supervisor sees no per-person list. Ui/dashboard-behaviour.html runs the real scripts with the API and
+/// before, the latest read wins, focus returns to what "Try again" reloaded, and a supervisor sees no per-person list. Ui/dashboard-behaviour.html runs the real scripts with the API and
 /// Chart.js stubbed (<see cref="HeadlessChrome"/>); skipped when this machine has no Chrome or Chromium.
 /// </summary>
 public sealed partial class DashboardBehaviourTests
@@ -14,8 +14,9 @@ public sealed partial class DashboardBehaviourTests
     private static readonly string[] Checks =
     [
         "healthySaysSo", "offTilesComeLast", "chartsHaveTheirNumbers", "chatsTrend", "failedTurnsTrendIsBad", "checkedAtShown",
-        "allHealthy", "emptyChartsSaySo", "problemsComeFirst", "statusNamesWhatIsWrong", "statesAreIconAndWords",
-        "downTileHasItsFix", "onlyFixedTexts", "healthErrorRetries", "usageErrorRetries", "supervisorSeesNoPeople"
+        "refreshRedrawsOnce", "allHealthy", "emptyChartsSaySo", "problemsComeFirst", "statusNamesWhatIsWrong", "statesAreIconAndWords",
+        "downTileHasItsFix", "alertsListDownThenDegraded", "onlyFixedTexts", "healthErrorRetries", "lastAttemptAfterAFailure",
+        "usageErrorRetries", "latestReadWins", "supervisorSeesNoPeople", "supervisorIsOfferedOpenNotFix"
     ];
 
     private static string Script(string name) => new Uri(Repo.Path("src", "Skanyxx.Host", "wwwroot", "js", name)).AbsoluteUri;
@@ -52,8 +53,10 @@ public sealed partial class DashboardBehaviourTests
 
         Assert.True(ids.Count >= 15, $"expected the script's lookups, found {ids.Count}");
         Assert.All(ids, id => Assert.Contains($"id=\"{id}\"", page));
+        // "Try again" sends focus back to the region it reloaded, which only a focusable element can take.
+        Assert.All(new[] { "status", "glance" }, id => Assert.Matches($"id=\"{id}\"[^>]*tabindex=\"-1\"", page));
     }
 
-    [GeneratedRegex(@"\$\('([a-z-]+)'\)")]
+    [GeneratedRegex(@"(?:\$|getElementById)\('([a-z-]+)'\)")]
     private static partial Regex LookedUp();
 }
