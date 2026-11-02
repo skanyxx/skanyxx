@@ -100,7 +100,7 @@ every signed-in person, employees included**, so kagent's RBAC and namespace pla
 `skanyxx.dev/merged` still marks an agent that came through review (Studio), but no longer gates Chat. Names Skanyxx
 reserves (`skanyxx-*`, `preview-*`), any other `part-of: skanyxx*` value (a custom Tickets stage agent must carry one)
 an agent naming a memory server other than its own `skanyxx-memory-<name>`, and any agent that reaches one of
-those through agent tools are never offered. That memory check is a naming convention, not a boundary: the right to
+those through (declarative) agent tools are never offered. That memory check is a naming convention, not a boundary: the right to
 create Agents or RemoteMCPServers in a namespace holding a memory Secret is as sensitive as the Secret itself. Memory: an
 unreviewed agent with no grant gets memory's default related cards (company plus the person's own) in a first prompt,
 and grants are keyed by agent **name**, so an agent named like a granted one in another namespace gets its grants —

@@ -282,8 +282,9 @@ public class KAgentApiClient
             ? [.. list.EnumerateArray()
                 .Where(t => t.ValueKind == JsonValueKind.Object && t.TryGetProperty("agent", out var a) && a.ValueKind == JsonValueKind.Object)
                 .Select(t => t.GetProperty("agent"))
-                .Select(a => GetStringProperty(a, "name") is { } name ? $"{NamespaceOr(a, agentNamespace)}/{name}" : null)
-                .OfType<string>().Distinct()]
+                // An entry without a name stays as a ref kagent never lists, so ChatOffer excludes its caller (fails closed).
+                .Select(a => $"{NamespaceOr(a, agentNamespace)}/{GetStringProperty(a, "name") ?? ""}")
+                .Distinct()]
             : [];
 
     // An empty namespace is kagent's default, the agent's own (as ToolServerHealth.ServerRefs reads it).
