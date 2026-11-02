@@ -2,6 +2,7 @@ using MediatR;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
 using Skanyxx.Core.Platform;
+using Skanyxx.Core.Platform.Chat;
 using Skanyxx.Core.Services;
 using Skanyxx.Module.Agents.Manage.Definition;
 using Skanyxx.Module.Agents.Studio;
@@ -23,7 +24,12 @@ internal sealed class GetAgentHandler(KAgentApiClient kagent, IOptions<StudioOpt
             if (await kagent.GetAgentObjectAsync(query.Namespace, query.Name, ct) is not { } agent)
                 return Outcome<AgentDetail>.NotFound(AgentFailure.NotFound);
             var readAll = AgentAccess.CanReadAll(query.User);
-            var detail = AgentSpec.Detail(agent, readAll, AgentAccess.CanWrite(query.User) && query.Namespace == options.Value.Namespace);
+            // "In Chat" looks at the agents it calls too (D557), so it needs kagent's whole list.
+            var agents = await kagent.GetAgentsAsync(ct);
+            var detail = AgentSpec.Detail(agent, readAll, AgentAccess.CanWrite(query.User) && query.Namespace == options.Value.Namespace) with
+            {
+                InChat = ChatOffer.ChatAgentRefs(agents).Contains($"{query.Namespace}/{query.Name}")
+            };
             if (!AgentAccess.CanRead(query.User, detail.InChat, detail.Suspended))
                 return Outcome<AgentDetail>.NotFound(AgentFailure.NotFound);
             var servers = await kagent.GetToolServerListAsync(ct);
@@ -33,7 +39,7 @@ internal sealed class GetAgentHandler(KAgentApiClient kagent, IOptions<StudioOpt
                 ToolProblem = ToolServerHealth.Summary(
                     ToolServerHealth.Problems(ToolServerHealth.ServerRefs(agent), servers), readAll),
                 ToolsByServer = [.. detail.McpTools.Select(t => AgentQueries.Describe(t, query.Namespace, catalog))],
-                UsedBy = readAll ? AgentQueries.UsedBy(await kagent.GetAgentsAsync(ct), query.Namespace, query.Name) : []
+                UsedBy = readAll ? AgentQueries.UsedBy(agents, query.Namespace, query.Name) : []
             });
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException)

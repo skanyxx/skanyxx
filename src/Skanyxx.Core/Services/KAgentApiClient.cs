@@ -223,7 +223,8 @@ public class KAgentApiClient
             ModelConfig = type == "Declarative" ? DeclarativeModelConfig(spec) : null,
             McpToolNames = McpToolNames(spec),
             McpServerRefs = McpServerRefs(spec, ns),
-            AgentToolNames = AgentToolNames(spec)
+            AgentToolNames = AgentToolNames(spec),
+            AgentToolRefs = AgentToolRefs(spec, ns)
         };
     }
 
@@ -264,7 +265,7 @@ public class KAgentApiClient
             ? [.. list.EnumerateArray()
                 .Where(t => t.ValueKind == JsonValueKind.Object && t.TryGetProperty("mcpServer", out var s) && s.ValueKind == JsonValueKind.Object)
                 .Select(t => t.GetProperty("mcpServer"))
-                .Select(s => GetStringProperty(s, "name") is { } name ? $"{GetStringProperty(s, "namespace") ?? agentNamespace}/{name}" : null)
+                .Select(s => GetStringProperty(s, "name") is { } name ? $"{NamespaceOr(s, agentNamespace)}/{name}" : null)
                 .OfType<string>().Distinct()]
             : [];
 
@@ -274,6 +275,20 @@ public class KAgentApiClient
             ? [.. list.EnumerateArray().Where(t => t.ValueKind == JsonValueKind.Object && t.TryGetProperty("agent", out _))
                 .Select(t => GetStringProperty(t.GetProperty("agent"), "name")).OfType<string>()]
             : [];
+
+    private static List<string> AgentToolRefs(JsonElement spec, string agentNamespace) =>
+        spec.ValueKind == JsonValueKind.Object && spec.TryGetProperty("declarative", out var declarative) && declarative.ValueKind == JsonValueKind.Object
+        && declarative.TryGetProperty("tools", out var list) && list.ValueKind == JsonValueKind.Array
+            ? [.. list.EnumerateArray()
+                .Where(t => t.ValueKind == JsonValueKind.Object && t.TryGetProperty("agent", out var a) && a.ValueKind == JsonValueKind.Object)
+                .Select(t => t.GetProperty("agent"))
+                .Select(a => GetStringProperty(a, "name") is { } name ? $"{NamespaceOr(a, agentNamespace)}/{name}" : null)
+                .OfType<string>().Distinct()]
+            : [];
+
+    // An empty namespace is kagent's default, the agent's own (as ToolServerHealth.ServerRefs reads it).
+    private static string NamespaceOr(JsonElement reference, string agentNamespace) =>
+        GetStringProperty(reference, "namespace") is { Length: > 0 } ns ? ns : agentNamespace;
 
     private static bool HasCondition(JsonElement status, string type) =>
         status.ValueKind == JsonValueKind.Object

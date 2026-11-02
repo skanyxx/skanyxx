@@ -61,8 +61,8 @@ public sealed class TicketsOptions
     /// The kagent agents (<c>namespace/name</c>) a stage may call — exact refs, not namespaces, because kagent's own
     /// agents with cluster tools share the <c>kagent</c> namespace. Empty means the five ticket agents. A configured
     /// list replaces that default (the config binder would append to a non-empty default, so it starts empty). A stage
-    /// agent of your own must carry <c>app.kubernetes.io/part-of: skanyxx-ticket-flow</c> (or another <c>skanyxx*</c>
-    /// value), or Chat offers it to everyone like any other kagent agent (D557).
+    /// agent of your own must carry <c>app.kubernetes.io/part-of: skanyxx-ticket-flow</c> (any <c>skanyxx*</c> value but
+    /// <c>skanyxx-memory</c>, the seed's), or Chat offers it to everyone like any other kagent agent (D557).
     /// </summary>
     public string[] AllowedAgents { get; set; } = [];
 

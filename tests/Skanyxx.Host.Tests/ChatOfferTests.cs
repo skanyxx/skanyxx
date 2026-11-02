@@ -21,7 +21,7 @@ public sealed class ChatOfferTests
         var agent = new Agent { Name = "a", Labels = label is null ? [] : new() { [label] = value! } };
 
         Assert.Equal(offered, ChatOffer.IsChatAgent(agent));
-        Assert.Equal(offered, ChatOffer.Offers(agent));
+        Assert.Equal(offered, Offers(agent));
     }
 
     [Theory]
@@ -29,7 +29,7 @@ public sealed class ChatOfferTests
     [InlineData("skanyxx-anything")]
     [InlineData("preview-4-helper")]
     public void AReservedName_IsNeverOffered_EvenUnlabelled(string name) =>
-        Assert.False(ChatOffer.Offers(new Agent { Name = name }));
+        Assert.False(Offers(new Agent { Name = name }));
 
     [Fact]
     public void ASuspendedAgent_IsNeverOffered_ThoughItIsAChatAgent()
@@ -37,7 +37,31 @@ public sealed class ChatOfferTests
         var agent = new Agent { Name = "a", Suspended = true };
 
         Assert.True(ChatOffer.IsChatAgent(agent));
-        Assert.False(ChatOffer.Offers(agent));
+        Assert.False(Offers(agent));
+    }
+
+    private static bool Offers(Agent agent) => ChatOffer.Offered([agent]).Count == 1;
+
+    private static Agent Calling(string name, params string[] calls) => new() { Name = name, AgentToolRefs = [.. calls] };
+
+    /// <summary>Round 2 security A1: an agent calling an excluded one, however deep, would reach it through Chat.</summary>
+    [Fact]
+    public void AnAgent_ThatReachesAnExcludedAgentThroughAgentTools_IsNotOffered()
+    {
+        var borrower = new Agent { Name = "borrower", McpServerRefs = ["kagent/skanyxx-memory-seed"] };
+        var agents = new List<Agent>
+        {
+            borrower, Calling("front", "kagent/middle"), Calling("middle", "kagent/borrower"),
+            Calling("loop-a", "kagent/loop-b"), Calling("loop-b", "kagent/loop-a"),
+            Calling("to-ghost", "kagent/ghost"), Calling("to-sleeper", "kagent/sleeper"),
+            new() { Name = "sleeper", Suspended = true }, Calling("to-factory", "kagent/factory"),
+            new() { Name = "factory", Labels = new() { [ChatOffer.RoleLabel] = "factory" } }
+        };
+
+        var offered = ChatOffer.Offered(agents).Select(a => a.Name);
+
+        Assert.Equal(["loop-a", "loop-b", "to-sleeper"], offered);
+        Assert.Contains("kagent/sleeper", ChatOffer.ChatAgentRefs(agents));
     }
 
     /// <summary>Its own memory server is fine; another agent's would act in memory as that agent, possibly for the person.</summary>
@@ -48,5 +72,5 @@ public sealed class ChatOfferTests
     [InlineData("other/skanyxx-memory-seed", false)]
     [InlineData("kagent/skanyxx-memory-preview-3-seed", false)]
     public void AMemoryServer_IsOnlyItsOwn(string server, bool offered) =>
-        Assert.Equal(offered, ChatOffer.Offers(new Agent { Namespace = "kagent", Name = "seed", McpServerRefs = [server] }));
+        Assert.Equal(offered, Offers(new Agent { Namespace = "kagent", Name = "seed", McpServerRefs = [server] }));
 }

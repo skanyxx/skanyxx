@@ -84,10 +84,12 @@ public sealed class AgentsInChatTests(PostgresFixture fixture) : IAsyncLifetime
         Add("preview-3-helper", new JsonObject { ["skanyxx.dev/preview"] = "3", ["skanyxx.dev/managed-by"] = "skanyxx-studio" });
         Add("borrower", new JsonObject(), memoryServer: "skanyxx-memory-seed");
         Add("twin", new JsonObject { ["skanyxx.dev/role"] = "helper" }, ns: "team-b");
+        // Calls the borrower as an agent tool: it would reach the seed's memory through Chat (security round 2 A1).
+        Add("wrapper", new JsonObject(), calls: "borrower");
         var employee = await ToolServersApiTests.PersonAsync(_host, _owner, "eli@skanyxx.example", "employee");
 
         Assert.Equal(HttpStatusCode.OK, (await employee.GetAsync("/api/agents/kagent/from-kubectl", Ct)).StatusCode);
-        foreach (var (ns, name) in new[] { ("kagent", "skanyxx-factory"), ("kagent", "ticket-planner"), ("kagent", "preview-3-helper"), ("kagent", "borrower"), ("team-b", "twin") })
+        foreach (var (ns, name) in new[] { ("kagent", "skanyxx-factory"), ("kagent", "ticket-planner"), ("kagent", "preview-3-helper"), ("kagent", "borrower"), ("team-b", "twin"), ("kagent", "wrapper") })
         {
             Assert.Equal(HttpStatusCode.NotFound, (await employee.GetAsync($"/api/agents/{ns}/{name}", Ct)).StatusCode);
             var turn = await employee.PostAsJsonAsync("/api/chat", new { agentNamespace = ns, agentName = name, message = "hi" }, Ct);
@@ -96,7 +98,7 @@ public sealed class AgentsInChatTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Empty(_kagent.CallsTo("POST", "/api/sessions"));
     }
 
-    private void Add(string name, JsonObject labels, bool suspended = false, string? memoryServer = null, string ns = "kagent")
+    private void Add(string name, JsonObject labels, bool suspended = false, string? memoryServer = null, string ns = "kagent", string? calls = null)
     {
         var declarative = new JsonObject();
         if (suspended)
@@ -106,6 +108,8 @@ public sealed class AgentsInChatTests(PostgresFixture fixture) : IAsyncLifetime
             {
                 ["type"] = "McpServer", ["mcpServer"] = new JsonObject { ["name"] = memoryServer, ["kind"] = "RemoteMCPServer", ["toolNames"] = new JsonArray("memory_search") }
             });
+        if (calls is not null)
+            declarative["tools"] = new JsonArray(new JsonObject { ["type"] = "Agent", ["agent"] = new JsonObject { ["name"] = calls } });
         _kagent.AgentObjects[$"{ns}/{name}"] = new JsonObject
         {
             ["metadata"] = new JsonObject { ["name"] = name, ["namespace"] = ns, ["labels"] = labels },

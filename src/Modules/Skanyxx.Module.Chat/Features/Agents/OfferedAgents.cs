@@ -17,7 +17,7 @@ internal static class OfferedAgents
     public const string ImagesLabel = "skanyxx.dev/accepts-images";
 
     public static async Task<IReadOnlyList<Agent>> ListAsync(KAgentApiClient kagent, CancellationToken ct) =>
-        [.. (await kagent.GetAgentsAsync(ct)).Where(ChatOffer.Offers)];
+        ChatOffer.Offered(await kagent.GetAgentsAsync(ct));
 
     public static async Task<Agent?> FindAsync(KAgentApiClient kagent, string ns, string name, CancellationToken ct) =>
         (await ListAsync(kagent, ct)).FirstOrDefault(a => a.Namespace == ns && a.Name == name);

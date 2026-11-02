@@ -43,8 +43,7 @@ internal static partial class StudioNames
 
     /// <summary>Names a person may not take: the seed is the owner's, and these prefixes are the studio's own objects.</summary>
     public static bool IsReserved(string name) =>
-        name == "seed" || name == FactoryAgent || name.StartsWith("preview-", StringComparison.Ordinal)
-        || name.StartsWith("skanyxx-", StringComparison.Ordinal);
+        name == "seed" || name == FactoryAgent || ChatOffer.HasReservedPrefix(name);
 
     /// <summary>
     /// A studio agent name: a Kubernetes name that starts with a letter, because kagent derives a Service from it and a
@@ -85,7 +84,7 @@ internal static partial class StudioNames
     /// <summary>A plugin server's name: a Kubernetes name of at most 50, never one of the studio's own prefixes.</summary>
     public static bool IsValidServerName(string? name) =>
         name is not null && name.Length <= MaxServerNameLength && KubeName().IsMatch(name)
-        && !name.StartsWith("skanyxx-", StringComparison.Ordinal) && !name.StartsWith("preview-", StringComparison.Ordinal);
+        && !ChatOffer.HasReservedPrefix(name);
 
     public static string PluginFolder(string plugin) => $"{PluginsFolder}/{plugin}";
 

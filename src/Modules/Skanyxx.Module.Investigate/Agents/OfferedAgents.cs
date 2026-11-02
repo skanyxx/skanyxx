@@ -10,8 +10,7 @@ namespace Skanyxx.Module.Investigate.Agents;
 internal sealed class OfferedAgents(KAgentApiClient kagent) : IInvestigationAgents
 {
     public async Task<IReadOnlyList<AgentChoice>> ListAsync(CancellationToken ct) =>
-        [.. (await kagent.GetAgentsAsync(ct))
-            .Where(ChatOffer.Offers)
+        [.. ChatOffer.Offered(await kagent.GetAgentsAsync(ct))
             .OrderBy(a => a.Namespace, StringComparer.Ordinal).ThenBy(a => a.Name, StringComparer.Ordinal)
             .Select(a => new AgentChoice($"{a.Namespace}/{a.Name}", a.Namespace, a.Name, a.Description, a.Type == "Declarative",
                 [.. a.McpToolNames.Keys], a.AgentToolNames.Count > 0, a.ModelConfig))];

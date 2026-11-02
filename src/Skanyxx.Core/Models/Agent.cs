@@ -29,6 +29,9 @@ public class Agent
 
     /// <summary>The agents its spec calls as tools (<c>declarative.tools[].agent.name</c>).</summary>
     public List<string> AgentToolNames { get; set; } = [];
+
+    /// <summary>The same agents as <c>namespace/name</c> (an agent tool's own namespace, else this agent's).</summary>
+    public List<string> AgentToolRefs { get; set; } = [];
     public int TasksToday { get; set; }
     public int AvgResponseMs { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
