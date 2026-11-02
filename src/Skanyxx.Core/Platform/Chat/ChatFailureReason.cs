@@ -12,7 +12,7 @@ namespace Skanyxx.Core.Platform.Chat;
 /// quote from request URLs and headers: the value after any name ending in key, auth, signature, sig, token, secret,
 /// password or credential, a user name in a URL, and every bearer or basic value however short.
 /// </summary>
-public static partial class ChatFailureReason
+public static class ChatFailureReason
 {
     public const int MaxLength = 2_000;
 
@@ -23,9 +23,10 @@ public static partial class ChatFailureReason
             return null;
         var clean = new StringBuilder(text.Length);
         var redacted = SecretText.Redact(SecretScan.Redact(text, out var cut));
-        redacted = NamedValue().Replace(redacted, m => m.Groups["value"].Value == SecretScan.Redacted ? m.Value : $"{m.Groups["name"].Value}{SecretScan.Redacted}");
-        redacted = UrlUser().Replace(redacted, $"://{SecretScan.Redacted}@");
-        redacted = Scheme().Replace(redacted, m => m.Groups["value"].Value == SecretScan.Redacted ? m.Value : $"{m.Groups["scheme"].Value} {SecretScan.Redacted}");
+        // The scheme first: "X-Auth-Token: Bearer abc" would otherwise blank only the word Bearer.
+        redacted = Scheme.Replace(redacted, m => m.Groups["value"].Value == SecretScan.Redacted ? m.Value : $"{m.Groups["scheme"].Value} {SecretScan.Redacted}");
+        redacted = NamedValue.Replace(redacted, m => m.Groups["value"].Value == SecretScan.Redacted ? m.Value : $"{m.Groups["name"].Value}{SecretScan.Redacted}");
+        redacted = UrlUser.Replace(redacted, $"://{SecretScan.Redacted}@");
         foreach (var c in redacted)
             clean.Append(char.GetUnicodeCategory(c) is UnicodeCategory.Control or UnicodeCategory.Format
                 or UnicodeCategory.LineSeparator or UnicodeCategory.ParagraphSeparator ? ' ' : c);
@@ -39,13 +40,13 @@ public static partial class ChatFailureReason
         return $"{reason[..end]}… (cut: kagent's message has {text.Length.ToString("N0", CultureInfo.InvariantCulture)} characters)";
     }
 
-    [GeneratedRegex(@"(?<name>[A-Za-z0-9_-]*(?i:key|auth|signature|sig|token|secret|password|passwd|pwd|credential|credentials)[""']?\s{0,4}[:=]\s{0,4}[""']?)(?<value>\[redacted\]|[^\s&""',;)\]}]+)",
-        RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
-    private static partial Regex NamedValue();
+    private const RegexOptions Linear = RegexOptions.CultureInvariant | RegexOptions.NonBacktracking;
 
-    [GeneratedRegex(@"://[^/\s@:]+@", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
-    private static partial Regex UrlUser();
+    private static readonly Regex NamedValue = new(
+        @"(?<name>[A-Za-z0-9_-]*(?i:key|auth|signature|sig|token|secret|password|passwd|pwd|credential|credentials)[""']?\s{0,4}[:=]\s{0,4}[""']?)(?<value>\[redacted\]|[^\s&""',;)\]}]+)",
+        Linear);
 
-    [GeneratedRegex(@"(?<scheme>(?i:bearer|basic))\s+(?<value>\[redacted\]|[^\s""',;]+)", RegexOptions.CultureInvariant | RegexOptions.NonBacktracking)]
-    private static partial Regex Scheme();
+    private static readonly Regex UrlUser = new(@"://[^/?#\s@:]+@", Linear);
+
+    private static readonly Regex Scheme = new(@"(?<scheme>\b(?i:bearer|basic))\s+(?<value>\[redacted\]|[^\s""',;]+)", Linear);
 }

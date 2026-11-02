@@ -51,6 +51,7 @@ public sealed class ChatFailureReasonTests
     [InlineData("x-functions-key=Zz9yYy8xXx7 unauthorized", "Zz9yYy8xXx7")]
     [InlineData("Post \"https://ghp1234shorttok@git.example/repo\": 401", "ghp1234shorttok")]
     [InlineData("Authorization: Bearer abc123 was refused", "abc123")]
+    [InlineData("X-Auth-Token: Bearer xyz789 was refused", "xyz789")]
     [InlineData("\"api_token\": \"t0k3n-v4l\" invalid", "t0k3n-v4l")]
     public void CredentialShapesFromUrlsAndHeaders_AreBlanked(string text, string secret)
     {
@@ -151,6 +152,29 @@ public sealed class ChatFailureReasonTests
         Assert.Contains("kagent/seed", line.Message);
         Assert.Contains("connection refused", line.Message);
         Assert.DoesNotContain(Secret, line.Message);
+    }
+
+    [Fact]
+    public async Task ABlockingTurnThatFails_CarriesTheTokensKagentReported()
+    {
+        var body = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["result"] = new JsonObject
+            {
+                ["kind"] = "task", ["id"] = "task-43",
+                ["status"] = new JsonObject { ["state"] = "failed" },
+                ["metadata"] = new JsonObject { ["kagent_usage_metadata"] = new JsonObject { ["promptTokenCount"] = 70, ["candidatesTokenCount"] = 5, ["totalTokenCount"] = 75 } }
+            }
+        };
+        var client = new KAgentApiClient(new HttpClient(new Answering(body.ToJsonString())),
+            new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["KAgent:IngressUrl"] = "http://kagent.test" }).Build(),
+            new ListLogger<KAgentApiClient>());
+
+        var failed = await Assert.ThrowsAsync<KAgentTaskFailedException>(() => client.SendMessageAsync("kagent", "seed", "s1", "hi", "ana", Ct));
+
+        Assert.Equal((70L, 5L, true), (failed.Usage.InputTokens, failed.Usage.OutputTokens, failed.Usage.Reported));
+        Assert.Null(failed.Reason);
     }
 
     private static JsonNode Node(string json) => JsonNode.Parse(json)!;

@@ -417,9 +417,14 @@ public class KAgentApiClient
             {
                 // Cleaned once, for this line and for the caller (D553): no control character forges a log line.
                 var taskId = ChatFailureReason.Of(result["id"]?.GetValue<string>());
-                var reason = ChatFailureReason.Of(Text(result["status"]?["message"]?["parts"]));
-                _logger.LogWarning("kagent task {TaskId} of {AgentRef} ended {State}: {Detail}",
-                    taskId, agentRef, ChatFailureReason.Of(state) ?? "?", reason ?? "(no message)");
+                // An approval stop is no failure: its text (a sign-in link with its state) is neither logged nor passed on.
+                var approval = state is "input-required" or "auth-required";
+                var reason = approval ? null : ChatFailureReason.Of(Text(result["status"]?["message"]?["parts"]));
+                if (approval)
+                    _logger.LogInformation("kagent task {TaskId} of {AgentRef} stopped for an approval ({State})", taskId, agentRef, state);
+                else
+                    _logger.LogWarning("kagent task {TaskId} of {AgentRef} ended {State}: {Detail}",
+                        taskId, agentRef, ChatFailureReason.Of(state) ?? "?", reason ?? "(no message)");
                 throw new KAgentTaskFailedException(taskId, ChatFailureReason.Of(state) ?? "?", reason, A2AUsage.From(result));
             }
             var artifacts = result["artifacts"]?.AsArray();

@@ -352,6 +352,32 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Empty(_kagent.SessionIds);
     }
 
+    [Fact]
+    public async Task ABlockingApprovalStop_AsksForTheApproval_WithNoKagentReason()
+    {
+        _kagent.A2ABody = new JsonObject
+        {
+            ["jsonrpc"] = "2.0",
+            ["result"] = new JsonObject
+            {
+                ["kind"] = "task", ["id"] = "task-8",
+                ["status"] = new JsonObject
+                {
+                    ["state"] = "auth-required",
+                    ["message"] = new JsonObject { ["parts"] = new JsonArray(new JsonObject { ["kind"] = "text", ["text"] = "Sign in at https://idp.example/?state=s3cr3t" }) }
+                }
+            }
+        }.ToJsonString();
+
+        var response = await (await _host.OwnerAsync()).PostAsJsonAsync("/api/chat", new { agentNamespace = "kagent", agentName = "seed", message = "hi" }, Ct);
+
+        Assert.Equal(HttpStatusCode.BadGateway, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("approval", body);
+        Assert.DoesNotContain("kagentReason", body);
+        Assert.DoesNotContain("idp.example", body);
+    }
+
     /// <summary>D554: Ready in kagent, but a tool server it names gives no tools: the picker and details say so.</summary>
     [Fact]
     public async Task AnAgentWhoseToolServerGivesNoTools_ShowsUnhealthy_ByNameForBuildersAndUpOnly()
