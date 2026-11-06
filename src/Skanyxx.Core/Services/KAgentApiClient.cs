@@ -199,7 +199,7 @@ public class KAgentApiClient
 
         var isReady = item.TryGetProperty("deploymentReady", out var readyProp) && readyProp.ValueKind == JsonValueKind.True
             || HasCondition(status, "Ready");
-        var isAccepted = HasCondition(status, "Accepted");
+        var isAccepted = ConditionStatus(status, "Accepted");
 
         var labels = new Dictionary<string, string>();
         if (metadata.TryGetProperty("labels", out var labelsProp) && labelsProp.ValueKind == JsonValueKind.Object)
@@ -296,6 +296,17 @@ public class KAgentApiClient
         && status.TryGetProperty("conditions", out var conditions)
         && conditions.ValueKind == JsonValueKind.Array
         && conditions.EnumerateArray().Any(c => GetStringProperty(c, "type") == type && GetStringProperty(c, "status") == "True");
+
+    /// <summary>The condition's status: true or false as kagent set it, null while it has none of that type.</summary>
+    private static bool? ConditionStatus(JsonElement status, string type)
+    {
+        if (status.ValueKind != JsonValueKind.Object || !status.TryGetProperty("conditions", out var conditions) || conditions.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var c in conditions.EnumerateArray())
+            if (GetStringProperty(c, "type") == type)
+                return GetStringProperty(c, "status") switch { "True" => true, "False" => false, _ => null };
+        return null;
+    }
 
     private static string? GetStringProperty(JsonElement element, string propertyName)
     {

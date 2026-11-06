@@ -2,6 +2,7 @@ using Skanyxx.Core.Platform.Studio;
 
 namespace Skanyxx.Module.Agents.Manage.Definition;
 
+/// <param name="Accepted">kagent's Accepted condition; null while kagent has not reported it yet (starting, not refused, D559).</param>
 /// <param name="Source">An <see cref="AgentSource"/>.</param>
 /// <param name="InChat">Chat offers it unless suspended (<see cref="Skanyxx.Core.Platform.Chat.ChatOffer"/>, D557), and employees can read it then (D254). On a write's response it judges the agent alone, not the agents it calls.</param>
 /// <param name="Suspended">Scaled to zero on the Agents page and out of Chat (D257).</param>
@@ -19,7 +20,7 @@ internal sealed record AgentDetail(
     string Description,
     string Type,
     bool Ready,
-    bool Accepted,
+    bool? Accepted,
     string Source,
     bool InChat,
     bool Suspended,

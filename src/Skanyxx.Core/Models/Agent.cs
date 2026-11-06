@@ -12,7 +12,9 @@ public class Agent
     /// <summary>The CR's <c>metadata.generation</c>: changes with every spec edit, not with status (the answer cache keys on it).</summary>
     public string Revision { get; set; } = string.Empty;
     public bool Ready { get; set; }
-    public bool Accepted { get; set; }
+
+    /// <summary>kagent's <c>Accepted</c> condition; null while kagent has not reported it (a fresh agent, for a moment, D559).</summary>
+    public bool? Accepted { get; set; }
     public Dictionary<string, string> Labels { get; set; } = [];
 
     /// <summary>Scaled to zero (<c>deployment.replicas: 0</c>): suspended on the Agents page, never offered in Chat (D257).</summary>

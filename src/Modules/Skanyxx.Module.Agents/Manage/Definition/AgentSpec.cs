@@ -200,7 +200,7 @@ internal static partial class AgentSpec
             Text(spec?["description"]) ?? "",
             Text(spec?["type"]) ?? "Declarative",
             Condition(agent, "Ready"),
-            Condition(agent, "Accepted"),
+            ConditionStatus(agent, "Accepted"),
             source,
             ChatOffer.IsChatAgent(agent, labels),
             IsSuspended(agent),
@@ -238,6 +238,11 @@ internal static partial class AgentSpec
 
     private static bool Condition(JsonObject agent, string type) =>
         (agent["status"]?["conditions"] as JsonArray ?? []).Any(c => Text(c?["type"]) == type && Text(c?["status"]) == "True");
+
+    private static bool? ConditionStatus(JsonObject agent, string type) =>
+        (agent["status"]?["conditions"] as JsonArray ?? []).FirstOrDefault(c => Text(c?["type"]) == type) is { } condition
+            ? Text(condition["status"]) switch { "True" => true, "False" => false, _ => null }
+            : null;
 
     /// <summary>A CamelCase word as kagent's condition types and reasons are (Ready, DeploymentReady); anything else is dropped (C-4).</summary>
     private static string? Token(string? text) => text is not null && ConditionToken().IsMatch(text) ? text : null;

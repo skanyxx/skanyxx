@@ -486,6 +486,31 @@ public sealed class AgentsApiTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Equal(JsonValueKind.Null, conditions[1].GetProperty("reason").ValueKind);
     }
 
+    /// <summary>D559: an agent kagent has not reported on yet is starting, not refused; only Accepted=False is not ready.</summary>
+    [Theory]
+    [InlineData(false, null, JsonValueKind.Null)]
+    [InlineData(true, null, JsonValueKind.Null)]
+    [InlineData(true, "Unknown", JsonValueKind.Null)]
+    [InlineData(true, "False", JsonValueKind.False)]
+    [InlineData(true, "True", JsonValueKind.True)]
+    public async Task Accepted_IsUnknownUntilKAgentReportsIt(bool hasStatus, string? accepted, JsonValueKind expected)
+    {
+        Seed("helper", Direct());
+        if (hasStatus)
+        {
+            var conditions = new JsonArray(new JsonObject { ["type"] = "Ready", ["status"] = "False" });
+            if (accepted is not null)
+                conditions.Add(new JsonObject { ["type"] = "Accepted", ["status"] = accepted });
+            _kagent.AgentObjects[$"{Ns}/helper"]["status"] = new JsonObject { ["conditions"] = conditions };
+        }
+
+        var detail = await _owner.GetFromJsonAsync<JsonElement>($"/api/agents/{Ns}/helper", Ct);
+        var card = (await ListAsync(_owner)).Single(a => a.GetProperty("name").GetString() == "helper");
+
+        Assert.Equal(expected, detail.GetProperty("accepted").ValueKind);
+        Assert.Equal(expected, card.GetProperty("accepted").ValueKind);
+    }
+
     [Fact]
     public async Task Responses_NeverCarryAnnotationsHeadersOrEnv()
     {

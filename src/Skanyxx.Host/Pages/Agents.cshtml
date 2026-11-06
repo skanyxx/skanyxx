@@ -229,11 +229,13 @@
     const lines = text => text.split('\n').map(s => s.trim()).filter(Boolean);
     const show = view => views.forEach(v => { v.hidden = v.id !== view; });
     // Ready with a tool server that gives no tools is unhealthy (D554): kagent calls it Ready, its turns fail.
-    const status = a => a.suspended ? 'suspended' : (a.ready ? (a.toolProblem ? 'tools' : 'ready') : (a.accepted ? 'starting' : 'not-ready'));
-    const statusLabel = { suspended: 'Suspended', ready: 'Ready', starting: 'Accepted, starting', 'not-ready': 'Not ready', tools: 'Tool unavailable' };
+    // Not ready only when kagent refused it; a fresh agent it has not reported on yet is starting (D559).
+    const status = a => a.suspended ? 'suspended' : (a.ready ? (a.toolProblem ? 'tools' : 'ready') : (a.accepted === false ? 'not-ready' : 'starting'));
+    const statusLabel = { suspended: 'Suspended', ready: 'Ready', starting: 'Starting', 'not-ready': 'Not ready', tools: 'Tool unavailable' };
+    const stateText = a => status(a) === 'starting' && a.accepted ? 'Accepted, starting' : statusLabel[status(a)];
     // The shared status words (skx.badge, StatusTone): ready is green, starting and suspended amber, not ready and tools red.
     const statusWord = { suspended: 'suspended', ready: 'ready', starting: 'starting', 'not-ready': 'failed', tools: 'unhealthy' };
-    const stateBadge = a => skx.badge(statusWord[status(a)], statusLabel[status(a)]);
+    const stateBadge = a => skx.badge(statusWord[status(a)], stateText(a));
 
     // The shared client (js/ui.js): the error carries the status and the problem body (a 400's errors by field).
     const call = (method, url, body) => skx.api(method, url, body);
@@ -348,16 +350,19 @@
             if (value !== null && value !== undefined && value !== '') dl.append(el('dt', label), el('dd', String(value)));
     }
 
-    async function details(ns, name) {
-        show('detail-view');
+    // Shown only once the answer is for the current route: a slow answer never paints over a later view (D559).
+    async function details(ns, name, ticket = routeTicket) {
         let a;
         try {
             a = await call('GET', path(ns, name));
         } catch (e) {
+            if (ticket !== routeTicket) return;
             fail(e.message);
             location.hash = '';
             return;
         }
+        if (ticket !== routeTicket) return;
+        show('detail-view');
         document.getElementById('detail-name').textContent = a.name;
         document.getElementById('detail-ns').textContent = a.namespace;
         const badges = document.getElementById('detail-badges');
@@ -424,7 +429,7 @@
         })); else empty(a2a, 'None.');
 
         fields(document.getElementById('d-deployment'), [
-            ['State', statusLabel[status(a)]],
+            ['State', stateText(a)],
             ['In Chat', a.inChat ? (a.suspended ? 'no (suspended)' : 'yes') : 'no'],
             ['Replicas', a.replicas ?? '1 (kagent default)'],
             ['Tools', a.toolProblem],
@@ -432,14 +437,16 @@
             ['Used as a tool by', a.usedBy.join(', ')],
             ['Studio file', a.studioPath]
         ]);
-        await sessions(a);
+        await sessions(a, ticket);
     }
 
     // The caller's own indexed chats with this agent (chat-context); nothing when that module is off.
-    async function sessions(a) {
+    async function sessions(a, ticket) {
         const box = document.getElementById('d-sessions');
+        box.replaceChildren();
         try {
             const list = (await call('GET', `/api/chat/sessions?mine=true&agent=${encodeURIComponent(`${a.namespace}/${a.name}`)}`)).slice(0, 5);
+            if (ticket !== routeTicket) return;
             if (!list.length) { empty(box, 'No sessions of yours with this agent yet.'); return; }
             box.replaceChildren(...list.map(s => {
                 const row = el('div');
@@ -452,7 +459,7 @@
                 return row;
             }));
         } catch {
-            empty(box, 'Chat history is not available.');
+            if (ticket === routeTicket) empty(box, 'Chat history is not available.');
         }
     }
 
@@ -579,17 +586,22 @@
         document.getElementById('f-prompt-count').textContent = `${prompt.value.length} / 16000 characters`;
     }
 
-    async function openForm(agent) {
-        show('form-view');
+    // ticket: the route() call that asked for the form; a later navigation makes it stale.
+    async function openForm(agent, ticket = routeTicket) {
         clearErrors();
+        // Shown only once filled: fields set after the options arrive would wipe what was already typed (D559).
         let o;
         try {
             o = await loadOptions();
         } catch (e) {
+            if (ticket !== routeTicket) return;
+            show('form-view');
             formError(`The form could not be prepared: ${e.message}`);
             if (e.status >= 500) await loadGuides();
             return;
         }
+        if (ticket !== routeTicket) return;
+        show('form-view');
         const proposal = o.mode === 'proposal';
         editing = agent;
         document.getElementById('form-title').textContent = proposal
@@ -721,9 +733,11 @@
     }
 
     async function edit(ns, name) {
+        const ticket = routeTicket;
         try {
-            await openForm(await call('GET', path(ns, name)));
+            await openForm(await call('GET', path(ns, name)), ticket);
         } catch (e) {
+            if (ticket !== routeTicket) return;
             fail(e.message);
             location.hash = '';
         }
@@ -739,7 +753,10 @@
     document.getElementById('refresh').addEventListener('click', () => { loadGuides(); load(); });
 
     // #agent/ns/name = details, #edit/ns/name = edit or propose a change, #new = the form, anything else = the grid.
+    // Every navigation takes a new ticket, so a form still loading for an earlier one never opens (D559).
+    let routeTicket = 0;
     function route() {
+        routeTicket++;
         const [view, ns, name] = location.hash.slice(1).split('/').map(decodeURIComponent);
         if (view === 'agent' && ns && name) details(ns, name);
         else if (view === 'edit' && ns && name) edit(ns, name);

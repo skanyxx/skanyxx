@@ -25,6 +25,6 @@ internal static class KAgentStatusMap
         if (live.Ready)
             return new DeployStatus(DeployState.Healthy, Source, "Live in kagent and in Chat.");
         // A fresh agent has no conditions for a moment: not ready is "starting", whatever Accepted says yet.
-        return new DeployStatus(DeployState.Syncing, Source, live.Accepted ? "Applied to kagent; its pod is starting." : "Applied; kagent has not accepted it yet.");
+        return new DeployStatus(DeployState.Syncing, Source, live.Accepted == true ? "Applied to kagent; its pod is starting." : "Applied; kagent has not accepted it yet.");
     }
 }
