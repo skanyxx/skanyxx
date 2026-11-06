@@ -155,7 +155,7 @@
                     <h3 class="section-title" id="preview-title">Preview chat <status-badge status="@(preview.Ready ? "ready" : "starting")" /></h3>
                     <p class="section-description mb-1"><code>@preview.Name</code> · it searches memory but never saves to it.</p>
                     <div id="previewLog" class="transcript mb-2" aria-live="polite"></div>
-                    <form id="previewChat" class="inline-form" data-number="@s.Number">
+                    <form id="previewChat" class="toolbar" data-number="@s.Number">
                         <input id="previewMessage" maxlength="16000" placeholder="Ask the proposed agent" autocomplete="off" aria-label="Message" class="flex-1" />
                         <button type="submit" class="btn btn-primary">Send</button>
                     </form>

@@ -39,9 +39,13 @@ internal sealed class DeployStatusReader(
             }
             else
             {
-                var live = (await kagent.GetAgentsAsync(ct)).Where(a => a.Namespace == ns).ToDictionary(a => a.Name);
+                var agentsTask = kagent.GetAgentsAsync(ct);
+                var serversTask = ToolServerHealth.ListOrNullAsync(kagent, logger, ct);
+                await Task.WhenAll(agentsTask, serversTask);
+                var live = agentsTask.Result.Where(a => a.Namespace == ns).ToDictionary(a => a.Name);
+                var servers = serversTask.Result;
                 foreach (var agent in agents)
-                    result[agent] = KAgentStatusMap.For(live.GetValueOrDefault(agent), reconcileStatus.Last);
+                    result[agent] = KAgentStatusMap.For(live.GetValueOrDefault(agent), reconcileStatus.Last, servers);
             }
         }
         catch (Exception ex) when (ex is HttpRequestException or TimeoutException or System.Text.Json.JsonException)

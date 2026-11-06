@@ -1,4 +1,6 @@
+using System.Text.Json.Nodes;
 using Skanyxx.Core.Models;
+using Skanyxx.Core.Services;
 using Skanyxx.Core.Platform.Studio;
 using Skanyxx.Module.Agents.Studio.Definition;
 using Skanyxx.Module.Agents.Studio.Reconcile;
@@ -14,7 +16,8 @@ internal static class KAgentStatusMap
 
     /// <param name="live">kagent's agent of that name in the studio's namespace; null when kagent has none.</param>
     /// <param name="last">The last reconcile pass of this replica; null before the first.</param>
-    public static DeployStatus For(Agent? live, ReconcilePass? last)
+    /// <param name="toolServers">kagent's tool server list; null when it did not answer (tool health unknown).</param>
+    public static DeployStatus For(Agent? live, ReconcilePass? last, JsonArray? toolServers)
     {
         if (live is null || live.Labels.GetValueOrDefault(StudioNames.MergedLabel) != "true")
             return last is { Failed: true } or { Failures: > 0 }
@@ -22,6 +25,10 @@ internal static class KAgentStatusMap
                 : new DeployStatus(DeployState.Waiting, Source, "Not in kagent yet: the reconciler applies it on its next pass.");
         if (live.Suspended)
             return new DeployStatus(DeployState.Suspended, Source, "Scaled to zero in kagent.");
+        // kagent finds a new memory server's tools about a minute after the agent is Ready (D560): until then a turn fails.
+        if (live.Ready && toolServers is not null && ToolServerHealth.Problems(live.McpServerRefs, toolServers) is { Count: > 0 } problems)
+            return new DeployStatus(DeployState.Syncing, Source,
+                $"Running in kagent, but kagent has no tools from {string.Join(", ", problems.Select(p => p.Server))} yet. It finds them within about a minute of a deploy; if this stays, the Tool servers page has the fixes.");
         if (live.Ready)
             return new DeployStatus(DeployState.Healthy, Source, "Live in kagent and in Chat.");
         // A fresh agent has no conditions for a moment: not ready is "starting", whatever Accepted says yet.

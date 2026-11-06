@@ -144,17 +144,29 @@ public sealed class StudioDeliveryMappingTests
         static Agent Live(bool ready = true, bool accepted = true, bool suspended = false, bool merged = true) => new()
         {
             Name = "helper", Ready = ready, Accepted = accepted, Suspended = suspended,
-            Labels = merged ? new() { [StudioNames.MergedLabel] = "true" } : []
+            Labels = merged ? new() { [StudioNames.MergedLabel] = "true" } : [],
+            McpServerRefs = ["kagent/skanyxx-memory-helper"]
         };
+        static JsonArray Servers(int tools) => [new JsonObject
+        {
+            ["ref"] = "kagent/skanyxx-memory-helper",
+            ["discoveredTools"] = new JsonArray([.. Enumerable.Range(0, tools).Select(i => (JsonNode)new JsonObject { ["name"] = $"tool{i}" })])
+        }];
 
-        Assert.Equal(DeployState.Healthy, KAgentStatusMap.For(Live(), null).State);
-        Assert.Equal(DeployState.Syncing, KAgentStatusMap.For(Live(ready: false), null).State);
-        Assert.Equal(DeployState.Syncing, KAgentStatusMap.For(Live(ready: false, accepted: false), null).State);
-        Assert.Equal(DeployState.Healthy, KAgentStatusMap.For(Live(accepted: false), null).State);
-        Assert.Equal(DeployState.Suspended, KAgentStatusMap.For(Live(suspended: true), null).State);
-        Assert.Equal(DeployState.Waiting, KAgentStatusMap.For(Live(merged: false), null).State);
-        Assert.Equal(DeployState.Waiting, KAgentStatusMap.For(null, new ReconcilePass(DateTimeOffset.UtcNow, 0, false)).State);
-        var failed = KAgentStatusMap.For(null, new ReconcilePass(DateTimeOffset.UtcNow, 2, false));
+        Assert.Equal(DeployState.Healthy, KAgentStatusMap.For(Live(), null, null).State);
+        Assert.Equal(DeployState.Healthy, KAgentStatusMap.For(Live(), null, Servers(2)).State);
+        // D560: Ready, but kagent has not discovered its memory server's tools yet (or not listed it): a turn would fail.
+        var noTools = KAgentStatusMap.For(Live(), null, Servers(0));
+        Assert.Equal(DeployState.Syncing, noTools.State);
+        Assert.Contains("kagent/skanyxx-memory-helper", noTools.Detail);
+        Assert.Equal(DeployState.Syncing, KAgentStatusMap.For(Live(), null, []).State);
+        Assert.Equal(DeployState.Syncing, KAgentStatusMap.For(Live(ready: false), null, null).State);
+        Assert.Equal(DeployState.Syncing, KAgentStatusMap.For(Live(ready: false, accepted: false), null, null).State);
+        Assert.Equal(DeployState.Healthy, KAgentStatusMap.For(Live(accepted: false), null, null).State);
+        Assert.Equal(DeployState.Suspended, KAgentStatusMap.For(Live(suspended: true), null, Servers(0)).State);
+        Assert.Equal(DeployState.Waiting, KAgentStatusMap.For(Live(merged: false), null, null).State);
+        Assert.Equal(DeployState.Waiting, KAgentStatusMap.For(null, new ReconcilePass(DateTimeOffset.UtcNow, 0, false), null).State);
+        var failed = KAgentStatusMap.For(null, new ReconcilePass(DateTimeOffset.UtcNow, 2, false), null);
         Assert.Equal(DeployState.Failed, failed.State);
         Assert.Contains("retries", failed.Detail);
         Assert.Equal("reconciler", failed.Source);

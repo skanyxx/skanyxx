@@ -667,6 +667,7 @@
 .inline-form { display: inline-flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 .stack > * + * { margin-top: var(--space-3); }
 .toolbar > select, .toolbar > input:not([type="search"]) { width: auto; flex: 0 0 auto; }
+.toolbar > input.flex-1 { flex: 1 1 0; }
 fieldset.field { border: 0; padding: 0; margin: 0; min-width: 0; }
 fieldset.field > legend { padding: 0; margin-bottom: var(--space-1); }
 .empty-state .steps { text-align: left; max-width: 52ch; }

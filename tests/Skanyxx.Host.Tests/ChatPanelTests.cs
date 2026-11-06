@@ -217,6 +217,28 @@ public sealed class ChatPanelTests(PostgresFixture fixture) : IAsyncLifetime
         Assert.Contains(theirs, _kagent.SessionIds);
     }
 
+    /// <summary>D560: Studio talks to the factory and to previews as the person; those sessions are not their chats.</summary>
+    [Fact]
+    public async Task StudioSessions_OnSkanyxxsOwnAgents_AreNotTheCallersConversations()
+    {
+        var owner = await _host.OwnerAsync();
+        var ownerId = (await owner.GetFromJsonAsync<JsonElement>("/api/identity/me", Ct)).GetProperty("id").GetString()!;
+        var chat = await ChatAsync(owner, "Why are EU refunds slow?");
+        using var kagent = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{_kagent.Port}") };
+        async Task<string?> StudioSession(string agentRef) =>
+            (await (await kagent.PostAsJsonAsync($"/api/sessions?user_id={Uri.EscapeDataString(ownerId)}",
+                new { agent_ref = agentRef, name = "Studio" }, Ct)).Content.ReadFromJsonAsync<JsonElement>(Ct))
+            .GetProperty("data").GetProperty("id").GetString();
+        var factory = await StudioSession("kagent/skanyxx-factory");
+        var preview = await StudioSession("kagent/preview-1-helper");
+
+        var mine = await owner.GetFromJsonAsync<JsonElement>("/api/chat/conversations", Ct);
+
+        Assert.Equal([chat], mine.EnumerateArray().Select(c => c.GetProperty("id").GetString()));
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/chat/conversations/{factory}", Ct)).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await owner.GetAsync($"/api/chat/conversations/{preview}", Ct)).StatusCode);
+    }
+
     [Fact]
     public async Task AnotherPersonsConversation_IsNotFound_OnEveryRoute()
     {
